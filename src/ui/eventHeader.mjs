@@ -21,7 +21,8 @@ export function renderEventHeaderActionsView({ eventId, participantCount }) {
 }
 
 export function renderEventHeaderMetaView({ currencyLabel, participantsLabel }) {
-  return `<p class="muted event-header-meta">${escapeHtml(currencyLabel)} · ${participantsLabel}</p>`;
+  const symbol = currencyLabel.split(" · ").at(-1);
+  return `<p class="muted event-header-meta" aria-label="${escapeHtml(currencyLabel)} · ${escapeHtml(participantsLabel)}">${escapeHtml(participantsLabel)} · ${escapeHtml(symbol)}</p>`;
 }
 
 export function renderEventHeaderView(model, { showActions = true, showMeta = true } = {}) {

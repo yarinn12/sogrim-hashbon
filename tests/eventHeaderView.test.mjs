@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { renderEventHeaderView, renderEventHeaderActionsView } from "../src/ui/eventHeader.mjs";
 
 const model = Object.freeze({ eventId: "event-1", name: "אירוע משפחתי", participantCount: 1,
-  currencyLabel: "שקל ישראלי", participantsLabel: "משתתף 1", backButtonHtml: '<button data-action="back">חזרה</button>' });
+  currencyLabel: "שקל ישראלי · ₪", participantsLabel: "משתתף 1", backButtonHtml: '<button data-action="back">חזרה</button>' });
 
 test("shared presentation keeps complete utilities, metadata and invitation in the same event card", () => {
   const html = renderEventHeaderView(model);
@@ -11,7 +11,8 @@ test("shared presentation keeps complete utilities, metadata and invitation in t
   for (const action of ["open-event-participants", "open-event-participant-add", "open-event-settings"]) assert.equal((html.match(new RegExp(`data-action="${action}"`, "g")) ?? []).length, 1);
   assert.ok(html.indexOf('event-header-actions') < html.indexOf('</header>'));
   assert.match(html, /הזמנת חברים לאירוע/);
-  assert.match(html, /event-header-meta.*שקל ישראלי.*משתתף 1/);
+  assert.match(html, />משתתף 1 · ₪<\/p>/);
+  assert.match(html, /aria-label="שקל ישראלי · ₪ · משתתף 1"/);
   assert.match(html, /<h1>אירוע משפחתי<\/h1>/);
   assert.equal(renderEventHeaderView(model), html);
 });

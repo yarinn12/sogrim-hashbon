@@ -13939,9 +13939,7 @@ const CSS = `
     box-shadow: var(--ledger-task-shadow) !important;
   }
 
-  html.ledger-workspace-v1 .event-action-total > span:first-child {
-    display: none !important;
-  }
+
 
   html.ledger-workspace-v1 .event-action-total .amount {
     font-size: 18px !important;
@@ -21569,6 +21567,273 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subsc
  padding:14px 16px !important;
 }
 html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-selected-participants {margin-top:20px !important;}
+
+/* Approved event-main presentation, 2026-10-18. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] {
+container: event-main / inline-size;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header {
+min-height: 0 !important;
+  padding: 18px 18px 12px !important;
+  margin-bottom: 10px !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-meta {
+margin: 6px 0 0 !important;
+  font-size: .875rem !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+  color: #d9e9e2 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions.event-header-actions {
+width: 100% !important;
+  display: grid !important;
+  grid-template-columns: repeat(3,minmax(0,1fr)) !important;
+  gap: 8px !important;
+  margin: 12px 0 0 !important;
+  padding: 10px 0 0 !important;
+  border-top: 1px solid rgba(255,255,255,.16) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+width: 100% !important;
+  min-width: 0 !important;
+  min-height: 48px !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  padding: 4px 0 !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  color: #f5faf7 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-utility-button .event-header-action-label {
+width: auto !important;
+  height: auto !important;
+  position: static !important;
+  overflow: visible !important;
+  clip: auto !important;
+  font-size: .8125rem !important;
+  line-height: 1.4 !important;
+  font-weight: 500 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-actions .button-action-icon,
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-actions svg {
+width: 19px !important;
+  height: 19px !important;
+  min-width: 19px !important;
+}
+
+@container event-main (max-width: 14rem) {
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions.event-header-actions {
+grid-template-columns: minmax(0,1fr) !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+flex-direction: row !important;
+    gap: 8px !important;
+    padding: 8px !important;
+}
+}
+
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header .hero-actions.event-header-actions {
+grid-template-columns: repeat(3,minmax(0,1fr)) !important;
+}
+
+@container event-main (max-width: 14rem) {
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header .hero-actions.event-header-actions {
+grid-template-columns: minmax(0,1fr) !important;
+}
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header {
+padding: 16px 18px 8px !important;
+  margin-bottom: 6px !important;
+  box-shadow: 0 9px 24px -16px rgba(7,65,47,.28), inset 0 1px 0 rgba(255,255,255,.12) !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header::after {
+display: none !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-overview-header .brand {
+margin: 0 !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-overview-header h1 {
+margin: 0 !important;
+  font-size: 1.5rem !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+  text-wrap: balance !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-meta {
+margin: 4px 0 0 !important;
+  font-size: .8125rem !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions.event-header-actions {
+gap: 4px !important;
+  margin: 8px 0 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+flex-direction: row !important;
+  min-height: 44px !important;
+  padding: 4px 0 !important;
+  gap: 6px !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-utility-button .event-header-action-label {
+font-size: .875rem !important;
+  line-height: 1.4 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-actions .button-action-icon,
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-actions svg {
+width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+}
+
+@container event-main (max-width: 20rem) {
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+flex-direction: column !important;
+    gap: 4px !important;
+}
+}
+
+@container event-main (max-width: 14rem) {
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+flex-direction: row !important;
+    gap: 8px !important;
+    padding: 8px !important;
+}
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header {
+gap: 0 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions.event-header-actions {
+box-sizing: border-box !important;
+  gap: 0 !important;
+  margin-top: 12px !important;
+  padding: 4px !important;
+  border-radius: 12px !important;
+  background: rgba(255,255,255,.075) !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+border-radius: 8px !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value > span {
+display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+  line-height: 1.4 !important;
+  white-space: nowrap !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value > span > .inline-chevron {
+display: block !important;
+  width: 14px !important;
+  height: 14px !important;
+  flex: 0 0 14px !important;
+  line-height: 0 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value > span > .inline-chevron > svg {
+display: block !important;
+}
+
+/* Retain the original DOM order and the original twelve-pixel separation.
+   Native source CSS supplies the complete original event-navigation row. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header {
+  margin-bottom: 12px !important;
+}
+/* Give the existing total its missing explanation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .event-action-total {
+  grid-template-columns: minmax(0,1fr) !important;
+  gap: 2px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .event-action-total > span:first-child {
+  display: block !important;
+  font-size: .8125rem !important;
+  line-height: 1.4 !important;
+  font-weight: 400 !important;
+  color: var(--ledger-muted) !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .event-action-total .amount {
+  font-size: 1.125rem !important;
+  line-height: 1.3 !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .event-action-total .font-num {
+  font-size: inherit !important;
+}
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock {
+  grid-template-columns: minmax(0,1fr) !important;
+}
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock > :is(.event-action-total,.primary-button) {
+  grid-column: 1 / -1 !important;
+}
+
+
+/* Financial glyphs honor the requested root size; normal design is unchanged. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-copy > strong {
+  font-size: .875rem !important;
+  overflow-wrap: anywhere !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] :is(.event-personal-balance-copy,.event-personal-balance-value) > span {
+  font-size: .6875rem !important;
+  line-height: 1.4 !important;
+  overflow-wrap: anywhere !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value .amount {
+  font-size: 1.25rem !important;
+  line-height: 1.3 !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value .font-num {
+  font-size: inherit !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value > .event-personal-balance-summary > .inline-chevron {
+  width: .875rem !important;
+  height: .875rem !important;
+  flex: 0 0 .875rem !important;
+}
+@container event-main (max-width: 15rem) {
+  html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance {
+    display: grid !important;
+    grid-template-columns: minmax(0,1fr) !important;
+    gap: 8px !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value {
+    justify-items: start !important;
+    text-align: start !important;
+  }
+}
 
 `;
 

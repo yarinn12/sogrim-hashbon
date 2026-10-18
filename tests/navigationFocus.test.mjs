@@ -47,7 +47,9 @@ test("the active event keeps one primary expense action and two focused internal
   const header = await readFile("src/ui/eventHeader.mjs", "utf8");
   assert.match(event, /renderEventHeader\(event, activeParticipants\)/);
   assert.match(header, /event-header-actions/);
-  assert.match(event, /data-action="show-expense-form"/);
+  assert.match(event, /renderEventActionDockView/);
+  const financialView = await readFile("src/ui/eventFinancialCards.mjs", "utf8");
+  assert.match(financialView, /data-action="show-expense-form"/);
   assert.match(header, /data-action="open-event-participants"/);
   assert.match(header, /data-action="open-event-participant-add"/);
   assert.match(header, /data-action="open-event-settings"/);

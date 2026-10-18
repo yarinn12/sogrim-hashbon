@@ -1,3 +1,4 @@
+import measureEventMain from "./helpers/eventMainPresentation.mjs";
 import { expect, test } from "@playwright/test";
 import { openTypographyHome } from "./helpers/typographyReadiness.mjs";
 
@@ -648,4 +649,42 @@ test('two note-editor closes before the first Back settles never reopen either e
   await page.evaluate(() => history.back());
   await expect(page.locator(`[data-screen-kind="event-notes"][data-event-id="${OPEN_EVENT}"]`)).toBeVisible();
   await expect(page.locator('.event-note-modal')).toHaveCount(0);
+});
+
+// These assertions cover the rendered failure, including the actual numeric
+// glyphs. Growing only the card wrapper must not satisfy text enlargement.
+test("event balance and expense total stay explained, aligned and scalable", async ({ page }) => {
+  for (const enlarged of [false, true]) {
+    await openTypographyHome(page, { path: enlarged ? "/?dynamic-type-preview=32" : "/" });
+    if (enlarged) await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+    await openEvent(page, OPEN_EVENT);
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      const result=await page.evaluate(measureEventMain);
+      const context=width+"px/"+result.rootFont;
+      expect(result.caption,context).toBe("סה״כ הוצאות");
+      for(const field of ["captionVisible","captionFits","totalFits","balanceCopyFits",
+        "balanceNumberFits","groupsDoNotOverlap","summaryAboveAmount","ctaFits",
+        "navOriginalOrder","noHorizontalOverflow"]) expect(result[field],context+" "+field).toBe(true);
+      expect(Math.abs(result.arrowDelta),context+" chevron centered with text").toBeLessThanOrEqual(1.5);
+      const font=Number.parseFloat(result.rootFont);
+      for(const [field,ratio] of [["captionFont",.8125],["totalFont",1.125],
+        ["balanceLabelFont",.875],["balanceDetailFont",.6875],["balanceNumberFont",1.25]]) {
+        expect(Number.parseFloat(result[field]),context+" actual "+field).toBeCloseTo(font*ratio,1);
+      }
+      expect(result.dots.length).toBeGreaterThan(0);
+      for(const dots of result.dots) {
+        expect(Math.abs(dots.dx),context).toBeLessThanOrEqual(1);
+        expect(Math.abs(dots.dy),context).toBeLessThanOrEqual(1);
+        expect(dots.width).toBeGreaterThanOrEqual(43.99);
+        expect(dots.height).toBeGreaterThanOrEqual(43.99);
+      }
+    }
+    await assertTappable(page,page.locator(".event-personal-balance"),"balance summary");
+    await page.locator(".event-personal-balance").click();
+    await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+    await page.locator('[data-action="back-to-event"]:visible').first().click();
+    await expect(page.locator(".event-action-total")).toContainText("סה״כ הוצאות");
+  }
 });

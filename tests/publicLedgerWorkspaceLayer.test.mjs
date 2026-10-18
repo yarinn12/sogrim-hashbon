@@ -752,7 +752,7 @@ test("core task screens use a distilled progressive-disclosure layer", async () 
   assert.match(layer, /Distilled task surfaces: one clear next action/);
   assert.match(layer, /\.screen\[data-screen-kind="event"\] > \.top \{[\s\S]*?min-height: 140px !important/);
   assert.match(layer, /\.event-personal-balance-copy > small \{[\s\S]*?display: none !important/);
-  assert.match(layer, /\.event-action-total > span:first-child \{[\s\S]*?display: none !important/);
+  assert.doesNotMatch(layer, /\.event-action-total > span:first-child \{\s*display: none !important/);
   assert.match(layer, /\.expense-row-actions-menu > summary/);
   assert.match(layer, /\.expense-actions \{[\s\S]*?display: flex !important;[\s\S]*?flex-wrap: nowrap !important/);
   assert.match(layer, /\.expense-row-actions-icon \{[\s\S]*?width: 18px !important;[\s\S]*?fill: currentColor !important/);

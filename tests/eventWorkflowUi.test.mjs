@@ -1279,8 +1279,10 @@ test("event screen surfaces the current participant balance without recalculatin
     /function eventSettlementTransfers[\s\S]*?reconcileSettlementTransfers\([\s\S]*?event\.expenses,[\s\S]*?event\.transfers[\s\S]*?\)/
   );
   assert.match(balance, /pendingBalanceForParticipant/);
-  assert.match(balance, /data-action="settle"/);
-  assert.match(balance, /המצב שלך/);
+  assert.match(balance, /renderEventPersonalBalanceView/);
+  const view = await readFile("src/ui/eventFinancialCards.mjs", "utf8");
+  assert.match(view, /data-action="settle"/);
+  assert.match(view, /המצב שלך/);
   assert.match(balance, /אין לך העברה פתוחה/);
 });
 

@@ -1,3 +1,4 @@
+import { renderEventActionDockView, renderEventPersonalBalanceView } from "./ui/eventFinancialCards.mjs";
 import { manualParticipantCopy, renderEventManualParticipantEditorView } from "./ui/eventManualParticipantEditor.mjs";
 import { renderEventParticipantRouteView } from "./ui/eventParticipantRoute.mjs";
 import { eventSettlementOptionsView } from "./ui/eventSettlementOptions.mjs";
@@ -4654,22 +4655,8 @@ function renderEventIdentityNotice(event) {
 }
 
 function renderEventActionDock(event, total, canEdit) {
-  return `
-    <aside class="event-action-dock" aria-label="פעולות באירוע">
-      <div class="event-action-total">
-        <span>סה"כ באירוע</span>
-        <strong class="amount"><span class="font-num">${formatEventMoney(event, total)}</span></strong>
-        <span class="event-action-sync-wrap">
-          <small class="event-action-sync" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" hidden></small>
-          <button type="button" class="event-action-sync-retry" data-inline-sync-retry data-sync-retry hidden>נסה שוב</button>
-        </span>
-      </div>
-      <button class="primary-button" data-action="show-expense-form" data-event-id="${event.id}" ${!canEdit ? "disabled" : ""}>
-        ${renderCommandIcon("expense")}
-        <span>${canEdit ? "הוסף הוצאה" : "האירוע סגור"}</span>
-      </button>
-    </aside>
-  `;
+  return renderEventActionDockView({ eventId: event.id,
+    totalText: formatEventMoney(event, total), canEdit });
 }
 
 function renderEventPersonalBalance(event, participants) {
@@ -4690,8 +4677,6 @@ function renderEventPersonalBalance(event, participants) {
   }
   const balanceDirection =
     personalBalance > 0 ? "credit" : personalBalance < 0 ? "debt" : "balanced";
-  const balanceLabel =
-    personalBalance > 0 ? "מגיע לך" : personalBalance < 0 ? "עליך להעביר" : "אתה מאוזן";
   const counterpartIds = [
     ...new Set(
       personalTransfers.map((transfer) =>
@@ -4708,25 +4693,8 @@ function renderEventPersonalBalance(event, participants) {
         ? `מול ${formatCount(counterpartIds.length, "משתתף", "משתתפים")}`
         : "אין לך העברה פתוחה";
 
-  return `
-    <button
-      type="button"
-      class="event-personal-balance is-${balanceDirection}"
-      data-action="settle"
-      data-event-id="${event.id}"
-      aria-label="${escapeAttribute(`${balanceLabel}: ${formatEventMoney(event, Math.abs(personalBalance))}. ${counterpartLabel}. פתיחת הסיכום`)}"
-    >
-      <span class="event-personal-balance-copy">
-        <small>המצב שלך</small>
-        <strong>${escapeHtml(balanceLabel)}</strong>
-        <span>${escapeHtml(counterpartLabel)}</span>
-      </span>
-      <span class="event-personal-balance-value">
-        <strong class="amount"><span class="font-num">${formatEventMoney(event, Math.abs(personalBalance))}</span></strong>
-        <span>לסיכום <span class="inline-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span></span>
-      </span>
-    </button>
-  `;
+  return renderEventPersonalBalanceView({ eventId: event.id, direction: balanceDirection,
+    amountText: formatEventMoney(event, Math.abs(personalBalance)), counterpartLabel });
 }
 
 function renderEventStartPanel(event) {
