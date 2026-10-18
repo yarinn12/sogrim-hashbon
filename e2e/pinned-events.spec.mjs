@@ -154,7 +154,7 @@ test("event pin uses the note pin design and remains usable with long Hebrew nam
   await page.screenshot({ path: testInfo.outputPath("pinned-events.png"), fullPage: true });
 });
 
-test("pinning respects archive and lifecycle filters and restores the pin when unarchived", async ({ page }) => {
+test("pinning respects Events and Archive and restores the pin when unarchived", async ({ page }) => {
   await seed(page);
   await pin(page, OLD, true);
   await menu(page, OLD);
@@ -169,11 +169,15 @@ test("pinning respects archive and lifecycle filters and restores the pin when u
   await expect(row(page, OLD)).toHaveCount(0);
   await page.locator('[data-action="event-status-filter"][data-filter="events"]').click();
   await order(page, [OLD, NEW, CLOSED]);
-  await page.locator('[data-action="event-lifecycle-filter"][data-filter="paid"]').click();
+  // Lifecycle strip was removed in the approved home design. The surviving
+  // filters must retain the restored personal pin over repeated navigation.
+  await expect(row(page, OLD).locator(".event-note-pin")).toBeVisible();
+  await page.locator('[data-action="event-status-filter"][data-filter="archive"]').click();
   await expect(row(page, OLD)).toHaveCount(0);
   await expect(page.locator(".event-list .event-notes-section-label")).toHaveCount(0);
-  await page.locator('[data-action="event-lifecycle-filter"][data-filter="all"]').click();
+  await page.locator('[data-action="event-status-filter"][data-filter="events"]').click();
   await order(page, [OLD, NEW, CLOSED]);
+  await expect(row(page, OLD).locator(".event-note-pin")).toBeVisible();
 });
 
 test("failed preference writes keep the previous order and allow a successful retry", async ({ page }) => {

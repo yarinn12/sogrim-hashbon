@@ -549,8 +549,9 @@ test("long home event names wrap to two lines without colliding with status", as
 });
 
 test("ad-free gift opens as a focused share workspace with a working QR", async ({ page }) => {
+  await page.getByRole("button", { name: "חברים", exact: true }).click();
   const entry = page.locator(
-    '[data-open-referral-rewards][data-referral-context="home"]'
+    '#referral-reward-card-friends'
   );
   await expect(entry).toBeVisible();
   await entry.click();
@@ -637,8 +638,9 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
 });
 
 test("signed-out gift state uses the available mobile canvas instead of leaving a bottom void", async ({ page }) => {
+  await page.getByRole("button", { name: "חברים", exact: true }).click();
   await page
-    .locator('[data-open-referral-rewards][data-referral-context="home"]')
+    .locator('#referral-reward-card-friends')
     .click();
   const dialog = page.locator("#public-referral-rewards-dialog");
   await expect(dialog).toBeVisible();

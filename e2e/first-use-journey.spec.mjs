@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
 
 const OWNER_ID = "person-first-use-owner";
 let runtimeIssues = [];
@@ -59,8 +60,7 @@ test.beforeEach(async ({ page, request }) => {
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, { participantId: OWNER_ID, state: emptyAccountState });
 
-  await page.goto("/");
-  await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
+  await openRenderedHome(page);
 });
 
 test.afterEach(() => {

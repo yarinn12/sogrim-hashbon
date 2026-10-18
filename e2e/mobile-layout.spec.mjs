@@ -996,7 +996,7 @@ test("large text navigation fits its labels without reserving a tall empty block
         const top = Math.min(...content.map(rect => rect.top));
         const bottom = Math.max(...content.map(rect => rect.bottom));
         const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-        return { label: button.textContent.trim(), contentHeight: bottom - top,
+        return { label: button.textContent.trim(), top: rect.top, contentHeight: bottom - top,
           contentInside: top >= rect.top && bottom <= rect.bottom && content.every(child => child.left >= rect.left - 1 && child.right <= rect.right + 1),
           width: rect.width, height: rect.height, reachable: button === hit || button.contains(hit) };
       });
@@ -1005,7 +1005,17 @@ test("large text navigation fits its labels without reserving a tall empty block
     await testInfo.attach(`bottom-nav-${destination}`, { contentType: "application/json", body: JSON.stringify(geometry) });
     await page.screenshot({ path: testInfo.outputPath(`bottom-nav-${destination}.png`) });
     expect(geometry.buttons).toHaveLength(4);
-    const contentHeight = Math.max(...geometry.buttons.map(button => button.contentHeight));
+    // Enlarged navigation may use two rows; retain the same48px total
+    // spacing allowance while counting each row's visible icon/label content.
+    const rows=[];
+    for(const button of geometry.buttons) {
+      let row=rows.find(row=>Math.abs(row.top-button.top)<1);
+      if(!row){row={top:button.top,height:0};rows.push(row);}
+      row.height=Math.max(row.height,button.contentHeight);
+    }
+    expect(rows.length,`${destination}: navigation uses one row or the approved two-row layout`).toBeGreaterThanOrEqual(1);
+    expect(rows.length).toBeLessThanOrEqual(2);
+    const contentHeight=rows.reduce((sum,row)=>sum+row.height,0);
     expect(geometry.height, `${destination}: navigation must size to labels and icons, with at most 48px of total vertical spacing`).toBeLessThanOrEqual(contentHeight + 48);
     expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight + 1);
     for (const button of geometry.buttons) {
@@ -3097,6 +3107,7 @@ test("manual participant editor has one clear explanation and preserves addition
       expect(geometry.text.length).toBeGreaterThan(5);
       for (const text of geometry.text) expect(text.visible && text.fits, text.text).toBe(true);
       await assertNewEventActionReachable(page, '[data-action="close-new-event-participant-view"]', `manual ${width}/${rootSize}`);
+      if(rootSize===32&&width===320) await page.screenshot({path:test.info().outputPath('manual-footer-root32-320.png')});
     }
     await screen.getByRole('button', { name: 'שמירה וחזרה', exact: true }).click();
     await expect(page.locator('[data-new-event-participant-count]')).toBeVisible();

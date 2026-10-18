@@ -35,6 +35,11 @@ test("event screenshot preserves its paused infinite animation at time zero", as
   await openTypographyHome(page);
   await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
   await expect(page.locator(`[data-screen-kind="event"][data-event-id="${eventId}"]`)).toBeVisible();
+  // The approved header no longer has a perpetual decorative shimmer.
+  // Exercise the capture helper with a synthetic infinite animation instead
+  // of requiring a removed decoration in the application.
+  await page.locator('.event-overview-header').evaluate(header =>
+    header.animate([{ opacity: 1 }, { opacity: .9 }], { duration: 6000, iterations: Infinity }));
   await expect.poll(() => page.evaluate(() => document.getAnimations().some(animation =>
     animation.effect?.target?.classList?.contains("event-overview-header") &&
     animation.effect?.getComputedTiming?.().iterations === Infinity

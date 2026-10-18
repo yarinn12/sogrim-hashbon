@@ -311,7 +311,19 @@ test("geometry across tablet and desktop breakpoints preserves screen and hero p
       const hero = screen.querySelector('.event-overview-header');
       const tabs = [...screen.querySelectorAll('.event-workspace-tab')];
       const rect = element => element?.getBoundingClientRect().toJSON();
-      return { screen: rect(screen), hero: rect(hero), tabs: tabs.map(tab => ({
+      const title=hero.querySelector('h1'), actions=hero.querySelector('.event-header-actions');
+      const titleBounds=title.getBoundingClientRect(), actionsBounds=actions.getBoundingClientRect();
+      const heroBounds=hero.getBoundingClientRect();
+      const leaves=[title,...hero.querySelectorAll('.event-header-meta,.event-header-action-label')].map(element=>{
+        const range=document.createRange();range.selectNodeContents(element);
+        const glyphs=[...range.getClientRects()].filter(g=>g.width&&g.height);
+        return {text:element.textContent.trim(),fits:glyphs.length>0&&glyphs.every(g=>
+          g.left>=heroBounds.left&&g.right<=heroBounds.right&&g.top>=heroBounds.top&&g.bottom<=heroBounds.bottom)};
+      });
+      const utilityButtons=[...actions.querySelectorAll('button')].map(button=>({rect:rect(button)}));
+      return { title:rect(title), actions:rect(actions), leaves, utilityButtons,
+        heroPadding:parseFloat(getComputedStyle(hero).paddingBottom),
+        screen: rect(screen), hero: rect(hero), tabs: tabs.map(tab => ({
         text: tab.querySelector('strong')?.textContent.trim(), rect: rect(tab) })) };
     });
     samples.push({ viewport, home, event });
@@ -330,7 +342,20 @@ test("geometry across tablet and desktop breakpoints preserves screen and hero p
     const expectedScreen = tablet ? Math.min(width - 32, 960) : 448;
     const expectedHero = expectedScreen - (tablet ? 48 : 40);
     const expectedHomeHeight = phoneLandscape ? 63 : tablet ? 180 : 205;
-    const expectedEventHeight = phoneLandscape ? 120 : 188;
+    // The approved event header is content-sized. Preserve exact content
+    // containment,44px utility actions and trailing padding rather than the
+    // retired fixed188px hero height.
+    expect(sample.event.leaves.every(leaf=>leaf.fits),`${width}px: every header glyph is inside the hero`).toBe(true);
+    expect(sample.event.title.bottom).toBeLessThanOrEqual(sample.event.actions.top);
+    expect(Math.abs(sample.event.hero.bottom-sample.event.actions.bottom-sample.event.heroPadding),
+      `${width}px: no unexplained empty header block`).toBeLessThanOrEqual(2);
+    expect(sample.event.utilityButtons).toHaveLength(3);
+    expect(sample.event.leaves).toHaveLength(5);
+    for(const button of sample.event.utilityButtons) {
+      expect(button.rect.width).toBeGreaterThanOrEqual(44);expect(button.rect.height).toBeGreaterThanOrEqual(44);
+      expect(button.rect.left).toBeGreaterThanOrEqual(sample.event.hero.left);
+      expect(button.rect.right).toBeLessThanOrEqual(sample.event.hero.right);
+    }
     const expectedTabHeight = phoneLandscape ? 44 : 56;
     for (const [name, measured, expected] of [
       ["home screen width", sample.home.screen.width, expectedScreen],
@@ -338,7 +363,6 @@ test("geometry across tablet and desktop breakpoints preserves screen and hero p
       ["home hero width", sample.home.hero.width, expectedHero],
       ["event hero width", sample.event.hero.width, expectedHero],
       ["home hero height", sample.home.hero.height, expectedHomeHeight],
-      ["event hero height", sample.event.hero.height, expectedEventHeight],
       ["home action width", sample.home.action.width, tablet ? 240 : 174]
     ]) expect.soft(Math.abs(measured - expected), `${width}×${height}: ${name}`).toBeLessThanOrEqual(2);
     const actionCenter = (sample.home.action.left + sample.home.action.right) / 2;
@@ -532,133 +556,43 @@ test("tablet participant roster owns the scrollport above navigation", async ({ 
   await rosterPage.close();
 });
 
-test("extra-large text keeps the complete settling filter word at 393 and 320px", async ({ page }, testInfo) => {
-  await page.locator(".product-app-identity [data-open-accessibility]").click();
-  const center = page.locator('.accessibility-center[role="dialog"]');
-  await expect(center).toBeVisible();
-  await center.locator('[value="extra-large"]').check();
-  await page.locator("[data-close-accessibility]").first().click();
-  await expect(page.locator("html")).toHaveAttribute("data-accessibility-text-size", "extra-large");
-  const readings = [];
-  for (const width of [393, 320]) {
-    await page.setViewportSize({ width, height: 852 });
-    await page.evaluate(() => document.fonts.ready);
-    const reading = await page.locator('.event-lifecycle-filter [data-filter="settling"]').evaluate(button => {
-      const label = button.querySelector(".event-lifecycle-option-content > span");
-      const node = label.firstChild;
-      const lines = new Set();
-      const glyphs = [];
-      for (let index = 0; index < node.length; index += 1) {
-        if (!node.data[index].trim()) continue;
-        const range = document.createRange();
-        range.setStart(node, index);
-        range.setEnd(node, index + 1);
-        const rect = range.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          lines.add(Math.round(rect.top));
-          glyphs.push(rect.toJSON());
-        }
-      }
-      const rect = button.getBoundingClientRect();
-      const last = glyphs.at(-1);
-      const inside = glyph => glyph.left >= rect.left - 1 && glyph.right <= rect.right + 1
-        && glyph.top >= rect.top - 1 && glyph.bottom <= rect.bottom + 1;
-      const lastHit = last && document.elementFromPoint((last.left + last.right) / 2,
-        (last.top + last.bottom) / 2);
-      const container = button.parentElement;
-      const optionLayout = [...container.querySelectorAll('button')].map(option => {
-        const optionRect = option.getBoundingClientRect();
-        const optionLabel = option.querySelector('.event-lifecycle-option-content > span');
-        const optionCount = option.querySelector('.font-num');
-        const countRect = optionCount.getBoundingClientRect();
-        const within = glyph => glyph.left >= optionRect.left - 1
-          && glyph.right <= optionRect.right + 1 && glyph.top >= optionRect.top - 1
-          && glyph.bottom <= optionRect.bottom + 1;
-        const optionGlyphs = [];
-        const text = optionLabel.firstChild;
-        for (let index = 0; index < text.length; index += 1) {
-          if (!text.data[index].trim()) continue;
-          const range = document.createRange();
-          range.setStart(text, index);
-          range.setEnd(text, index + 1);
-          optionGlyphs.push(range.getBoundingClientRect().toJSON());
-        }
-        return { text: optionLabel.textContent.trim(), rect: optionRect.toJSON(),
-          labelGlyphsWithin: optionGlyphs.length > 0 && optionGlyphs.every(within),
-          countWithin: within(countRect), countText: optionCount.textContent.trim() };
-      });
-      const labelStyle = getComputedStyle(label);
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      context.font = `${labelStyle.fontStyle} ${labelStyle.fontWeight} ${labelStyle.fontSize} ${labelStyle.fontFamily}`;
-      const intrinsicTextWidth = context.measureText(label.textContent.trim()).width;
-      const contentWidth = button.querySelector('.event-lifecycle-option-content')
-        .getBoundingClientRect().width;
-      const uniqueRows = new Set(optionLayout.map(item => Math.round(item.rect.top)));
-      const uniqueColumns = new Set(optionLayout.map(item => Math.round(item.rect.left)));
-      return { text: label.textContent.trim(), lines: lines.size,
-        viewport: { width: innerWidth, height: innerHeight },
-        pointer: { coarse: matchMedia("(pointer: coarse)").matches,
-          fine: matchMedia("(pointer: fine)").matches },
-        rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
-        textPreference: document.documentElement.dataset.accessibilityTextSize,
-        button: rect.toJSON(), glyphRects: glyphs,
-        glyphsWithinButton: glyphs.length === [...node.data].filter(char => char.trim()).length
-          && glyphs.every(inside),
-        lastGlyphWithinButton: Boolean(last && inside(last)),
-        lastGlyphHitWithinButton: Boolean(lastHit && button.contains(lastHit)),
-        buttonOverflow: button.scrollWidth - button.clientWidth,
-        intrinsicTextWidth, intrinsicFont: context.font, contentWidth, optionLayout,
-        gridDisplay: getComputedStyle(container).display,
-        gridAutoFlow: getComputedStyle(container).gridAutoFlow,
-        rowCount: uniqueRows.size, columnCount: uniqueColumns.size,
-        documentWidth: document.documentElement.scrollWidth };
-    });
-    const settling = page.locator('.event-lifecycle-filter [data-filter="settling"]');
-    await settling.click();
-    await expect(settling).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator(".event-row")).toHaveCount(0);
-    reading.interaction = { settlingPressed: await settling.getAttribute("aria-pressed"),
-      matchingEventRows: await page.locator(".event-row").count() };
-    readings.push(reading);
-    await recordMeasurement(testInfo, `extra-large-settling-${width}`, reading);
-    await testInfo.attach(`extra-large-settling-screen-${width}`, {
-      body: await page.screenshot(), contentType: "image/png"
-    });
-    await page.locator('.event-lifecycle-filter [data-filter="all"]').click();
-    await expect(page.locator('.event-lifecycle-filter [data-filter="all"]')).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator(".event-row")).toHaveCount(1);
+test("extra-large text keeps complete Events and Archive labels at393and320px",async({page},testInfo)=>{
+ await page.locator(".product-app-identity [data-open-accessibility]").click();
+ const center=page.locator('.accessibility-center[role="dialog"]');
+ await center.locator('[value="extra-large"]').check();
+ await page.locator('[data-close-accessibility]').first().click();
+ await expect(page.locator('html')).toHaveAttribute('data-accessibility-text-size','extra-large');
+ const filter=page.getByRole('group',{name:'אירועים וארכיון',exact:true});
+ for(const width of [393,320]) {
+  await page.setViewportSize({width,height:852});await page.evaluate(()=>document.fonts.ready);
+  const readings=await filter.locator('button').evaluateAll(buttons=>buttons.map(button=>{
+   const label=button.querySelector('span'), text=label.firstChild, glyphs=[];
+   for(let i=0;i<text.length;i++) {
+    if(!text.data[i].trim())continue;
+    const r=document.createRange();r.setStart(text,i);r.setEnd(text,i+1);glyphs.push(r.getBoundingClientRect());
+   }
+   const bounds=button.getBoundingClientRect(),last=glyphs.at(-1);
+   const hit=last&&document.elementFromPoint((last.left+last.right)/2,(last.top+last.bottom)/2);
+   return {text:label.textContent.trim(),font:parseFloat(getComputedStyle(label).fontSize),
+    root:parseFloat(getComputedStyle(document.documentElement).fontSize),rect:bounds.toJSON(),
+    lines:new Set(glyphs.map(g=>Math.round(g.top))).size,
+    fullWord:glyphs.length===[...text.data].filter(c=>c.trim()).length&&glyphs.every(g=>
+     g.left>=bounds.left-1&&g.right<=bounds.right+1&&g.top>=bounds.top-1&&g.bottom<=bounds.bottom+1),
+    lastGlyphHit:Boolean(hit&&button.contains(hit)),overflow:button.scrollWidth-button.clientWidth};
+  }));
+  expect(readings.map(r=>r.text)).toEqual(['אירועים','ארכיון']);
+  expect(Math.abs(readings[0].rect.width-readings[1].rect.width)).toBeLessThanOrEqual(1);
+  for(const reading of readings) {
+   expect(reading.root).toBe(20);expect(reading.font).toBeGreaterThanOrEqual(14*20/16);
+   expect(reading.lines).toBe(1);expect(reading.fullWord).toBe(true);expect(reading.lastGlyphHit).toBe(true);
+   expect(reading.rect.width).toBeGreaterThanOrEqual(44);expect(reading.rect.height).toBeGreaterThanOrEqual(44);
+   expect(reading.overflow).toBeLessThanOrEqual(1);
   }
-  for (const reading of readings) {
-    expect(reading.text).toBe("מתחשבנים");
-    expect(reading.textPreference).toBe("extra-large");
-    expect(reading.rootFontSize).toBeGreaterThan(16);
-    expect(reading.button.width).toBeGreaterThanOrEqual(44);
-    expect(reading.button.height).toBeGreaterThanOrEqual(44);
-    expect(reading.documentWidth).toBeLessThanOrEqual(reading.viewport.width + 1);
-    expect.soft(reading.gridDisplay).toBe('grid');
-    expect.soft(reading.gridAutoFlow).toBe('row');
-    // At <=339px the accepted accessibility layout gives every filter the full
-    // row; wider phones use two columns. Both preserve the complete word.
-    const expectedColumns = reading.viewport.width <= 339 ? 1 : 2;
-    expect.soft(reading.rowCount, `${reading.viewport.width}px: accessible filter rows`)
-      .toBe(4 / expectedColumns);
-    expect.soft(reading.columnCount, `${reading.viewport.width}px: accessible filter columns`)
-      .toBe(expectedColumns);
-    expect(reading.optionLayout).toHaveLength(4);
-    for (const option of reading.optionLayout) {
-      expect.soft(option.labelGlyphsWithin, `${reading.viewport.width}px: ${option.text} visible`).toBe(true);
-      expect.soft(option.countWithin, `${reading.viewport.width}px: ${option.text} count visible`).toBe(true);
-      expect.soft(option.rect.width, `${reading.viewport.width}px: ${option.text} target width`).toBeGreaterThanOrEqual(44);
-      expect.soft(option.rect.height, `${reading.viewport.width}px: ${option.text} target height`).toBeGreaterThanOrEqual(44);
-    }
-    expect.soft(reading.lines, `${reading.viewport.width}px: the whole word stays together`).toBe(1);
-    expect.soft(reading.intrinsicTextWidth, `${reading.viewport.width}px: intrinsic word fits its column`)
-      .toBeLessThanOrEqual(reading.contentWidth + 1);
-    expect.soft(reading.glyphsWithinButton, `${reading.viewport.width}px: every glyph is visible inside the target`).toBe(true);
-    expect.soft(reading.lastGlyphWithinButton, `${reading.viewport.width}px: last letter stays inside`).toBe(true);
-    expect.soft(reading.lastGlyphHitWithinButton, `${reading.viewport.width}px: last letter can be hit`).toBe(true);
-    expect.soft(reading.buttonOverflow, `${reading.viewport.width}px: no hidden target content`).toBeLessThanOrEqual(1);
-    expect(reading.interaction).toEqual({ settlingPressed: "true", matchingEventRows: 0 });
+  for(const [name,count] of [['ארכיון',0],['אירועים',1]]) {
+   const control=filter.getByRole('button',{name,exact:true});await control.click();
+   await expect(control).toHaveAttribute('aria-pressed','true');await expect(page.locator('.event-row')).toHaveCount(count);
   }
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
+  await recordMeasurement(testInfo,`extra-large-event-tabs-${width}`,readings);
+ }
 });

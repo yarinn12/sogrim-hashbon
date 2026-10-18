@@ -209,7 +209,7 @@ test("late permission feedback keeps its event action stable before a nonessenti
 test("friends navigation owns referrals and home remains focused on events", async ({ page }) => {
   await openHeldRenderedHome(page);
   const home = page.locator('.screen[data-screen-kind="home"]');
-  const friendsNav = page.locator('.product-app-nav [data-nav-destination="friends"]');
+  const friendsNav = page.getByRole('button',{name:'חברים',exact:true});
   await expect(home.locator('.home-benefit-actions, [data-referral-reward-card]')).toHaveCount(0);
   await expect(page.locator('[data-nav-destination="events"]')).toHaveCount(0);
   await friendsNav.click();

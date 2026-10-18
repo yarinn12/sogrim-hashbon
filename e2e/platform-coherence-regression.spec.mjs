@@ -742,6 +742,7 @@ test("expense disclosure cue and command labels fit at normal and enlarged sizes
       await expect(row.locator('.expense-row-actions-menu')).toHaveAttribute('open','');
       // Toggle queues viewport positioning on the next animation frame.
       await expect(row.locator('.expense-row-actions-menu')).toHaveClass(/is-viewport-positioned/);
+      await expect(menuTrigger).toHaveCSS('transform','none');
       const result=await page.evaluate(measureExpenseDisclosure);
       const context=width+'px/'+result.rootFont;
       expect(result.noHorizontalOverflow,context).toBe(true);
@@ -931,4 +932,46 @@ test("all expense step captions names and review values grow with system text",a
   }
   await page.getByRole('button',{name:'בית',exact:true}).click();
  }
+});
+
+
+test("in-app text size survives event fields manual names and reload",async({page})=>{
+ await page.getByRole('button',{name:'פתיחת הגדרות נגישות',exact:true}).click();
+ await page.getByRole('radio',{name:'גדול מאוד',exact:true}).check();
+ await page.getByRole('button',{name:'סיום',exact:true}).click();
+ await expect(page.locator('html')).toHaveCSS('font-size','20px');
+ await page.locator('[data-action="new-event"]').first().click();
+ await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+ await page.locator('[data-action="new-event-name"]').fill('גודל טקסט נשמר בטופס');
+ await page.locator('[data-action="go-new-event-step"][data-new-event-step="participants"]').click();
+ await expect(page.locator('html')).toHaveCSS('font-size','20px');
+ await page.locator('[data-participant-view="manual"]').click();
+ await page.locator('[data-action="new-event-guest-name"]').fill('אורח בגופן גדול');
+ await page.locator('[data-action="close-new-event-participant-view"]').click();
+ await expect(page.locator('html')).toHaveCSS('font-size','20px');
+ await expect(page.locator('.new-event-selected-participant-copy strong').filter({hasText:'אורח בגופן גדול'})).toHaveCSS('font-size','20px');
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-accessibility-preferences-v1')).textSize)).toBe('extra-large');
+ await page.reload();
+ await expect(page.locator('html')).toHaveCSS('font-size','20px');
+});
+
+test("new-event selected avatar confirms removal without opening statistics",async({page})=>{
+ await page.locator('[data-action="new-event"]').first().click();
+ await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+ await page.locator('[data-action="go-new-event-step"][data-new-event-step="participants"]').click();
+ await page.locator('[data-participant-view="manual"]').click();
+ await page.locator('[data-action="new-event-guest-name"]').fill('אורח לבדיקת תמונה');
+ await page.locator('[data-action="close-new-event-participant-view"]').click();
+ const row=page.locator('label.new-event-selected-participant').filter({hasText:'אורח לבדיקת תמונה'});
+ await expect(row.locator('input')).toBeChecked();
+ await row.locator('.avatar').click();
+ await expect(page.locator('[data-action="confirm-important-action"]')).toBeVisible();
+ await expect(page.locator('.new-event-participants-screen')).toBeVisible();
+ await page.locator('[data-action="cancel-important-action"]').click();
+ await expect(row.locator('input')).toBeChecked();
+ await row.locator('.avatar').click();
+ await page.locator('[data-action="confirm-important-action"]').click();
+ await expect(row).toHaveCount(0);
+ await expect(page.locator('.new-event-selected-participant-list .new-event-selected-participant')).toHaveCount(1);
+ await expect(page.locator('.new-event-participants-screen')).toBeVisible();
 });
