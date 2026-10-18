@@ -4657,7 +4657,7 @@ function renderEventIdentityNotice(event) {
 
 function renderEventActionDock(event, total, canEdit) {
   return renderEventActionDockView({ eventId: event.id,
-    totalText: formatEventMoney(event, total), canEdit });
+    totalText: formatEventMoney(event, total), canEdit, isClosed: Boolean(event.locked) });
 }
 
 function renderEventPersonalBalance(event, participants) {
@@ -4841,7 +4841,7 @@ function renderEventNotes(event) {
       ${renderNotice()}
       <button class="primary-button event-notes-entry-action" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
         <span aria-hidden="true">${iconSvg("edit")}</span>
-        <span>${canEdit ? "פתק חדש" : "האירוע סגור"}</span>
+        <span>${canEdit ? "פתק חדש" : event.locked ? "האירוע סגור" : "קריאה בלבד"}</span>
       </button>
       ${renderEventWorkspaceNav(event, "notes")}
       <p class="muted" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>
@@ -7004,7 +7004,9 @@ function renderEventNoteDialog(event) {
     eventId: event.id,
     eyebrow: event.name,
     title,
-    description: canEdit ? "השינויים יופיעו אצל כל משתתפי האירוע." : "האירוע סגור ולכן הפתק מוצג לקריאה בלבד.",
+    description: canEdit ? "השינויים יופיעו אצל כל משתתפי האירוע."
+      : event.locked ? "האירוע סגור ולכן הפתק מוצג לקריאה בלבד."
+      : "אין לך הרשאה לערוך פתק זה. אפשר לקרוא את התוכן.",
     body,
     modalClass: "event-note-modal"
   });
@@ -11702,7 +11704,7 @@ function renderParticipantPill(participant, selectedIds, action, event, disabled
         ${selected ? "checked" : ""}
         ${disabled ? "disabled" : ""}
       />
-      ${renderAvatar(participant.id, event)}
+      ${renderAvatar(participant.id, event, { suppressParticipantAction: true })}
       <span class="participant-pill-copy">
         <span class="participant-pill-name">${escapeHtml(displayName)}</span>
         ${secondaryIdentity}
@@ -11750,10 +11752,10 @@ function renderExpenseParticipantRow(participant, selectedIds, event, disabled) 
         ${selected ? "checked" : ""}
         ${disabled ? "disabled" : ""}
       />
-      ${renderAvatar(participant.id, event)}
+      ${renderAvatar(participant.id, event, { suppressParticipantAction: true })}
       <span class="expense-participant-row-copy">
         <strong>${escapeHtml(displayName)}</strong>
-        <small>${escapeHtml(identity.label)}</small>
+        <small class="participant-identity-label">${escapeHtml(identity.label)}</small>
       </span>
       <span class="expense-participant-row-check app-selection-check" aria-hidden="true">${iconSvg("check")}</span>
     </label>

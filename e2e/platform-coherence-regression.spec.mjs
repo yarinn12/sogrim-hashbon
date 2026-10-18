@@ -1,3 +1,4 @@
+import measureExpenseFlowTypography from "./helpers/expenseFlowTypography.mjs";
 import measureExpenseAmount from "./helpers/expenseAmountPresentation.mjs";
 import measureEventActionDock from "./helpers/eventActionDock.mjs";
 import measureExpenseDisclosure from "./helpers/expenseDisclosure.mjs";
@@ -105,9 +106,17 @@ async function assertTappable(page, locator, label) {
 }
 
 const LARGE_ACTION_DOCK_TEST = "long expense totals reflow without pushing or wrapping the action label";
+const READ_ONLY_EVENT_COPY_TEST = "open permission-restricted events and notes never claim the event is closed";
 
 test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
   const scenarioState = structuredClone(state);
+  if(testInfo.title===READ_ONLY_EVENT_COPY_TEST) {
+    scenarioState.events[0].adminsCanEditOnly=true;
+    scenarioState.events[0].adminIds=[PEER];
+    scenarioState.events[0].createdByParticipantId=PEER;
+    scenarioState.events[0].notes=[{id:'read-only-note',title:'פתק לקריאה',body:'תוכן בדיקה',
+      createdByParticipantId:PEER,updatedByParticipantId:PEER,createdAt:UPDATED_AT,updatedAt:UPDATED_AT}];
+  }
   if(testInfo.title === LARGE_ACTION_DOCK_TEST) {
     scenarioState.events[0].expenses[0].total=99999999;
     scenarioState.events[0].expenses[0].payers[0].amount=99999999;
@@ -837,4 +846,80 @@ test("expense amount scales actual leaf fonts and retains a usable currency grou
     await dialog.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();
     await expect(page.locator('.expense-row')).toHaveCount(1);
   }
+});
+
+
+test("participant checkbox and avatar select the expense share without opening statistics", async ({page})=>{
+  await openTypographyHome(page);
+  await openEvent(page,OPEN_EVENT);
+  await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();
+  const dialog=page.locator('.expense-step-modal');
+  await dialog.locator('[data-action="expense-total"]').fill('90.01');
+  await dialog.locator('[data-action="expense-step-next"]').click();
+  await dialog.locator('[data-action="expense-name"]').fill('בדיקת בחירת משתתפים');
+  await dialog.locator('[data-action="expense-step-next"]').click();
+  await dialog.locator('[data-action="expense-step-next"]').click();
+  await expect(dialog).toHaveAttribute('data-expense-step','participants');
+  const input=dialog.locator(`[data-action="expense-shared"][data-participant-id="${PEER}"]`);
+  const row=dialog.locator(`.expense-participant-row:has([data-action="expense-shared"][data-participant-id="${PEER}"])`);
+  await input.uncheck();
+  await expect(input).not.toBeChecked();
+  await expect(dialog).toHaveAttribute('data-expense-step','participants');
+  await expect(page.locator('[data-screen-kind="friend-profile"]')).toHaveCount(0);
+  await row.locator('.avatar').click();
+  await expect(input).toBeChecked();
+  await expect(dialog).toHaveAttribute('data-expense-step','participants');
+  await expect(row.locator('[role="button"]')).toHaveCount(0);
+  await input.focus();
+  await page.keyboard.press('Space');
+  await expect(input).not.toBeChecked();
+  await page.keyboard.press('Space');
+  await expect(input).toBeChecked();
+});
+
+
+test(READ_ONLY_EVENT_COPY_TEST,async({page})=>{
+  await openTypographyHome(page);
+  await openEvent(page,OPEN_EVENT);
+  const dock=page.locator('.event-action-dock');
+  await expect(dock.getByRole('button',{name:'קריאה בלבד',exact:true})).toBeDisabled();
+  await expect(dock).not.toContainText('האירוע סגור');
+  await page.getByRole('button',{name:'פתיחת פתקים משותפים',exact:true}).click();
+  await expect(page.locator('[data-screen-kind="event-notes"]').getByRole('button',{name:'קריאה בלבד',exact:true})).toBeDisabled();
+  await page.locator('[data-action="open-event-note"][data-note-id="read-only-note"]').click();
+  await expect(page.locator('.event-note-modal')).toContainText('אין לך הרשאה לערוך פתק זה. אפשר לקרוא את התוכן.');
+  await expect(page.locator('.event-note-modal')).not.toContainText('האירוע סגור');
+  await expect(page.locator('.event-note-modal [data-action="save-event-note"]')).toHaveCount(0);
+});
+
+
+test("all expense step captions names and review values grow with system text",async({page})=>{
+ for(const root of [16,20,32]) {
+  await openTypographyHome(page,{path:root===16?'/':`/?dynamic-type-preview=${root}`});
+  await openEvent(page,OPEN_EVENT);
+  await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();
+  const dialog=page.locator('.expense-step-modal');
+  for(const step of ['amount','name','payer','participants','review']) {
+   await expect(dialog).toHaveAttribute('data-expense-step',step);
+   await page.evaluate(()=>document.fonts.ready);
+   for(const width of [320,393,411]) {
+    await page.setViewportSize({width,height:852});
+    const result=await page.evaluate(measureExpenseFlowTypography);
+    const context=`${step}/${root}/${width}`;
+    expect(result.root,context).toBe(root);
+    expect(result.width,context).toBe(width);
+    expect(result.modalFits,context).toBe(true);
+    expect(result.noHorizontalOverflow,context).toBe(true);
+    expect(result.leaves.length,context).toBeGreaterThan(0);
+    for(const leaf of result.leaves) {
+     expect(leaf.font,context+': '+leaf.text).toBeCloseTo(root*leaf.ratio,1);
+     expect(leaf.fits,context+': glyph bounds '+leaf.text).toBe(true);
+    }
+   }
+   if(step==='amount')await dialog.locator('[data-action="expense-total"]').fill('12.34');
+   if(step==='name')await dialog.locator('[data-action="expense-name"]').fill('בדיקת גופן בכל השלבים');
+   if(step!=='review')await dialog.locator('[data-action="expense-step-next"]').click();
+  }
+  await page.getByRole('button',{name:'בית',exact:true}).click();
+ }
 });

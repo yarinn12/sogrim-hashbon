@@ -22023,11 +22023,11 @@ html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).des
 
   @media (max-width: 1366px) {
     /* Percent follows the available scrollport;100vw includes a classic scrollbar. */
-    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-route-backdrop:has(> .expense-step-modal[data-expense-step="amount"]) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-route-backdrop:has(> .expense-step-modal[data-expense-step]) {
       width: auto !important;
       max-width: 100% !important;
     }
-    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] {
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] {
       width: 100% !important;
       max-width: 100% !important;
       min-width: 0 !important;
@@ -22042,6 +22042,43 @@ html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).des
     }
     html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body {
       padding-block-start: 8px !important;
+    }
+  }
+
+
+  /* Every step must grow its actual caption/name glyphs, not just its input boxes. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .field > span {
+    font-size: .8125rem !important;
+    line-height: 1.5 !important;
+    white-space: normal !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-participant-row-copy strong {
+    font-size: .875rem !important;
+    line-height: 1.5 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-participant-row-copy small {
+    font-size: .8125rem !important;
+    line-height: 1.5 !important;
+  }
+
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-review-row small {
+    font-size: .8125rem !important;
+    line-height: 1.5 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-review-row strong {
+    font-size: .9375rem !important;
+    line-height: 1.5 !important;
+  }
+
+
+  @media (max-width: 360px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-review-date {
+      grid-template-columns: minmax(0, 1fr) !important;
+      gap: 8px !important;
     }
   }
 

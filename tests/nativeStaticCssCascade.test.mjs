@@ -345,10 +345,29 @@ test("native amount entry retains scalable numeric and label glyphs with a viewp
   assert.match(rule(' .expense-modal-step-header .eyebrow'),/display: none !important/,
     'short-landscape rules must retain the existing compact header');
   assert.match(rule(' .expense-source-currency-field'),/flex-wrap: wrap !important/);
-  assert.match(rule(''),/width: 100% !important/,'100vw shifts the panel outside a scrollbar-reduced viewport');
-  const backdrop='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-route-backdrop:has(> .expense-step-modal[data-expense-step="amount"])';
+  const panelStart=css.lastIndexOf('html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] {');
+  assert.ok(panelStart>=0);
+  assert.match(css.slice(panelStart,css.indexOf('}',panelStart)),/width: 100% !important/,'all steps must follow the scrollbar-reduced viewport');
+  const backdrop='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-route-backdrop:has(> .expense-step-modal[data-expense-step])';
   const start=css.lastIndexOf(backdrop+' {');
   assert.ok(start>=0);
   assert.match(css.slice(start,css.indexOf('}',start)),/width: auto !important/,
     'short landscape must also constrain the fixed backdrop, not only its panel');
+});
+
+
+test("native expense steps scale field captions and participant names beyond the amount screen",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css'));
+ const prefix='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] ';
+ for(const [selector,size] of [['.field > span','.8125rem'],['.expense-participant-row-copy strong','.875rem'],['.expense-participant-row-copy small','.8125rem'],['.expense-review-row small','.8125rem'],['.expense-review-row strong','.9375rem']]) {
+  const start=css.lastIndexOf(prefix+selector+' {');
+  assert.ok(start>=0,`${selector} needs a shared native text-enlargement rule`);
+  assert.ok(css.slice(start,css.indexOf('}',start)).includes(`font-size: ${size} !important;`));
+ }
+ const narrow=css.lastIndexOf(prefix+'.expense-review-date {');
+ assert.ok(narrow>=0);
+ assert.match(css.slice(narrow,css.indexOf('}',narrow)),/grid-template-columns: minmax\(0, 1fr\) !important/,
+   'the date control must not squeeze its enlarged caption into an unreadable narrow cell');
 });

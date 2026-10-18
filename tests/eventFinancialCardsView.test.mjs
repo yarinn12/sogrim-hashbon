@@ -26,7 +26,7 @@ test("total explanation retains pending synchronization and edit permission cont
  assert.match(editable,/data-inline-sync-status data-sync-event-id="e" hidden/);
  assert.match(editable,/data-inline-sync-retry data-sync-retry hidden/);
  assert.doesNotMatch(editable,/disabled/);
- const closed=renderEventActionDockView({eventId:"e",totalText:"₪240.00",canEdit:false});
+ const closed=renderEventActionDockView({eventId:"e",totalText:"₪240.00",canEdit:false,isClosed:true});
  assert.match(closed,/data-event-id="e" disabled/);assert.match(closed,/האירוע סגור/);
 });
 
@@ -35,4 +35,12 @@ test("financial display models escape text and identifiers without interpreting 
  assert.doesNotMatch(html,/<b>|<script>|data-event-id="e" onclick/);assert.match(html,/&lt;b&gt;10&lt;\/b&gt;/);
  const dock=renderEventActionDockView({eventId:'e" onfocus="bad',totalText:"<i>20</i>",canEdit:true});
  assert.doesNotMatch(dock,/<i>|data-event-id="e" onfocus/);
+});
+
+
+test("an open event restricted by permissions is read-only rather than falsely closed",()=>{
+ const html=renderEventActionDockView({eventId:'open-restricted',totalText:'₪240.00',canEdit:false,isClosed:false});
+ assert.match(html,/data-event-id="open-restricted" disabled/);
+ assert.match(html,/קריאה בלבד/);
+ assert.doesNotMatch(html,/האירוע סגור/);
 });

@@ -7,7 +7,7 @@ function escapeHtml(value) {
 
 // Read-only display models: calculation, authorization and persistence remain
 // in the existing adapters. Both native platforms and the web use this markup.
-export function renderEventActionDockView({ eventId, totalText, canEdit }) {
+export function renderEventActionDockView({ eventId, totalText, canEdit, isClosed = false }) {
   return `
     <aside class="event-action-dock" aria-label="פעולות באירוע">
       <div class="event-action-total">
@@ -20,7 +20,7 @@ export function renderEventActionDockView({ eventId, totalText, canEdit }) {
       </div>
       <button class="primary-button" data-action="show-expense-form" data-event-id="${escapeHtml(eventId)}" ${!canEdit ? "disabled" : ""}>
         <span class="command-card-icon" aria-hidden="true">${iconSvg("receipt")}</span>
-        <span>${canEdit ? "הוסף הוצאה" : "האירוע סגור"}</span>
+        <span>${canEdit ? "הוסף הוצאה" : isClosed ? "האירוע סגור" : "קריאה בלבד"}</span>
       </button>
     </aside>
   `;
