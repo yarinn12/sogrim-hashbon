@@ -21872,6 +21872,64 @@ html.ledger-workspace-v1.design-coherence-v1 body #app .screen[data-screen-kind=
   html.ledger-workspace-v1.design-coherence-v1 body #app .screen[data-screen-kind="event"] .expense-row-expand-icon { transition: none !important; }
 }
 
+/* Approved action dock: intrinsic groups wrap without clipping long totals. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .event-action-total {
+  justify-items: end !important;
+  text-align: left !important;
+  width: auto !important;
+  min-width: min-content !important;
+  max-width: 100% !important;
+  flex: 0 1 auto !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: space-between !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock > .primary-button[data-action="show-expense-form"] {
+  width: auto !important;
+  min-width: 138px !important;
+  justify-self: end !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 6px !important;
+  margin-left: auto !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock > .primary-button[data-action="show-expense-form"] > span:last-child {
+  white-space: nowrap !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .primary-button .command-card-icon {
+  flex: 0 0 14px !important;
+  width: 14px !important;
+  height: 20px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 0 !important;
+  transform: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .primary-button .command-card-icon > svg {
+  flex: none !important;
+  width: 20px !important;
+  height: 20px !important;
+  display: block !important;
+}
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock > .primary-button[data-action="show-expense-form"] {
+  width: 100% !important;
+  min-width: 0 !important;
+  justify-self: stretch !important;
+}
+
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock {
+  display: grid !important;
+}
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock > .event-action-total {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

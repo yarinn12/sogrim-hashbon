@@ -289,3 +289,34 @@ test("native expense disclosure keeps its state cue and text-scaled menu width",
     /width: clamp\(166px, 10\.375rem, calc\(100vw - 32px\)\) !important/,
     'a fixed166px menu forces all enlarged command labels onto two lines');
 });
+
+
+test("native action dock anchors the total and sizes its button for a single label line", async () => {
+  const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs');
+  const {extractNativeStaticCss,files}=await harness();
+  await extractNativeStaticCss([{path:ledger}],'fixture-assets');
+  const css=files.get(join('fixture-assets','native-layers.css'));
+  const prefix='html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] ';
+  const fullRule=selector=>{
+    const start=css.lastIndexOf(selector+' {');
+    assert.ok(start>=0,`Missing native action-dock rule: ${selector}`);
+    return css.slice(start,css.indexOf('}',start));
+  };
+  const rule=selector=>fullRule(prefix+selector);
+  assert.match(rule('.event-action-dock .event-action-total'),/justify-items: end !important/);
+  assert.match(rule('.event-action-dock .event-action-total'),/text-align: left !important/);
+  assert.match(rule('.event-action-dock'),/display: flex !important/);
+  assert.match(rule('.event-action-dock'),/flex-wrap: wrap !important/,
+    'long totals must push the button to a second row instead of overflowing a fixed cell');
+  assert.match(rule('.event-action-dock .event-action-total'),/min-width: min-content !important/);
+  const button='.event-action-dock > .primary-button[data-action="show-expense-form"]';
+  assert.match(rule(button),/width: auto !important/);
+  assert.match(rule(button),/gap: 6px !important/);
+  assert.match(rule(button+' > span:last-child'),/white-space: nowrap !important/);
+  const icon=rule('.event-action-dock .primary-button .command-card-icon');
+  assert.match(icon,/width: 14px !important/);
+  assert.match(icon,/transform: none !important/);
+  const large='html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] '+button;
+  assert.match(fullRule(large),/width: 100% !important/);
+  assert.match(fullRule(large),/min-width: 0 !important/);
+});

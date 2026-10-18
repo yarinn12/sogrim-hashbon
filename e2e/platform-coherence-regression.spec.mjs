@@ -1,3 +1,4 @@
+import measureEventActionDock from "./helpers/eventActionDock.mjs";
 import measureExpenseDisclosure from "./helpers/expenseDisclosure.mjs";
 import measureEventMain from "./helpers/eventMainPresentation.mjs";
 import { expect, test } from "@playwright/test";
@@ -102,9 +103,16 @@ async function assertTappable(page, locator, label) {
   expect(hit, `${label}: center must receive a tap`).toBe(true);
 }
 
+const LARGE_ACTION_DOCK_TEST = "long expense totals reflow without pushing or wrapping the action label";
+
 test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
+  const scenarioState = structuredClone(state);
+  if(testInfo.title === LARGE_ACTION_DOCK_TEST) {
+    scenarioState.events[0].expenses[0].total=99999999;
+    scenarioState.events[0].expenses[0].payers[0].amount=99999999;
+  }
   await request.post("/api/reset");
-  await request.put("/api/state", { data: state });
+  await request.put("/api/state", { data: scenarioState });
   if (testInfo.title === HELD_IMAGE_READINESS_TEST) {
     let releaseImage;
     const imageGate = new Promise(resolve => { releaseImage = resolve; });
@@ -180,7 +188,7 @@ test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
       };
     }
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
-  }, { state, owner: OWNER, injectNoteWriteFailure: process.env.PLATFORM_COHERENCE_FAULT === "drop-note-write" });
+  }, { state: scenarioState, owner: OWNER, injectNoteWriteFailure: process.env.PLATFORM_COHERENCE_FAULT === "drop-note-write" });
   const dynamicType = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
   await openTypographyHome(page, {
     path: dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/",
@@ -664,6 +672,13 @@ test("event balance and expense total stay explained, aligned and scalable", asy
       await page.evaluate(() => document.fonts.ready);
       const result=await page.evaluate(measureEventMain);
       const context=width+"px/"+result.rootFont;
+      const dock=await page.evaluate(measureEventActionDock);
+      for(const field of ['totalLeft','totalGlyphsFit','captionAbove','buttonFits','groupsSeparate','buttonAtRight','noOverflow']) {
+        expect(dock[field],context+' action dock '+field).toBe(true);
+      }
+      expect(dock.labelLines,context+' action label').toBe(1);
+      expect(Math.abs(dock.visibleGroupDeltaX),context+' visible icon/text center').toBeLessThanOrEqual(1.5);
+      expect(Math.abs(dock.iconTextDeltaY),context+' icon aligned with glyphs').toBeLessThanOrEqual(1.5);
       expect(result.caption,context).toBe("סה״כ הוצאות");
       for(const field of ["captionVisible","captionFits","totalFits","balanceCopyFits",
         "balanceNumberFits","groupsDoNotOverlap","summaryAboveAmount","ctaFits",
@@ -687,6 +702,12 @@ test("event balance and expense total stay explained, aligned and scalable", asy
     await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
     await page.locator('[data-action="back-to-event"]:visible').first().click();
     await expect(page.locator(".event-action-total")).toContainText("סה״כ הוצאות");
+    const totalBefore=await page.locator('.event-action-total').innerText();
+    await page.locator('.event-action-dock [data-action="show-expense-form"]').click();
+    await expect(page.locator('.expense-modal')).toBeVisible();
+    await page.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();
+    await expect(page.locator('.expense-modal')).toHaveCount(0);
+    await expect(page.locator('.event-action-total')).toHaveText(totalBefore);
   }
 });
 
@@ -741,5 +762,24 @@ test("expense disclosure cue and command labels fit at normal and enlarged sizes
     expect(closed.rows[0].expanded).toBe(false);
     expect(closed.rows[0].iconTransform).not.toBe(opened.rows[0].iconTransform);
     await expect(row.locator('.expense-participants-details')).not.toHaveAttribute('open','');
+  }
+});
+
+
+test(LARGE_ACTION_DOCK_TEST, async ({page})=>{
+  for(const enlarged of [false,true]) {
+    await openTypographyHome(page,{path:enlarged?'/?dynamic-type-preview=32':'/'});
+    await openEvent(page,OPEN_EVENT);
+    await expect(page.locator('.event-action-total .font-num')).toHaveText('₪999,999.99');
+    for(const width of [320,393,411]) {
+      await page.setViewportSize({width,height:852});
+      await page.evaluate(()=>document.fonts.ready);
+      const dock=await page.evaluate(measureEventActionDock);
+      const context=width+'px/'+dock.root;
+      for(const field of ['totalLeft','totalGlyphsFit','captionAbove','buttonFits','groupsSeparate','buttonAtRight','noOverflow']) {
+        expect(dock[field],context+' '+field).toBe(true);
+      }
+      expect(dock.labelLines,context).toBe(1);
+    }
   }
 });
