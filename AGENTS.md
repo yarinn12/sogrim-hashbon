@@ -53,3 +53,8 @@ The user reviews one page/area at a time. For every page we work on:
 - Explicitly report elements that feel like generic AI/template design: unnecessary card nesting, excessive glow/shadows, decoration without a purpose, repeated promotional blocks, inconsistent controls and generic copy. Explain the specific visual concern; appearance does not prove how the code was authored.
 - Separate reproducible layout defects from subjective design choices. Preserve the agreed green brand, home hero and subtle glow; discuss broader visual changes with the user before applying them.
 - Show findings and a concrete local preview for the current area, collect feedback and finish the agreed changes before advancing to another page. Keep the existing regression-test and release gates.
+
+
+## Shared design language
+
+Follow `docs/design-language-he.md` when building or reviewing UI. Role, connection and friendship identity captions use the shared `participant-identity-label` class. Keep its neutral scalable presentation consistent across screens; do not create a local decorative identity badge.

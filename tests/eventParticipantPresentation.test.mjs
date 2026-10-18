@@ -115,3 +115,16 @@ test("participant route presentation is included in the offline creation cache",
   const from = worker.indexOf("const CACHE_FILES = [");
   assert.match(worker.slice(from, worker.indexOf("];", from)), /"\/src\/ui\/eventParticipantRoute\.mjs"/);
 });
+
+
+test("manual name view omits the redundant side count while keeping selected identities and main count", () => {
+  const manual = renderDraft({ participantView: "manual", participantIds: ["owner"] });
+  assert.doesNotMatch(manual, /data-new-event-participant-count/,
+    "The visible owner row already communicates who is selected in the manual form");
+  assert.match(manual, /data-participant-id="owner"/);
+  assert.match(manual, /אתה · יוצר האירוע/);
+  assert.match(manual, /data-action="new-event-add-guest"/);
+  assert.match(manual, /data-action="close-new-event-participant-view"/);
+  assert.match(renderDraft(), /data-new-event-participant-count/,
+    "The separate main participants overview retains its existing count");
+});

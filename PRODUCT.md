@@ -33,3 +33,8 @@ Avoid student-project screens, old web-app styling, crowded dashboards, repeated
 ## Accessibility & Inclusion
 
 The interface is RTL-first, Hebrew-first, mobile-first, and should maintain readable contrast, large touch targets, reduced-motion support, and clear focus states. Google sign-in can later strengthen identity without blocking guest usage.
+
+
+## Shared Design Language
+
+Follow [the permanent design-language guidance](docs/design-language-he.md). Identity, role and friendship captions share one neutral scalable style across the app. Reuse the existing component class rather than inventing a new badge for each screen.

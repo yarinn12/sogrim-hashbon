@@ -3648,7 +3648,7 @@ function renderFriendRelationshipProfile() {
               ${renderParticipantUsername(participant)}
             </div>
             ${acceptedFriend
-              ? '<span class="relationship-friendship-badge is-accepted">חבר</span>'
+              ? '<span class="relationship-friendship-badge is-accepted participant-identity-label">חבר</span>'
               : renderParticipantConnectionBadge(participant)}
           </header>
           ${renderParticipantRelationshipScorecard(
@@ -5880,13 +5880,13 @@ function renderRelationshipFriendshipControl({
   actionLabel
 }) {
   if (friendship.kind === "blocked") {
-    return '<span class="relationship-friendship-badge is-pending">חסום</span>';
+    return '<span class="relationship-friendship-badge is-pending participant-identity-label">חסום</span>';
   }
   if (friendship.kind === "accepted") {
-    return '<span class="relationship-friendship-badge is-accepted">חבר</span>';
+    return '<span class="relationship-friendship-badge is-accepted participant-identity-label">חבר</span>';
   }
   if (friendship.kind === "outgoing") {
-    return '<span class="relationship-friendship-badge is-pending">בקשה נשלחה</span>';
+    return '<span class="relationship-friendship-badge is-pending participant-identity-label">בקשה נשלחה</span>';
   }
 
   return `
@@ -6484,12 +6484,12 @@ function renderCurrentEventParticipantRow(
           <strong>${escapeHtml(displayName)}</strong>
           <span class="event-participant-meta">
             ${identity.connected ? renderParticipantUsername(participant) : renderParticipantConnectionBadge(participant)}
-            ${isCurrentParticipant ? '<small class="event-participant-status-tag event-participant-current-label">אתה</small>' : ""}
-            ${roleLabel ? `<small class="event-participant-status-tag event-participant-role">${roleLabel}</small>` : ""}
+            ${isCurrentParticipant ? '<small class="event-participant-status-tag event-participant-current-label participant-identity-label">אתה</small>' : ""}
+            ${roleLabel ? `<small class="event-participant-status-tag event-participant-role participant-identity-label">${roleLabel}</small>` : ""}
             ${needsIdentityReview ? '<small class="event-participant-duplicate-status">בדיקת שם</small>' : ""}
             ${
               friendship
-                ? `<small class="event-participant-status-tag event-participant-friend-hint is-${friendship.kind}">${escapeHtml(friendship.label)}</small>`
+                ? `<small class="event-participant-status-tag event-participant-friend-hint is-${friendship.kind} participant-identity-label">${escapeHtml(friendship.label)}</small>`
                 : ""
             }
           </span>
@@ -7097,7 +7097,7 @@ function renderNewEventSelectedParticipant(participant) {
           <strong>${escapeHtml(participant.displayName)}</strong>
           ${renderParticipantUsername(participant)}
         </span>
-        <small class="new-event-selected-participant-self">אתה · יוצר האירוע</small>
+        <small class="new-event-selected-participant-self participant-identity-label">אתה · יוצר האירוע</small>
       </div>
     `;
   }
@@ -7134,7 +7134,7 @@ function renderNewEventSelectedParticipants(selectedParticipants = newEventDraft
     <section class="new-event-selected-participants" aria-labelledby="new-event-selected-title">
       <div class="new-event-selected-participants-heading">
         <h2 id="new-event-selected-title">משתתפים שנבחרו</h2>
-        <span data-new-event-participant-count aria-live="polite">${escapeHtml(newEventParticipantSelectionLabel(newEventDraft.participantIds))}</span>
+        ${newEventDraft.participantView === "manual" ? "" : `<span data-new-event-participant-count aria-live="polite">${escapeHtml(newEventParticipantSelectionLabel(newEventDraft.participantIds))}</span>`}
       </div>
       <div class="new-event-selected-participant-list">
         ${
@@ -11691,7 +11691,7 @@ function renderParticipantConnectionBadge(participant, event = null) {
   const status = participantConnectionStatusForEvent(participant, event);
   return `
     <small
-      class="participant-connection-badge ${status.className}"
+      class="participant-connection-badge ${status.className} participant-identity-label"
       title="${escapeAttribute(status.description)}"
       aria-label="${escapeAttribute(status.description)}"
     >

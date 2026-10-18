@@ -525,15 +525,15 @@ test("participant manager distinguishes connected accounts from manually added n
   assert.match(app, /שמות אופליין/);
   assert.match(
     app,
-    /class="event-participant-status-tag event-participant-current-label">אתה</
+    /class="event-participant-status-tag event-participant-current-label participant-identity-label">אתה</
   );
   assert.match(
     app,
-    /class="event-participant-status-tag event-participant-role">\$\{roleLabel\}</
+    /class="event-participant-status-tag event-participant-role participant-identity-label">\$\{roleLabel\}</
   );
   assert.match(
     app,
-    /class="event-participant-status-tag event-participant-friend-hint is-\$\{friendship\.kind\}"/
+    /class="event-participant-status-tag event-participant-friend-hint is-\$\{friendship\.kind\} participant-identity-label"/
   );
   assert.match(
     app,

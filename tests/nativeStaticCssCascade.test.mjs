@@ -166,7 +166,8 @@ test("native participants overview scales names, counts, route titles and helper
     [".new-event-participant-route-action strong", "1rem"],
     [".new-event-participant-route-action small", ".8125rem"]
   ]) {
-    const start = css.indexOf(prefix + selector + " {");
+    const actualPrefix = selector.startsWith(".new-event-selected") ? prefix.replace(":not(.new-event-participant-subscreen)", "") : prefix;
+    const start = css.indexOf(actualPrefix + selector + " {");
     assert.ok(start >= 0, `Native participant leaf must scale instead of retaining fixed pixels: ${selector}`);
     const rule = css.slice(start, css.indexOf("}", start));
     assert.ok(rule.includes(`font-size:${size} !important;`));
@@ -178,7 +179,7 @@ test("native participants overview retains owner role and participant status in 
   const { extractNativeStaticCss, files } = await harness();
   await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
   const css = files.get(join("fixture-assets", "native-layers.css"));
-  const prefix = 'html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) ';
+  const prefix = 'html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen ';
   for (const [selector, display] of [
     [".new-event-selected-participant .avatar", "grid"],
     [".new-event-selected-participant-self", "block"],
@@ -206,4 +207,46 @@ test("native friends picker enlarges participant names and group headings with s
     assert.match(rule, /font-size: \.875rem !important;/,
       "14px normal text must become17.5px at root20 and28px at root32");
   }
+});
+
+
+test("native identity labels share the neutral scalable language across role connection and relationship renderers", async () => {
+  const { extractNativeStaticCss, files } = await harness();
+  await extractNativeStaticCss([{ path: resolve("src/publicLedgerWorkspaceLayer.mjs") }], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const selector = 'html.ledger-workspace-v1.circle-design-v1 body #app .participant-identity-label';
+  const from = css.lastIndexOf(selector + " {");
+  assert.ok(from >= 0, "All identity labels need a common native stylesheet rule");
+  const rule = css.slice(from, css.indexOf("}", from));
+  for (const declaration of ["padding:0 !important;", "border:0 !important;", "background:transparent !important;",
+    "box-shadow:none !important;", "font-size:.8125rem !important;", "font-weight:400 !important;",
+    "line-height:1.5 !important;", "white-space:normal !important;", "overflow-wrap:anywhere !important;"]) {
+    assert.ok(rule.includes(declaration), declaration);
+  }
+  const app = await readFile("src/app.mjs", "utf8");
+  for (const family of ["new-event-selected-participant-self", "participant-connection-badge", "event-participant-status-tag", "relationship-friendship-badge"]) {
+    const matches = [...app.matchAll(/class="([^"\n]+)"/g)].map(m => m[1])
+      .filter(c => c.split(/\s/).includes(family) && !c.includes("is-duplicate"));
+    assert.ok(matches.length > 0, family);
+    assert.ok(matches.every(c => c.split(/\s/).includes("participant-identity-label")),
+      `${family} must consume the shared identity language`);
+  }
+});
+
+
+test("native manual selected identities retain the shared row and visible captions on narrow enlarged screens", async () => {
+  const { extractNativeStaticCss, files } = await harness();
+  await extractNativeStaticCss([{ path: resolve("src/publicLedgerWorkspaceLayer.mjs") }], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const prefix = 'html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen ';
+  const from = css.lastIndexOf(prefix + '.new-event-selected-participant .participant-connection-badge {');
+  assert.ok(from >= 0, "Manual and main selected rows must both override the old hidden caption rule");
+  const rule = css.slice(from, css.indexOf("}", from));
+  assert.ok(rule.includes('display:inline-flex !important;'));
+  assert.ok(rule.includes('visibility:visible !important;'));
+  const rowFrom = css.indexOf(prefix + '.new-event-selected-participant {');
+  assert.ok(rowFrom >= 0);
+  const row = css.slice(rowFrom, css.indexOf('}', rowFrom));
+  assert.ok(row.includes('grid-template-areas:"avatar copy check" "avatar status check" !important;'),
+    "Place status under the name so it keeps its own row when enlarged");
 });

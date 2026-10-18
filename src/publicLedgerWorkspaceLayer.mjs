@@ -21203,7 +21203,7 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen
 
 
 /* Approved participants overview: scalable identities and grouped existing actions. */
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participants {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participants {
  display:grid !important;
  grid-template-columns:minmax(0,1fr) !important;
  gap:12px !important;
@@ -21214,7 +21214,7 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-scre
  background:var(--ledger-surface) !important;
  box-shadow:none !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participants-heading {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participants-heading {
  display:flex !important;
  align-items:baseline !important;
  justify-content:space-between !important;
@@ -21223,23 +21223,23 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-scre
  padding:0 !important;
  border:0 !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participants-heading h2 {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participants-heading h2 {
  margin:0 !important;
  font-size:.875rem !important;
  font-weight:700 !important;
  line-height:1.5 !important;
  white-space:normal !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participants-heading>span {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participants-heading>span {
  font-size:.8125rem !important;
  font-weight:400 !important;
  line-height:1.5 !important;
  white-space:normal !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-list {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-list {
  gap:0 !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant {
  display:grid !important;
  grid-template-columns:44px minmax(0,1fr) 24px !important;
  grid-template-areas:"avatar copy check" "avatar status check" !important;
@@ -21253,26 +21253,26 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-scre
  background:transparent !important;
  box-shadow:none !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant+.new-event-selected-participant {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant+.new-event-selected-participant {
  border-top:1px solid var(--ledger-line) !important;
  margin-top:8px !important;
  padding-top:16px !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant.is-current-participant {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant.is-current-participant {
  grid-template-columns:44px minmax(0,1fr) !important;
  grid-template-areas:"avatar copy" "avatar status" !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant .avatar {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant .avatar {
  grid-area:avatar !important;
  width:44px !important;
  min-width:44px !important;
  height:44px !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-copy {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-copy {
  grid-area:copy !important;
  min-width:0 !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-copy strong {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-copy strong {
  font-size:1rem !important;
  line-height:1.5 !important;
  font-weight:650 !important;
@@ -21281,7 +21281,7 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-scre
  white-space:normal !important;
  overflow-wrap:anywhere !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-copy .participant-username {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-copy .participant-username {
  font-size:.8125rem !important;
  line-height:1.5 !important;
  overflow:visible !important;
@@ -21289,8 +21289,8 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-scre
  white-space:normal !important;
  overflow-wrap:anywhere !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-self,
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .participant-connection-badge {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-self,
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .participant-connection-badge {
  grid-area:status !important;
  grid-column:auto !important;
  min-width:0 !important;
@@ -21307,7 +21307,7 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-scre
  white-space:normal !important;
  overflow-wrap:anywhere !important;
 }
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-check {
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-check {
  grid-area:check !important;
  width:24px !important;
  height:24px !important;
@@ -21463,9 +21463,9 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-scre
 
 html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-additions { margin-block-start:20px !important; }
 
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant .avatar {display:grid !important;visibility:visible !important;}
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-self {display:block !important;visibility:visible !important;}
-html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant .participant-connection-badge {display:inline-flex !important;visibility:visible !important;}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant .avatar {display:grid !important;visibility:visible !important;}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-self {display:block !important;visibility:visible !important;}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant .participant-connection-badge {display:inline-flex !important;visibility:visible !important;}
 
 
 /* Approved friends picker: preserve normal14px text while respecting enlargement. */
@@ -21476,6 +21476,29 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subsc
 }
 html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="friends"] .participant-identity-group-copy > strong {
  font-size: .875rem !important;
+}
+
+
+/* Shared identity language: roles, account connection and friendship metadata. */
+html.ledger-workspace-v1.circle-design-v1 body #app .participant-identity-label {
+ width:auto !important;
+ min-width:0 !important;
+ max-width:100% !important;
+ min-height:0 !important;
+ margin:0 !important;
+ padding:0 !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ box-shadow:none !important;
+ color:var(--ledger-muted) !important;
+ font-size:.8125rem !important;
+ font-weight:400 !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+ letter-spacing:normal !important;
+ text-transform:none !important;
 }
 
 `;
