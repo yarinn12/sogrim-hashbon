@@ -1,3 +1,4 @@
+import { renderExpensePayerAmountView } from "./ui/expensePayerAmount.mjs";
 import { renderExpenseTitleView, renderExpenseParticipantsHeadingView } from "./ui/expenseDisclosure.mjs";
 import { renderEventActionDockView, renderEventPersonalBalanceView } from "./ui/eventFinancialCards.mjs";
 import { manualParticipantCopy, renderEventManualParticipantEditorView } from "./ui/eventManualParticipantEditor.mjs";
@@ -8162,7 +8163,11 @@ function renderExpenseForm(event) {
                           + הוסף שם חדש
                         </option>
                       </select>
-                      <input data-action="expense-payer-amount" data-index="${index}" name="expensePayerAmount-${index}" autocomplete="off" inputmode="decimal" enterkeyhint="next" dir="ltr" aria-label="סכום ששילם משלם ${index + 1} ב־${escapeAttribute(expenseUsesForeignCurrency(event) ? expenseDraft.sourceCurrency : eventCurrency(event))}" value="${escapeAttribute(payer.amount)}" placeholder="כמה שילם" />
+                      ${renderExpensePayerAmountView({
+                        index, amount: payer.amount,
+                        currency: expenseUsesForeignCurrency(event) ? expenseDraft.sourceCurrency : eventCurrency(event),
+                        currencyLabel: expenseUsesForeignCurrency(event) ? expenseDraft.sourceCurrency : currencyCompactLabel(event)
+                      })}
                       ${
                         expenseDraft.payers.length > 1
                           ? `<button class="secondary-button" data-action="remove-payer" data-index="${index}">הסר</button>`
@@ -14033,6 +14038,7 @@ async function handleClick(event) {
     }
     rebalanceExpenseDraftPayers();
     render();
+    syncExpenseFlowActionState();
     const nextPayerIndex = Math.max(
       0,
       Math.min(payerIndex, expenseDraft.payers.length - 1)

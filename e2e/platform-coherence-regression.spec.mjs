@@ -1,3 +1,4 @@
+import measureExpensePayer from "./helpers/expensePayerPresentation.mjs";
 import measureExpenseName from "./helpers/expenseNamePresentation.mjs";
 import measureExpenseFlowTypography from "./helpers/expenseFlowTypography.mjs";
 import measureExpenseAmount from "./helpers/expenseAmountPresentation.mjs";
@@ -1023,5 +1024,68 @@ for(const root of [16,20,32]) {
   await expect(dialog.locator('[data-action="expense-total"]')).toHaveValue('123.45');
   await dialog.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();
   await expect(page.locator('.expense-row')).toHaveCount(1);
+ });
+}
+
+
+for(const root of [16,20,32]) {
+ test(`approved payer captions grow and split amounts survive navigation (${root}px)`,async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await openTypographyHome(page,{path:root===16?'/':`/?dynamic-type-preview=${root}`});
+  await openEvent(page,OPEN_EVENT);
+  await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();
+  const dialog=page.locator('.expense-step-modal');
+  await dialog.locator('[data-action="expense-total"]').fill('120');
+  await dialog.locator('[data-action="expense-step-next"]').click();
+  await dialog.locator('[data-action="expense-name"]').fill('ארוחת ערב');
+  await dialog.locator('[data-action="expense-step-next"]').click();
+  await expect(dialog).toHaveAttribute('data-expense-step','payer');
+  for(const width of [320,393,411]) {
+   await page.setViewportSize({width,height:852});await page.evaluate(()=>document.fonts.ready);
+   const m=await page.evaluate(measureExpensePayer),context=`payer/${width}/${root}`;
+   expect(m.labels,context+' populated input still has visible amount label').toHaveLength(1);
+   expect(m.labels[0].text,context).toContain('כמה שילם');
+   expect(m.labels[0].text,context).toContain('₪');
+   expect(m.labels[0].font,context).toBeCloseTo(root*.8125,1);
+   expect(m.labels[0].fits,context).toBe(true);
+   expect(m.inputs[0].font,context).toBeCloseTo(root*1.25,1);
+   expect(m.inputs[0].hasVisibleLabel,context).toBe(true);
+   expect(m.currencyVisible,context).toBe(false);
+   expect(m.noOverflow,context).toBe(true);
+   expect(m.bodyHeight,context).toBeGreaterThanOrEqual(80);
+   await assertTappable(page,dialog.locator('[data-action="expense-payer-amount"]'),context+' amount');
+  }
+  await dialog.getByRole('button',{name:'משלם 1',exact:true}).click();
+  await page.getByRole('button',{name:'סגירת רשימת הבחירה',exact:true}).click();
+  const first=dialog.locator('[data-action="expense-payer-amount"][data-index="0"]');
+  const summary=dialog.locator('.expense-payer-summary'),next=dialog.locator('[data-action="expense-step-next"]');
+  await first.fill('80');await expect(summary).toContainText('40.00');await expect(next).toBeDisabled();
+  let m=await page.evaluate(measureExpensePayer);
+  expect(m.add.y,'shortage status precedes add action').toBeGreaterThanOrEqual(m.summary.bottom-1/64);
+  await dialog.getByRole('button',{name:'יותר מאדם אחד שילם? הוסף משלם נוסף',exact:true}).click();
+  const second=dialog.locator('[data-action="expense-payer-amount"][data-index="1"]');
+  await expect(first).toHaveValue('80');await expect(second).toHaveValue('40');
+  await expect(summary).toHaveText('הסכום הושלם');await expect(next).toBeEnabled();
+  for(const width of [320,393,411]) {
+   await page.setViewportSize({width,height:852});m=await page.evaluate(measureExpensePayer);
+   expect(m.noOverflow).toBe(true);expect(m.labels).toHaveLength(2);
+   for(const l of m.labels){expect(l.fits).toBe(true);expect(l.font).toBeCloseTo(root*.8125,1);}
+   for(const row of m.rows){expect(Math.abs((row.selector.y+row.selector.height/2)-(row.remove.y+row.remove.height/2)),'remove action is vertically centered beside the person').toBeLessThan(1);expect(row.remove.width).toBeGreaterThanOrEqual(43.99);expect(row.remove.height).toBeGreaterThanOrEqual(43.99);}
+   await assertTappable(page,second,'last payer above fixed navigation');
+  }
+  await second.fill('50');await expect(summary).toContainText('10.00');await expect(next).toBeDisabled();
+  await second.fill('40');await expect(next).toBeEnabled();
+  await next.click();await expect(dialog).toHaveAttribute('data-expense-step','participants');
+  await dialog.getByRole('button',{name:'חזרה לשלב הקודם',exact:true}).click();
+  await expect(first).toHaveValue('80');await expect(second).toHaveValue('40');
+  await dialog.locator('[data-action="remove-payer"][data-index="1"]').click();
+  await expect(dialog.locator('.payer-row')).toHaveCount(1);await expect(first).toHaveValue('80');
+  await expect(summary).toContainText('40.00');await expect(next).toBeDisabled();
+  await dialog.getByRole('button',{name:'חזרה לשלב הקודם',exact:true}).click();
+  await expect(dialog.locator('[data-action="expense-name"]')).toHaveValue('ארוחת ערב');
+  await dialog.getByRole('button',{name:'חזרה לשלב הקודם',exact:true}).click();
+  await expect(dialog.locator('[data-action="expense-total"]')).toHaveValue('120');
+  await dialog.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();
+  await expect(page.locator('.expense-row')).toHaveCount(1);expect(errors).toEqual([]);
  });
 }

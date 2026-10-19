@@ -432,3 +432,26 @@ test("native approved expense header retains original progress and compact keybo
  assert.match(progress,/aria-current="step"/);
  assert.doesNotMatch(progress,/<button/,'user rejected named stage buttons; preserve the existing progression semantics');
 });
+
+
+test("native payer amount captions and numeric glyphs grow with enlarged text",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css'));
+ const prefix='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] ';
+ for(const [selector,property] of [['.payer-amount-field>span','font-size:.8125rem!important'],['.payer-amount-field input','font-size:1.25rem!important']]) {
+  const start=css.lastIndexOf(prefix+selector+' {');assert.ok(start>=0,selector+' must reach extracted Native CSS');
+  assert.ok(css.slice(start,css.indexOf('}',start)).replace(/\s/g,'').includes(property));
+ }
+});
+
+test("native payer validation stays above add action and removal remains beside the person",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css'));
+ const prefix='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] ';
+ for(const [selector,property] of [['.expense-payer-summary','display:block!important'],['.payer-row>[data-action="remove-payer"]','grid-row:1!important']]) {
+  const start=css.lastIndexOf(prefix+selector+' {');assert.ok(start>=0,selector+' needs the shared layout in Native');
+  assert.ok(css.slice(start,css.indexOf('}',start)).replace(/\s/g,'').includes(property));
+ }
+});

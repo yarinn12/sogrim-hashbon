@@ -22189,6 +22189,128 @@ html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).des
     }
   }
 
+  /* Approved payer-step presentation. Shared header and money rules stay intact.*/
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-source-currency-field {
+    display: none !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-row {
+    display: grid !important;
+    grid-template-columns: minmax(0,1fr) !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-row:has(>[data-action="remove-payer"]) {
+    grid-template-columns: minmax(0,1fr) auto !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-row+.payer-row {
+    margin-top: 20px !important;
+    padding-top: 20px !important;
+    border-top: 1px solid var(--ledger-line) !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-row>.app-choice-trigger {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-row>[data-action="remove-payer"] {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    width: auto !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    padding: 8px !important;
+    font-size: .8125rem !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-amount-field {
+    grid-column: 1/-1 !important;
+    grid-row: 2 !important;
+    display: grid !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-amount-field>span {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 6px !important;
+    color: var(--ledger-muted) !important;
+    font-size: .8125rem !important;
+    font-weight: 400 !important;
+    line-height: 1.5 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-amount-field>span>span {
+    font-size: inherit !important;
+    line-height: inherit !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-amount-field input {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 56px !important;
+    font-family: var(--font-num) !important;
+    font-size: 1.25rem !important;
+    font-weight: 600 !important;
+    line-height: 1.4 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-inline-add {
+    grid-column: 1/-1 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-payer-summary {
+    display: block !important;
+    width: fit-content !important;
+    max-width: 100% !important;
+    white-space: normal !important;
+    font-size: .875rem !important;
+    line-height: 1.5 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-payer-summary.is-balanced {
+    display: block !important;
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 12px 0 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--ledger-muted) !important;
+    font-size: .8125rem !important;
+    font-weight: 400 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-add-payer-button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: auto !important;
+    min-height: 44px !important;
+    margin: 12px 0 0 !important;
+    padding: 8px 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--ledger-brand) !important;
+    font-size: .875rem !important;
+    line-height: 1.5 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-add-payer-button>span {
+    display: none !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-add-payer-button>strong {
+    font-size: inherit !important;
+    line-height: inherit !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-add-payer-button::before,html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-add-payer-button::after {
+    display: none !important;
+  }
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
