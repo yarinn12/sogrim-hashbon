@@ -1040,6 +1040,7 @@ for(const root of [16,20,32]) {
   await dialog.locator('[data-action="expense-name"]').fill('ארוחת ערב');
   await dialog.locator('[data-action="expense-step-next"]').click();
   await expect(dialog).toHaveAttribute('data-expense-step','payer');
+  await expect(dialog.getByRole('button',{name:'משלם 1',exact:true})).toBeVisible();
   for(const width of [320,393,411]) {
    await page.setViewportSize({width,height:852});await page.evaluate(()=>document.fonts.ready);
    const m=await page.evaluate(measureExpensePayer),context=`payer/${width}/${root}`;
@@ -1064,6 +1065,7 @@ for(const root of [16,20,32]) {
   expect(m.add.y,'shortage status precedes add action').toBeGreaterThanOrEqual(m.summary.bottom-1/64);
   await dialog.getByRole('button',{name:'יותר מאדם אחד שילם? הוסף משלם נוסף',exact:true}).click();
   const second=dialog.locator('[data-action="expense-payer-amount"][data-index="1"]');
+  await expect(dialog.getByRole('button',{name:'משלם 2',exact:true})).toBeVisible();
   await expect(first).toHaveValue('80');await expect(second).toHaveValue('40');
   await expect(summary).toHaveText('הסכום הושלם');await expect(next).toBeEnabled();
   for(const width of [320,393,411]) {

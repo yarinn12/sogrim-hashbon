@@ -1,3 +1,4 @@
+import { renderExpensePayerAmountView } from "../src/ui/expensePayerAmount.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -29,7 +30,11 @@ test("long-press text selection stays limited to live editing fields", () => {
 
 test("every money field opens a numeric keypad and stays LTR", () => {
   for (const action of ["expense-total", "expense-payer-amount", "quick-item-amount"]) {
-    const field = app.slice(app.indexOf(`data-action="${action}"`));
+    // The payer field moved into a pure UI renderer; check its actual markup.
+    const markup = action === "expense-payer-amount"
+      ? renderExpensePayerAmountView({index:0,amount:"12.34",currency:"ILS",currencyLabel:"₪"})
+      : app;
+    const field = markup.slice(markup.indexOf(`data-action="${action}"`));
     const tag = field.slice(0, field.indexOf("/>"));
     assert.match(tag, /inputmode="decimal"/, `${action} requests a decimal keypad`);
     assert.match(tag, /dir="ltr"/, `${action} keeps digits left to right`);
