@@ -22089,6 +22089,106 @@ html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).des
     }
   }
 
+
+  /* Approved expense-name body: one naming task, scalable hints and whole words. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="name"] .expense-source-currency-field {
+    display: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="name"] .expense-flow-body {
+    padding-block-start: 24px !important;
+    gap: 16px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="name"] .expense-name-field input::placeholder {
+    font-size: inherit !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="name"] .expense-template-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr)) !important;
+  }
+
+  /* Shared approved hero. Keep the established compact scrollport/control band
+     when software keyboard space or short landscape height is constrained. */
+  @media (min-height: 451px) {
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header {
+      grid-template-columns: 48px minmax(0, 1fr) 48px !important;
+      gap: 10px !important;
+      padding: 12px 16px 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header > div:first-child {
+      display: contents !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header .eyebrow {
+      display: block !important;
+      grid-column: 2 !important;
+      grid-row: 1 !important;
+      align-self: center !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      color: var(--ledger-muted) !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      font-size: .8125rem !important;
+      font-weight: 400 !important;
+      line-height: 1.4 !important;
+      white-space: normal !important;
+      direction: rtl !important;
+      text-align: center !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header h2 {
+      grid-column: 1 / -1 !important;
+      grid-row: 2 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      min-height: 64px !important;
+      margin: 0 !important;
+      padding: 16px 18px !important;
+      border: 0 !important;
+      border-radius: 24px !important;
+      color: #fff !important;
+      background: linear-gradient(136deg, #071f18 0%, #0b4a38 58%, #0f6b50 100%) !important;
+      box-shadow:
+        0 30px 58px -27px rgba(5, 54, 40, .82),
+        0 20px 38px -16px rgba(18, 184, 139, .48),
+        0 0 28px -13px rgba(61, 223, 185, .58),
+        inset 0 1px 0 rgba(255, 255, 255, .14) !important;
+      font-size: 1.5rem !important;
+      font-weight: 600 !important;
+      line-height: 1.15 !important;
+      direction: rtl !important;
+      text-align: right !important;
+      overflow-wrap: normal !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header .modal-section-back-button {
+      grid-column: 1 !important;
+      grid-row: 1 !important;
+      justify-self: start !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header .expense-accessibility-button {
+      grid-column: 3 !important;
+      grid-row: 1 !important;
+      justify-self: end !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-flow-progress {
+      padding: 17px 16px 0 !important;
+    }
+  }
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

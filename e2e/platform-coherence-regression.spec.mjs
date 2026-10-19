@@ -1,3 +1,4 @@
+import measureExpenseName from "./helpers/expenseNamePresentation.mjs";
 import measureExpenseFlowTypography from "./helpers/expenseFlowTypography.mjs";
 import measureExpenseAmount from "./helpers/expenseAmountPresentation.mjs";
 import measureEventActionDock from "./helpers/eventActionDock.mjs";
@@ -975,3 +976,52 @@ test("new-event selected avatar confirms removal without opening statistics",asy
  await expect(page.locator('.new-event-selected-participant-list .new-event-selected-participant')).toHaveCount(1);
  await expect(page.locator('.new-event-participants-screen')).toBeVisible();
 });
+
+
+for(const root of [16,20,32]) {
+ test(`approved expense name retains scalable placeholder whole template words and original bars (${root}px)`,async({page})=>{
+  await openTypographyHome(page,{path:root===16?'/':`/?dynamic-type-preview=${root}`});
+  await openEvent(page,OPEN_EVENT);
+  await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();
+  const dialog=page.locator('.expense-step-modal');
+  await dialog.locator('[data-action="expense-total"]').fill('123.45');
+  await dialog.locator('[data-action="expense-step-next"]').click();
+  await expect(dialog).toHaveAttribute('data-expense-step','name');
+  for(const width of [320,393,411]) {
+   await page.setViewportSize({width,height:852});
+   await page.evaluate(()=>document.fonts.ready);
+   const result=await page.evaluate(measureExpenseName),context=`name${width}px/root${root}`;
+   expect(result.root,context).toBe(root);
+   expect(result.placeholderFont,context+' placeholder must grow with actual input').toBeCloseTo(result.inputFont,1);
+   expect(result.titleColor,context).toBe('rgb(255, 255, 255)');
+   expect(result.titleBackground,context).toContain('linear-gradient');
+   expect(result.titleFont,context).toBeCloseTo(root*1.5,1);
+   expect(result.titleFits,context).toBe(true);
+   expect(result.bars,context).toHaveLength(5);
+   expect(result.bars.every(b=>Math.abs(b.height-6)<1/64),context).toBe(true);
+   expect(result.currentBar,context).toBe(1);
+   expect(result.stageButtons,context).toBe(0);
+   expect(result.currencyVisible,context).toBe(false);
+   expect(result.noOverflow,context).toBe(true);
+   expect(result.bodyHeight,context).toBeGreaterThanOrEqual(80);
+   for(const t of result.templates) {
+    expect(t.fits,context+' '+t.text).toBe(true);
+    expect(t.lines,context+' whole word '+t.text).toBe(1);
+    expect(t.width,context).toBeGreaterThanOrEqual(43.99);
+    expect(t.height,context).toBeGreaterThanOrEqual(43.99);
+   }
+   await assertTappable(page,dialog.getByRole('button',{name:'קניות',exact:true}),context+' last template');
+  }
+  await dialog.getByRole('button',{name:'מונית',exact:true}).click();
+  await expect(dialog.locator('[data-action="expense-name"]')).toHaveValue('מונית');
+  await dialog.locator('[data-action="expense-name"]').fill('נסיעה עם המשפחה והחברים');
+  await dialog.locator('[data-action="expense-step-next"]').click();
+  await expect(dialog).toHaveAttribute('data-expense-step','payer');
+  await dialog.getByRole('button',{name:'חזרה לשלב הקודם',exact:true}).click();
+  await expect(dialog.locator('[data-action="expense-name"]')).toHaveValue('נסיעה עם המשפחה והחברים');
+  await dialog.getByRole('button',{name:'חזרה לשלב הקודם',exact:true}).click();
+  await expect(dialog.locator('[data-action="expense-total"]')).toHaveValue('123.45');
+  await dialog.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();
+  await expect(page.locator('.expense-row')).toHaveCount(1);
+ });
+}

@@ -394,3 +394,41 @@ test("native enlarged participant footer follows the measured bottom navigation 
  assert.match(css.slice(start,css.indexOf('}',start)),/var\(--dynamic-type-bottom-nav-block, 148px\)/,
   'a fixed148px offset loses its safe gap when the actual navigation grows to two rows');
 });
+
+
+test("native expense name placeholder scales with its input instead of staying16px",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css'));
+ const selector='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="name"] .expense-name-field input::placeholder';
+ const start=css.lastIndexOf(selector+' {');
+ assert.ok(start>=0,'the actual placeholder glyph font must reach Native too');
+ assert.match(css.slice(start,css.indexOf('}',start)),/font-size: inherit !important/);
+});
+
+test("native expense name templates reserve text-relative width for whole words",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css'));
+ const selector='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="name"] .expense-template-grid';
+ const start=css.lastIndexOf(selector+' {');
+ assert.ok(start>=0,'enlarged template words need an intrinsic width, not two fixed phone columns');
+ assert.match(css.slice(start,css.indexOf('}',start)),/repeat\(auto-fit, minmax\(min\(100%, 7rem\), 1fr\)\)/);
+});
+
+test("native approved expense header retains original progress and compact keyboard layout",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css'));
+ const selector='html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header h2';
+ const start=css.lastIndexOf(selector+' {');
+ assert.ok(start>=0,'approved hero must be extractable without replacing the proven keyboard header');
+ const rule=css.slice(start,css.indexOf('}',start));
+ assert.match(rule,/border-radius: 24px !important/);
+ assert.match(rule,/font-size: 1\.5rem !important/);
+ assert.match(rule,/color: #fff !important/);
+ const app=await readFile('src/app.mjs','utf8');
+ const progress=app.slice(app.indexOf('function renderExpenseFlowProgress(step)'),app.indexOf('function renderExpenseFlowReview('));
+ assert.match(progress,/aria-current="step"/);
+ assert.doesNotMatch(progress,/<button/,'user rejected named stage buttons; preserve the existing progression semantics');
+});
