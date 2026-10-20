@@ -506,6 +506,7 @@ const pendingCreatedEventDrafts = new Map();
 let joinEventDraft = null;
 let joinEventBusy = false;
 let expenseDraft = null;
+let expenseAttachmentRequest = null;
 let expenseSaveInProgress = false;
 let expenseSaveRequest = null;
 const EXPENSE_FOREGROUND_SAVE_BUDGET_MS = 350;
@@ -8302,11 +8303,11 @@ function renderExpenseNotesDialog(event, canEdit) {
             <textarea data-action="expense-notes" rows="5" maxlength="500" placeholder="לדוגמה: כתובת, פרטי הזמנה או מידע שחשוב לזכור">${escapeHtml(expenseDraft.notes ?? "")}</textarea>
           </label>
           <div class="expense-attachment-control">
-            <label class="secondary-button expense-attachment-upload">
+            <button class="secondary-button expense-attachment-upload" type="button" data-action="select-expense-attachment" aria-label="פתיחת הגלריה">
               <span aria-hidden="true">${iconSvg("receipt")}</span>
               <span>${expenseDraft.attachmentImage ? "החלף מהגלריה" : "הוסף מהגלריה"}</span>
-              <input data-action="expense-attachment-image" type="file" accept="image/*" hidden />
-            </label>
+            </button>
+            <input data-action="expense-attachment-image" type="file" accept="image/*" hidden />
             <button class="secondary-button expense-attachment-upload" type="button" data-action="capture-expense-attachment" aria-label="פתיחת המצלמה">
               <span aria-hidden="true">${iconSvg("camera")}</span>
               <span>מצלמה</span>
@@ -8654,11 +8655,11 @@ function renderExpenseFlowReview(event, participants) {
           <textarea data-action="expense-notes" rows="3" maxlength="500" placeholder="לדוגמה: כתובת, פרטי הזמנה או מידע שחשוב לזכור">${escapeHtml(expenseDraft.notes ?? "")}</textarea>
         </label>
         <div class="expense-attachment-control">
-          <label class="secondary-button expense-attachment-upload">
+          <button class="secondary-button expense-attachment-upload" type="button" data-action="select-expense-attachment" aria-label="פתיחת הגלריה">
             <span aria-hidden="true">${iconSvg("receipt")}</span>
             <span>${expenseDraft.attachmentImage ? "החלף מהגלריה" : "הוסף מהגלריה"}</span>
-            <input data-action="expense-attachment-image" type="file" accept="image/*" hidden />
-          </label>
+          </button>
+          <input data-action="expense-attachment-image" type="file" accept="image/*" hidden />
           <button class="secondary-button expense-attachment-upload" type="button" data-action="capture-expense-attachment" aria-label="פתיחת המצלמה">
             <span aria-hidden="true">${iconSvg("camera")}</span>
             <span>מצלמה</span>
@@ -10442,32 +10443,47 @@ function compressEventCoverImage(file) {
 }
 
 async function captureExpenseAttachment(trigger) {
-  if (!expenseDraft) return;
-  const nativeCamera = globalThis.SogrimNative?.camera;
-  if (!nativeCamera?.available || typeof nativeCamera.takePhoto !== "function") {
+  return selectExpenseAttachment(trigger, "camera");
+}
+
+async function selectExpenseAttachment(trigger, source) {
+  if (!expenseDraft || expenseAttachmentRequest?.draft === expenseDraft) return;
+  const activeDraft = expenseDraft;
+  const participantId = state.currentParticipantId;
+  const isCurrent = () => expenseDraft === activeDraft && state.currentParticipantId === participantId;
+  const mediaApi = source === "camera" ? globalThis.SogrimNative?.camera : globalThis.SogrimNative?.gallery;
+  const method = source === "camera" ? "takePhoto" : "pickPhoto";
+  if (!mediaApi?.available || typeof mediaApi[method] !== "function") {
     trigger
       .closest(".expense-attachment-control")
-      ?.querySelector('[data-image-source="camera-fallback"]')
+      ?.querySelector(source === "camera"
+        ? '[data-image-source="camera-fallback"]'
+        : '[data-action="expense-attachment-image"]:not([data-image-source])')
       ?.click();
     return;
   }
 
+  const request = { draft: activeDraft };
+  expenseAttachmentRequest = request;
   trigger.disabled = true;
   trigger.setAttribute("aria-busy", "true");
   try {
-    const file = await nativeCamera.takePhoto();
-    if (file) await applyExpenseAttachmentImage(file);
+    const file = await mediaApi[method]();
+    if (file && isCurrent()) await applyExpenseAttachmentImage(file);
   } catch (error) {
-    console.warn("[images] Expense camera failed", {
+    console.warn("[images] Expense image selection failed", {
+      source,
       code: String(error?.code ?? ""),
       error: String(error?.message ?? error)
     });
-    if (!expenseDraft) return;
-    expenseDraft.error =
-      "לא הצלחנו לפתוח את המצלמה. בדוק שהרשאת המצלמה פעילה ונסה שוב.";
+    if (!isCurrent()) return;
+    expenseDraft.error = source === "camera"
+      ? "לא הצלחנו לפתוח את המצלמה. בדוק שהרשאת המצלמה פעילה ונסה שוב."
+      : "לא הצלחנו לפתוח את הגלריה. בדוק שהגישה לתמונות מותרת ונסה שוב.";
     render();
     activateExpenseEntryDialog();
   } finally {
+    if (expenseAttachmentRequest === request) expenseAttachmentRequest = null;
     trigger.disabled = false;
     trigger.removeAttribute("aria-busy");
   }
@@ -13554,6 +13570,12 @@ async function handleClick(event) {
     expenseDraft.attachmentImage = "";
     render();
     activateExpenseEntryDialog();
+    return;
+  }
+
+  if (action === "select-expense-attachment") {
+    event.preventDefault();
+    await selectExpenseAttachment(target, "gallery");
     return;
   }
 

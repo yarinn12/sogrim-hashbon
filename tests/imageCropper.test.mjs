@@ -113,13 +113,13 @@ test("expense camera is a direct native action with a capture fallback", async (
   assert.doesNotMatch(app, /data-action="capture-expense-attachment"[\s\S]{0,240}?צילום עכשיו/);
   assert.match(app, /data-image-source="camera-fallback"[^>]*accept="image\/\*"[^>]*capture="environment"/);
   assert.match(app, /globalThis\.SogrimNative\?\.camera/);
-  assert.match(app, /await nativeCamera\.takePhoto\(\)/);
+  assert.match(app, /selectExpenseAttachment\(trigger, "camera"\)/);
   assert.match(app, /await applyExpenseAttachmentImage\(file\)/);
   assert.match(bridge, /const cameraPlugin = plugins\.Camera/);
   assert.match(bridge, /camera: createNativeCameraApi\(cameraPlugin\)/);
   assert.match(bridge, /cameraPlugin\.takePhoto\(\{[\s\S]*?cameraDirection: "REAR"/);
   assert.match(bridge, /OS-PLUG-CAMR-0006/);
-  assert.doesNotMatch(bridge, /cameraPlugin\.chooseFromGallery/);
+  assert.match(bridge, /gallery: createNativeGalleryApi\(cameraPlugin\)/);
   assert.match(config, /"@capacitor\/camera"/);
   assert.match(packageJson, /"@capacitor\/camera"/);
   assert.match(info, /<key>NSCameraUsageDescription<\/key>/);

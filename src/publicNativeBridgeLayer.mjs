@@ -96,6 +96,7 @@ function setupNativeBridge() {
       return true;
     },
     camera: createNativeCameraApi(cameraPlugin),
+    gallery: createNativeGalleryApi(cameraPlugin),
     takePendingPushNotifications() {
       pushConsumerReady = true;
       return pendingPushNotifications.splice(0);
@@ -255,37 +256,68 @@ function createNativeCameraApi(cameraPlugin) {
         throw error;
       }
 
-      const webPath = String(media?.webPath ?? "").trim();
-      if (!webPath) throw new Error("Native camera returned no image path");
-      const { response, blob } = await fetchWithTimeout(
-        globalThis.fetch,
-        webPath,
-        {},
-        10_000,
-        async (imageResponse) => ({
-          response: imageResponse,
-          blob: imageResponse.ok
-            ? await imageResponse.blob()
-            : null
-        })
-      );
-      if (!response.ok) throw new Error("Native camera image could not be read");
-      const format = String(media?.metadata?.format ?? "jpeg")
-        .toLowerCase()
-        .replace("jpg", "jpeg");
-      const mimeType = blob.type.startsWith("image/")
-        ? blob.type
-        : `image/${format}`;
-      if (!mimeType.startsWith("image/")) {
-        throw new Error("Native camera returned a non-image file");
-      }
-      const extension = format === "png" ? "png" : "jpg";
-      return new File([blob], `expense-camera-${Date.now()}.${extension}`, {
-        type: mimeType,
-        lastModified: Date.now()
-      });
+      return nativeImageFile(media, "camera");
     }
   };
+}
+
+function createNativeGalleryApi(cameraPlugin) {
+  return {
+    available: typeof cameraPlugin?.chooseFromGallery === "function",
+    async pickPhoto() {
+      if (typeof cameraPlugin?.chooseFromGallery !== "function") return null;
+      let media;
+      try {
+        const selection = await cameraPlugin.chooseFromGallery({
+          mediaType: 0,
+          allowMultipleSelection: false,
+          quality: 90,
+          correctOrientation: true,
+          editable: "no",
+          presentationStyle: "fullscreen",
+          includeMetadata: true
+        });
+        media = selection?.results?.[0];
+      } catch (error) {
+        if (String(error?.code ?? "") === "OS-PLUG-CAMR-0020") return null;
+        throw error;
+      }
+      if (!media) return null;
+      return nativeImageFile(media, "gallery");
+    }
+  };
+}
+
+async function nativeImageFile(media, source) {
+  const webPath = String(media?.webPath ?? "").trim();
+  if (!webPath) throw new Error("Native image returned no image path");
+  const { response, blob } = await fetchWithTimeout(
+    globalThis.fetch,
+    webPath,
+    {},
+    10_000,
+    async (imageResponse) => ({
+      response: imageResponse,
+      blob: imageResponse.ok
+        ? await imageResponse.blob()
+        : null
+    })
+  );
+  if (!response.ok) throw new Error("Native image could not be read");
+  const format = String(media?.metadata?.format ?? "jpeg")
+    .toLowerCase()
+    .replace("jpg", "jpeg");
+  const mimeType = blob.type.startsWith("image/")
+    ? blob.type
+    : `image/${format}`;
+  if (!mimeType.startsWith("image/")) {
+    throw new Error("Native image returned a non-image file");
+  }
+  const extension = format === "png" ? "png" : "jpg";
+  return new File([blob], `expense-${source}-${Date.now()}.${extension}`, {
+    type: mimeType,
+    lastModified: Date.now()
+  });
 }
 
 async function resolveAndroidPushAvailability(capabilitiesPlugin) {

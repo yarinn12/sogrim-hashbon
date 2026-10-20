@@ -32,6 +32,7 @@ const journeys = [
   "e2e/foreign-expense-input.spec.mjs",
   "e2e/expense-fx-presentation.spec.mjs",
   "e2e/expense-review-presentation.spec.mjs",
+  "e2e/expense-attachment-routing.spec.mjs",
   "e2e/currency-country-search.spec.mjs",
   "e2e/native-updates.spec.mjs",
   "e2e/pwa-update-recovery.spec.mjs",
