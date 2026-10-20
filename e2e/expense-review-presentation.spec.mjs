@@ -33,6 +33,9 @@ test('a newly saved expense keeps its actions menu in the viewport during row ar
  await row.evaluate(e=>e.classList.add('circle-row-added'));
  const dots=row.locator('.expense-row-actions-menu > summary');await dots.click();await expect(row.locator('.expense-row-actions-menu')).toHaveClass(/is-viewport-positioned/);
  const panel=row.locator('.expense-row-actions-menu > div');await expect(panel).toBeVisible();
+ // An open details box can still be settling after navigation/layout updates.
+ // Keep the exact coordinate tolerance; wait for that state instead of sampling a frame.
+ await expect.poll(()=>panel.evaluate(e=>{const b=e.getBoundingClientRect(),c=getComputedStyle(e);return Math.max(Math.abs(b.top-parseFloat(c.top)),Math.abs(b.left-parseFloat(c.left)));})).toBeLessThanOrEqual(1);
  const m=await panel.evaluate(e=>{const b=e.getBoundingClientRect(),css=getComputedStyle(e),nav=document.querySelector('.event-route-primary-nav:not([hidden]),.product-app-nav:not([hidden])').getBoundingClientRect();return {top:b.top,left:b.left,right:b.right,bottom:b.bottom,width:innerWidth,navTop:nav.top,cssTop:parseFloat(css.top),cssLeft:parseFloat(css.left),animation:getComputedStyle(e.closest('.expense-row')).animationName};});
  expect(m.animation).toBe('none');expect(Math.abs(m.top-m.cssTop)).toBeLessThanOrEqual(1);expect(Math.abs(m.left-m.cssLeft)).toBeLessThanOrEqual(1);expect(m.left).toBeGreaterThanOrEqual(0);expect(m.right).toBeLessThanOrEqual(m.width);expect(m.top).toBeGreaterThanOrEqual(0);expect(m.bottom).toBeLessThanOrEqual(m.navTop);
  for(const button of await panel.locator('button').all()){await expect(button).toBeVisible();expect(await button.evaluate(e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})).toBe(true);}
