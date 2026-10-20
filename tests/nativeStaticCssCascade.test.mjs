@@ -511,3 +511,14 @@ test("native final review scales the per-person summary and uses its inner scrol
  const index=css.lastIndexOf(prefix+'.expense-confirmation-summary>strong {');assert.ok(index>=0,'the actual per-person text needs its own scalable rule');assert.match(css.slice(index,css.indexOf('}',index)),/font-size:\.8125rem!important/);
  assert.match(css,/\.expense-step-modal\[data-expense-step="review"\] :is\(input,select,textarea,button,summary,details\)\s*\{scroll-margin-block:8px!important/);
 });
+
+
+test("native expense action menus release the new-row animation containing block", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, files } = await harness();
+  await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  assert.match(css, /\.expense-row:has\(\.expense-row-actions-menu\[open\]\) \{[^}]*animation: none !important;/);
+  const compatibility = await readFile("src/platformCompatibility.mjs", "utf8");
+  assert.match(compatibility, /\.expense-row\.sogrim-has-open-expense-menu \{[^}]*animation: none !important;/);
+});

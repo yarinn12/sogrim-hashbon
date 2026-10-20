@@ -19176,6 +19176,9 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row:has(.expense-row-actions-menu[open]) {
+    /* Arrival animations retain a transformed containing block even when the
+       final computed transform is none. Fixed menu coordinates need the viewport. */
+    animation: none !important;
     /* content-visibility:auto contains paint even for a visible row. Release
        that containment while its menu extends outside the card. */
     content-visibility: visible !important;
