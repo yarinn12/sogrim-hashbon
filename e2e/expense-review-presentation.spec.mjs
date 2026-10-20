@@ -33,6 +33,7 @@ test('a newly saved expense keeps its actions menu in the viewport during row ar
  await row.evaluate(e=>e.classList.add('circle-row-added'));
  const dots=row.locator('.expense-row-actions-menu > summary');await dots.click();await expect(row.locator('.expense-row-actions-menu')).toHaveClass(/is-viewport-positioned/);
  const panel=row.locator('.expense-row-actions-menu > div');await expect(panel).toBeVisible();
+ expect(await row.evaluate(e=>getComputedStyle(e).animationName)).toBe('none');
  // An open details box can still be settling after navigation/layout updates.
  // Keep the exact coordinate tolerance; wait for that state instead of sampling a frame.
  await expect.poll(()=>panel.evaluate(e=>{const b=e.getBoundingClientRect(),c=getComputedStyle(e);return Math.max(Math.abs(b.top-parseFloat(c.top)),Math.abs(b.left-parseFloat(c.left)));})).toBeLessThanOrEqual(1);
