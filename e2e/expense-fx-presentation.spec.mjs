@@ -5,7 +5,7 @@ requireHeldHomeReadiness(test);
 test.use({ serviceWorkers: "block" });
 const owner="fx-presentation-owner",eventId="fx-presentation-event";
 const initial={currentParticipantId:owner,participants:[{id:owner,displayName:"משתמש בדיקה",kind:"user"}],friendContacts:[],groups:[],deletedEvents:[],deletedParticipants:[],events:[{id:eventId,name:"אירוע בדיקה",eventType:"outing",currency:"ILS",participantIds:[owner],adminIds:[owner],createdByParticipantId:owner,createdAt:"2026-10-11T00:00:00Z",updatedAt:"2026-10-11T00:00:00Z",expenses:[],transfers:[],notes:[],deletedNotes:[],activityLog:[]}]};
-function response(){const last=Math.floor(Date.now()/1000)-3600;return {result:"success",base_code:"USD",time_last_update_unix:last,time_next_update_unix:last+86400,time_eol_unix:0,rates:{USD:1,ILS:3.5}};}
+function response(){const last=Math.floor(Date.now()/1000)-3600;return {result:"success",provider:"https://www.exchangerate-api.com",base_code:"USD",time_last_update_unix:last,time_next_update_unix:last+86400,time_eol_unix:0,rates:{USD:1,ILS:3.5}};}
 
 test.beforeEach(async({page,request},info)=>{
  const state=structuredClone(initial);
