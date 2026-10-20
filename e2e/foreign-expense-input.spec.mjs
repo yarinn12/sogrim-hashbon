@@ -45,6 +45,8 @@ async function completeExpense(page, { amount = "10", converted = "₪35.00" } =
 async function selectSourceCurrency(page, currency) {
   await page.locator('[data-choice-select-action="expense-source-currency"]').click();
   await page.locator(`.app-choice-option[data-choice-value="${currency}"]`).click();
+  const details = page.locator("details.expense-fx-details");
+  if (await details.count() && await details.getAttribute("open") === null) await details.locator("summary").click();
 }
 
 function openAccessResponse(base, rates) {

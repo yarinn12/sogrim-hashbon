@@ -22339,6 +22339,51 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expe
 /* The bulk toggle reflects the same selected/empty state as participant marks. */
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact:not([aria-pressed="true"])>span[aria-hidden="true"] {border-color:#aab6b2!important;color:transparent!important;}
 
+
+/* Approved progressive expense conversion. */
+/* Calculation and persistence remain in the existing adapters. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal:not([data-expense-step="amount"]) .expense-fx-fields,
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal:not([data-expense-step="amount"]) .expense-source-currency-field {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body:has(.expense-fx-fields) {padding-block-start:16px!important;gap:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body:has(.expense-fx-fields) .expense-total-field {padding:12px!important;gap:4px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body:has(.expense-fx-fields) .expense-total-field input[data-action="expense-total"] {min-height:max(56px,3.25rem)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-fields {display:grid!important;gap:12px!important;width:min(100%,400px)!important;min-width:0!important;padding:0!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-fields p {margin:0!important;font-size:.8125rem!important;line-height:1.5!important;font-weight:400!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-mode {display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-mode button {display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;min-height:44px!important;padding:8px 12px!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;font-size:.875rem!important;line-height:1.5!important;font-weight:600!important;white-space:normal!important;color:var(--ledger-ink)!important;background:#fff!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-mode button[aria-pressed="true"] {border-color:var(--ledger-brand)!important;color:var(--ledger-brand)!important;background:#edf6f2!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-rate-field {gap:6px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-rate-field>span {font-size:.8125rem!important;line-height:1.5!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-rate-field input {width:100%!important;min-width:0!important;min-height:48px!important;padding:10px 12px!important;font-family:var(--font-num)!important;font-size:1.25rem!important;line-height:1.4!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;background:#fff!important;color:var(--ledger-ink)!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-rate-field input[readonly] {background:#f7faf9!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-rate-field input:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview {display:flex!important;align-items:center!important;justify-content:space-between!important;flex-wrap:wrap!important;gap:6px 12px!important;padding:12px 0!important;margin:0!important;border:0!important;border-block-start:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview-label {font-size:.875rem!important;line-height:1.5!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview-value {font-size:1.375rem!important;line-height:1.4!important;font-weight:700!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview-message {font-size:.8125rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview.is-error {color:var(--danger,#a12828)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-source-row {display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:start!important;gap:0 12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details {min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details summary {min-width:44px!important;min-height:44px!important;padding:12px 0!important;box-sizing:border-box!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;cursor:pointer!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details summary:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;border-radius:4px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details-content {display:grid!important;gap:8px!important;padding-block:0 12px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal [data-expense-fx-source] {display:grid!important;gap:0!important;min-width:0!important;overflow-wrap:anywhere!important;font-size:.8125rem!important;line-height:1.5!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal [data-expense-fx-source]>span {font-size:inherit!important;line-height:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal [data-action="expense-fx-refresh"] {min-width:44px!important;min-height:44px!important;padding:12px 0!important;border:0!important;border-radius:8px!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-brand)!important;font-size:.8125rem!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-credit {display:none!important;align-items:center!important;flex-wrap:wrap!important;gap:0 4px!important;margin-block-start:-12px!important;font-size:.8125rem!important;line-height:1.5!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-credit a {display:inline-flex!important;align-items:center!important;min-width:44px!important;min-height:44px!important;font-size:inherit!important;line-height:inherit!important;font-weight:400!important;color:inherit!important;text-decoration:underline!important;text-decoration-thickness:1px!important;text-underline-offset:3px!important;overflow-wrap:anywhere!important;max-width:100%!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-credit a:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;border-radius:4px!important;}
+@media(max-width:380px) {html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-source-row {column-gap:8px!important;}}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-source-row:has([data-fx-provider="open-access"])+.expense-fx-credit {display:flex!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-fields .expense-fx-explanation {font-size:.875rem!important;line-height:1.6!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-fields .expense-fx-explanation strong {font-size:inherit!important;line-height:inherit!important;font-weight:600!important;color:inherit!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-fields:has([data-fx-provider="open-access"])>.expense-fx-credit {display:flex!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details summary {font-size:.875rem!important;font-weight:600!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details-content {gap:12px!important;padding-block:4px 12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview-label {font-weight:400!important;}
 `;
 
 const RETIRED_ROOT_CLASSES = [

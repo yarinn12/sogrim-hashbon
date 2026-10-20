@@ -1,3 +1,4 @@
+import { expenseFxCurrencyNames, renderExpenseFxFieldsView, renderExpenseFxPreviewView, renderExpenseFxSourceMetadataView } from "./ui/expenseFxPresentation.mjs";
 import { renderExpenseParticipantToolbarView, expenseFriendChoiceDescription } from "./ui/expenseParticipantSelection.mjs";
 import { renderExpenseFlowProgressView } from "./ui/expenseFlowProgress.mjs";
 import { renderExpensePayerAmountView } from "./ui/expensePayerAmount.mjs";
@@ -8973,43 +8974,40 @@ function expenseFxResult(event = getEvent(expenseDraft?.eventId)) {
 }
 
 function renderExpenseFxPreview(event) {
-  if (!expenseUsesForeignCurrency(event)) return "";
-  let preview = expenseDraft.fxLoading ? "בודקים שער יומי…" : expenseDraft.fxError || "יש לבחור שער כדי להציג את הסכום במטבע האירוע.";
-  if (!expenseDraft.fxLoading && !expenseDraft.fxError && expenseDraft.fxRate) {
-    try {
-      const result = expenseFxResult(event);
-      preview = `${formatSourceAmount(result.fxConversion.sourceAmountMinorUnits, expenseDraft.sourceCurrency)} ${expenseDraft.sourceCurrency} = ${formatEventMoney(event, result.total)} במטבע האירוע`;
-    } catch (error) {
-      preview = error.message;
-    }
+  return renderExpenseFxPreviewView(expenseFxPreviewModel(event));
+}
+
+function expenseFxPresentationNames(event) {
+  return expenseFxCurrencyNames({ source: currencyConfig(expenseDraft.sourceCurrency || eventCurrency(event)), target: currencyConfig(eventCurrency(event)) });
+}
+
+function expenseFxPreviewModel(event) {
+  if (!expenseUsesForeignCurrency(event)) return null;
+  const amount = String(expenseDraft.total || "").trim();
+  let message = expenseDraft.fxLoading ? "בודקים שער יומי…" : expenseDraft.fxError || (amount ? "יש לבחור שער כדי להציג את הסכום במטבע האירוע." : "הזינו סכום להצגת ההמרה.");
+  let value = "";
+  if (amount && !expenseDraft.fxLoading && !expenseDraft.fxError && expenseDraft.fxRate) {
+    try { value = formatEventMoney(event, expenseFxResult(event).total); }
+    catch (error) { message = error.message; }
   }
-  return `<p class="expense-fx-preview ${expenseDraft.fxError ? "is-error" : ""}" role="status" aria-live="polite">${escapeHtml(preview)}</p>`;
+  return { amount, ...expenseFxPresentationNames(event), value, message, error: expenseDraft.fxError, automatic: expenseDraft.fxMode === "automatic" };
+}
+
+function expenseFxMetadataModel() {
+  return { kind: expenseDraft.fxRateSource === FX_OPEN_ACCESS_SOURCE ? "open-access" : expenseDraft.fxRateSource === FX_LEGACY_ECB_SOURCE ? "legacy-ecb" : "manual",
+    updatedAt: formatFxUpdateTime(expenseDraft.fxSourceUpdatedAt), nextUpdateAt: formatFxUpdateTime(expenseDraft.fxNextUpdateAt), sourceDate: expenseDraft.fxSourceDate };
+}
+
+function renderExpenseFxSourceMetadata() {
+  return renderExpenseFxSourceMetadataView(expenseFxMetadataModel());
 }
 
 function renderExpenseFxFields(event) {
   const source = expenseDraft.sourceCurrency || eventCurrency(event);
-  const foreign = source !== eventCurrency(event);
-  return `
-    <label class="field expense-source-currency-field">
-      <span>מטבע ההוצאה</span>
-      <select data-action="expense-source-currency" name="expenseSourceCurrency">
-        ${currencyOptions().map((currency) => `<option value="${currency.id}" ${source === currency.id ? "selected" : ""}>${escapeHtml(currency.label)} (${currency.id})</option>`).join("")}
-      </select>
-    </label>
-    ${!foreign && expenseDraft.fxError ? `<p class="notice" role="status">${escapeHtml(expenseDraft.fxError)}</p>` : ""}
-    ${foreign ? `<section class="expense-fx-fields" aria-label="המרת מטבע">
-      <p class="muted">הסכום והמשלמים מוזנים ב־${escapeHtml(source)}. החשבון והחובות יישמרו ב־${escapeHtml(eventCurrency(event))}. שער אוטומטי הוא שער ייחוס יומי, לא שער עסקה.</p>
-      <div class="expense-fx-mode" role="group" aria-label="בחירת שער המרה">
-        <button type="button" class="secondary-button" data-action="expense-fx-automatic" aria-pressed="${expenseDraft.fxMode === "automatic"}">שער יומי אוטומטי</button>
-        <button type="button" class="secondary-button" data-action="expense-fx-manual" aria-pressed="${expenseDraft.fxMode === "manual"}">שער אישי</button>
-      </div>
-      <label class="field"><span>שער: 1 ${escapeHtml(source)} = כמה ${escapeHtml(eventCurrency(event))}</span>
-        <input data-action="expense-fx-rate" name="expenseFxRate" inputmode="decimal" dir="ltr" value="${escapeAttribute(expenseDraft.fxRate ?? "")}" ${expenseDraft.fxMode === "manual" ? "" : "readonly"} placeholder="לדוגמה 3.5" />
-      </label>
-      ${expenseDraft.fxMode === "automatic" ? `<p class="muted" data-expense-fx-source>מקור: ${expenseFxSourceDescription(expenseDraft.fxRateSource, expenseDraft.fxSourceDate, expenseDraft.fxSourceUpdatedAt, expenseDraft.fxNextUpdateAt)}</p><button type="button" class="secondary-button" data-action="expense-fx-refresh" ${expenseDraft.fxLoading ? "disabled" : ""}>בדוק שער עדכני</button>` : ""}
-      ${renderExpenseFxPreview(event)}
-    </section>` : ""}
-  `;
+  return renderExpenseFxFieldsView({ sourceCurrency: source, foreign: source !== eventCurrency(event), options: currencyOptions(), error: expenseDraft.fxError,
+    automatic: expenseDraft.fxMode === "automatic", manual: expenseDraft.fxMode === "manual", loading: expenseDraft.fxLoading, rate: expenseDraft.fxRate, names: expenseFxPresentationNames(event), preview: expenseFxPreviewModel(event),
+    expanded: Boolean(expenseDraft.fxMode === "manual" || expenseDraft.fxError || app.querySelector(".expense-fx-fields .expense-fx-details")?.open),
+    metadata: expenseFxMetadataModel(), attributionUrl: FX_OPEN_ACCESS_ATTRIBUTION_URL });
 }
 
 function syncExpenseFxPreview() {
@@ -9026,7 +9024,9 @@ function syncExpenseFxControls() {
   const rateInput = app.querySelector('[data-action="expense-fx-rate"]');
   if (rateInput && rateInput.value !== (expenseDraft.fxRate ?? "")) rateInput.value = expenseDraft.fxRate ?? "";
   const source = app.querySelector("[data-expense-fx-source]");
-  if (source) source.innerHTML = `מקור: ${expenseFxSourceDescription(expenseDraft.fxRateSource, expenseDraft.fxSourceDate, expenseDraft.fxSourceUpdatedAt, expenseDraft.fxNextUpdateAt)}`;
+  if (source) source.innerHTML = renderExpenseFxSourceMetadata();
+  const details = app.querySelector(".expense-fx-fields .expense-fx-details");
+  if (details && expenseDraft.fxError) details.open = true;
   const refresh = app.querySelector('[data-action="expense-fx-refresh"]');
   if (refresh) refresh.disabled = Boolean(expenseDraft.fxLoading);
   syncExpenseFxPreview();

@@ -486,3 +486,13 @@ test("native clickable progress bars keep44px targets and visible keyboard focus
  assert.ok(css.includes('.expense-progress-step-button:focus-visible{outline:2pxsolidvar(--ledger-brand)!important'));
  assert.ok(css.includes('.expense-flow-progressli{overflow:visible!important'));
 });
+
+test("native FX presentation includes scalable controls, optional details and visible provider credit",async()=>{
+ const {extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css'));
+ assert.match(css,/\.expense-fx-rate-field input\s*\{[^}]*font-size:\s*1\.25rem/);
+ assert.match(css,/\.expense-fx-preview-value\s*\{[^}]*font-size:\s*1\.375rem/);
+ assert.match(css,/\.expense-fx-details summary\s*\{[^}]*min-height:\s*44px/);
+ assert.match(css,/\.expense-fx-fields:has\(\[data-fx-provider="open-access"\]\)>\.expense-fx-credit\s*\{display:flex!important/);
+ assert.match(css,/\.expense-step-modal:not\(\[data-expense-step="amount"\]\) \.expense-source-currency-field/);
+ const sw=await readFile('sw.js','utf8');assert.equal(sw.split('"/src/ui/expenseFxPresentation.mjs"').length-1,2,'both offline module lists include the extracted FX view');
+});
