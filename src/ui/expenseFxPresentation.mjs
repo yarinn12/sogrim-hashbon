@@ -1,3 +1,5 @@
+export const EXPENSE_CURRENCY_REENTRY_NOTICE = "המטבע הוחלף; יש להזין מחדש את הסכום ואת סכומי המשלמים.";
+
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
@@ -35,7 +37,7 @@ export function renderExpenseFxFieldsView(model) {
         ${options.map(currency => `<option value="${escapeHtml(currency.id)}" ${sourceCurrency === currency.id ? "selected" : ""}>${escapeHtml(currency.label)} (${escapeHtml(currency.id)})</option>`).join("")}
       </select>
     </label>
-    ${!foreign && error ? `<p class="notice" role="status">${escapeHtml(error)}</p>` : ""}
+    ${!foreign && error ? `<p class="notice" role="status" data-expense-fx-notice>${escapeHtml(error)}</p>` : ""}
     ${foreign ? `<section class="expense-fx-fields" aria-label="המרת מטבע">
       ${renderExpenseFxPreviewView(preview)}
       <details class="expense-fx-details" ${expanded ? "open" : ""}>
@@ -55,4 +57,22 @@ export function renderExpenseFxFieldsView(model) {
       ${automatic ? `<p class="expense-fx-credit">נתוני שערים: <a href="${escapeHtml(attributionUrl)}" target="_blank" rel="noopener noreferrer" dir="ltr">ExchangeRate-API</a></p>` : ""}
     </section>` : ""}
   `;
+}
+
+// Review copy is presentation only: values and provenance come from the existing FX adapter.
+export function renderExpenseFxReviewAmountView({amount,sourceName,value,targetName}) {
+  return `<span class="expense-review-fx-amount"><span><bdi dir="ltr">${escapeHtml(amount)}</bdi> ${escapeHtml(sourceName)}</span><span>≈ <bdi class="font-num" dir="ltr">${escapeHtml(value)}</bdi> ${escapeHtml(targetName)}</span></span>`;
+}
+
+export function renderExpenseFxReviewDetailsView({names,rate,automatic,metadata,attributionUrl}) {
+  return `<div class="expense-review-fx-info">
+    <p class="expense-review-fx-confirmation">בדקו שהסכום ב${escapeHtml(names.targetName)} נכון לפני השמירה.</p>
+    <details class="expense-review-fx-details">
+      <summary>פרטי המרה</summary>
+      <p>${escapeHtml(names.sourceUnit)} שווה <bdi dir="ltr">${escapeHtml(rate)}</bdi> ${escapeHtml(names.targetName)}.</p>
+      ${automatic ? '<p>שער יומי להערכה. החיוב בפועל עשוי להיות שונה.</p>' : ''}
+      <div data-expense-fx-review-source>${renderExpenseFxSourceMetadataView(metadata)}</div>
+    </details>
+    ${metadata.kind === "open-access" ? `<p class="expense-review-fx-credit">נתוני שערים: <a href="${escapeHtml(attributionUrl)}" target="_blank" rel="noopener noreferrer" dir="ltr">ExchangeRate-API</a></p>` : ''}
+  </div>`;
 }

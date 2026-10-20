@@ -5,6 +5,8 @@ import { runInNewContext } from "node:vm";
 
 const source=await readFile('src/app.mjs','utf8');
 const readiness=source.slice(source.indexOf('function expenseFlowReady('),source.indexOf('function expenseFlowNextLabel('));
+const noticeStart=source.indexOf('function clearResolvedExpenseCurrencyNotice()');
+const notice=noticeStart<0?'':source.slice(noticeStart,source.indexOf('function syncExpenseFxPreview()',noticeStart));
 const sync=source.slice(source.indexOf('function syncExpenseFlowActionState('),source.indexOf('function renderExpenseDateField('));
 const remove=source.slice(source.indexOf('if (action === "remove-payer")'),source.indexOf('if (action === "save-expense")'));
 
@@ -23,7 +25,7 @@ for(const remaining of [80,120]) {
    // Edited values remain fixed. Readiness must reflect them after a render.
    rebalanceExpenseDraftPayers:()=>{},render:()=>{next.disabled=false;},syncExpenseSaveState:()=>{},
    reactivateDialogAfterRender:(_dialog,selector,scroll)=>{focus=selector;assert.equal(scroll,17);}};
-  runInNewContext(readiness+'\n'+sync+'\n'+remove,context);
+  runInNewContext(readiness+'\n'+notice+'\n'+sync+'\n'+remove,context);
   assert.deepEqual(draft.payers,[{participantId:'p1',amount:String(remaining)}]);
   assert.equal(next.disabled,remaining!==120,'rerender must retain the existing readiness result');
   assert.equal(focus,'[data-action="expense-payer-id"][data-index="0"]');

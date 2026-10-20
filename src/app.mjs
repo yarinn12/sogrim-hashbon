@@ -1,4 +1,4 @@
-import { expenseFxCurrencyNames, renderExpenseFxFieldsView, renderExpenseFxPreviewView, renderExpenseFxSourceMetadataView } from "./ui/expenseFxPresentation.mjs";
+import { EXPENSE_CURRENCY_REENTRY_NOTICE, renderExpenseFxReviewAmountView, renderExpenseFxReviewDetailsView, expenseFxCurrencyNames, renderExpenseFxFieldsView, renderExpenseFxPreviewView, renderExpenseFxSourceMetadataView } from "./ui/expenseFxPresentation.mjs";
 import { renderExpenseParticipantToolbarView, expenseFriendChoiceDescription } from "./ui/expenseParticipantSelection.mjs";
 import { renderExpenseFlowProgressView } from "./ui/expenseFlowProgress.mjs";
 import { renderExpensePayerAmountView } from "./ui/expensePayerAmount.mjs";
@@ -1627,6 +1627,7 @@ function captureRenderInteractionState() {
     pageScrollY: window.scrollY,
     dialogSelector: dialog ? dialogRenderSelector(dialog) : "",
     dialogScrollTop: dialog?.scrollTop ?? 0,
+    expenseStep: dialog?.dataset?.expenseStep ?? "",
     openExpenseParticipantIds: [
       ...app.querySelectorAll(".expense-participants-details[open]")
     ]
@@ -1674,7 +1675,8 @@ function restoreRenderInteractionState(snapshot, expectedRenderGeneration) {
       ? app.querySelector(snapshot.dialogSelector)
       : null;
     if (snapshot.dialogSelector && !currentDialog) return;
-    if (currentDialog) {
+    // A new expense stage owns its initial scroll. Do not replay the previous stage's offset.
+    if (currentDialog && (!snapshot.expenseStep || currentDialog.dataset.expenseStep === snapshot.expenseStep)) {
       currentDialog.scrollTop = Math.max(0, snapshot.dialogScrollTop);
     }
 
@@ -8624,10 +8626,14 @@ function navigateExpenseProgress(step) {
 function renderExpenseFlowReview(event, participants) {
   const values = expenseDetailsSummaryValues(event, participants);
   let totalLabel = expenseDraft.total;
+  let fxModel = null;
   try {
-    totalLabel = expenseUsesForeignCurrency(event)
-      ? `${expenseDraft.total} ${expenseDraft.sourceCurrency} → ${formatEventMoney(event, expenseFxResult(event).total)}`
-      : formatEventMoney(event, parseMoneyInput(expenseDraft.total));
+    if (expenseUsesForeignCurrency(event)) {
+      totalLabel = formatEventMoney(event, expenseFxResult(event).total);
+      fxModel = { amount: expenseDraft.total, ...expenseFxPresentationNames(event), value: totalLabel,
+        names: expenseFxPresentationNames(event), rate: expenseDraft.fxRate, automatic: expenseDraft.fxMode === "automatic",
+        metadata: expenseFxMetadataModel(), attributionUrl: FX_OPEN_ACCESS_ATTRIBUTION_URL };
+    } else totalLabel = formatEventMoney(event, parseMoneyInput(expenseDraft.total));
   } catch {
     // The amount step owns validation.
   }
@@ -8635,8 +8641,8 @@ function renderExpenseFlowReview(event, participants) {
   return `
     <section class="expense-flow-review" aria-label="סיכום ההוצאה לפני שמירה">
       <div class="expense-review-list">
-        ${renderExpenseReviewRow("amount", "סכום", totalLabel)}
-        ${expenseUsesForeignCurrency(event) ? `<p class="muted">שער משוער ${escapeHtml(expenseDraft.fxRate || "טרם נבחר")} ${escapeHtml(eventCurrency(event))} ל־1 ${escapeHtml(expenseDraft.sourceCurrency)} · ${expenseFxSourceDescription(expenseDraft.fxMode === "automatic" ? expenseDraft.fxRateSource : "user", expenseDraft.fxSourceDate, expenseDraft.fxSourceUpdatedAt, expenseDraft.fxNextUpdateAt)}. יש לבדוק את הסכום המומר ולאשר אותו לפני שמירה.</p>` : ""}
+        ${renderExpenseReviewRow("amount", "סכום", totalLabel, fxModel)}
+        ${fxModel ? renderExpenseFxReviewDetailsView(fxModel) : ""}
         ${renderExpenseReviewRow("name", "שם ההוצאה", expenseDraft.name.trim())}
         ${renderExpenseReviewRow("payer", "שילם", values.payer)}
         ${renderExpenseReviewRow("participants", "משתתפים", values.participants)}
@@ -8669,12 +8675,12 @@ function renderExpenseFlowReview(event, participants) {
   `;
 }
 
-function renderExpenseReviewRow(step, label, value) {
+function renderExpenseReviewRow(step, label, value, fxModel = null) {
   return `
     <button class="expense-review-row" type="button" data-action="expense-step-edit" data-step="${step}">
       <span>
         <small>${escapeHtml(label)}</small>
-        <strong>${escapeHtml(value || "לא הוזן")}</strong>
+        <strong>${fxModel ? renderExpenseFxReviewAmountView(fxModel) : escapeHtml(value || "לא הוזן")}</strong>
       </span>
       <span class="expense-review-edit" aria-hidden="true">${iconSvg("chevron-left")}</span>
     </button>
@@ -8804,6 +8810,7 @@ function expenseDialogRewindSteps() {
 
 function syncExpenseFlowActionState() {
   if (!expenseDraft) return;
+  clearResolvedExpenseCurrencyNotice();
   const nextButton = app.querySelector('[data-action="expense-step-next"]');
   if (nextButton instanceof HTMLButtonElement) {
     nextButton.disabled = !expenseFlowReady(expenseDraft.flowStep);
@@ -9008,6 +9015,13 @@ function renderExpenseFxFields(event) {
     automatic: expenseDraft.fxMode === "automatic", manual: expenseDraft.fxMode === "manual", loading: expenseDraft.fxLoading, rate: expenseDraft.fxRate, names: expenseFxPresentationNames(event), preview: expenseFxPreviewModel(event),
     expanded: Boolean(expenseDraft.fxMode === "manual" || expenseDraft.fxError || app.querySelector(".expense-fx-fields .expense-fx-details")?.open),
     metadata: expenseFxMetadataModel(), attributionUrl: FX_OPEN_ACCESS_ATTRIBUTION_URL });
+}
+
+function clearResolvedExpenseCurrencyNotice() {
+  if (!expenseDraft?.fxError || expenseDraft.fxError !== EXPENSE_CURRENCY_REENTRY_NOTICE) return;
+  if (expenseUsesForeignCurrency() || !expenseFlowReady("amount") || !expenseFlowReady("payer")) return;
+  expenseDraft.fxError = "";
+  app.querySelector("[data-expense-fx-notice]")?.remove();
 }
 
 function syncExpenseFxPreview() {
@@ -14921,7 +14935,7 @@ async function handleChange(event) {
       expenseDraft.fxFetchedAt = null;
       expenseDraft.fxSourceUpdatedAt = null;
       expenseDraft.fxNextUpdateAt = null;
-      expenseDraft.fxError = hadAmount ? "המטבע הוחלף; יש להזין מחדש את הסכום ואת סכומי המשלמים." : "";
+      expenseDraft.fxError = hadAmount ? EXPENSE_CURRENCY_REENTRY_NOTICE : "";
       expenseDraft.existingFxConversion = null;
       expenseDraft.removeFxConversion = selected === eventCurrency(getEvent(expenseDraft.eventId));
       rememberExpenseDraft();
@@ -19995,6 +20009,7 @@ function activateExpenseEntryDialog() {
   // a deferred reset could scroll a replacement step or undo a user's gesture.
   const dialog = app.querySelector(".expense-step-modal");
   const scrollSurface = dialog?.querySelector(".expense-flow-body");
+  if (dialog) dialog.scrollTop = 0;
   if (scrollSurface) scrollSurface.scrollTop = 0;
   activateDialog(".expense-modal", focusSelector);
 }

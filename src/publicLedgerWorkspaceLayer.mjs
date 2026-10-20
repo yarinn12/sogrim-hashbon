@@ -22384,6 +22384,25 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expe
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details summary {font-size:.875rem!important;font-weight:600!important;color:var(--ledger-brand)!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details-content {gap:12px!important;padding-block:4px 12px!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview-label {font-weight:400!important;}
+/* Approved final review keeps the existing rows, with compact attachments and readable FX copy. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-attachment-control {grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr))!important;align-items:stretch!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-attachment-upload {min-width:0!important;min-height:44px!important;white-space:normal!important;font-size:.875rem!important;line-height:1.5!important;padding:10px 12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-attachment-control>:is(img,[data-action="remove-expense-attachment"]) {grid-column:1/-1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-amount {display:grid!important;gap:4px!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-amount bdi {unicode-bidi:isolate!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-info {display:grid!important;gap:4px!important;padding:8px 15px 12px!important;border-bottom:1px solid var(--ledger-line)!important;color:var(--ledger-muted)!important;font-size:.8125rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-info p {margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details {min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details summary {display:flex!important;align-items:center!important;gap:8px!important;min-height:44px!important;cursor:pointer!important;color:var(--ledger-brand)!important;list-style:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details summary::-webkit-details-marker {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details summary::before {content:"";width:0;height:0;border-block:4px solid transparent;border-inline-end:6px solid currentColor;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details[open] summary::before {transform:rotate(-90deg);}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details p,html.design-coherence-v1.ledger-workspace-v1 body #app [data-expense-fx-review-source] {margin-block-end:8px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app [data-expense-fx-review-source]>span {display:block!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-credit {display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:4px!important;font-size:.8125rem!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-credit a {display:inline-flex!important;align-items:center!important;min-height:44px!important;min-width:44px!important;color:inherit!important;text-underline-offset:3px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details summary:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
