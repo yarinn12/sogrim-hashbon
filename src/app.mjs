@@ -31,6 +31,7 @@ import {
   currencyConfig,
   currencyOptions,
   currencySelectLabel,
+  currencySearchText,
   formatCurrency,
   normalizeCurrency
 } from "./domain/currencies.mjs";
@@ -4431,7 +4432,7 @@ function renderNewEvent() {
           valueLabel: currencySelectLabel(newEventDraft.currency),
           action: "new-event-currency-choice",
           selectedValue: newEventDraft.currency,
-          options: currencyOptions().map((currency) => ({ value: currency.id, label: currencySelectLabel(currency.id) })),
+          options: currencyOptions().map((currency) => ({ value: currency.id, label: currencySelectLabel(currency.id), searchText: currencySearchText(currency.id) })),
           searchable: true,
           hint: "כל ההוצאות וההעברות יוצגו במטבע הזה."
         })}
@@ -5376,7 +5377,7 @@ function renderNewEventSettlement() {
 
 
 function renderNewEventInlinePicker({ label, valueLabel, action, selectedValue, options, hint, searchable = false }) {
-  return `<div class="field new-event-inline-picker" data-picker-action="${escapeAttribute(action)}"><span>${escapeHtml(label)}</span><details><summary><span>${escapeHtml(valueLabel)}</span><span class="new-event-inline-picker-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span></summary><div class="new-event-inline-picker-menu">${searchable ? `<label class="new-event-currency-search"><span class="visually-hidden">חיפוש מטבע לפי שם או קוד</span><input type="search" data-action="new-event-currency-search" aria-label="חיפוש מטבע לפי שם או קוד" placeholder="חיפוש שם או קוד מטבע" autocomplete="off" /></label>` : ""}${options.map((option) => `<button type="button" class="${option.value === selectedValue ? "is-selected" : ""}" data-action="${action}" data-choice-value="${escapeAttribute(option.value)}" data-search-text="${escapeAttribute(`${option.label} ${option.value}`)}" aria-pressed="${option.value === selectedValue}"><span>${escapeHtml(option.label)}</span>${option.value === selectedValue ? `<span aria-hidden="true">${iconSvg("check")}</span>` : ""}</button>`).join("")}${searchable ? `<p class="muted" data-currency-search-empty hidden>לא נמצאו מטבעות</p>` : ""}</div></details><small>${escapeHtml(hint)}</small></div>`;
+  return `<div class="field new-event-inline-picker" data-picker-action="${escapeAttribute(action)}"><span>${escapeHtml(label)}</span><details><summary><span>${escapeHtml(valueLabel)}</span><span class="new-event-inline-picker-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span></summary><div class="new-event-inline-picker-menu">${searchable ? `<label class="new-event-currency-search"><span class="visually-hidden">חיפוש מטבע לפי שם, מדינה או קוד</span><input type="search" data-action="new-event-currency-search" aria-label="חיפוש מטבע לפי שם, מדינה או קוד" placeholder="מטבע, מדינה או קוד" autocomplete="off" /></label>` : ""}${options.map((option) => `<button type="button" class="${option.value === selectedValue ? "is-selected" : ""}" data-action="${action}" data-choice-value="${escapeAttribute(option.value)}" data-search-text="${escapeAttribute(option.searchText ?? `${option.label} ${option.value}`)}" aria-pressed="${option.value === selectedValue}"><span>${escapeHtml(option.label)}</span>${option.value === selectedValue ? `<span aria-hidden="true">${iconSvg("check")}</span>` : ""}</button>`).join("")}${searchable ? `<p class="muted" data-currency-search-empty hidden>לא נמצאו מטבעות</p>` : ""}</div></details><small>${escapeHtml(hint)}</small></div>`;
 }
 
 function closeNewEventInlinePicker(target) {

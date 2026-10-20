@@ -1,4 +1,5 @@
 import { iconSvg } from "./uiIcons.mjs";
+import { currencySearchText } from "./domain/currencies.mjs";
 
 const STYLE_ID = "public-choice-picker-style";
 const ENHANCED_CLASS = "app-choice-native";
@@ -162,7 +163,7 @@ function openChoicePicker(select, trigger) {
 
   const searchable = isSearchableChoiceSelect(select);
   Array.from(select.options).forEach((option) => {
-    list.append(renderChoiceOption(option, select.value));
+    list.append(renderChoiceOption(option, select.value, searchable));
   });
 
   const optionsRegion = document.createElement("div");
@@ -201,7 +202,7 @@ function openChoicePicker(select, trigger) {
   (selectedOption ?? firstOption ?? closeButton).focus({ preventScroll: true });
 }
 
-function renderChoiceOption(option, selectedValue) {
+function renderChoiceOption(option, selectedValue, searchable = false) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "app-choice-option";
@@ -215,7 +216,7 @@ function renderChoiceOption(option, selectedValue) {
 
   const normalizedText = option.textContent?.replace(/\s+/g, " ").trim() ?? "";
   button.dataset.choiceSearch = normalizeChoiceSearch(
-    `${normalizedText} ${option.value}`
+    `${normalizedText} ${option.value} ${searchable ? currencySearchText(option.value) : ""}`
   );
   const [primaryText, ...detailParts] = normalizedText
     .split("·")

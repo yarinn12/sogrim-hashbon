@@ -37,6 +37,49 @@ const CURRENCIES = [
 
 const CURRENCY_BY_ID = new Map(CURRENCIES.map((currency) => [currency.id, currency]));
 
+// Search-only aliases; keep currency IDs, displayed labels and conversion rules unchanged.
+const CURRENCY_SEARCH_ALIASES = {
+  ILS: 'Israel Israeli shekel NIS',
+  USD: 'United States USA America US dollar ארהב ארה״ב ארה"ב אמריקה',
+  EUR: 'Eurozone euro France Germany Spain Italy Greece Portugal Cyprus Netherlands Austria Belgium Ireland Finland צרפת גרמניה ספרד איטליה יוון פורטוגל קפריסין הולנד אוסטריה בלגיה אירלנד פינלנד',
+  GBP: 'United Kingdom Britain Great Britain England UK British pound sterling אנגליה הממלכה המאוחדת פאונד',
+  AED: 'United Arab Emirates UAE Emirati dirham Dubai דובאי',
+  THB: 'Thailand Thai baht',
+  GEL: 'Georgia Georgian lari גיאורגיה',
+  CHF: 'Switzerland Swiss franc שוויץ',
+  CAD: 'Canada Canadian dollar',
+  AUD: 'Australia Australian dollar',
+  PLN: 'Poland Polish zloty',
+  CZK: 'Czechia Czech Republic Czech koruna צכיה',
+  TRY: 'Turkey Turkiye Turkish lira תורכיה',
+  HUF: 'Hungary Hungarian forint',
+  RON: 'Romania Romanian leu',
+  JPY: 'Japan Japanese yen',
+  CNY: 'China Chinese yuan renminbi RMB',
+  INR: 'India Indian rupee',
+  KRW: 'South Korea Korean won קוריאה',
+  VND: 'Vietnam Vietnamese dong ויטנאם',
+  SGD: 'Singapore Singapore dollar',
+  NZD: 'New Zealand New Zealand dollar',
+  SEK: 'Sweden Swedish krona',
+  NOK: 'Norway Norwegian krone',
+  DKK: 'Denmark Danish krone',
+  MAD: 'Morocco Moroccan dirham',
+  EGP: 'Egypt Egyptian pound',
+  JOD: 'Jordan Jordanian dinar',
+  ZAR: 'South Africa South African rand',
+  BRL: 'Brazil Brazilian real',
+  HKD: 'Hong Kong Hong Kong dollar',
+  MXN: 'Mexico Mexican peso'
+};
+
+export function currencySearchText(value) {
+  const currency = CURRENCY_BY_ID.get(String(value ?? '').trim().toUpperCase());
+  if (!currency) return '';
+  return [currency.id, currency.label, currency.country, currency.symbol,
+    CURRENCY_SEARCH_ALIASES[currency.id] ?? ''].join(' ');
+}
+
 export function currencyOptions() {
   return CURRENCIES.map((currency) => ({ ...currency }))
     .sort((left, right) => left.label.localeCompare(right.label, "he"));

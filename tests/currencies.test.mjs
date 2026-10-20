@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   currencyOptions,
   currencySelectLabel,
+  currencySearchText,
   formatCurrency,
   normalizeCurrency
 } from "../src/domain/currencies.mjs";
@@ -69,4 +70,32 @@ test("an event currency with expenses changes only after explicit approval", () 
   assert.equal(changed.events[0].currency, "EUR");
   assert.equal(locked.events[1].currency, "USD");
   assert.equal(approved.events[1].currency, "GBP");
+});
+
+
+test('country search indexes Hebrew, English, currency names and codes', () => {
+  for (const [id, queries] of [
+    ['THB', ['תאילנד', 'Thailand', 'Thai', 'באט', 'THB']],
+    ['JPY', ['יפן', 'Japan', 'yen']],
+    ['USD', ['ארצות הברית', 'USA', 'United States']],
+    ['EUR', ['יוון', 'Greece', 'France']],
+    ['GBP', ['אנגליה', 'England', 'United Kingdom']]
+  ]) {
+    const text = currencySearchText(id).toLowerCase();
+    for (const query of queries) assert(text.includes(query.toLowerCase()), id + ': ' + query);
+  }
+});
+
+test('every supported currency indexes its existing country without changing its displayed label', () => {
+  for (const currency of currencyOptions()) {
+    const label = currencySelectLabel(currency.id);
+    assert(currencySearchText(currency.id).includes(currency.country));
+    assert(currencySearchText(currency.id).includes(currency.id));
+    assert.equal(currencySelectLabel(currency.id), label);
+  }
+});
+
+test('search aliases normalize only known identifiers and do not fall back to shekels', () => {
+  assert.equal(currencySearchText(' thb '), currencySearchText('THB'));
+  for (const value of [undefined, null, '', 'BTC', '<img>']) assert.equal(currencySearchText(value), '');
 });
