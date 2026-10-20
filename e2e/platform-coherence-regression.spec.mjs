@@ -1153,7 +1153,7 @@ test('expense progress bars guard required fields and retain draft on direct nav
 
 test('expense long participant roster remains reachable at enlarged text',async({page,request})=>{
  await request.put('/api/state',{data:rosterState});await page.evaluate(next=>localStorage.setItem('settle-friends-state',JSON.stringify(next)),rosterState);await openTypographyHome(page,{path:'/?dynamic-type-preview=32'});await openEvent(page,ROSTER_EVENT);
- await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();const dialog=page.locator('.expense-step-modal');
+ await page.getByRole('button',{name:'הוסף הוצאה לטיול',exact:true}).click();const dialog=page.locator('.expense-step-modal');
  await dialog.locator('[data-action="expense-total"]').fill('120');await dialog.locator('[data-action="expense-step-next"]').click();await dialog.locator('[data-action="expense-name"]').fill('בדיקת רשימה ארוכה');
  await dialog.locator('[data-action="expense-step-next"]').click();await dialog.locator('[data-action="expense-step-next"]').click();
  await expect(dialog.locator('.expense-participant-row')).toHaveCount(16);await assertTappable(page,dialog.locator('.expense-participant-row').last(),'last long-name participant');
