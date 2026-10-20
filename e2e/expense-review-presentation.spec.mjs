@@ -3,7 +3,7 @@ import {openHeldRenderedHome,requireHeldHomeReadiness} from './helpers/heldHomeR
 requireHeldHomeReadiness(test);test.use({serviceWorkers:'block'});
 const owner='review-owner',eventId='review-event',notice='המטבע הוחלף; יש להזין מחדש את הסכום ואת סכומי המשלמים.';
 const initial={currentParticipantId:owner,participants:[{id:owner,displayName:'ירין ישראלי',kind:'user'},{id:'review-two',displayName:'דנה לוי',kind:'guest'},{id:'review-three',displayName:'איתי כהן',kind:'guest'}],friendContacts:[],groups:[],deletedEvents:[],deletedParticipants:[],events:[{id:eventId,name:'סוף שבוע בצפון',eventType:'outing',currency:'ILS',participantIds:[owner,'review-two','review-three'],adminIds:[owner],createdByParticipantId:owner,createdAt:'2026-10-10T00:00:00Z',updatedAt:'2026-10-10T00:00:00Z',expenses:[],transfers:[],notes:[],deletedNotes:[],activityLog:[]}]};
-test.beforeEach(async({page,request})=>{await request.post('/api/reset');await request.put('/api/state',{data:initial});await page.addInitScript(state=>{localStorage.clear();sessionStorage.clear();localStorage.setItem('settle-friends-state',JSON.stringify(state));localStorage.setItem('settle-friends-current-participant',state.currentParticipantId);localStorage.setItem('settle-friends-local-profile',JSON.stringify({participantId:state.currentParticipantId,displayName:'ירין ישראלי'}));sessionStorage.setItem('settle-friends-skip-next-splash','1');},initial);await page.route('**/v6/latest/USD',route=>{const last=Math.floor(Date.now()/1000)-3600;return route.fulfill({contentType:'application/json',body:JSON.stringify({result:'success',provider:'https://www.exchangerate-api.com',base_code:'USD',time_last_update_unix:last,time_next_update_unix:last+86400,time_eol_unix:0,rates:{USD:1,ILS:3.5}})});});await openHeldRenderedHome(page);await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();await page.locator('[data-action="show-expense-form"]').first().click();});
+test.beforeEach(async({page,request},info)=>{const fixture=structuredClone(initial);if(info.title.includes('saved participant details')&&info.title.includes('root 32')){fixture.participants[1].displayName='דנה אלכסנדרה לוי כהן עם שם משפחה ארוך';fixture.participants[2].displayName='איתי ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 כהן';}await request.post('/api/reset');await request.put('/api/state',{data:fixture});await page.addInitScript(state=>{localStorage.clear();sessionStorage.clear();localStorage.setItem('settle-friends-state',JSON.stringify(state));localStorage.setItem('settle-friends-current-participant',state.currentParticipantId);localStorage.setItem('settle-friends-local-profile',JSON.stringify({participantId:state.currentParticipantId,displayName:'ירין ישראלי'}));sessionStorage.setItem('settle-friends-skip-next-splash','1');},fixture);await page.route('**/v6/latest/USD',route=>{const last=Math.floor(Date.now()/1000)-3600;return route.fulfill({contentType:'application/json',body:JSON.stringify({result:'success',provider:'https://www.exchangerate-api.com',base_code:'USD',time_last_update_unix:last,time_next_update_unix:last+86400,time_eol_unix:0,rates:{USD:1,ILS:3.5}})});});await openHeldRenderedHome(page);await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();await page.locator('[data-action="show-expense-form"]').first().click();});
 async function currency(page,id){await page.locator('[data-choice-select-action="expense-source-currency"]').click();await page.locator(`.app-choice-option[data-choice-value="${id}"]`).click();}
 async function review(page,amount='240',name='ארוחת ערב'){await page.locator('[data-action="expense-total"]').fill(amount);await page.locator('[data-action="expense-step-next"]').click();await page.locator('[data-action="expense-name"]').fill(name);for(let i=0;i<3;i++)await page.locator('[data-action="expense-step-next"]').click();await expect(page.locator('.expense-step-modal')).toHaveAttribute('data-expense-step','review');}
 async function saved(page){return page.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-state')).events[0].expenses);}
@@ -41,4 +41,74 @@ test('a newly saved expense keeps its actions menu in the viewport during row ar
  expect(m.animation).toBe('none');expect(Math.abs(m.top-m.cssTop)).toBeLessThanOrEqual(1);expect(Math.abs(m.left-m.cssLeft)).toBeLessThanOrEqual(1);expect(m.left).toBeGreaterThanOrEqual(0);expect(m.right).toBeLessThanOrEqual(m.width);expect(m.top).toBeGreaterThanOrEqual(0);expect(m.bottom).toBeLessThanOrEqual(m.navTop);
  for(const button of await panel.locator('button').all()){await expect(button).toBeVisible();expect(await button.evaluate(e=>{const b=e.getBoundingClientRect();return e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2));})).toBe(true);}
  await row.locator('[data-action="edit-expense"]').click();await expect(page.locator('.expense-step-modal')).toHaveAttribute('data-expense-step','review');await expect(page.locator('[data-action="expense-step-edit"][data-step="amount"]')).toContainText('₪240.00');const expenses=await saved(page);expect(expenses).toHaveLength(1);expect(expenses[0].total).toBe(24000);
+});
+
+
+for (const root of [16, 20, 32]) test(`saved participant details preserve exact shares and readable names at root ${root}`, async ({page}) => {
+  await page.setViewportSize({width: root === 32 ? 320 : 393, height: 852});
+  await page.evaluate(root => {
+    document.documentElement.classList.toggle('dynamic-type-preview', root > 16);
+    document.documentElement.style.setProperty('font-size', root + 'px', 'important');
+  }, root);
+  const amount = root === 20 ? '100' : '240';
+  await review(page, amount);
+  await page.locator('[data-action="save-expense"]').click();
+  const row = page.locator('.expense-row[data-expense-id]');
+  await expect(row).toHaveCount(1);
+  await row.locator('.expense-row-main').click();
+  await expect(row.locator('.expense-participant-item')).toHaveCount(3);
+  await page.evaluate(() => document.fonts.ready);
+  const rows = await row.locator('.expense-participant-item').evaluateAll(nodes => nodes.map(item => {
+    const name = item.querySelector('.expense-participant-copy > strong');
+    const share = item.querySelector('.expense-participant-share');
+    const copy = item.querySelector('.expense-participant-copy');
+    const button = item.querySelector('.expense-participant-avatar-action');
+    const fits = element => {
+      if (!element) return false;
+      const b = element.getBoundingClientRect(), range = document.createRange();
+      range.selectNodeContents(element);
+      return [...range.getClientRects()].every(r => r.left >= b.left - 1 && r.right <= b.right + 1 && r.top >= b.top - 1 && r.bottom <= b.bottom + 1);
+    };
+    const b = button.getBoundingClientRect(), c = copy.getBoundingClientRect(), a = share?.getBoundingClientRect();
+    return {name: name.textContent, font: parseFloat(getComputedStyle(name).fontSize), share: share?.textContent.trim(),
+      shareDirection: share?.querySelector('bdi')?.dir, nameFits: fits(name), shareFits: fits(share), nameWidth: c.width,
+      disjoint: !!a && (a.right <= c.left + 1 || a.top >= c.bottom - 1), hitWidth: b.width, hitHeight: b.height};
+  }));
+  // Check actual leaf text first: the old 12.5px rule must fail even before the new share renderer exists.
+  for (const item of rows) {
+    expect(item.font).toBeCloseTo(root * .9375, 1);
+    expect(item.nameFits).toBe(true);
+    expect(item.nameWidth).toBeGreaterThanOrEqual(120);
+    expect(item.shareFits).toBe(true);
+    expect(item.disjoint).toBe(true);
+    expect(item.shareDirection).toBe('ltr');
+    expect(item.hitWidth).toBeGreaterThanOrEqual(44);
+    expect(item.hitHeight).toBeGreaterThanOrEqual(44);
+  }
+  expect(rows.map(item => item.share)).toEqual(root === 20 ? ['₪33.34', '₪33.33', '₪33.33'] : ['₪80.00', '₪80.00', '₪80.00']);
+  const type = await row.evaluate(e => ({
+    heading: parseFloat(getComputedStyle(e.querySelector('.expense-participants-list-title')).fontSize),
+    self: parseFloat(getComputedStyle(e.querySelector('.expense-participant-you')).fontSize),
+    overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth
+  }));
+  expect(type.heading).toBeCloseTo(root * .875, 1);
+  expect(type.self).toBeCloseTo(root * .75, 1);
+  expect(type.overflow).toBe(false);
+  const last = row.locator('.expense-participant-item').last();
+  await last.evaluate(e => e.scrollIntoView({block: 'center'}));
+  await expect.poll(() => last.evaluate(e => {
+    const nav = document.querySelector('.event-route-primary-nav:not([hidden]),.product-app-nav:not([hidden])');
+    return e.getBoundingClientRect().bottom <= nav.getBoundingClientRect().top + 1;
+  })).toBe(true);
+  const [expense] = await saved(page);
+  expect(expense.total).toBe(Number(amount) * 100);
+  expect(expense.payers).toEqual([{participantId: owner, amount: Number(amount) * 100}]);
+  expect(expense.sharedByParticipantIds).toEqual([owner, 'review-two', 'review-three']);
+  await row.locator('.expense-row-main').click();
+  await row.locator('.expense-row-main').click();
+  await expect(row.locator('.expense-participant-share')).toHaveCount(3);
+  await row.locator('.expense-row-actions-menu > summary').click();
+  await row.locator('[data-action="edit-expense"]').click();
+  await expect(page.locator('[data-action="expense-total"]')).toHaveValue(amount);
+  expect(await saved(page)).toHaveLength(1);
 });

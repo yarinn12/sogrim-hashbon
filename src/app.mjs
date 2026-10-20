@@ -2,7 +2,7 @@ import { EXPENSE_CURRENCY_REENTRY_NOTICE, renderExpenseFxReviewAmountView, rende
 import { renderExpenseParticipantToolbarView, expenseFriendChoiceDescription } from "./ui/expenseParticipantSelection.mjs";
 import { renderExpenseFlowProgressView } from "./ui/expenseFlowProgress.mjs";
 import { renderExpensePayerAmountView } from "./ui/expensePayerAmount.mjs";
-import { renderExpenseTitleView, renderExpenseParticipantsHeadingView } from "./ui/expenseDisclosure.mjs";
+import { renderExpenseTitleView, renderExpenseParticipantsHeadingView, renderExpenseParticipantShareView } from "./ui/expenseDisclosure.mjs";
 import { renderEventActionDockView, renderEventPersonalBalanceView } from "./ui/eventFinancialCards.mjs";
 import { manualParticipantCopy, renderEventManualParticipantEditorView } from "./ui/eventManualParticipantEditor.mjs";
 import { renderEventParticipantRouteView } from "./ui/eventParticipantRoute.mjs";
@@ -38,6 +38,7 @@ import {
 } from "./domain/currencies.mjs";
 import {
   buildParticipantSettlementBreakdown,
+  buildExpenseParticipantShares,
   calculateSettlement,
   groupSettlementTransfersForDisplay,
   pendingBalanceForParticipant,
@@ -9959,13 +9960,14 @@ function hydrateExpenseParticipants(details, event, expense) {
   const list = details.querySelector(".expense-participants-list");
   if (!list) return;
 
+  const { shares } = buildExpenseParticipantShares(eventParticipants(event), expense);
   list.innerHTML = [...new Set(expense.sharedByParticipantIds)]
-    .map((participantId) => renderExpenseParticipant(event, participantId))
+    .map((participantId) => renderExpenseParticipant(event, participantId, shares[participantId]))
     .join("");
   details.dataset.participantsHydrated = "true";
 }
 
-function renderExpenseParticipant(event, participantId) {
+function renderExpenseParticipant(event, participantId, shareAmount) {
   const participant = state.participants.find((item) => item.id === participantId);
   const isCurrentParticipant = participantId === state.currentParticipantId;
 
@@ -9986,6 +9988,7 @@ function renderExpenseParticipant(event, participantId) {
           ${participant && !isCurrentParticipant ? renderParticipantConnectionBadge(participant) : ""}
         </span>
       </span>
+      ${renderExpenseParticipantShareView({ formattedShare: Number.isSafeInteger(shareAmount) ? formatEventMoney(event, shareAmount) : null })}
     </div>
   `;
 }

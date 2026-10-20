@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { renderExpenseTitleView, renderExpenseParticipantsHeadingView } from "../src/ui/expenseDisclosure.mjs";
+import { renderExpenseTitleView, renderExpenseParticipantsHeadingView, renderExpenseParticipantShareView } from "../src/ui/expenseDisclosure.mjs";
 
 test("expense title retains its full name and a decorative state cue, without a second command",()=>{
  const name="כרטיסי רכבת לכל המשפחה בירושלים ובתל אביב ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -36,4 +36,19 @@ test("shared source delegates only presentation and precaches it in both invento
  assert.match(toggle,/hydrateExpenseParticipants\(details, event, expense\)/);
  assert.match(toggle,/details.open = !details.open;/);
  assert.match(toggle,/target.setAttribute\("aria-expanded", String\(details.open\)\)/);
+});
+
+
+test("saved participant share preserves the formatted currency as isolated plain text", () => {
+ for (const formattedShare of ['₪80.00', '$33.34', '₪0.00', '₩1,234.56']) {
+  const model = Object.freeze({formattedShare});
+  assert.equal(renderExpenseParticipantShareView(model), `<span class="expense-participant-share"><bdi dir="ltr" class="font-num">${formattedShare}</bdi></span>`);
+ }
+});
+
+test("saved participant share hides an unavailable value and escapes supplied text", () => {
+ for (const formattedShare of [null, undefined, '', 8000]) assert.equal(renderExpenseParticipantShareView({formattedShare}), '');
+ const html = renderExpenseParticipantShareView({formattedShare: '<img src=x onerror="bad"> & 80'});
+ assert.doesNotMatch(html, /<img|onerror="bad"/);
+ assert.match(html, /&lt;img src=x onerror=&quot;bad&quot;&gt; &amp; 80/);
 });

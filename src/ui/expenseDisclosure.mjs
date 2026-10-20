@@ -13,3 +13,9 @@ export function renderExpenseTitleView({ name }) {
 export function renderExpenseParticipantsHeadingView({ expenseId }) {
   return `<p class="expense-participants-list-title" id="expense-participants-title-${escapeHtml(expenseId)}">מתחלקים בהוצאה</p>`;
 }
+
+
+export function renderExpenseParticipantShareView({ formattedShare }) {
+  if (typeof formattedShare !== "string" || !formattedShare) return "";
+  return `<span class="expense-participant-share"><bdi dir="ltr" class="font-num">${escapeHtml(formattedShare)}</bdi></span>`;
+}

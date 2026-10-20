@@ -22412,6 +22412,57 @@ html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 bo
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-confirmation-summary>span {font-size:.8125rem!important;line-height:1.5!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-confirmation-summary>strong {font-size:.8125rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
 
+/* Approved saved-expense participant breakdown: same source for web and Native. */
+html.ledger-workspace-v1 .expense-participants-details .expense-participant-item {
+  display: grid !important;
+  grid-template-columns: 44px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  column-gap: 10px !important;
+}
+html.ledger-workspace-v1 .expense-participants-details .expense-participant-copy > strong {
+  font-size: .9375rem !important;
+  line-height: 1.4 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+html.ledger-workspace-v1 .expense-participants-details .expense-participant-you {
+  font-size: .75rem !important;
+  line-height: 1.4 !important;
+}
+html.ledger-workspace-v1 .expense-participants-details .expense-participants-list-title {
+  font-size: .875rem !important;
+}
+html.ledger-workspace-v1 .expense-participants-details .expense-participant-share {
+  min-width: 0 !important;
+  font-size: .9375rem !important;
+  font-weight: 700 !important;
+  line-height: 1.4 !important;
+  color: var(--ledger-ink) !important;
+  white-space: nowrap !important;
+  text-align: end !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+/* Let enlarged text keep usable name width, instead of squeezing it beside the amount. */
+html.ledger-workspace-v1 .expense-participants-details .expense-participants-list {
+  container-type: inline-size !important;
+}
+@container (max-width: 16rem) {
+  html.ledger-workspace-v1 .expense-participants-details .expense-participant-item {
+    grid-template-columns: 44px minmax(0, 1fr) !important;
+    row-gap: 4px !important;
+  }
+  html.ledger-workspace-v1 .expense-participants-details .expense-participant-share {
+    grid-column: 2 !important;
+    justify-self: start !important;
+    text-align: start !important;
+  }
+  html.ledger-workspace-v1 .expense-participants-details .expense-participant-avatar-action {
+    grid-row: 1 / span 2 !important;
+    align-self: start !important;
+  }
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

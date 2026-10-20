@@ -522,3 +522,22 @@ test("native expense action menus release the new-row animation containing block
   const compatibility = await readFile("src/platformCompatibility.mjs", "utf8");
   assert.match(compatibility, /\.expense-row\.sogrim-has-open-expense-menu \{[^}]*animation: none !important;/);
 });
+
+
+test("native saved-expense participant details keep scalable leaf names and responsive share rows", async () => {
+ const {extractNativeStaticCss, files} = await harness();
+ await extractNativeStaticCss([{path: resolve("src/publicLedgerWorkspaceLayer.mjs")}], "fixture-assets");
+ const css = files.get(join("fixture-assets", "native-layers.css"));
+ const prefix = 'html.ledger-workspace-v1 .expense-participants-details ';
+ const rule = selector => {
+  const start = css.lastIndexOf(prefix + selector + ' {');
+  assert.ok(start >= 0, selector);
+  return css.slice(start, css.indexOf('}', start));
+ };
+ assert.match(rule('.expense-participant-copy > strong'), /font-size:\s*\.9375rem !important/);
+ assert.match(rule('.expense-participant-you'), /font-size:\s*\.75rem !important/);
+ assert.match(rule('.expense-participants-list-title'), /font-size:\s*\.875rem !important/);
+ assert.match(rule('.expense-participants-list'), /container-type:\s*inline-size !important/);
+ assert.match(css, /@container \(max-width: 16rem\)/);
+ assert.match(rule('.expense-participant-share'), /grid-column:\s*2 !important/);
+});
