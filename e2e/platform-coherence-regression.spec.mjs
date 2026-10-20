@@ -1002,7 +1002,8 @@ for(const root of [16,20,32]) {
    expect(result.bars,context).toHaveLength(5);
    expect(result.bars.every(b=>Math.abs(b.height-6)<1/64),context).toBe(true);
    expect(result.currentBar,context).toBe(1);
-   expect(result.stageButtons,context).toBe(0);
+   expect(result.stageButtons,context).toBe(5);
+   expect(result.visibleStageNames,context+': stage labels remain hidden').toBe(false);
    expect(result.currencyVisible,context).toBe(false);
    expect(result.noOverflow,context).toBe(true);
    expect(result.bodyHeight,context).toBeGreaterThanOrEqual(80);
@@ -1151,7 +1152,7 @@ test('expense progress bars guard required fields and retain draft on direct nav
 });
 
 test('expense long participant roster remains reachable at enlarged text',async({page,request})=>{
- await request.put('/api/state',{data:rosterState});await openTypographyHome(page,{path:'/?dynamic-type-preview=32'});await openEvent(page,ROSTER_EVENT);
+ await request.put('/api/state',{data:rosterState});await page.evaluate(next=>localStorage.setItem('settle-friends-state',JSON.stringify(next)),rosterState);await openTypographyHome(page,{path:'/?dynamic-type-preview=32'});await openEvent(page,ROSTER_EVENT);
  await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();const dialog=page.locator('.expense-step-modal');
  await dialog.locator('[data-action="expense-total"]').fill('120');await dialog.locator('[data-action="expense-step-next"]').click();await dialog.locator('[data-action="expense-name"]').fill('בדיקת רשימה ארוכה');
  await dialog.locator('[data-action="expense-step-next"]').click();await dialog.locator('[data-action="expense-step-next"]').click();
