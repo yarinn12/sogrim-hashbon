@@ -504,3 +504,10 @@ test("native final review keeps responsive attachment controls and isolated FX n
  assert.match(css,/\.expense-review-fx-details summary\s*\{[^}]*min-height:44px/);
  assert.match(css,/\.expense-review-fx-credit a\s*\{[^}]*min-height:44px/);
 });
+
+test("native final review scales the per-person summary and uses its inner scrollport",async()=>{
+ const {extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css'));
+ const prefix='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] ';
+ const index=css.lastIndexOf(prefix+'.expense-confirmation-summary>strong {');assert.ok(index>=0,'the actual per-person text needs its own scalable rule');assert.match(css.slice(index,css.indexOf('}',index)),/font-size:\.8125rem!important/);
+ assert.match(css,/\.expense-step-modal\[data-expense-step="review"\] :is\(input,select,textarea,button,summary,details\)\s*\{scroll-margin-block:8px!important/);
+});

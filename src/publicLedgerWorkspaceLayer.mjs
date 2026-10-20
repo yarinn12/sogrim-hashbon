@@ -22403,6 +22403,12 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-credit
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-credit a {display:inline-flex!important;align-items:center!important;min-height:44px!important;min-width:44px!important;color:inherit!important;text-underline-offset:3px!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details summary:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;}
 
+/* The review has its own unobscured scrollport; keyboard scrolling keeps the existing insets. */
+html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] {scroll-padding-block:0!important;}
+html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] :is(input,select,textarea,button,summary,details) {scroll-margin-block:8px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-confirmation-summary>span {font-size:.8125rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-confirmation-summary>strong {font-size:.8125rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
