@@ -1,0 +1,22 @@
+import {expect,test} from '@playwright/test';
+import {personalPinsCloud} from './helpers/personalPinsCloud.mjs';
+test.use({serviceWorkers:'block'});
+const original={id:'edit-expense',name:'ארוחת ערב',total:24000,payers:[{participantId:'edit-owner',amount:14000},{participantId:'edit-guest',amount:10000}],sharedByParticipantIds:['edit-owner','edit-guest'],createdByParticipantId:'edit-owner',occurredOn:'2026-10-20',updatedAt:'2026-10-10T12:00:00.000Z'};
+const initial={currentParticipantId:'edit-owner',participants:[{id:'edit-owner',displayName:'ירין ישראלי',kind:'user'},{id:'edit-guest',displayName:'דנה לוי',kind:'guest'}],friendContacts:[],groups:[],deletedEvents:[],deletedParticipants:[],events:[{id:'edit-event',name:'ערב חברים',eventType:'standard',currency:'ILS',participantIds:['edit-owner','edit-guest'],adminIds:['edit-owner'],createdByParticipantId:'edit-owner',createdAt:'2026-10-10T12:00:00.000Z',updatedAt:'2026-10-10T12:00:00.000Z',expenses:[original],transfers:[],activityLog:[]}]};
+for(const root of [16,20,32])test(`saved expense date reaches the final cloud payload and acknowledgement at root ${root}`,async({page,baseURL})=>{
+ await page.setViewportSize({width:root===32?320:393,height:852});
+ const cloud=await personalPinsCloud(page,baseURL,initial,{accountId:'expense-edit-cloud-owner'});
+ await page.evaluate(root=>{const url=new URL(location.href);if(root>16)url.searchParams.set('dynamic-type-preview',String(root));history.replaceState(history.state,'',url);document.documentElement.classList.toggle('dynamic-type-preview',root>16);document.documentElement.style.setProperty('font-size',root+'px','important');},root);
+ await page.locator('[data-action="open-event"][data-event-id="edit-event"]').click();
+ const row=page.locator('.expense-row[data-expense-id="edit-expense"]');
+ const open=async()=>{await row.locator('.expense-row-actions-menu > summary').click();await row.locator('[data-action="edit-expense"]').click();await expect(page.locator('.expense-step-modal')).toHaveAttribute('data-expense-step','review');};
+ await open();const before=cloud.state().events[0].expenses[0],countBefore=cloud.writes.length;
+ await expect(page.locator('#expense-modal-title')).toHaveText('עריכת הוצאה');await expect(page.locator('.expense-step-modal .modal-section-back-button')).toHaveAttribute('aria-label','חזרה לאירוע');
+ const field=page.locator('.expense-flow-review .expense-review-date');await expect(field.locator('[data-expense-date-caption]')).toHaveText('20.10.2026');await field.locator('[data-action="expense-date"]').fill('2026-10-22');await expect(field.locator('[data-expense-date-caption]')).toHaveText('22.10.2026');await page.locator('[data-action="expense-notes"]').fill('תאריך מעודכן');
+ await page.locator('[data-action="save-expense"]').click();await expect(page.locator('.expense-step-modal')).toBeHidden();
+ await expect.poll(()=>cloud.state().events[0].expenses[0].occurredOn).toBe('2026-10-22');expect(cloud.writes.length).toBeGreaterThan(countBefore);
+ const expenses=cloud.state().events[0].expenses;expect(expenses).toHaveLength(1);const [after]=expenses;
+ expect(after.id).toBe(before.id);expect(after.total).toBe(24000);expect(after.payers).toEqual(before.payers);expect(after.sharedByParticipantIds).toEqual(before.sharedByParticipantIds);expect(after.notes).toBe('תאריך מעודכן');
+ const finalWrite=cloud.writes.at(-1).state.events[0].expenses;expect(finalWrite).toEqual(expenses);
+ await cloud.reload();await page.locator('[data-action="open-event"][data-event-id="edit-event"]').click();await open();await expect(field.locator('[data-action="expense-date"]')).toHaveValue('2026-10-22');await expect(field.locator('[data-expense-date-caption]')).toHaveText('22.10.2026');expect(cloud.errors).toEqual([]);
+});

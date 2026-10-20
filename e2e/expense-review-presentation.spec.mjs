@@ -145,7 +145,7 @@ for(const root of [16,20,32]){
   await input.fill('2026-10-21');await expect(field.locator('[data-expense-date-caption]')).toHaveText('21.10.2026');await expect(page.locator('#expense-modal-title')).toHaveText('הכול מוכן?');
   await page.locator('[data-action="save-expense"]').click();const [expense]=await saved(page);expect(expense.occurredOn).toBe('2026-10-21');expect(expense.total).toBe(24000);
  });
- test(`edit overview uses accurate Back destination and persists date without duplicating at root ${root}`,async({page,request})=>{
+ test(`edit overview uses accurate Back destination and persists date without duplicating at root ${root}`,async({page})=>{
   await page.setViewportSize({width:root===32?320:393,height:852});await editOverviewScale(page,root);await review(page);await reviewDate(page).locator('[data-action="expense-date"]').fill('2026-10-20');await page.locator('[data-action="save-expense"]').click();
   const row=page.locator('.expense-row[data-expense-id]');await expect(row).toHaveCount(1);const [original]=await saved(page);await openSavedExpenseEditor(page,row);
   const back=page.locator('.expense-step-modal .modal-section-back-button');await expect(back).toHaveAttribute('aria-label','חזרה לאירוע');await expect(page.locator('#expense-modal-title')).toHaveText('עריכת הוצאה');
@@ -153,7 +153,8 @@ for(const root of [16,20,32]){
   await back.click();await expect(page.locator('.expense-step-modal')).toBeHidden();expect(await saved(page)).toEqual([original]);await openSavedExpenseEditor(page,row);await expect(page.locator('[data-action="expense-notes"]')).toHaveValue('טיוטה לבדיקה');
   await reviewDate(page).locator('[data-action="expense-date"]').fill('2026-10-22');await expect(reviewDate(page).locator('[data-expense-date-caption]')).toHaveText('22.10.2026');await page.locator('[data-action="save-expense"]').click();await expect(page.locator('.expense-step-modal')).toBeHidden();
   const expenses=await saved(page);expect(expenses).toHaveLength(1);const [edited]=expenses;expect(edited.id).toBe(original.id);expect(edited.total).toBe(original.total);expect(edited.payers).toEqual(original.payers);expect(edited.sharedByParticipantIds).toEqual(original.sharedByParticipantIds);expect(edited.occurredOn).toBe('2026-10-22');expect(edited.notes).toBe('טיוטה לבדיקה');
-  await expect.poll(async()=>{const response=await request.get('/api/state');const state=await response.json();return state.events?.[0]?.expenses?.find(e=>e.id===original.id)?.occurredOn;}).toBe('2026-10-22');
+  // This suite intentionally uses local storage. The final cloud payload and ACK
+  // are exercised separately by expense-edit-cloud.spec.mjs with a connected fixture.
   await openSavedExpenseEditor(page,row);await expect(reviewDate(page).locator('[data-action="expense-date"]')).toHaveValue('2026-10-22');await expect(reviewDate(page).locator('[data-expense-date-caption]')).toHaveText('22.10.2026');
  });
 }
