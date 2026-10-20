@@ -366,10 +366,9 @@ test("ordinary expense entry presents one focused decision per step", async () =
   assert.match(app, /function expenseFlowValidationMessage\(step\)/);
   assert.match(app, /יש להזין סכום גדול מאפס/);
   assert.match(app, /יש לבחור לפחות משתתף אחד בהוצאה/);
-  assert.match(
-    app,
-    /שלב \$\{index \+ 1\} מתוך \$\{flowSteps\.length\}: \$\{escapeHtml\(stepTitle\)\}/
-  );
+  const progressView = await readFile("src/ui/expenseFlowProgress.mjs", "utf8");
+  assert.match(app, /renderExpenseFlowProgressView/);
+  assert.match(progressView, /שלב \$\{index \+ 1\} מתוך \$\{steps\.length\}/);
 });
 
 test("expense participant step keeps additions in a focused sub-screen", async () => {
@@ -385,10 +384,12 @@ test("expense participant step keeps additions in a focused sub-screen", async (
     expenseForm,
     /renderParticipantChecks\(expenseDraft\.sharedByParticipantIds, "expense-shared", event\)[\s\S]*?renderExpenseParticipantToolbar\(event, participants\)/
   );
-  assert.match(expenseForm, /data-action="expense-select-all"/);
+  const selectionView = await readFile("src/ui/expenseParticipantSelection.mjs", "utf8");
+  assert.match(expenseForm, /renderExpenseParticipantToolbarView/);
+  assert.match(selectionView, /data-action="expense-select-all"/);
   assert.doesNotMatch(expenseForm, /data-action="expense-select-current"/);
   assert.doesNotMatch(expenseForm, />רק אני</);
-  assert.match(expenseForm, /data-expense-participant-toolbar/);
+  assert.match(selectionView, /data-expense-participant-toolbar/);
   assert.match(
     expenseForm,
     /class="expense-participant-add-launch"[\s\S]*?data-action="expense-open-participant-add"/
@@ -410,7 +411,7 @@ test("expense participant step keeps additions in a focused sub-screen", async (
   assert.match(app, /function applyExpenseParticipantPreset\(mode, trigger\)/);
   assert.match(
     app,
-    /action === "expense-select-all"[\s\S]*?applyExpenseParticipantPreset\("all", target\)/
+    /action === "expense-select-all"[\s\S]*?applyExpenseParticipantPreset\("toggle", target\)/
   );
   assert.match(design, /\.expense-participant-toolbar \{/);
   assert.match(

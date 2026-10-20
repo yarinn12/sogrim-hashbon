@@ -22311,6 +22311,34 @@ html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).des
     display: none !important;
   }
 
+/* Approved expense participant presentation and accessible progress targets. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-source-currency-field {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-add-launch strong {font-size:.875rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-add-launch small {font-size:.8125rem!important;line-height:1.5!important;font-weight:400!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact {font-size:.875rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact>span {font-size:inherit!important;line-height:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-choice strong {font-size:.875rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-choice small {font-size:.8125rem!important;line-height:1.5!important;font-weight:400!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-add-empty {font-size:.8125rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-row-check {width:24px!important;min-width:24px!important;height:24px!important;min-height:24px!important;border:1.5px solid #aab6b2!important;border-radius:6px!important;background:transparent!important;box-shadow:none!important;color:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-row:has(.expense-participant-checkbox:checked) .expense-participant-row-check {border-color:var(--ledger-brand)!important;background:transparent!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-row-check svg {width:15px!important;height:15px!important;stroke-width:2!important;}
+
+/* Same selection mark for the bulk-selection action. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact>span[aria-hidden="true"] {display:grid!important;place-items:center!important;flex:0 0 24px!important;width:24px!important;min-width:24px!important;height:24px!important;border:1.5px solid var(--ledger-brand)!important;border-radius:6px!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact>span[aria-hidden="true"] svg {width:15px!important;height:15px!important;stroke-width:2!important;}
+
+/* Bulk action copy uses the existing primary ink; its selection mark stays green. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact>span:not([aria-hidden="true"]) {color:var(--ledger-ink)!important;}
+
+/* Original six-pixel bars, with full-size accessible navigation targets. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress li {overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress .expense-progress-step-button {position:absolute!important;inset-inline:0!important;top:-19px!important;display:block!important;width:100%!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;margin:0!important;border:0!important;border-radius:6px!important;background:transparent!important;box-shadow:none!important;opacity:1!important;transform:none!important;cursor:pointer!important;touch-action:manipulation;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress .expense-progress-step-button:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;}
+
+/* The bulk toggle reflects the same selected/empty state as participant marks. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact:not([aria-pressed="true"])>span[aria-hidden="true"] {border-color:#aab6b2!important;color:transparent!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

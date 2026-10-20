@@ -1,3 +1,5 @@
+import { renderExpenseParticipantToolbarView, expenseFriendChoiceDescription } from "./ui/expenseParticipantSelection.mjs";
+import { renderExpenseFlowProgressView } from "./ui/expenseFlowProgress.mjs";
 import { renderExpensePayerAmountView } from "./ui/expensePayerAmount.mjs";
 import { renderExpenseTitleView, renderExpenseParticipantsHeadingView } from "./ui/expenseDisclosure.mjs";
 import { renderEventActionDockView, renderEventPersonalBalanceView } from "./ui/eventFinancialCards.mjs";
@@ -8269,26 +8271,11 @@ function renderExpenseForm(event) {
 }
 
 function renderExpenseParticipantToolbar(event, participants) {
-  const availableIds = participants.map((participant) => participant.id);
-  const availableIdSet = new Set(availableIds);
-  const selectedIds = [
-    ...new Set(
-      expenseDraft.sharedByParticipantIds.filter((participantId) =>
-        availableIdSet.has(participantId)
-      )
-    )
-  ];
-  const allSelected =
-    availableIds.length > 0 && selectedIds.length === availableIds.length;
-
-  return `
-    <div class="expense-participant-toolbar" data-expense-participant-toolbar ${allSelected ? "hidden" : ""}>
-      <button class="expense-select-all-compact" type="button" data-action="expense-select-all">
-        <span aria-hidden="true">${iconSvg("check")}</span>
-        <span>סמן את כולם</span>
-      </button>
-    </div>
-  `;
+  return renderExpenseParticipantToolbarView({
+    availableIds: participants.map(participant => participant.id),
+    selectedIds: expenseDraft.sharedByParticipantIds,
+    checkIcon: iconSvg("check")
+  });
 }
 
 function renderExpenseNotesDialog(event, canEdit) {
@@ -8411,6 +8398,20 @@ function renderExpenseParticipantAddRoute(event, canEdit) {
   `;
 }
 
+function expenseParticipantFriendChoiceDescription(friends) {
+  const savedIds = new Set(activeFriendParticipantIds(state));
+  const hasConnectedFriends = state.participants.some(participant =>
+    participant.id !== state.currentParticipantId && savedIds.has(participant.id) &&
+    participantConnectionStatus(participant).connected
+  );
+  const networkStatus = friendNetworkAvailable(runtimeConfig)
+    ? friendNetwork.stale ? "unavailable" : friendNetwork.status
+    : "ready";
+  return expenseFriendChoiceDescription({
+    hasAvailableFriends: friends.length > 0, hasConnectedFriends, networkStatus
+  });
+}
+
 function renderExpenseParticipantAddMenu(event, friends, canEdit) {
   return `
     <div class="expense-participant-add-menu" aria-label="דרכים להוספת משתתף">
@@ -8422,7 +8423,7 @@ function renderExpenseParticipantAddMenu(event, friends, canEdit) {
         ${friends.length && canEdit ? "" : "disabled"}
       >
         <span class="expense-participant-choice-icon" aria-hidden="true">${iconSvg("users")}</span>
-        <span><strong>מהחברים שלי</strong><small>${friends.length ? "בחר משתמש שכבר מחובר אליך" : "אין כרגע חבר נוסף להוספה"}</small></span>
+        <span><strong>מהחברים שלי</strong><small>${escapeHtml(expenseParticipantFriendChoiceDescription(friends))}</small></span>
         <span class="expense-participant-choice-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
       </button>
       <button
@@ -8453,7 +8454,7 @@ function renderExpenseParticipantAddMenu(event, friends, canEdit) {
 
 function renderExpenseParticipantFriendList(event, friends, canEdit) {
   if (!friends.length) {
-    return '<p class="expense-participant-add-empty">אין כרגע חברים נוספים שאפשר להוסיף.</p>';
+    return `<p class="expense-participant-add-empty">${escapeHtml(expenseParticipantFriendChoiceDescription(friends))}</p>`;
   }
 
   return `
@@ -8501,7 +8502,9 @@ function applyExpenseParticipantPreset(mode, trigger) {
 
   const participants = expenseParticipantsForCurrentDraft(event);
   const availableIds = participants.map((participant) => participant.id);
-  const nextIds = availableIds;
+  const nextIds = mode === "toggle" && availableIds.length > 0 &&
+    availableIds.every(id => expenseDraft.sharedByParticipantIds.includes(id))
+      ? [] : availableIds;
 
   expenseDraft.sharedByParticipantIds = [...nextIds];
   expenseDraft.error = "";
@@ -8588,22 +8591,32 @@ function expenseFlowFieldErrorAttributes(step) {
 }
 
 function renderExpenseFlowProgress(step) {
-  const flowSteps = expenseFlowStepsForDraft();
-  const currentIndex = flowSteps.indexOf(normalizeExpenseFlowStep(step));
-  return `
-    <ol class="expense-flow-progress" aria-label="התקדמות בהוספת הוצאה">
-      ${flowSteps.map((item, index) => {
-        const stateClass =
-          index < currentIndex ? "is-complete" : index === currentIndex ? "is-current" : "";
-        const stepTitle = expenseFlowMeta(item).title;
-        return `
-          <li class="${stateClass}" ${index === currentIndex ? 'aria-current="step"' : ""}>
-            <span>שלב ${index + 1} מתוך ${flowSteps.length}: ${escapeHtml(stepTitle)}</span>
-          </li>
-        `;
-      }).join("")}
-    </ol>
-  `;
+  return renderExpenseFlowProgressView({
+    steps: expenseFlowStepsForDraft().map(key => ({ key, title: expenseFlowMeta(key).title })),
+    currentStep: normalizeExpenseFlowStep(step)
+  });
+}
+
+function navigateExpenseProgress(step) {
+  if (!expenseDraft) return;
+  const steps = expenseFlowStepsForDraft();
+  const targetIndex = steps.indexOf(step);
+  const currentIndex = steps.indexOf(normalizeExpenseFlowStep(expenseDraft.flowStep));
+  if (targetIndex < 0) return;
+  const leavingParticipantSubview = step === "participants" && Boolean(expenseDraft.participantAddView);
+  if (targetIndex === currentIndex && !leavingParticipantSubview) return;
+  expenseDraft.participantAddView = null;
+  if (targetIndex > currentIndex) {
+    const missing = steps.slice(0, targetIndex).find(item => !expenseFlowReady(item));
+    if (missing) {
+      expenseDraft.flowStep = missing;
+      expenseDraft.error = expenseFlowValidationMessage(missing);
+      render();
+      activateExpenseEntryDialog();
+      return;
+    }
+  }
+  moveExpenseFlowTo(step);
 }
 
 function renderExpenseFlowReview(event, participants) {
@@ -8705,7 +8718,7 @@ function expenseFlowNextLabel(step) {
     amount: "המשך לשם ההוצאה",
     name: "המשך למי שילם",
     payer: "המשך למשתתפים",
-    participants: "בדיקה ושמירה"
+    participants: "המשך לבדיקה"
   };
   return labels[normalizeExpenseFlowStep(step)] ?? "המשך";
 }
@@ -13773,12 +13786,17 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "expense-progress-step") {
+    navigateExpenseProgress(target.dataset.step);
+    return;
+  }
+
   if (action === "expense-step-edit") {
     moveExpenseFlowTo(target.dataset.step);
   }
 
   if (action === "expense-select-all") {
-    applyExpenseParticipantPreset("all", target);
+    applyExpenseParticipantPreset("toggle", target);
   }
 
   if (action === "edit-expense-notes") {

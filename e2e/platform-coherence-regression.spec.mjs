@@ -1,3 +1,4 @@
+import measureExpenseParticipants from "./helpers/expenseParticipantPresentation.mjs";
 import measureExpensePayer from "./helpers/expensePayerPresentation.mjs";
 import measureExpenseName from "./helpers/expenseNamePresentation.mjs";
 import measureExpenseFlowTypography from "./helpers/expenseFlowTypography.mjs";
@@ -1091,3 +1092,71 @@ for(const root of [16,20,32]) {
   await expect(page.locator('.expense-row')).toHaveCount(1);expect(errors).toEqual([]);
  });
 }
+
+
+for(const root of [16,20,32]) {
+ test(`approved expense participants keep scalable marks and all-none toggle (${root}px)`,async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await openTypographyHome(page,{path:root===16?'/':`/?dynamic-type-preview=${root}`});await openEvent(page,OPEN_EVENT);
+  await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();const dialog=page.locator('.expense-step-modal');
+  await dialog.locator('[data-action="expense-total"]').fill('120');await dialog.locator('[data-action="expense-step-next"]').click();
+  await dialog.locator('[data-action="expense-name"]').fill('ארוחת ערב');await dialog.locator('[data-action="expense-step-next"]').click();
+  await dialog.locator('[data-action="expense-step-next"]').click();await expect(dialog).toHaveAttribute('data-expense-step','participants');
+  const bulk=dialog.getByRole('button',{name:'סמן את כולם',exact:true}),next=dialog.locator('[data-action="expense-step-next"]');
+  const selected=()=>dialog.locator('[data-action="expense-shared"]:checked').count();
+  for(const width of [320,393,411]){
+   await page.setViewportSize({width,height:852});await page.evaluate(()=>document.fonts.ready);
+   const m=await page.evaluate(measureExpenseParticipants),context=`participants/${width}/${root}`;
+   expect(m.noOverflow,context).toBe(true);expect(m.currencyVisible,context).toBe(false);expect(m.bodyHeight,context).toBeGreaterThanOrEqual(80);
+   expect(m.addStrong.font,context).toBeCloseTo(root*.875,1);expect(m.addSmall.font,context).toBeCloseTo(root*.8125,1);expect(m.bulkCopy.font,context).toBeCloseTo(root*.875,1);
+   for(const leaf of [m.addStrong,m.addSmall,m.bulkCopy,...m.names])expect(leaf.fits,context+': '+leaf.text).toBe(true);
+   expect(m.bulkMark,context).toEqual(m.rowMark);expect(m.rowMark.width).toBe('24px');expect(m.rowMark.radius).toBe('6px');expect(m.rowMark.background).toBe('rgba(0, 0, 0, 0)');
+   for(const control of m.controls){expect(control.width,context).toBeGreaterThanOrEqual(43.99);expect(control.height,context).toBeGreaterThanOrEqual(43.99);}
+   await assertTappable(page,bulk,context+' bulk toggle');await bulk.click();expect(await selected()).toBe(0);await expect(bulk).toBeVisible();await expect(bulk).toHaveAttribute('aria-pressed','false');await expect(next).toBeDisabled();
+   await bulk.click();expect(await selected()).toBe(2);await expect(bulk).toHaveAttribute('aria-pressed','true');
+   await dialog.locator('.expense-participant-list').getByText('מאור סיבוני',{exact:true}).click();expect(await selected()).toBe(1);await expect(bulk).toHaveAttribute('aria-pressed','mixed');
+   await bulk.click();expect(await selected()).toBe(2);await expect(bulk).toBeVisible();await expect(next).toBeEnabled();
+  }
+  await expect(next).toHaveText('המשך לבדיקה');await next.click();await expect(dialog).toHaveAttribute('data-expense-step','review');
+  await dialog.getByRole('button',{name:'חזרה לשלב הקודם',exact:true}).click();expect(await selected()).toBe(2);
+  await assertTappable(page,dialog.locator('.expense-participant-add-launch'),'participant add action');await dialog.locator('.expense-participant-add-launch').click();
+  const choice=dialog.locator('.expense-participant-choice[data-view="friends"]');await expect(choice).toBeDisabled();await expect(choice).toContainText('עדיין אין לך חברים באפליקציה');
+  await dialog.locator('.expense-progress-step-button[data-step="name"]').click();await expect(dialog).toHaveAttribute('data-expense-step','name');
+  await dialog.locator('.expense-progress-step-button[data-step="participants"]').click();await expect(dialog.locator('.expense-participant-list')).toBeVisible();expect(await selected()).toBe(2);
+  await dialog.locator('.expense-progress-step-button[data-step="amount"]').click();await expect(dialog.locator('[data-action="expense-total"]')).toHaveValue('120');
+  await page.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();await expect(page.locator('.expense-row')).toHaveCount(1);expect(errors).toEqual([]);
+ });
+}
+
+test('expense progress bars guard required fields and retain draft on direct navigation',async({page})=>{
+ await openTypographyHome(page);await openEvent(page,OPEN_EVENT);await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();
+ const dialog=page.locator('.expense-step-modal'),bar=step=>dialog.locator(`.expense-progress-step-button[data-step="${step}"]`);
+ const at=async step=>{await expect(dialog).toHaveAttribute('data-expense-step',step);await expect(dialog.locator('.expense-progress-step-button[aria-current="step"]')).toHaveAttribute('data-step',step);};
+ await expect(dialog.locator('.expense-progress-step-button')).toHaveCount(5);
+ await dialog.locator('[data-action="expense-total"]').fill('0');await bar('review').click();await at('amount');await expect(dialog.locator('#expense-form-error')).toContainText('סכום גדול מאפס');
+ await dialog.locator('[data-action="expense-total"]').fill('120');await bar('review').click();await at('name');await expect(dialog.locator('#expense-form-error')).toContainText('שם קצר להוצאה');
+ await dialog.locator('[data-action="expense-name"]').fill('ארוחה לבדיקה');await bar('payer').click();await at('payer');
+ await dialog.locator('[data-action="expense-payer-amount"]').fill('0');await bar('review').click();await at('payer');await expect(dialog.locator('#expense-form-error')).toBeVisible();
+ await dialog.locator('[data-action="expense-payer-amount"]').fill('120');await bar('participants').click();await at('participants');
+ const bulk=dialog.getByRole('button',{name:'סמן את כולם',exact:true});await bulk.click();await bar('review').click();await at('participants');await expect(dialog.locator('#expense-form-error')).toContainText('לפחות משתתף אחד');
+ await bulk.click();await bar('review').click();await at('review');
+ for(const step of ['name','amount','payer','participants']){await bar(step).click();await at(step);}
+ await dialog.locator('.expense-flow-progress').scrollIntoViewIfNeeded();const rects=await dialog.locator('.expense-progress-step-button').evaluateAll(es=>es.map(e=>{const r=e.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,hit:e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))};}));
+ for(const r of rects){expect(r.width).toBeGreaterThanOrEqual(43.99);expect(r.height).toBeGreaterThanOrEqual(43.99);expect(r.hit).toBe(true);}
+ for(let i=1;i<rects.length;i++)expect(rects[i].x+rects[i].width).toBeLessThanOrEqual(rects[i-1].x+.01);
+ await bar('amount').focus();await page.keyboard.press('Enter');await at('amount');await expect(dialog.locator('[data-action="expense-total"]')).toHaveValue('120');
+ await bar('name').click();await expect(dialog.locator('[data-action="expense-name"]')).toHaveValue('ארוחה לבדיקה');
+ await bar('payer').click();await expect(dialog.locator('[data-action="expense-payer-amount"]')).toHaveValue('120');
+ await bar('participants').click();await expect(dialog.locator('[data-action="expense-shared"]:checked')).toHaveCount(2);
+});
+
+test('expense long participant roster remains reachable at enlarged text',async({page,request})=>{
+ await request.put('/api/state',{data:rosterState});await openTypographyHome(page,{path:'/?dynamic-type-preview=32'});await openEvent(page,ROSTER_EVENT);
+ await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();const dialog=page.locator('.expense-step-modal');
+ await dialog.locator('[data-action="expense-total"]').fill('120');await dialog.locator('[data-action="expense-step-next"]').click();await dialog.locator('[data-action="expense-name"]').fill('בדיקת רשימה ארוכה');
+ await dialog.locator('[data-action="expense-step-next"]').click();await dialog.locator('[data-action="expense-step-next"]').click();
+ await expect(dialog.locator('.expense-participant-row')).toHaveCount(16);await assertTappable(page,dialog.locator('.expense-participant-row').last(),'last long-name participant');
+ const bulk=dialog.getByRole('button',{name:'סמן את כולם',exact:true});await assertTappable(page,bulk,'bulk action after long roster');await bulk.click();await expect(dialog.locator('[data-action="expense-shared"]:checked')).toHaveCount(0);
+ await bulk.click();await expect(dialog.locator('[data-action="expense-shared"]:checked')).toHaveCount(16);
+ await assertTappable(page,dialog.locator('.expense-participant-add-launch'),'add after long roster');await assertNoHorizontalOverflow(page,'long participant roster');
+});

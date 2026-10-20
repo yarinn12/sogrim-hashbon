@@ -428,9 +428,11 @@ test("native approved expense header retains original progress and compact keybo
  assert.match(rule,/font-size: 1\.5rem !important/);
  assert.match(rule,/color: #fff !important/);
  const app=await readFile('src/app.mjs','utf8');
- const progress=app.slice(app.indexOf('function renderExpenseFlowProgress(step)'),app.indexOf('function renderExpenseFlowReview('));
+ const progress=await readFile('src/ui/expenseFlowProgress.mjs','utf8');
+ assert.match(app,/renderExpenseFlowProgressView/);
  assert.match(progress,/aria-current="step"/);
- assert.doesNotMatch(progress,/<button/,'user rejected named stage buttons; preserve the existing progression semantics');
+ assert.match(progress,/class="expense-progress-step-button"/,'approved bars now contain accessible navigation buttons');
+ assert.match(css,/\.expense-flow-progress li span/,'stage names remain visually hidden inside the original bars');
 });
 
 
@@ -454,4 +456,33 @@ test("native payer validation stays above add action and removal remains beside 
   const start=css.lastIndexOf(prefix+selector+' {');assert.ok(start>=0,selector+' needs the shared layout in Native');
   assert.ok(css.slice(start,css.indexOf('}',start)).replace(/\s/g,'').includes(property));
  }
+});
+
+
+test("native approved participant marks and leaf typography reach packaged CSS",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css'));
+ const prefix='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] ';
+ for(const [selector,properties] of [
+  ['.expense-participant-row-check',['width:24px!important','border-radius:6px!important','background:transparent!important']],
+  ['.expense-participant-add-launch strong',['font-size:.875rem!important']],
+  ['.expense-participant-add-launch small',['font-size:.8125rem!important']],
+  ['.expense-select-all-compact>span:not([aria-hidden="true"])',['color:var(--ledger-ink)!important']]
+ ]){
+  const start=css.lastIndexOf(prefix+selector+' {');assert.ok(start>=0,selector+' must be packaged');
+  const rule=css.slice(start,css.indexOf('}',start)).replace(/\s/g,'');
+  for(const property of properties)assert.ok(rule.includes(property),selector+': '+property);
+ }
+});
+
+test("native clickable progress bars keep44px targets and visible keyboard focus",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');
+ const raw=files.get(join('fixture-assets','native-layers.css'));
+ assert.ok(raw.includes('.expense-flow-progress .expense-progress-step-button {'),'button remains a descendant of the existing progress list');
+ const css=raw.replace(/\s/g,'');
+ assert.ok(css.includes('height:44px!important;min-height:44px!important'));
+ assert.ok(css.includes('.expense-progress-step-button:focus-visible{outline:2pxsolidvar(--ledger-brand)!important'));
+ assert.ok(css.includes('.expense-flow-progressli{overflow:visible!important'));
 });
