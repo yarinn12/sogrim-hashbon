@@ -1,3 +1,4 @@
+import {renderExpenseDateFieldView} from "../src/ui/expenseFormPresentation.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -265,7 +266,9 @@ test("ordinary expense entry keeps the fast path visible and progressively revea
   assert.match(expenseForm, /<details class="expense-details-panel"/);
   assert.match(expenseForm, /<summary>/);
   assert.match(expenseForm, /חלוקה, משלמים ותאריך/);
-  assert.match(expenseForm, /data-action="expense-date"/);
+  assert.match(expenseForm, /renderExpenseDateField\(\)/);
+  assert.match(expenseForm, /return renderExpenseDateFieldView\(\{value: expenseDraft\.occurredOn/);
+  assert.match(renderExpenseDateFieldView({value:"2026-10-20"}), /data-action="expense-date" name="expenseDate"/);
   assert.match(expenseForm, /renderExpensePayerSummary\(\)/);
   assert.match(expenseForm, /renderParticipantChecks\(expenseDraft\.sharedByParticipantIds, "expense-shared", event\)/);
   assert.match(expenseForm, /expense-participant-add-launch/);

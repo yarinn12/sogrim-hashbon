@@ -1,3 +1,4 @@
+import {renderExpenseDateFieldView} from "../src/ui/expenseFormPresentation.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -53,7 +54,10 @@ test("tester-facing forms use accessible names and polished loading copy", async
   assert.match(app, /name="eventParticipantSearch"[\s\S]*?placeholder="חיפוש לפי שם…"/);
   assert.match(app, /name="savedFriendSearch"[\s\S]*?placeholder="הקלד כדי לסנן…"/);
   assert.match(app, /name="participantSearch"[\s\S]*?placeholder="הקלד כדי לסנן…"/);
-  assert.match(app, /data-action="expense-date" name="expenseDate"/);
+  assert.match(app, /return renderExpenseDateFieldView\(\{value: expenseDraft\.occurredOn/);
+  const dateField=renderExpenseDateFieldView({value:"2026-10-20"});
+  assert.match(dateField, /data-action="expense-date" name="expenseDate"/);
+  assert.match(dateField, /aria-label="תאריך ההוצאה: 20\.10\.2026"/);
   assert.match(app, /מכין קישור…/);
   assert.match(app, /פותח את האירוע ושומר…/);
   assert.match(accountLayer, /name="message"[\s\S]*?autocomplete="off"[\s\S]*?השלב הבא…/);
@@ -106,7 +110,8 @@ test("interactive form controls expose stable browser field names", async () => 
     "expenseDate",
     "participantSelection"
   ]) {
-    assert.match(app, new RegExp(`name="${name}"`));
+    const markup = name === "expenseDate" ? renderExpenseDateFieldView({value:"2026-10-20"}) : app;
+    assert.match(markup, new RegExp(`name="${name}"`));
   }
   assert.match(account, /name="deleteAccountConfirmation"/);
 });
