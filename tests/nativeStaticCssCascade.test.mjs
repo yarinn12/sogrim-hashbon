@@ -541,3 +541,13 @@ test("native saved-expense participant details keep scalable leaf names and resp
  assert.match(css, /@container \(max-width: 16rem\)/);
  assert.match(rule('.expense-participant-share'), /grid-column:\s*2 !important/);
 });
+
+
+test("native expense date caption keeps scalable visible controls and a real native fallback",async()=>{
+ const {extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css'));
+ assert.match(css,/\.expense-date-picker-button\s*\{[^}]*min-height:\s*44px[^}]*font-size:\s*\.9375rem/);
+ assert.match(css,/\.expense-date-picker-button:focus-visible\s*\{[^}]*outline:\s*3px/);
+ assert.match(css,/input\.expense-date-picker-input\s*\{[^}]*opacity:\s*0/);
+ assert.match(css,/\.is-native-date-fallback > input\.expense-date-picker-input\s*\{[^}]*opacity:\s*1/);
+ const sw=await readFile('sw.js','utf8');assert.equal(sw.split('"/src/ui/expenseFormPresentation.mjs"').length-1,2,'both offline module inventories include the shared date/header view');
+});

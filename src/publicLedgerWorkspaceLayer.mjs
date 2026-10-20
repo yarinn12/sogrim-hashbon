@@ -22463,6 +22463,74 @@ html.ledger-workspace-v1 .expense-participants-details .expense-participants-lis
   }
 }
 
+/* Shared approved date caption; ISO storage and the native picker stay in place. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-field > .expense-date-control {
+  position: relative !important;
+  display: block !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  color: var(--ledger-ink) !important;
+  font-size: 1rem !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-picker-button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  max-width: 100% !important;
+  padding: 8px 10px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  color: var(--ledger-ink) !important;
+  font-family: var(--font-num) !important;
+  font-size: .9375rem !important;
+  font-weight: 650 !important;
+  line-height: 1.4 !important;
+  direction: ltr !important;
+  box-shadow: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-picker-button:focus-visible {
+  outline: 3px solid var(--focus) !important;
+  outline-offset: 2px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-icon {
+  display: inline-flex !important;
+  flex: 0 0 20px !important;
+  width: 20px !important;
+  height: 20px !important;
+  color: var(--ledger-muted) !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-icon svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-control > input.expense-date-picker-input {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-control.is-native-date-fallback > input.expense-date-picker-input {
+  position: relative !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: auto !important;
+  min-height: 44px !important;
+  font-size: .9375rem !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-control.is-native-date-fallback > button {
+  display: none !important;
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

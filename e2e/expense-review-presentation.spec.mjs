@@ -121,3 +121,42 @@ for (const root of [16, 20, 32]) test(`saved participant details preserve exact 
   await expect(page.locator('[data-action="expense-total"]')).toHaveValue(Number(amount).toFixed(2));
   expect(await saved(page)).toHaveLength(1);
 });
+
+
+async function editOverviewScale(page,root) {
+ await page.evaluate(root=>{
+  const url=new URL(location.href);if(root>16)url.searchParams.set('dynamic-type-preview',String(root));history.replaceState(history.state,'',url);
+  document.documentElement.classList.toggle('dynamic-type-preview',root>16);document.documentElement.style.setProperty('font-size',root+'px','important');
+ },root);
+ await page.evaluate(()=>document.fonts.ready);
+ await expect.poll(()=>page.evaluate(()=>parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(root);
+}
+const reviewDate=page=>page.locator('.expense-flow-review .expense-review-date');
+async function openSavedExpenseEditor(page,row){await row.locator('.expense-row-actions-menu > summary').click();await row.locator('[data-action="edit-expense"]').click();await expect(page.locator('.expense-step-modal')).toHaveAttribute('data-expense-step','review');}
+for(const root of [16,20,32]){
+ test(`shared expense date caption and real picker preserve ISO at root ${root}`,async({page})=>{
+  await page.setViewportSize({width:root===32?320:393,height:852});await editOverviewScale(page,root);await review(page);
+  const field=reviewDate(page),input=field.locator('[data-action="expense-date"]'),button=field.locator('[data-action="expense-date-picker"]');
+  await input.fill('2026-10-20');await expect(field.locator('[data-expense-date-caption]')).toHaveText('20.10.2026');await expect(button).toHaveAttribute('aria-label','תאריך ההוצאה: 20.10.2026');
+  await button.scrollIntoViewIfNeeded();const geometry=await button.evaluate(e=>{const b=e.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(e.querySelector('bdi'));const footer=e.closest('.expense-step-modal').querySelector('.expense-modal-actions').getBoundingClientRect();return {width:b.width,height:b.height,bottom:b.bottom,footerTop:footer.top,font:parseFloat(getComputedStyle(e).fontSize),fits:[...range.getClientRects()].every(g=>g.left>=b.left-1&&g.right<=b.right+1),hit:e.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2))};});
+  expect(geometry.font).toBeCloseTo(root*.9375,1);expect(geometry.width).toBeGreaterThanOrEqual(44);expect(geometry.height).toBeGreaterThanOrEqual(44);expect(geometry.fits).toBe(true);expect(geometry.hit).toBe(true);expect(geometry.bottom).toBeLessThanOrEqual(geometry.footerTop+1);
+  await input.evaluate(e=>{window.__nativeDatePickerCalls=[];const actual=e.showPicker.bind(e);e.showPicker=function(){const active=navigator.userActivation.isActive;actual();window.__nativeDatePickerCalls.push(active);};});
+  await button.press('Enter');expect(await page.evaluate(()=>window.__nativeDatePickerCalls)).toEqual([true]);await page.keyboard.press('Escape');await expect(page.locator('.expense-step-modal')).toHaveAttribute('data-expense-step','review');
+  await input.fill('2026-10-21');await expect(field.locator('[data-expense-date-caption]')).toHaveText('21.10.2026');await expect(page.locator('#expense-modal-title')).toHaveText('הכול מוכן?');
+  await page.locator('[data-action="save-expense"]').click();const [expense]=await saved(page);expect(expense.occurredOn).toBe('2026-10-21');expect(expense.total).toBe(24000);
+ });
+ test(`edit overview uses accurate Back destination and persists date without duplicating at root ${root}`,async({page,request})=>{
+  await page.setViewportSize({width:root===32?320:393,height:852});await editOverviewScale(page,root);await review(page);await reviewDate(page).locator('[data-action="expense-date"]').fill('2026-10-20');await page.locator('[data-action="save-expense"]').click();
+  const row=page.locator('.expense-row[data-expense-id]');await expect(row).toHaveCount(1);const [original]=await saved(page);await openSavedExpenseEditor(page,row);
+  const back=page.locator('.expense-step-modal .modal-section-back-button');await expect(back).toHaveAttribute('aria-label','חזרה לאירוע');await expect(page.locator('#expense-modal-title')).toHaveText('עריכת הוצאה');
+  await page.locator('[data-action="expense-notes"]').fill('טיוטה לבדיקה');await page.locator('[data-action="expense-step-edit"][data-step="name"]').click();await expect(back).toHaveAttribute('aria-label','חזרה לשלב הקודם');await back.click();await expect(page.locator('.expense-step-modal')).toHaveAttribute('data-expense-step','review');await expect(back).toHaveAttribute('aria-label','חזרה לאירוע');await expect(page.locator('[data-action="expense-notes"]')).toHaveValue('טיוטה לבדיקה');
+  await back.click();await expect(page.locator('.expense-step-modal')).toBeHidden();expect(await saved(page)).toEqual([original]);await openSavedExpenseEditor(page,row);await expect(page.locator('[data-action="expense-notes"]')).toHaveValue('טיוטה לבדיקה');
+  await reviewDate(page).locator('[data-action="expense-date"]').fill('2026-10-22');await expect(reviewDate(page).locator('[data-expense-date-caption]')).toHaveText('22.10.2026');await page.locator('[data-action="save-expense"]').click();await expect(page.locator('.expense-step-modal')).toBeHidden();
+  const expenses=await saved(page);expect(expenses).toHaveLength(1);const [edited]=expenses;expect(edited.id).toBe(original.id);expect(edited.total).toBe(original.total);expect(edited.payers).toEqual(original.payers);expect(edited.sharedByParticipantIds).toEqual(original.sharedByParticipantIds);expect(edited.occurredOn).toBe('2026-10-22');expect(edited.notes).toBe('טיוטה לבדיקה');
+  await expect.poll(async()=>{const response=await request.get('/api/state');const state=await response.json();return state.events?.[0]?.expenses?.find(e=>e.id===original.id)?.occurredOn;}).toBe('2026-10-22');
+  await openSavedExpenseEditor(page,row);await expect(reviewDate(page).locator('[data-action="expense-date"]')).toHaveValue('2026-10-22');await expect(reviewDate(page).locator('[data-expense-date-caption]')).toHaveText('22.10.2026');
+ });
+}
+test('native expense date fallback remains editable when showPicker is unavailable',async({page})=>{
+ await review(page);const field=reviewDate(page),input=field.locator('[data-action="expense-date"]'),button=field.locator('[data-action="expense-date-picker"]');await input.evaluate(e=>Object.defineProperty(e,'showPicker',{value:undefined,configurable:true}));await button.click();await expect(field.locator('.expense-date-control')).toHaveClass(/is-native-date-fallback/);await expect(input).toBeFocused();expect(await input.evaluate(e=>getComputedStyle(e).opacity)).toBe('1');await input.fill('');await expect(field.locator('[data-expense-date-caption]')).toHaveText('בחירת תאריך');await input.fill('2026-10-23');await expect(field.locator('[data-expense-date-caption]')).toHaveText('23.10.2026');await page.keyboard.press('Escape');await expect(page.locator('.expense-step-modal')).toHaveAttribute('data-expense-step','review');
+});

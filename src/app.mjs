@@ -1,3 +1,4 @@
+import {expenseFormHeading, expenseFormBackLabel, renderExpenseDateFieldView, openExpenseDatePicker, syncExpenseDateCaption, expenseDatePickerOwnsEscape} from "./ui/expenseFormPresentation.mjs";
 import { EXPENSE_CURRENCY_REENTRY_NOTICE, renderExpenseFxReviewAmountView, renderExpenseFxReviewDetailsView, expenseFxCurrencyNames, renderExpenseFxFieldsView, renderExpenseFxPreviewView, renderExpenseFxSourceMetadataView } from "./ui/expenseFxPresentation.mjs";
 import { renderExpenseParticipantToolbarView, expenseFriendChoiceDescription } from "./ui/expenseParticipantSelection.mjs";
 import { renderExpenseFlowProgressView } from "./ui/expenseFlowProgress.mjs";
@@ -8085,6 +8086,7 @@ function renderExpenseForm(event) {
   const flowStep = normalizeExpenseFlowStep(expenseDraft.flowStep);
   expenseDraft.flowStep = flowStep;
   const flowMeta = expenseFlowMeta(flowStep);
+  const expenseBackLabel = expenseFormBackLabel({editing: Boolean(expenseDraft.id), historyBaseDepth: expenseDraft.historyBaseDepth, historyDepth: appHistoryDepth});
   if (flowStep === "participants" && expenseDraft.participantAddView) {
     return renderExpenseParticipantAddRoute(event, canEdit);
   }
@@ -8095,7 +8097,7 @@ function renderExpenseForm(event) {
         <div class="expense-modal-header expense-modal-step-header">
           <div>
             <p class="eyebrow">${expenseDraft.id ? "עריכת הוצאה" : expenseDraft.restaurantEqualSplit ? "חלוקה שווה" : isTripEvent ? "הוצאה בטיול" : "הוספת הוצאה"} · שלב ${flowMeta.number} מתוך ${flowMeta.total}</p>
-            <h2 id="expense-modal-title">${escapeHtml(flowMeta.title)}</h2>
+            <h2 id="expense-modal-title">${escapeHtml(expenseFormHeading({editing: Boolean(expenseDraft.id), step: flowStep, title: flowMeta.title}))}</h2>
             <p class="muted" id="expense-modal-description">${escapeHtml(flowMeta.description)}</p>
             ${flowStep === "amount" ? renderRestoredDraftNote() : ""}
           </div>
@@ -8103,7 +8105,7 @@ function renderExpenseForm(event) {
             <button class="accessibility-entry-button accessibility-entry-header expense-accessibility-button" data-open-accessibility type="button" aria-label="פתיחת הגדרות נגישות" title="נגישות"><span aria-hidden="true">${iconSvg("accessibility")}</span></button>
             ${
               flowMeta.number > 1 || expenseDraft.restaurantEqualSplit
-                ? `<button class="icon-button modal-section-back-button" data-action="expense-step-back" aria-label="חזרה לשלב הקודם" title="חזרה לשלב הקודם"><span class="modal-control-icon" aria-hidden="true">${iconSvg("chevron-left")}</span></button>`
+                ? `<button class="icon-button modal-section-back-button" data-action="expense-step-back" aria-label="${expenseBackLabel}" title="${expenseBackLabel}"><span class="modal-control-icon" aria-hidden="true">${iconSvg("chevron-left")}</span></button>`
                 : `<button class="icon-button modal-section-back-button" data-action="cancel-expense" aria-label="חזרה לאירוע" title="חזרה לאירוע"><span class="modal-control-icon" aria-hidden="true">${iconSvg("chevron-left")}</span></button>`
             }
           </div>
@@ -8821,12 +8823,7 @@ function syncExpenseFlowActionState() {
 }
 
 function renderExpenseDateField(extraClass = "", label = "תאריך ההוצאה") {
-  return `
-    <label class="field expense-date-field ${extraClass}">
-      <span>${escapeHtml(label)}</span>
-      <input data-action="expense-date" name="expenseDate" type="date" lang="he-IL" value="${escapeAttribute(expenseDraft.occurredOn ?? "")}" />
-    </label>
-  `;
+  return renderExpenseDateFieldView({value: expenseDraft.occurredOn ?? "", extraClass, label});
 }
 
 function renderExpenseConfirmationSummary(event, participants) {
@@ -13821,6 +13818,11 @@ async function handleClick(event) {
     advanceExpenseFlow();
   }
 
+  if (action === "expense-date-picker") {
+    openExpenseDatePicker(target);
+    return;
+  }
+
   if (action === "expense-step-back") {
     goBackInApp();
     return;
@@ -14875,6 +14877,7 @@ function handleInput(event) {
   }
   if (action === "expense-date") {
     expenseDraft.occurredOn = target.value;
+    syncExpenseDateCaption(target);
     syncExpenseDetailsSummary();
   }
   if (action === "expense-notes" && expenseDraft) {
@@ -23867,6 +23870,7 @@ function handleInputKeyboardShortcut(event) {
 }
 
 function handleDialogKeydown(event) {
+  if (expenseDatePickerOwnsEscape(event)) return;
   if (handleRadioGroupKeyboardNavigation(event)) return;
   if (handleFriendsHubTabKeyboardNavigation(event)) return;
   if (handleInputKeyboardShortcut(event)) return;
