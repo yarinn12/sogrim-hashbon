@@ -1161,3 +1161,18 @@ test('expense long participant roster remains reachable at enlarged text',async(
  await bulk.click();await expect(dialog.locator('[data-action="expense-shared"]:checked')).toHaveCount(16);
  await assertTappable(page,dialog.locator('.expense-participant-add-launch'),'add after long roster');await assertNoHorizontalOverflow(page,'long participant roster');
 });
+
+
+test('expense selection toggle saves exactly the final selected participants',async({page})=>{
+ await openTypographyHome(page);await openEvent(page,OPEN_EVENT);await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();
+ const dialog=page.locator('.expense-step-modal');await dialog.locator('[data-action="expense-total"]').fill('120');await dialog.locator('[data-action="expense-step-next"]').click();
+ await dialog.locator('[data-action="expense-name"]').fill('בחירה סופית לשמירה');await dialog.locator('[data-action="expense-step-next"]').click();await dialog.locator('[data-action="expense-step-next"]').click();
+ const bulk=dialog.getByRole('button',{name:'סמן את כולם',exact:true});await bulk.click();await expect(dialog.locator('[data-action="expense-shared"]:checked')).toHaveCount(0);await bulk.click();
+ await dialog.locator('.expense-participant-list').getByText('מאור סיבוני',{exact:true}).click();await expect(dialog.locator('[data-action="expense-shared"]:checked')).toHaveCount(1);
+ await dialog.locator('.expense-progress-step-button[data-step="review"]').click();await dialog.locator('[data-action="save-expense"]').click();await expect(dialog).toHaveCount(0);
+ const saved=await page.evaluate(eventId=>JSON.parse(localStorage.getItem('settle-friends-state')).events.find(e=>e.id===eventId).expenses.find(e=>e.name==='בחירה סופית לשמירה'),OPEN_EVENT);
+ expect(saved.sharedByParticipantIds).toEqual([OWNER]);expect(saved.total).toBe(12000);expect(saved.payers).toEqual([{participantId:OWNER,amount:12000}]);
+ await openTypographyHome(page);await openEvent(page,OPEN_EVENT);await expect(page.locator('.expense-row')).toHaveCount(2);
+ const restored=await page.evaluate(eventId=>JSON.parse(localStorage.getItem('settle-friends-state')).events.find(e=>e.id===eventId).expenses.find(e=>e.name==='בחירה סופית לשמירה'),OPEN_EVENT);
+ expect(restored.sharedByParticipantIds).toEqual([OWNER]);expect(restored.total).toBe(12000);
+});
