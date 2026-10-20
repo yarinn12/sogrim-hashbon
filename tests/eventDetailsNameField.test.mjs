@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFile } from "node:fs/promises";
+import { currencySearchText } from "../src/domain/currencies.mjs";
 import { renderEventDetailsNameFieldView } from "../src/ui/eventDetailsNameField.mjs";
 
 test("event name keeps its optional label, linked help and safe draft attributes", () => {
@@ -33,6 +34,7 @@ test("details adapter renders both event types without changing name, currency o
         escapeHtml: value => String(value), escapeAttribute: value => String(value),
         renderAppBackButton: () => "", renderNotice: () => "", renderEventCreationProgress: () => "",
         renderEventDetailsNameFieldView, EVENT_NAME_PLACEHOLDER: "אוכל / מונית / קניות…",
+        currencySearchText,
         currencySelectLabel: value => `label-${value}`, currencyOptions: () => [{ id: "ILS" }, { id: "USD" }],
         renderNewEventInlinePicker(options) { calls.push(options); return `<div data-picker-action="${options.action}">${options.selectedValue}</div>`; }
       });
@@ -47,7 +49,7 @@ test("details adapter renders both event types without changing name, currency o
       assert.ok(html.indexOf('data-picker-action="new-event-currency-choice"') < html.indexOf('data-action="open-new-event-settlement"'));
       assert.equal(calls[0].selectedValue, "USD");
       assert.equal(calls[0].searchable, true);
-      assert.deepEqual(JSON.parse(JSON.stringify(calls[0].options)), [{ value: "ILS", label: "label-ILS" }, { value: "USD", label: "label-USD" }]);
+      assert.deepEqual(JSON.parse(JSON.stringify(calls[0].options)), [{ value: "ILS", label: "label-ILS", searchText: currencySearchText("ILS") }, { value: "USD", label: "label-USD", searchText: currencySearchText("USD") }]);
       assert.ok(html.includes(eventType === "trip" ? "טיול משפחתי" : "אוכל / מונית / קניות…"));
     }
   }
