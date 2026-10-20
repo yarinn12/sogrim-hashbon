@@ -22515,6 +22515,7 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-control > i
   height: 100% !important;
   min-width: 0 !important;
   margin: 0 !important;
+  transition: none !important;
   opacity: 0 !important;
   pointer-events: none !important;
   z-index: -1 !important;
