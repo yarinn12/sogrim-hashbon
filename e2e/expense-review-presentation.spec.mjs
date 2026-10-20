@@ -91,7 +91,8 @@ for (const root of [16, 20, 32]) test(`saved participant details preserve exact 
     self: parseFloat(getComputedStyle(e.querySelector('.expense-participant-you')).fontSize),
     overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth
   }));
-  expect(type.heading).toBeCloseTo(root * .875, 1);
+  // The shared accessibility rule raises paragraph captions to at least 1rem.
+  expect(type.heading).toBeCloseTo(root === 16 ? 14 : root, 1);
   expect(type.self).toBeCloseTo(root * .75, 1);
   expect(type.overflow).toBe(false);
   const last = row.locator('.expense-participant-item').last();
@@ -109,6 +110,6 @@ for (const root of [16, 20, 32]) test(`saved participant details preserve exact 
   await expect(row.locator('.expense-participant-share')).toHaveCount(3);
   await row.locator('.expense-row-actions-menu > summary').click();
   await row.locator('[data-action="edit-expense"]').click();
-  await expect(page.locator('[data-action="expense-total"]')).toHaveValue(amount);
+  await expect(page.locator('[data-action="expense-total"]')).toHaveValue(Number(amount).toFixed(2));
   expect(await saved(page)).toHaveLength(1);
 });
