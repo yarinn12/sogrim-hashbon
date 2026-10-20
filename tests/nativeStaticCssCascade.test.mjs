@@ -499,7 +499,7 @@ test("native FX presentation includes scalable controls, optional details and vi
 
 test("native final review keeps responsive attachment controls and isolated FX numbers",async()=>{
  const {extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css'));
- assert.match(css,/\.expense-step-modal\[data-expense-step="review"\] \.expense-attachment-control\s*\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,10rem\),1fr\)\)/);
+ assert.match(css,/\.expense-step-modal\[data-expense-step="review"\] \.expense-attachment-control\s*\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,8\.5rem\),1fr\)\)/);
  assert.match(css,/\.expense-review-fx-amount bdi\s*\{unicode-bidi:isolate!important/);
  assert.match(css,/\.expense-review-fx-details summary\s*\{[^}]*min-height:44px/);
  assert.match(css,/\.expense-review-fx-credit a\s*\{[^}]*min-height:44px/);

@@ -22385,7 +22385,7 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expe
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details-content {gap:12px!important;padding-block:4px 12px!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview-label {font-weight:400!important;}
 /* Approved final review keeps the existing rows, with compact attachments and readable FX copy. */
-html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-attachment-control {grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr))!important;align-items:stretch!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-attachment-control {grid-template-columns:repeat(auto-fit,minmax(min(100%,8.5rem),1fr))!important;align-items:stretch!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-attachment-upload {min-width:0!important;min-height:44px!important;white-space:normal!important;font-size:.875rem!important;line-height:1.5!important;padding:10px 12px!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-attachment-control>:is(img,[data-action="remove-expense-attachment"]) {grid-column:1/-1!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-amount {display:grid!important;gap:4px!important;white-space:normal!important;overflow-wrap:anywhere!important;}
