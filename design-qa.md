@@ -495,3 +495,30 @@ Normal-suite application/src/scripts/normal-test bytes stayed unchanged after th
 Limits: local synthetic evidence; physical Android/iPhone, signed packages and exact-source release CI remain open. No database change/export, new cost or public/store publication. Git source retention documented separately.
 
 final result: passed
+
+
+## 2026-10-21 — clearer provisional amount wording
+
+Source visual truth: outputs/design-review-20261021/summary-amount-copy-implemented/baseline/{phone,enlarged,iphone-browser,firefox,desktop,closed}-{top,collapsed-view,expanded-view}.png.
+Actual shared source: matching screenshots in actual-source/ of the same output; http://127.0.0.1:4414/.
+Full-view comparisons: phone-collapsed-view-comparison.png, firefox-collapsed-view-comparison.png, closed-collapsed-view-comparison.png. Focused large-text and expanded-state comparisons: enlarged-collapsed-view-comparison.png and phone-expanded-view-comparison.png. Current single-transfer capture: single-01-top.png.
+Same viewport/state/theme/fixture, density1 and identical pixel dimensions/CSS size:393x852/root16,320x852/root32,360x800/root20,1060x900/root16, WebKit393x852/root16 and closed393x852/root16. No image resampling.
+
+Intentional difference: “יתרה זמנית” replaced with approved “סכום לא סופי” in4visible summary literals, including the single-transfer sender/receiver route. User approved this exact wording before source implementation.
+Typography: original fonts, weights, sizes and line heights unchanged; new phrase fits at enlarged root32 without clipping.
+Spacing/layout: original card layout, icon, radii, alignment and responsive rules unchanged. Actual-ink centers pass12states with the original1.5px tolerance, maximum1.5px; no threshold change. No horizontal overflow; short-height footer reachable.
+Colors/tokens: unchanged brand/neutral palette and expanded-state color.
+Assets: original shared chevron, avatars and logos retained; no new asset or decoration.
+Copy/content: new phrase consistent in ordinary rows and the single-transfer summary; closed/paid labels preserved.
+Generic-design assessment: no new surface, badge, explanation or decoration added; plainer wording replaces accounting terminology.
+Comparison history: first comparison passed;5same-state pairs inspected. Closed-event comparison is pixel-identical. Open-event text/arrow horizontal extent changes are intentional from the new phrase.
+Findings: no actionable P0/P1/P2 mismatch.
+
+Verification: full normal4225passed (4216JavaScript+9JVM), focused180passed, architecture186modules/433dependencies/zero violations. One scoped browser run30passed across Chromium/WebKit/Firefox, zero failures/skips/flaky/retries. Covers ordinary copy/cancel, single-transfer copy and closure, root16/20/32, open/closed disclosure centers, touch/keyboard toggle and exact expense/transfer/lock preservation. Full-screen capture11cases and disclosure capture6profiles passed. All3offline modules compiled. Native CSS unchanged and its existing extraction regression remains green.
+Before/after evidence: existing normal regression and browser scenario failed on old text and passed after the replacement. Existing checks updated, featured copy assertion added; no redundant test file, assertion weakening or retry.
+Application code reverses byte-for-byte to baseline by replacing only the4approved copy literals, proving no controller, calculation, authorization or synchronization edit. Existing closure/payment behavior checks retained.
+
+Limits: local synthetic/browser evidence, no physical device or signed package verification. No live DB change/export, new cost or app/store publication. Existing release gates remain open.
+Application/test bytes frozen during verification; QA documentation appended afterwards.
+
+final result: passed

@@ -8,9 +8,9 @@ function status({closed=false,personal=true,paying=false}={}){
  return runInNewContext(row.slice(start,end+1)+"\npendingStatusText",{paymentActionsEnabled:closed,isPersonal:personal,isCurrentParticipantPaying:paying});
 }
 test("open personal transfer labels are provisional for both payer and receiver",()=>{
- assert.equal(status({paying:true}),"יתרה זמנית");
- assert.equal(status({paying:false}),"יתרה זמנית");
- assert.equal(status({personal:false}),"יתרה זמנית");
+ assert.equal(status({paying:true}),"סכום לא סופי");
+ assert.equal(status({paying:false}),"סכום לא סופי");
+ assert.equal(status({personal:false}),"סכום לא סופי");
 });
 test("closed transfers retain the distinct payer, receiver and group pending states",()=>{
  assert.equal(status({closed:true,paying:true}),"מחכה שתעביר");
@@ -35,6 +35,7 @@ test("ordinary and single-transfer open summaries use the approved interim copy 
   const html=render({single});assert(html.includes("סיכום ביניים"));assert(html.includes('data-settlement-phase="interim"'));
   assert(html.includes(">סגור אירוע והתחל להתחשבן</button>"));assert(!html.includes("בואו נסגור חשבון"));assert(!html.includes('data-action="mark-paid"'));
   if(!single)assert(html.includes("הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים."));
+  if(single)assert(html.includes("סכום לא סופי לקבלה"));
  }
 });
 test("closed, validation, empty and non-manager summary states keep their original guards",()=>{

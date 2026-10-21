@@ -10871,8 +10871,8 @@ function renderFeaturedSettlementHero(
     : transfer.fromParticipantId;
   const otherParticipantName = participantName(otherParticipantId, event);
   const routeLabel = isCurrentParticipantPaying
-    ? `${isClosed ? "עליך להעביר" : "יתרה זמנית להעברה"} ל־${otherParticipantName}`
-    : `${isClosed ? "אמור להגיע אליך" : "יתרה זמנית לקבלה"} מ־${otherParticipantName}`;
+    ? `${isClosed ? "עליך להעביר" : "סכום לא סופי להעברה"} ל־${otherParticipantName}`
+    : `${isClosed ? "אמור להגיע אליך" : "סכום לא סופי לקבלה"} מ־${otherParticipantName}`;
   const completionLabel = isCurrentParticipantPaying ? "העברתי" : "קיבלתי";
   const canManage = canCurrentParticipantManage(event);
 
@@ -11097,11 +11097,11 @@ function renderTransferRow(
       transfer.toParticipantId === state.currentParticipantId);
   const isCurrentParticipantPaying =
     transfer.fromParticipantId === state.currentParticipantId;
-  const pendingStatusText = !paymentActionsEnabled ? "יתרה זמנית" : isPersonal
+  const pendingStatusText = !paymentActionsEnabled ? "סכום לא סופי" : isPersonal
     ? isCurrentParticipantPaying
       ? "מחכה שתעביר"
       : "מחכה שיגיע"
-    : paymentActionsEnabled ? "ממתין להעברה" : "יתרה זמנית";
+    : paymentActionsEnabled ? "ממתין להעברה" : "סכום לא סופי";
   const statusText = paid
     ? isGroupedPaidTransfer
       ? `${formatCount(groupedPaidTransfers.length, "תשלום הושלם", "תשלומים הושלמו")}`

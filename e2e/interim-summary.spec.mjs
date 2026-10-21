@@ -34,7 +34,7 @@ for(const root of [16,20,32]){
    return outside;
   });expect(glyphs).toEqual([]);
 
-  await expect(screen.locator(".transfer-status")).toHaveText(["יתרה זמנית","יתרה זמנית"]);
+  await expect(screen.locator(".transfer-status")).toHaveText(["סכום לא סופי","סכום לא סופי"]);
   await expect(screen.locator('[data-action="mark-paid"]')).toHaveCount(0);
   const style=await screen.evaluate(e=>({copy:parseFloat(getComputedStyle(e.querySelector(".settlement-hero-title-row p")).fontSize),title:parseFloat(getComputedStyle(e.querySelector(".settlement-hero-title-row h2")).fontSize),background:getComputedStyle(e.querySelector(".settlement-hero-actions")).backgroundColor,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth}));
   expect(style.copy).toBe(root*.875);expect(style.title).toBe(root*1.25);expect(style.background).toBe("rgba(0, 0, 0, 0)");expect(style.overflow).toBe(false);
@@ -67,6 +67,7 @@ test("single transfer uses interim language and only gets payment controls after
  const {screen,cloud}=await setup(page,baseURL,{single:true});
  await expect(screen.locator(".settlement-hero.is-explained")).toHaveAttribute("data-settlement-phase","interim");
  await expect(screen.locator(".settlement-featured-action")).toContainText("סיכום ביניים");
+ await expect(screen.locator(".settlement-featured-route")).toContainText("סכום לא סופי לקבלה");
  await expect(screen.locator(".settlement-featured-amount")).toHaveText("₪70.00");
  await expect(screen.locator('[data-action="mark-paid"]')).toHaveCount(0);
  await screen.locator(".settlement-close-primary").click();await page.locator('[data-action="confirm-close-event"]').click();
