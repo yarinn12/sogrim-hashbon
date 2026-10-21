@@ -4303,22 +4303,20 @@ const CSS = `
   }
 
   /* Close-event confirmation follows the same white/green floating feedback language. */
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-backdrop {
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-backdrop {
     position: fixed !important;
     inset: 0 !important;
     z-index: 240 !important;
     display: grid !important;
     place-items: center !important;
     box-sizing: border-box !important;
-    padding:
-      calc(16px + env(safe-area-inset-top))
-      14px
-      calc(104px + env(safe-area-inset-bottom)) !important;
+    padding: calc(16px + env(safe-area-inset-top)) 14px calc(var(--settlement-close-nav-space) + 24px + env(safe-area-inset-bottom)) !important;
     background: rgba(7, 27, 24, 0.14) !important;
     pointer-events: auto !important;
+    --settlement-close-nav-space: var(--dynamic-type-bottom-nav-block, 82px);
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation {
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation {
     width: min(520px, calc(100vw - 28px)) !important;
     max-width: calc(100vw - 28px) !important;
     display: grid !important;
@@ -4326,10 +4324,10 @@ const CSS = `
     grid-auto-rows: max-content !important;
     align-content: start !important;
     min-height: 0 !important;
-    max-height: calc(100dvh - 120px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
-    gap: 12px !important;
+    max-height: calc(100dvh - var(--settlement-close-nav-space) - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+    gap: 20px !important;
     box-sizing: border-box !important;
-    padding: 14px !important;
+    padding: 20px !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
     overscroll-behavior: contain !important;
@@ -4337,11 +4335,10 @@ const CSS = `
     border-radius: var(--app-radius-panel) !important;
     color: var(--app-ink) !important;
     background: #fbfefd !important;
-    box-shadow:
-      0 22px 52px rgba(7, 27, 24, 0.22),
-      0 4px 14px rgba(7, 27, 24, 0.1) !important;
+    box-shadow: 0 12px 32px rgba(7,27,24,.16), 0 2px 8px rgba(7,27,24,.08) !important;
     outline: none !important;
     pointer-events: auto !important;
+    scroll-padding-block: 16px !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-heading {
@@ -4375,12 +4372,13 @@ const CSS = `
     font-weight: 600 !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-copy h2 {
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-copy h2 {
     margin: 0 !important;
     color: var(--app-ink) !important;
-    font-size: 18px !important;
+    font-size: 1.25rem !important;
     font-weight: 650 !important;
     line-height: 1.3 !important;
+    overflow-wrap: anywhere !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-dismiss {
@@ -4398,31 +4396,71 @@ const CSS = `
     box-shadow: none !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation > p {
-    margin: 0 !important;
-    color: var(--app-muted) !important;
-    font-size: 13px !important;
-    line-height: 1.55 !important;
-    text-align: start !important;
-  }
-
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation > p strong {
-    display: block !important;
-    margin-bottom: 4px !important;
-    color: var(--app-ink) !important;
-  }
-
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-actions {
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-actions {
     display: grid !important;
-    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr) !important;
+    grid-template-columns: repeat(auto-fit,minmax(min(100%,8rem),1fr)) !important;
     gap: 10px !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-actions > button {
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-actions > button {
     width: 100% !important;
     min-width: 0 !important;
-    min-height: 50px !important;
+    min-height: 48px !important;
+    height: auto !important;
+    padding: 10px 14px !important;
+    font-size: .9375rem !important;
+    font-weight: 650 !important;
+    line-height: 1.5 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    margin: 0 !important;
   }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-copy h2:focus {
+    outline: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-body {
+    display: grid !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-body p {
+    margin: 0 !important;
+    text-align: start !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-body .settlement-close-transfer-summary {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: baseline !important;
+    gap: .25em .4em !important;
+    color: var(--app-ink) !important;
+    font-size: 1rem !important;
+    font-weight: 650 !important;
+    line-height: 1.5 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-transfer-summary :is(span,bdi) {
+    font: inherit !important;
+    max-width: 100% !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-body #settlement-close-confirmation-description {
+    color: var(--app-muted) !important;
+    font-size: .9375rem !important;
+    font-weight: 400 !important;
+    line-height: 1.55 !important;
+  }
+
+  @media (max-width: 360px) {
+    html.design-coherence-v1.ledger-workspace-v1.circle-design-v1.dynamic-type-preview body #app .settlement-close-confirmation-backdrop {
+      --settlement-close-nav-space: var(--dynamic-type-bottom-nav-block, 148px);
+    }
+  }
+
 
   /* Destructive event settings keep the same quiet white task surfaces as the
      rest of the app; danger is communicated by the action, not a tinted page. */

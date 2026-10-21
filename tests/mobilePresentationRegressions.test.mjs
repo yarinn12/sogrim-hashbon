@@ -199,10 +199,7 @@ test("event workspace controls stay in the document flow above mobile chrome", a
 
 test("close-event confirmation uses the branded floating card with an explicit dismiss control", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const confirmation = app.slice(
-    app.indexOf("function renderSettlementCloseConfirmation"),
-    app.indexOf("function renderTransferRow")
-  );
+  const confirmation = await readFile("src/ui/settlementClosePresentation.mjs", "utf8");
 
   assert.match(confirmation, /class="settlement-close-confirmation-backdrop"/);
   assert.match(confirmation, /role="alertdialog"/);
@@ -211,8 +208,8 @@ test("close-event confirmation uses the branded floating card with an explicit d
   assert.match(confirmation, /data-action="cancel-close-event-confirmation"/);
   assert.doesNotMatch(confirmation, /פעולה חשובה/);
   assert.doesNotMatch(confirmation, /settlement-close-confirmation-icon/);
-  assert.match(confirmation, /בואו נסגור חשבון\?/);
-  assert.match(confirmation, /סוגרים חשבון/);
+  assert.match(confirmation, /לסגור את האירוע\?/);
+  assert.match(confirmation, /סגור אירוע/);
   assert.doesNotMatch(confirmation, /role="region"/);
   assert.match(
     coherenceLayer,

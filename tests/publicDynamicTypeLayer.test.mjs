@@ -76,9 +76,15 @@ test("iOS measures its independent system body size and normalizes the UI before
     assert.equal(classes.has('dynamic-type-extra-large'), level === 'extra-large');
   }
 
+  const frames = [];
+  view.requestAnimationFrame = callback => frames.push(callback);
   const observer = watchAppleDynamicType(root);
   systemBodySize = 23;
   observer.notify();
+  observer.notify();
+  assert.equal(root.dataset.dynamicType, 'normal', 'observer delivery must not mutate root typography inline');
+  assert.equal(frames.length, 1, 'repeated notifications share one pending frame');
+  frames.shift()();
   assert.equal(root.dataset.dynamicType, 'large');
   assert.ok(Math.abs(16 * Number(root.style.getPropertyValue('--apple-font-scale')) - 16 * 23 / 17) < 0.01);
 });

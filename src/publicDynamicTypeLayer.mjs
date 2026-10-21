@@ -105,7 +105,17 @@ export function watchAppleDynamicType(root = globalThis.document?.documentElemen
   ) return null;
   const probe = appleSystemBodyProbe(root.ownerDocument);
   if (!probe) return null;
-  const observer = new view.ResizeObserver(() => refreshDynamicType(root));
+  let pending = false;
+  const observer = new view.ResizeObserver(() => {
+    // Changing root typography can resize other observed controls. Apply it in
+    // the next frame, outside the current ResizeObserver delivery cycle.
+    if (pending) return;
+    pending = true;
+    view.requestAnimationFrame(() => {
+      pending = false;
+      refreshDynamicType(root);
+    });
+  });
   observer.observe(probe);
   return observer;
 }

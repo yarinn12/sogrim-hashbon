@@ -1757,7 +1757,7 @@ test("new event name starts empty with helpful grey examples", async () => {
 });
 
 test("settlement screen can close an event and share it to WhatsApp", async () => {
-  const app = await readFile("src/app.mjs", "utf8");
+  const app = await readFile("src/app.mjs", "utf8") + await readFile("src/ui/settlementClosePresentation.mjs", "utf8");
   const styles = await readFile("styles.css", "utf8");
 
   assert.match(app, /settlement-hero/);
@@ -1765,8 +1765,8 @@ test("settlement screen can close an event and share it to WhatsApp", async () =
   assert.match(app, /requestCloseCurrentEvent\(target\.dataset\.eventId\)/);
   assert.match(app, /data-action="confirm-close-event"/);
   assert.match(app, /data-action="reopen-event"/);
-  assert.match(app, /בואו נסגור חשבון/);
-  assert.match(app, /בואו נסגור חשבון\?/);
+  assert.match(app, /לסגור את האירוע/);
+  assert.match(app, /לסגור את האירוע\?/);
   assert.match(app, /סוגרים חשבון/);
   assert.match(
     app,

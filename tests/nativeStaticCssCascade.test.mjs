@@ -629,3 +629,21 @@ test("native settlement disclosure keeps scalable centered icon and label after 
  // The existing parent rotation, semantics and hit target remain intact.
  assert.match(css,/\.is-explanation-open \.transfer-expand-indicator\s*\{[^}]*transform:\s*rotate\(180deg\) !important/);
 });
+
+test("native close confirmation retains scalable leaf text, scroll clearance and responsive actions", async () => {
+ const coherence=resolve("src/publicDesignCoherenceLayer.mjs");
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:coherence}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css"));
+ const rule=selector=>{
+  const match=[...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find(m=>m[1].trim().endsWith(selector));
+  assert(match,"Missing native close rule: "+selector);return match[2];
+ };
+ assert.match(rule(".settlement-close-confirmation-copy h2"),/font-size:\s*1\.25rem\s*!important/,"heading must honor enlarged system text");
+ assert.match(rule("#settlement-close-confirmation-description"),/font-size:\s*\.9375rem\s*!important/,"body must honor enlarged system text");
+ assert.match(rule(".settlement-close-transfer-summary"),/font-size:\s*1rem\s*!important/);
+ assert.match(rule(".settlement-close-confirmation-actions > button"),/font-size:\s*\.9375rem\s*!important/);
+ assert.match(rule(".settlement-close-confirmation-actions"),/repeat\(auto-fit,minmax\(min\(100%,8rem\),1fr\)\)/);
+ assert.match(rule(".settlement-close-confirmation"),/overflow-y:\s*auto\s*!important/);
+ assert.match(rule(".settlement-close-confirmation"),/max-height:[^;]*--settlement-close-nav-space/);
+});

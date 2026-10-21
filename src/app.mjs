@@ -1,3 +1,4 @@
+import {renderSettlementCloseConfirmationView} from "./ui/settlementClosePresentation.mjs";
 import {expenseFormHeading, expenseFormBackLabel, renderExpenseDateFieldView, openExpenseDatePicker, syncExpenseDateCaption, expenseDatePickerOwnsEscape, renderExpenseNotesView, renderExpenseDeletionContextView} from "./ui/expenseFormPresentation.mjs";
 import { EXPENSE_CURRENCY_REENTRY_NOTICE, renderExpenseFxReviewAmountView, renderExpenseFxReviewDetailsView, expenseFxCurrencyNames, renderExpenseFxFieldsView, renderExpenseFxPreviewView, renderExpenseFxSourceMetadataView } from "./ui/expenseFxPresentation.mjs";
 import { renderExpenseParticipantToolbarView, expenseFriendChoiceDescription } from "./ui/expenseParticipantSelection.mjs";
@@ -11037,42 +11038,12 @@ function renderFeaturedSettlementBreakdown(event, transfer) {
 }
 
 function renderSettlementCloseConfirmation(event, pendingTransfers, pendingTotal) {
-  const message = pendingTransfers.length === 1
-    ? `יתרה סופית אחת בסך ${formatEventMoney(event, pendingTotal)} תישלח לתשלום.`
-    : `${pendingTransfers.length} יתרות סופיות בסך ${formatEventMoney(event, pendingTotal)} יישלחו לתשלום.`;
-
-  return `
-    <section class="settlement-close-confirmation-backdrop" aria-label="אישור סגירת האירוע">
-      <section
-        class="settlement-close-confirmation"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="settlement-close-confirmation-title"
-        aria-describedby="settlement-close-confirmation-description"
-        tabindex="-1"
-      >
-        <div class="settlement-close-confirmation-heading">
-          <div class="settlement-close-confirmation-copy">
-            <h2 id="settlement-close-confirmation-title">בואו נסגור חשבון?</h2>
-          </div>
-          <button
-            class="app-toast-close settlement-close-confirmation-dismiss"
-            type="button"
-            data-action="cancel-close-event-confirmation"
-            aria-label="סגירת חלון האישור"
-          >${iconSvg("x")}</button>
-        </div>
-        <p id="settlement-close-confirmation-description">
-          ${escapeHtml(message)} אחרי הסגירה לא ניתן לערוך הוצאות, וכל המשתתפים יקבלו עדכון.
-        </p>
-        <div class="settlement-close-confirmation-actions">
-          <button class="secondary-button" type="button" data-action="cancel-close-event-confirmation">ביטול</button>
-          <button class="primary-button" type="button" data-action="confirm-close-event" data-allow-offline-mutation="true" data-event-id="${event.id}">סוגרים חשבון</button>
-        </div>
-      </section>
-      ${renderEventRoutePrimaryNav()}
-    </section>
-  `;
+  return renderSettlementCloseConfirmationView({
+    eventId: event.id,
+    pendingCount: pendingTransfers.length,
+    formattedTotal: formatEventMoney(event, pendingTotal),
+    navigationHtml: renderEventRoutePrimaryNav()
+  });
 }
 
 function renderTransferRow(
@@ -20802,7 +20773,7 @@ function requestCloseCurrentEvent(eventId) {
   render();
   activateDialog(
     ".settlement-close-confirmation",
-    '[data-action="confirm-close-event"]'
+    "#settlement-close-confirmation-title"
   );
 }
 

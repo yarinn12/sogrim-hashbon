@@ -115,7 +115,7 @@ test("the final paid transfer opens one completion celebration without automatic
 });
 
 test("closing with pending transfers uses stateful confirmation and stays reversible", async () => {
-  const app = await readFile("src/app.mjs", "utf8");
+  const app = await readFile("src/app.mjs", "utf8") + await readFile("src/ui/settlementClosePresentation.mjs", "utf8");
 
   assert.match(app, /let settlementCloseConfirmation = null/);
   assert.match(app, /function requestCloseCurrentEvent\(eventId\)/);

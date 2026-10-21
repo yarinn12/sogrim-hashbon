@@ -93,7 +93,7 @@ test("event closing remains responsive behind a stale sync lock", async ({ page 
   await page.locator('[data-action="close-event"]').first().click();
   const confirmation = page.locator(".settlement-close-confirmation");
   await expect(confirmation).toBeVisible();
-  await expect(confirmation).toContainText("בואו נסגור חשבון?");
+  await expect(confirmation).toContainText("לסגור את האירוע?");
   const confirmationLayout = await confirmation.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const navigationRects = [...document.querySelectorAll('.bottom-nav, .app-bottom-nav, [aria-label="ניווט ראשי"]')]
@@ -115,7 +115,7 @@ test("event closing remains responsive behind a stale sync lock", async ({ page 
   expect(confirmationLayout.bottom).toBeLessThanOrEqual(confirmationLayout.navigationTop);
 
   const confirmButton = confirmation.locator('[data-action="confirm-close-event"]');
-  await expect(confirmButton).toHaveText("סוגרים חשבון");
+  await expect(confirmButton).toHaveText("סגור אירוע");
   await expect(confirmButton).not.toHaveAttribute("aria-disabled", "true");
   await confirmButton.click({ timeout: 5000 });
 
