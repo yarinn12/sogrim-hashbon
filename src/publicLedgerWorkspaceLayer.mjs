@@ -22592,6 +22592,42 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[
   color:var(--ledger-danger,#b42318)!important;background:transparent!important;border:1px solid var(--ledger-line)!important;box-shadow:none!important;
 }
 
+
+/* Expense deletion confirmation: approved context and scalable safe actions. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"]{
+ width:min(480px,calc(100vw - 32px))!important;max-height:calc(100dvh - 32px)!important;
+ padding:24px!important;box-sizing:border-box!important;overflow-y:auto!important;overflow-x:hidden!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .important-action-copy{
+ padding:0!important;gap:16px!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] h2{
+ font-size:1.25rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] p{
+ font-size:.9375rem!important;line-height:1.5!important;overflow-wrap:anywhere!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .expense-delete-context{
+ display:flex!important;justify-content:space-between!important;align-items:baseline!important;gap:12px!important;
+ flex-wrap:wrap!important;padding-bottom:16px!important;border-bottom:1px solid var(--ledger-line,#e1e8e5)!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .expense-delete-context strong{
+ font-size:1rem!important;line-height:1.5!important;font-weight:700!important;overflow-wrap:anywhere!important;min-width:0!important;
+ flex:1 1 8rem!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .expense-delete-context bdi{
+ font-size:1rem!important;line-height:1.5!important;font-weight:700!important;white-space:nowrap!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .important-action-dialog-actions{
+ display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr))!important;
+ gap:12px!important;margin:0!important;padding:24px 0 0!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] button{
+ min-width:0!important;min-height:48px!important;font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .important-action-confirm-button{
+ color:var(--ledger-danger,#b42318)!important;background:transparent!important;border:1px solid var(--ledger-line,#e1e8e5)!important;box-shadow:none!important;
+}
 `;
 
 const RETIRED_ROOT_CLASSES = [

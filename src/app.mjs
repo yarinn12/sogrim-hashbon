@@ -1,4 +1,4 @@
-import {expenseFormHeading, expenseFormBackLabel, renderExpenseDateFieldView, openExpenseDatePicker, syncExpenseDateCaption, expenseDatePickerOwnsEscape, renderExpenseNotesView} from "./ui/expenseFormPresentation.mjs";
+import {expenseFormHeading, expenseFormBackLabel, renderExpenseDateFieldView, openExpenseDatePicker, syncExpenseDateCaption, expenseDatePickerOwnsEscape, renderExpenseNotesView, renderExpenseDeletionContextView} from "./ui/expenseFormPresentation.mjs";
 import { EXPENSE_CURRENCY_REENTRY_NOTICE, renderExpenseFxReviewAmountView, renderExpenseFxReviewDetailsView, expenseFxCurrencyNames, renderExpenseFxFieldsView, renderExpenseFxPreviewView, renderExpenseFxSourceMetadataView } from "./ui/expenseFxPresentation.mjs";
 import { renderExpenseParticipantToolbarView, expenseFriendChoiceDescription } from "./ui/expenseParticipantSelection.mjs";
 import { renderExpenseFlowProgressView } from "./ui/expenseFlowProgress.mjs";
@@ -5246,7 +5246,7 @@ function renderImportantActionDialog() {
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="important-action-title"
-        aria-describedby="important-action-description"
+        aria-describedby="${importantActionDialog.kind === "delete-expense" ? "expense-delete-context important-action-description" : "important-action-description"}"
         data-important-action-kind="${escapeAttribute(importantActionDialog.kind)}"
         ${importantActionDialog.processing ? 'aria-busy="true"' : ""}
         tabindex="-1"
@@ -5254,6 +5254,7 @@ function renderImportantActionDialog() {
         <div class="important-action-copy">
           ${importantActionDialog.label === null ? "" : `<span class="important-action-label">${escapeHtml(importantActionDialog.label ?? "פעולה חשובה")}</span>`}
           <h2 id="important-action-title">${escapeHtml(importantActionDialog.processing ? "מקשרים את החשבון" : importantActionDialog.title)}</h2>
+          ${importantActionDialog.kind === "delete-expense" ? renderExpenseDeletionContextView({name: importantActionDialog.expenseName, amount: importantActionDialog.expenseAmount}) : ""}
           <p id="important-action-description">${escapeHtml(importantActionDialog.processing ? "בסיום נחזור לרשימת המשתתפים המעודכנת. אפשר גם לחזור אליה עכשיו ולהמשיך באירוע." : importantActionDialog.description)}</p>
           ${
             !importantActionDialog.processing && importantActionDialog.metrics?.length
@@ -5278,7 +5279,7 @@ function renderImportantActionDialog() {
           }
         </div>
         <div class="important-action-dialog-actions ${importantActionDialog.alternateLabel ? "has-alternate" : ""}">
-          <button class="${importantActionDialog.kind === "discard-expense-notes" ? "primary-button" : "secondary-button"}" type="button" data-action="cancel-important-action">${importantActionDialog.processing ? "חזרה למשתתפים" : escapeHtml(importantActionDialog.cancelLabel ?? "ביטול")}</button>
+          <button class="${["discard-expense-notes", "delete-expense"].includes(importantActionDialog.kind) ? "primary-button" : "secondary-button"}" type="button" data-action="cancel-important-action">${importantActionDialog.processing ? "חזרה למשתתפים" : escapeHtml(importantActionDialog.cancelLabel ?? "ביטול")}</button>
           ${
             importantActionDialog.alternateLabel
               ? `<button
@@ -17109,8 +17110,11 @@ function requestExpenseDeletion(eventId, expenseId, trigger) {
   openImportantActionDialog(
     {
       kind: "delete-expense",
-      title: `למחוק את "${expense.name}"?`,
-      description: `ההוצאה בסך ${formatEventMoney(event, expense.total)} תימחק והחישוב של האירוע יתעדכן. אי אפשר לבטל את הפעולה.`,
+      label: null,
+      expenseName: expense.name,
+      expenseAmount: formatEventMoney(event, expense.total),
+      title: "למחוק את ההוצאה?",
+      description: "ההוצאה תימחק והחשבון יתעדכן. אי אפשר לבטל את המחיקה.",
       confirmLabel: "מחק הוצאה",
       payload: { eventId, expenseId }
     },

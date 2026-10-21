@@ -112,3 +112,9 @@ export function renderExpenseNotesView({name, notes, attachmentImage, error, eve
         </div>
       </section>`;
 }
+
+
+// Presentation only: amounts are already formatted by the existing event adapter.
+export function renderExpenseDeletionContextView({name, amount}) {
+  return `<div class="expense-delete-context" id="expense-delete-context"><strong>${escapeHtml(name)}</strong><bdi class="font-num">${escapeHtml(amount)}</bdi></div>`;
+}

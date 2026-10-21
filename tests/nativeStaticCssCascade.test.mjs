@@ -582,3 +582,19 @@ test("native unsaved-notes warning keeps scalable copy and reachable responsive 
   assert.ok(rule.includes("min-height:48px!important"));
   assert.ok(rule.includes("repeat(auto-fit,minmax(min(100%,9rem),1fr))"));
 });
+
+
+test("native deletion confirmation removes generic copy and scales distinct expense context with reachable actions",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css"));
+ const scoped=css.slice(css.indexOf("/* Expense deletion confirmation: approved context"));
+ assert.ok(scoped.includes('[data-important-action-kind="delete-expense"]'));
+ assert.match(scoped,/max-height:calc\(100dvh - 32px\)!important/);
+ assert.match(scoped,/\.expense-delete-context strong\s*\{[^}]*font-size:1rem!important/);
+ assert.match(scoped,/h2\s*\{[^}]*font-size:1\.25rem!important/);
+ assert.match(scoped,/p\s*\{[^}]*font-size:\.9375rem!important/);
+ assert.match(scoped,/button\s*\{[^}]*min-height:48px!important/);
+ assert(scoped.includes("repeat(auto-fit,minmax(min(100%,8rem),1fr))"));
+ assert.match(scoped,/\.important-action-confirm-button\s*\{[^}]*background:transparent!important/);
+});

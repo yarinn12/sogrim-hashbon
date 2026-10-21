@@ -380,3 +380,44 @@ final result: passed
 ## Final result
 
 passed
+
+
+## Expense deletion confirmation — approved implementation, 2026-10-21
+
+**Comparison target and state**
+- Source visual truth: ../../outputs/design-review-20261021/expense-delete-audit/preview-phone-confirmation.png (approved by the user).
+- Actual shared-source implementation: ../../outputs/design-review-20261021/expense-delete-implemented/implemented-phone-confirmation.png.
+- State: synthetic event “סוף שבוע בצפון”, expense “ארוחת ערב”, ₪120.00; deletion requested but not confirmed, with the safe cancel button focused.
+- Source/implementation pixels: 393×852, CSS viewport 393×852, deviceScaleFactor=1. No scaling, crop or browser/device frame normalization was necessary.
+- Full-view combined comparison: ../../outputs/design-review-20261021/expense-delete-implemented/phone-comparison.png. Both images were opened together in this combined image.
+- Enlarged combined comparison: ../../outputs/design-review-20261021/expense-delete-implemented/enlarged-comparison.png, 320×852 at root32 and density1.
+- Additional same-state comparison pairs: width411/root20, short393×390/root20, long-name320/root32, WebKit393, Firefox360 and desktop1060. All eight pairs have zero different pixels; dimensions and hashes are recorded in design-comparisons.json.
+- The modal text, actions, spacing and amounts are clearly readable in the full-view pairs. A smaller focused crop was not needed.
+
+**Findings and required fidelity surfaces**
+- No actionable P0/P1/P2 drift from the selected deletion-confirmation design remains.
+- Fonts/typography: same app Rubik stack and scoped rem sizes; expense name wraps rather than truncates, money is bidi-isolated. Generic fixed13px label is removed for this action.
+- Spacing/layout rhythm: same modal width, padding, divider, responsive context row and two actions as the approved reference. Large text and short viewport retain reachable controls.
+- Colors/tokens: original app colors; safe cancel is green, destructive confirmation red text on a neutral outlined surface.
+- Image/icon fidelity: no new asset, custom icon or decorative shape was introduced. Underlying app assets remain identical.
+- Copy/content: specific question, actual expense name/amount and one irreversible-action explanation. The accessible description also includes the expense context.
+- The earlier generic label/name-as-heading observations are resolved in the approved design. Initial implementation comparison passed without visual repair iterations; the production screenshots match the final approved sketch.
+- Cross-engine limitation: Windows Playwright WebKit paints variable-font weights thinner in both the approved reference and the actual implementation. The independent probe matches documented issue https://github.com/microsoft/playwright/issues/43004. This is a local renderer limitation, not an accepted physical-iPhone visual result. See font-investigation.json. No production font workaround was applied.
+
+**Implementation checklist**
+- [x] Approved appearance implemented in shared UI with unchanged deletion controller.
+- [x] Same-state visual comparison and browser-rendered screenshots.
+- [x] Actual typography/glyph/control bounds and cancellation checked in eight profiles; no app page errors or external requests in capture fixture.
+- [x] Name/amount included in screen-reader description; focus remains on cancel.
+- [ ] Physical Android/iPhone and signed-package verification remain distribution gates outside this local design acceptance.
+
+
+**Local functional verification**
+- Focused confirmation, notes and financial-safety tests: 84 passed.
+- Normal suite: 4210 JavaScript + 9 JVM tests = 4219 passed, 0 failed/skipped.
+- Browser suite: 66 passed, 0 failed/skipped/flaky, across Chromium Android profile, WebKit iPhone profile and Firefox. Includes 27 deletion cases with final synthetic-cloud ACK/reload and 39 adjacent notes-exit cases.
+- Architecture: 186 modules, 433 dependencies, 0 violations.
+- Native offline checks: 9 static CSS layers and 3 bundled browser modules. No signed package was built.
+- First concurrent normal run hit ETIMEDOUT in two unchanged Native-tool helper tests. Both passed independently and the complete unchanged normal suite then passed after browser/capture work finished. All attempts remain in the receipt folder; no thresholds, assertions or production source were changed between these runs.
+
+final result: passed
