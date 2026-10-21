@@ -14353,14 +14353,8 @@ function goBackInApp() {
     return;
   }
 
-  if (expenseDraft?.notesOnly) {
-    if (requestExpenseNotesExit("cancel-expense", document.activeElement)) return;
-    const rewindSteps = expenseDialogRewindSteps();
-    clearRememberedExpenseDraft(expenseDraft.eventId, expenseDraft.id);
-    expenseDraft = null;
-    closeDialogWithHistory(rewindSteps);
-    return;
-  }
+  if (expenseDraft?.notesOnly &&
+      requestExpenseNotesExit("cancel-expense", document.activeElement)) return;
 
   if (settlementCelebration) {
     settlementCelebration = null;
@@ -19890,7 +19884,7 @@ async function saveProfileFromDraft() {
 
 function requestExpenseNotesExit(exitAction, trigger = document.activeElement) {
   if (!expenseDraft?.notesOnly) return false;
-  // A real acknowledgement must finish before this draft can be discarded.
+  // Do not discard a draft while its foreground save owns it.
   if (expenseSaveRequest?.draft === expenseDraft) return true;
   if (!expenseNotesHaveChanges(expenseDraft)) return false;
   openImportantActionDialog({

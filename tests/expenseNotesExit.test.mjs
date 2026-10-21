@@ -80,3 +80,22 @@ test("an in-flight save blocks notes exit without abandoning its acknowledgement
     '\nrequestExpenseNotesExit("cancel-expense");',context),true);
   assert.equal(context.opened,false);assert.ok(context.expenseDraft);
 });
+
+test("unchanged native Back keeps the established draft-recovery path",()=>{
+  const draft={id:"expense",eventId:"event",notesOnly:true,mode:"single",flowStep:"review",
+    notes:"מקור",notesExitBaseline:{notes:"מקור",attachmentImage:""},attachmentImage:""};
+  const c={...draftRules,expenseDraft:draft,expenseSaveRequest:null,
+    state:{currentParticipantId:"owner"},screen:{name:"event"},
+    document:{activeElement:{}},importantActionDialog:null,
+    settlementCelebration:null,eventStatusMenu:null,settlementCloseConfirmation:null,eventDialog:null,
+    closeOpenTransientMenus:()=>false,normalizeExpenseFlowStep:value=>value,
+    expenseFlowStepsForDraft:()=>["amount","review"],remembered:0,cleared:0,returned:0,
+    rememberExpenseDraft(){c.remembered++;},clearRememberedExpenseDraft(){c.cleared++;},
+    renderHistoryFallback(){c.returned++;},expenseDialogRewindSteps:()=>1,
+    closeDialogWithHistory(){c.returned++;}
+  };
+  runInNewContext(sourceFunction("requestExpenseNotesExit")+"\n"+
+    sourceFunction("goBackInApp")+"\ngoBackInApp();",c);
+  assert.equal(c.remembered,1,"unchanged notes must keep the established recovery mechanism");
+  assert.equal(c.cleared,0);assert.equal(c.returned,1);
+});

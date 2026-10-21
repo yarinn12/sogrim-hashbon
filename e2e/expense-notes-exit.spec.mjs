@@ -118,11 +118,14 @@ for(const action of ["home","groups","open-notifications","edit-profile"]){
   });
 }
 test("native and browser Back cancel the warning before leaving edited notes",async({page,baseURL})=>{
-  const s=await setup(page,baseURL);await s.notes.fill("לא לאבד בחזרה");
+  const s=await setup(page,baseURL);
   const nativeBack=()=>page.evaluate(()=>{
     const event=new CustomEvent("settle-friends:native-back",{cancelable:true});
     window.dispatchEvent(event);return event.defaultPrevented;
   });
+  expect(await nativeBack()).toBe(true);await expect(s.modal).toBeHidden();await expect(s.prompt).toBeHidden();
+  await s.open();await expect(s.notes).toHaveValue("הערה קיימת");
+  await s.notes.fill("לא לאבד בחזרה");
   expect(await nativeBack()).toBe(true);await expect(s.prompt).toBeVisible();
   expect(await nativeBack()).toBe(true);await expect(s.prompt).toBeHidden();
   await expect(s.notes).toHaveValue("לא לאבד בחזרה");
@@ -136,13 +139,42 @@ test("Back cannot discard an expense while its real save is in flight",async({pa
   const s=await setup(page,baseURL);let release,started=false;
   const gate=new Promise(resolve=>release=resolve);
   await page.route("**/rest/v1/app_snapshots*",async route=>{
-    if(["POST","PATCH"].includes(route.request().method())){started=true;await gate;}
+    if(["POST","PATCH"].includes(route.request().method())){
+      const body=route.request().postDataJSON(),rows=Array.isArray(body)?body:[body];
+      const savesThisEdit=rows.some(row=>row?.state?.events?.some(event=>
+        event.id==="exit-event"&&event.expenses?.some(expense=>
+          expense.id==="exit-expense"&&expense.notes==="שמירה ממתינה")));
+      if(savesThisEdit){started=true;await gate;}
+    }
     await route.fallback();
   });
-  await s.notes.fill("שמירה ממתינה");await s.save.click();
-  await expect.poll(()=>started).toBe(true);await s.back.click();
-  await expect(s.modal).toBeVisible();await expect(s.prompt).toBeHidden();await expect(s.notes).toHaveValue("שמירה ממתינה");
-  release();await expect(s.modal).toBeHidden();
+  // The production UI budget is350ms: a durable local queue may then close
+  // the editor before cloud ACK. Probe Back at the actual disabled-save
+  // transition, in the page's microtask, before that valid budget can expire.
+  await page.evaluate(()=>{
+    const save=document.querySelector('.expense-notes-modal [data-action="save-expense"]');
+    window.__notesSaveBackProbe=null;
+    const observer=new MutationObserver(()=>{
+      if(!save.disabled)return;
+      observer.disconnect();
+      const before=!!document.querySelector(".expense-notes-modal");
+      const event=new CustomEvent("settle-friends:native-back",{cancelable:true});
+      window.dispatchEvent(event);
+      window.__notesSaveBackProbe={before,after:!!document.querySelector(".expense-notes-modal"),
+        prevented:event.defaultPrevented,
+        notes:document.querySelector('[data-action="expense-notes"]')?.value,
+        warning:!!document.querySelector('[data-important-action-kind="discard-expense-notes"]')};
+    });
+    observer.observe(save,{attributes:true,attributeFilter:["disabled"]});
+  });
+  try{
+    await s.notes.fill("שמירה ממתינה");await s.save.click();
+    await expect.poll(()=>started).toBe(true);
+    await expect.poll(()=>page.evaluate(()=>window.__notesSaveBackProbe)).toEqual({
+      before:true,after:true,prevented:true,notes:"שמירה ממתינה",warning:false
+    });
+  }finally{release();}
+  await expect(s.modal).toBeHidden();
   await expect.poll(()=>s.cloud.state().events[0].expenses[0].notes).toBe("שמירה ממתינה");
   expect(s.cloud.errors).toEqual([]);
 });
