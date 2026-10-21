@@ -1,5 +1,6 @@
-import {renderExpenseDateFieldView} from "../src/ui/expenseFormPresentation.mjs";
+import {renderExpenseDateFieldView, renderExpenseNotesView} from "../src/ui/expenseFormPresentation.mjs";
 import test from "node:test";
+import {runInNewContext} from "node:vm";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
@@ -1945,10 +1946,16 @@ test("the focused expense notes dialog saves back to its event", async () => {
     "function expenseAvailableFriendParticipants(event)"
   );
 
-  assert.match(
-    dialog,
-    /data-action="save-expense" data-event-id="\$\{escapeAttribute\(event\.id\)\}"/
-  );
+  // Exercise the adapter and extracted view instead of fixing HTML to a source file.
+  const html = runInNewContext(dialog + '\nrenderExpenseNotesDialog(event, true);', {
+    event: {id: 'notes-event"unsafe'},
+    expenseDraft: {name: "הוצאה לבדיקה", notes: ""},
+    renderExpenseNotesView,
+    renderEventRoutePrimaryNav: () => ""
+  });
+  assert.match(html, /data-action="save-expense" data-event-id="notes-event&quot;unsafe"/);
+  assert.ok(!html.includes('data-event-id="notes-event"unsafe"'));
+
 });
 
 test("event workspaces support deliberate horizontal swipes between expenses, summary, and notes", async () => {

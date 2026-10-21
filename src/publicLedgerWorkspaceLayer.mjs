@@ -22532,6 +22532,44 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-control.is-
   display: none !important;
 }
 
+
+/* Notes and image reuse the approved expense header, navigation and controls. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-flow-fields {
+ display:flex!important;flex-direction:column!important;gap:0!important;min-height:0!important;overflow:hidden!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-body {
+ padding:24px 16px!important;gap:22px!important;min-width:0!important;min-height:0!important;overflow-y:auto!important;scroll-padding-block:8px!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .eyebrow {overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .field {min-width:0!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .field>span,
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-image-label {font-size:.8125rem!important;line-height:1.5!important;font-weight:600!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] :is(.field>span,.expense-notes-image-label)>small {font:inherit!important;color:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] textarea {width:100%!important;max-width:100%!important;min-width:0!important;font-size:1rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-attachment-control {display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;align-items:stretch!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-image-label {grid-column:1/-1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-attachment-upload {min-width:0!important;min-height:44px!important;white-space:normal!important;font-size:.875rem!important;line-height:1.5!important;padding:10px 12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-attachment-control>:is(img,[data-action="remove-expense-attachment"]) {grid-column:1/-1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-actions {display:grid!important;grid-template-columns:minmax(0,1fr)!important;padding-inline:16px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] [data-action="save-expense"] {width:100%!important;min-width:0!important;min-height:52px!important;font-size:.8125rem!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] :is(button,textarea,img) {scroll-margin-block:8px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .error {margin:0!important;overflow-wrap:anywhere!important;font-size:.875rem!important;line-height:1.5!important;}
+
+/* Match the approved header grid and reserve a compact context line for long names. */
+@media (min-height:451px) {
+html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-notes-modal[data-expense-step="notes"] .expense-modal-step-header p.eyebrow {display:-webkit-box!important;inline-size:100%!important;width:100%!important;justify-self:stretch!important;text-align:center!important;-webkit-box-orient:vertical!important;-webkit-line-clamp:2!important;overflow:hidden!important;}
+}
+
+/* The content owns scrolling; disable browser anchoring so pointer activation cannot shift Remove beneath the image. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] {scroll-padding-block:0!important;overflow:hidden!important;overflow-anchor:none!important;scroll-behavior:auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-body {overflow-anchor:none!important;scroll-behavior:auto!important;}
+
+/* Two balanced actions on wider app panes; stack when the scaled labels need more width. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-body {container-type:inline-size!important;}
+@container (max-width:calc(17rem + 10px)) {
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-attachment-control {grid-template-columns:minmax(0,1fr)!important;}
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

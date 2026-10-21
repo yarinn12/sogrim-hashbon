@@ -552,3 +552,20 @@ test("native expense date caption keeps scalable visible controls and a real nat
  assert.match(css,/\.is-native-date-fallback > input\.expense-date-picker-input\s*\{[^}]*opacity:\s*1/);
  const sw=await readFile('sw.js','utf8');assert.equal(sw.split('"/src/ui/expenseFormPresentation.mjs"').length-1,2,'both offline module inventories include the shared date/header view');
 });
+
+test("native notes editor keeps the approved layout, scalable controls and stable image removal scroll", async () => {
+  const { extractNativeStaticCss, files } = await harness();
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const paths = await extractNativeStaticCss([{path: ledger}], "fixture-assets");
+  assert.ok(paths.has(ledger));
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const notes = css.slice(css.indexOf("/* Notes and image reuse the approved expense header"));
+  assert.ok(notes.includes('.expense-notes-modal[data-expense-step="notes"]'));
+  assert.match(notes, /textarea \{[^}]*font-size:1rem!important/);
+  assert.match(notes, /\.expense-notes-actions \{[^}]*grid-template-columns:minmax\(0,1fr\)!important/);
+  assert.match(notes, /\.expense-attachment-upload \{[^}]*min-height:44px!important/);
+  assert.match(notes, /@container \(max-width:calc\(17rem \+ 10px\)\)/);
+  assert.match(notes, /\.expense-notes-body \{[^}]*overflow-anchor:none!important/);
+  assert.match(notes, /\[data-expense-step="notes"\] \{[^}]*overflow-anchor:none!important/);
+  assert.match(notes, /p\.eyebrow \{[^}]*-webkit-line-clamp:2!important/);
+});

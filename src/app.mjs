@@ -1,4 +1,4 @@
-import {expenseFormHeading, expenseFormBackLabel, renderExpenseDateFieldView, openExpenseDatePicker, syncExpenseDateCaption, expenseDatePickerOwnsEscape} from "./ui/expenseFormPresentation.mjs";
+import {expenseFormHeading, expenseFormBackLabel, renderExpenseDateFieldView, openExpenseDatePicker, syncExpenseDateCaption, expenseDatePickerOwnsEscape, renderExpenseNotesView} from "./ui/expenseFormPresentation.mjs";
 import { EXPENSE_CURRENCY_REENTRY_NOTICE, renderExpenseFxReviewAmountView, renderExpenseFxReviewDetailsView, expenseFxCurrencyNames, renderExpenseFxFieldsView, renderExpenseFxPreviewView, renderExpenseFxSourceMetadataView } from "./ui/expenseFxPresentation.mjs";
 import { renderExpenseParticipantToolbarView, expenseFriendChoiceDescription } from "./ui/expenseParticipantSelection.mjs";
 import { renderExpenseFlowProgressView } from "./ui/expenseFlowProgress.mjs";
@@ -8289,43 +8289,14 @@ function renderExpenseParticipantToolbar(event, participants) {
 function renderExpenseNotesDialog(event, canEdit) {
   return `
     <section class="expense-modal-backdrop expense-route-backdrop" aria-label="הערות ותמונה להוצאה">
-      <section class="panel expense-modal expense-notes-modal" role="dialog" aria-modal="true" aria-labelledby="expense-notes-title" tabindex="-1">
-        <div class="expense-modal-header expense-modal-step-header">
-          <div>
-            <p class="eyebrow">${escapeHtml(expenseDraft.name)}</p>
-            <h2 id="expense-notes-title">הערות ותמונה</h2>
-          </div>
-          <div class="expense-modal-header-actions">
-            <button class="accessibility-entry-button accessibility-entry-header expense-accessibility-button" data-open-accessibility type="button" aria-label="פתיחת הגדרות נגישות" title="נגישות"><span aria-hidden="true">${iconSvg("accessibility")}</span></button>
-            <button class="icon-button modal-section-back-button" data-action="cancel-expense" aria-label="חזרה לאירוע" title="חזרה לאירוע"><span class="modal-control-icon" aria-hidden="true">${iconSvg("chevron-left")}</span></button>
-          </div>
-        </div>
-        <fieldset class="expense-flow-fields" ${!canEdit ? "disabled" : ""}>
-          <label class="field">
-            <span>הערה <small>(לא חובה)</small></span>
-            <textarea data-action="expense-notes" rows="5" maxlength="500" placeholder="לדוגמה: כתובת, פרטי הזמנה או מידע שחשוב לזכור">${escapeHtml(expenseDraft.notes ?? "")}</textarea>
-          </label>
-          <div class="expense-attachment-control">
-            <button class="secondary-button expense-attachment-upload" type="button" data-action="select-expense-attachment" aria-label="פתיחת הגלריה">
-              <span aria-hidden="true">${iconSvg("receipt")}</span>
-              <span>${expenseDraft.attachmentImage ? "החלף מהגלריה" : "הוסף מהגלריה"}</span>
-            </button>
-            <input data-action="expense-attachment-image" type="file" accept="image/*" hidden />
-            <button class="secondary-button expense-attachment-upload" type="button" data-action="capture-expense-attachment" aria-label="פתיחת המצלמה">
-              <span aria-hidden="true">${iconSvg("camera")}</span>
-              <span>מצלמה</span>
-            </button>
-            <input data-action="expense-attachment-image" data-image-source="camera-fallback" type="file" accept="image/*" capture="environment" hidden />
-            ${expenseDraft.attachmentImage ? `
-              <img class="expense-attachment-preview" src="${escapeAttribute(expenseDraft.attachmentImage)}" alt="תמונה מצורפת להוצאה" />
-              <button class="secondary-button" type="button" data-action="remove-expense-attachment">הסר תמונה</button>
-            ` : ""}
-          </div>
-        </fieldset>
-        <div class="actions expense-notes-actions">
-          <button class="primary-button" type="button" data-action="save-expense" data-event-id="${escapeAttribute(event.id)}" ${!canEdit ? "disabled" : ""}>שמור שינויים</button>
-        </div>
-      </section>
+      ${renderExpenseNotesView({
+        name: expenseDraft.name,
+        notes: expenseDraft.notes,
+        attachmentImage: expenseDraft.attachmentImage,
+        error: expenseDraft.error,
+        eventId: event.id,
+        canEdit
+      })}
       ${renderEventRoutePrimaryNav()}
     </section>`;
 }
