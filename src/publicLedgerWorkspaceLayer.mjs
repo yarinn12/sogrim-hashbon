@@ -22570,6 +22570,28 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-attachment-control {grid-template-columns:minmax(0,1fr)!important;}
 }
 
+
+/* Notes discard reuses the confirmation surface with safe focus and scalable text. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] {
+  width:min(480px,calc(100vw - 32px))!important;max-height:calc(100dvh - 32px)!important;
+  padding:24px!important;box-sizing:border-box!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] h2 {
+  font-size:1.25rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] p {
+  font-size:.9375rem!important;line-height:1.5!important;overflow-wrap:anywhere!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] .important-action-dialog-actions {
+  display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))!important;gap:12px!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] button {
+  min-width:0!important;min-height:48px!important;font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] .important-action-confirm-button {
+  color:var(--ledger-danger,#b42318)!important;background:transparent!important;border:1px solid var(--ledger-line)!important;box-shadow:none!important;
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

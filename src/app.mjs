@@ -78,7 +78,8 @@ import {
   createPayerDraft,
   findAutoPayerIndex,
   markPayerAmountEdited,
-  summarizePayerDraft
+  summarizePayerDraft,
+  expenseNotesHaveChanges
 } from "./domain/expenseDraft.mjs";
 import {
   buildQuickItemExpenses,
@@ -1311,6 +1312,18 @@ function handleBrowserHistoryBack(event) {
   homeBackNavigationPending = false;
   if (hasIndependentHistoryDialog()) return;
   if (!event.state?.[APP_HISTORY_STATE_KEY]) return;
+
+  const targetNotes = event.state.view?.expenseDraft;
+  const staysInNotes = targetNotes?.notesOnly &&
+    targetNotes.eventId === expenseDraft?.eventId && targetNotes.id === expenseDraft?.id;
+  if (expenseDraft?.notesOnly && !staysInNotes &&
+      (expenseNotesHaveChanges(expenseDraft) || expenseSaveRequest?.draft === expenseDraft)) {
+    // popstate already moved the pointer. Restore the live editor before asking
+    // so cancelling the warning does not lose its text or a Back entry.
+    window.history.pushState(createBrowserHistoryState(), "", window.location.href);
+    requestExpenseNotesExit("cancel-expense", document.activeElement);
+    return;
+  }
 
   const pendingRewind = pendingDialogHistoryRewind;
   if (pendingRewind && event.state.depth === pendingRewind.depth) {
@@ -5239,7 +5252,7 @@ function renderImportantActionDialog() {
         tabindex="-1"
       >
         <div class="important-action-copy">
-          <span class="important-action-label">${escapeHtml(importantActionDialog.label ?? "פעולה חשובה")}</span>
+          ${importantActionDialog.label === null ? "" : `<span class="important-action-label">${escapeHtml(importantActionDialog.label ?? "פעולה חשובה")}</span>`}
           <h2 id="important-action-title">${escapeHtml(importantActionDialog.processing ? "מקשרים את החשבון" : importantActionDialog.title)}</h2>
           <p id="important-action-description">${escapeHtml(importantActionDialog.processing ? "בסיום נחזור לרשימת המשתתפים המעודכנת. אפשר גם לחזור אליה עכשיו ולהמשיך באירוע." : importantActionDialog.description)}</p>
           ${
@@ -5265,7 +5278,7 @@ function renderImportantActionDialog() {
           }
         </div>
         <div class="important-action-dialog-actions ${importantActionDialog.alternateLabel ? "has-alternate" : ""}">
-          <button class="secondary-button" type="button" data-action="cancel-important-action">${importantActionDialog.processing ? "חזרה למשתתפים" : "ביטול"}</button>
+          <button class="${importantActionDialog.kind === "discard-expense-notes" ? "primary-button" : "secondary-button"}" type="button" data-action="cancel-important-action">${importantActionDialog.processing ? "חזרה למשתתפים" : escapeHtml(importantActionDialog.cancelLabel ?? "ביטול")}</button>
           ${
             importantActionDialog.alternateLabel
               ? `<button
@@ -5282,7 +5295,7 @@ function renderImportantActionDialog() {
             type="button"
             data-action="confirm-important-action"
             ${importantActionDialog.processing ? "disabled" : ""}
-            ${importantActionDialog.kind === "merge-participants" ? 'data-allow-offline-mutation="true"' : ""}
+            ${importantActionDialog.kind === "merge-participants" ? 'data-allow-offline-mutation="true"' : importantActionDialog.kind === "discard-expense-notes" ? 'data-allow-offline-mutation="true"' : ""}
           >
             ${importantActionDialog.processing ? '<span class="account-link-progress-spinner" aria-hidden="true"></span>מקשרים…' : escapeHtml(importantActionDialog.confirmLabel)}
           </button>
@@ -12231,6 +12244,9 @@ async function handleClick(event) {
 
   const action = target.dataset.action;
 
+  if (["home", "groups", "open-notifications", "edit-profile"].includes(action) &&
+      requestExpenseNotesExit(action, target)) return;
+
   if (action === "choose-profile-avatar-image") {
     event.preventDefault();
     app.querySelector(`input[data-action="profile-avatar-image"][data-image-source="${target.dataset.imageSource}"]`)?.click();
@@ -13762,6 +13778,7 @@ async function handleClick(event) {
   }
 
   if (action === "cancel-expense") {
+    if (requestExpenseNotesExit("cancel-expense", target)) return;
     const rewindSteps = expenseDialogRewindSteps();
     if (expenseDraft?.id) clearRememberedExpenseDraft(expenseDraft.eventId, expenseDraft.id);
     else rememberExpenseDraft();
@@ -13817,8 +13834,13 @@ async function handleClick(event) {
     if (selectedEvent && canCurrentParticipantEdit(selectedEvent)) {
       eventDialog = null;
       startExpenseDraft(target.dataset.eventId, target.dataset.expenseId, target);
-      if (expenseDraft) expenseDraft.notesOnly = true;
+      if (expenseDraft) {
+        const saved = selectedEvent.expenses.find(expense => expense.id === expenseDraft.id);
+        expenseDraft.notesOnly = true;
+        expenseDraft.notesExitBaseline = {notes: saved?.notes ?? "", attachmentImage: saved?.attachmentImage ?? ""};
+      }
       render();
+      replaceBrowserHistoryState();
       activateExpenseEntryDialog();
       requestAnimationFrame(() => {
         app.querySelector('[data-action="expense-notes"]')?.focus({ preventScroll: true });
@@ -14328,6 +14350,15 @@ function goBackInApp() {
 
   if (importantActionDialog) {
     closeImportantActionDialog();
+    return;
+  }
+
+  if (expenseDraft?.notesOnly) {
+    if (requestExpenseNotesExit("cancel-expense", document.activeElement)) return;
+    const rewindSteps = expenseDialogRewindSteps();
+    clearRememberedExpenseDraft(expenseDraft.eventId, expenseDraft.id);
+    expenseDraft = null;
+    closeDialogWithHistory(rewindSteps);
     return;
   }
 
@@ -17558,6 +17589,10 @@ async function confirmImportantAction() {
   const variant = arguments[0] === "alternate" ? "alternate" : "primary";
   let pendingAction = importantActionDialog;
   if (!pendingAction || pendingAction.processing) return;
+  if (pendingAction.kind === "discard-expense-notes") {
+    confirmExpenseNotesExit(pendingAction);
+    return;
+  }
   const actionParticipantId = state.currentParticipantId;
   const actionScreen = screen;
   const actionHistoryDepth = appHistoryDepth;
@@ -19850,6 +19885,49 @@ async function saveProfileFromDraft() {
     appHistoryDepth = 0;
     lastNavigationViewKey = "";
     render();
+  }
+}
+
+function requestExpenseNotesExit(exitAction, trigger = document.activeElement) {
+  if (!expenseDraft?.notesOnly) return false;
+  // A real acknowledgement must finish before this draft can be discarded.
+  if (expenseSaveRequest?.draft === expenseDraft) return true;
+  if (!expenseNotesHaveChanges(expenseDraft)) return false;
+  openImportantActionDialog({
+    kind: "discard-expense-notes",
+    label: null,
+    title: "לצאת בלי לשמור?",
+    description: "השינויים בהערה ובתמונה לא יישמרו.",
+    cancelLabel: "המשך לערוך",
+    confirmLabel: "צא בלי לשמור",
+    payload: {
+      participantId: state.currentParticipantId,
+      eventId: expenseDraft.eventId,
+      expenseId: expenseDraft.id,
+      exitAction
+    }
+  }, trigger);
+  return true;
+}
+
+function confirmExpenseNotesExit(dialog) {
+  const payload = dialog.payload;
+  if (payload?.participantId !== state.currentParticipantId ||
+      !expenseDraft?.notesOnly || expenseDraft.eventId !== payload.eventId ||
+      expenseDraft.id !== payload.expenseId) {
+    closeImportantActionDialog();
+    return;
+  }
+  const rewindSteps = expenseDialogRewindSteps();
+  clearRememberedExpenseDraft(expenseDraft.eventId, expenseDraft.id);
+  expenseDraft = null;
+  importantActionDialog = null;
+  importantActionReturnFocus = null;
+  clearDialogBackgroundInert();
+  closeDialogWithHistory(rewindSteps);
+  // Reuse existing navigation after removing both editor and warning from Back.
+  if (["home", "groups", "open-notifications", "edit-profile"].includes(payload.exitAction)) {
+    app.querySelector('[data-action="' + payload.exitAction + '"]')?.click();
   }
 }
 

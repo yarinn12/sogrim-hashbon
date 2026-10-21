@@ -569,3 +569,16 @@ test("native notes editor keeps the approved layout, scalable controls and stabl
   assert.match(notes, /\[data-expense-step="notes"\] \{[^}]*overflow-anchor:none!important/);
   assert.match(notes, /p\.eyebrow \{[^}]*-webkit-line-clamp:2!important/);
 });
+
+test("native unsaved-notes warning keeps scalable copy and reachable responsive actions", async () => {
+  const {extractNativeStaticCss, files} = await harness();
+  await extractNativeStaticCss([{path: resolve("src/publicLedgerWorkspaceLayer.mjs")}], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const rule = css.slice(css.indexOf("/* Notes discard reuses the confirmation surface"));
+  assert.ok(rule.includes('[data-important-action-kind="discard-expense-notes"]'));
+  assert.ok(rule.includes("max-height:calc(100dvh - 32px)!important"));
+  assert.ok(rule.includes("font-size:1.25rem!important"));
+  assert.ok(rule.includes("font-size:.9375rem!important"));
+  assert.ok(rule.includes("min-height:48px!important"));
+  assert.ok(rule.includes("repeat(auto-fit,minmax(min(100%,9rem),1fr))"));
+});
