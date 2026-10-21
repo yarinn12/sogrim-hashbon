@@ -8323,7 +8323,7 @@ function renderExpenseNotesDialog(event, canEdit) {
           </div>
         </fieldset>
         <div class="actions expense-notes-actions">
-          <button class="primary-button" type="button" data-action="save-expense" data-event-id="${escapeAttribute(event.id)}" ${!canEdit ? "disabled" : ""}>שמור</button>
+          <button class="primary-button" type="button" data-action="save-expense" data-event-id="${escapeAttribute(event.id)}" ${!canEdit ? "disabled" : ""}>שמור שינויים</button>
         </div>
       </section>
       ${renderEventRoutePrimaryNav()}
