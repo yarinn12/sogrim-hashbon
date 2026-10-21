@@ -613,3 +613,19 @@ test("native interim summary retains readable copy and stacks the transfer headi
  assert(scoped.includes("flex:0 0 auto!important;height:auto!important"));
  assert(scoped.includes("font-size:1.375rem!important"));
 });
+
+
+test("native settlement disclosure keeps scalable centered icon and label after extraction",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css"));
+ const start=css.indexOf("/* Settlement disclosure alignment");
+ assert(start>=0,"the arrow correction must survive Native static extraction");
+ const scoped=css.slice(start);
+ assert.match(scoped,/\.transfer-status-cluster\s*\{[^}]*align-items:\s*center !important[^}]*gap:\s*\.375rem !important/);
+ assert.match(scoped,/\.transfer-status-cluster \.transfer-status\s*\{[^}]*margin:\s*0 !important/);
+ assert.match(scoped,/\.transfer-expand-indicator\s*\{[^}]*width:\s*\.875rem !important[^}]*height:\s*\.875rem !important[^}]*margin:\s*0 !important/);
+ assert.match(scoped,/\.transfer-expand-indicator svg\s*\{[^}]*transform:\s*rotate\(-90deg\) !important/);
+ // The existing parent rotation, semantics and hit target remain intact.
+ assert.match(css,/\.is-explanation-open \.transfer-expand-indicator\s*\{[^}]*transform:\s*rotate\(180deg\) !important/);
+});

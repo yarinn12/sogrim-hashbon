@@ -33,8 +33,8 @@ function render({closed=false,review=false,single=false,manage=true,empty=false}
 test("ordinary and single-transfer open summaries use the approved interim copy without payment completion",()=>{
  for(const single of [false,true]){
   const html=render({single});assert(html.includes("סיכום ביניים"));assert(html.includes('data-settlement-phase="interim"'));
-  assert(html.includes(">סגור אירוע</button>"));assert(!html.includes("בואו נסגור חשבון"));assert(!html.includes('data-action="mark-paid"'));
-  if(!single)assert(html.includes("הסכומים עשויים להשתנות. מתחשבנים אחרי סגירת האירוע."));
+  assert(html.includes(">סגור אירוע והתחל להתחשבן</button>"));assert(!html.includes("בואו נסגור חשבון"));assert(!html.includes('data-action="mark-paid"'));
+  if(!single)assert(html.includes("הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים."));
  }
 });
 test("closed, validation, empty and non-manager summary states keep their original guards",()=>{

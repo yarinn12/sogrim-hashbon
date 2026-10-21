@@ -458,3 +458,40 @@ final result: passed
 - Closed summary/close-confirmation design remains the next user-reviewed area; functionality was tested without restyling those decisions.
 
 final result: passed
+
+
+## 2026-10-21 — approved close action and centered status disclosure
+
+Source visual truth: outputs/design-review-20261021/summary-status-arrow-preview/after-final/{phone,enlarged,iphone-browser,firefox,desktop,closed}-{top,collapsed-view,expanded-view}.png.
+Rendered shared source: matching files in outputs/design-review-20261021/summary-close-arrow-implemented/actual-source/; http://127.0.0.1:4414/.
+Same-state combined evidence: phone-collapsed-view-comparison.png, enlarged-collapsed-view-comparison.png, phone-expanded-view-comparison.png and firefox-collapsed-view-comparison.png in the implementation output. Status-cluster crops and pixel measurements provide focused evidence.
+Viewport/CSS sizes:393x852/root16,320x852/root32,360x800/root20,1060x900/root16, WebKit393x852/root16, closed393x852/root16. Density1; equal source/implementation pixel sizes; no resampling.
+State: identical synthetic open event, interim balances, collapsed/expanded disclosure; separate closed fixture. No live data.
+
+Intentional changes: “סגור אירוע והתחל להתחשבן”; existing explanation replaced with “הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.”; original shared chevron replaces the font glyph,4px label top margin reset, scalable.875rem icon and.375rem gap centered. Existing parent rotation, row hit area, keyboard toggle and closure confirmation retained.
+
+Required fidelity surfaces:
+- Typography: original Rubik/Inter weights, sizes and status line heights retained. Close-label glyphs fit the control, including natural root32 wrapping. Arrow is independent of font fallback. Windows WebKit variable-weight rendering remains an environment limitation.
+- Spacing/layout: original summary panel, hierarchy, padding and radii retained. Visible-ink center passes12states, maximum1px (original8.5px). Short-height footer reachable; no horizontal overflow.
+- Colors/tokens: original green, neutral status and expanded brand colors retained.
+- Assets: existing source iconSvg chevron-left, avatars and logo reused; no approximated/new decorative assets.
+- Copy/content: exactly the two approved literals; no extra badge or explanation.
+
+Visual comparison history: first implementation comparison passed; all18same-state pairs are pixel-identical to the approved preview. No visual fixes after capture.
+Findings: no actionable P0/P1/P2 drift. The requested correction adds no generic decoration, nested surface or glow.
+
+Validation:
+- Complete normal suite4225passed (4216JavaScript+9JVM), zero failures/skips, one complete run.
+- Focused180passed; architecture186modules/433dependencies, zero violations.
+- Final complete browser run54passed, zero failures/skips/flaky, retries0, across Android-profile Chromium, iPhone-profile WebKit and Firefox. Root16/20/32; open/closed disclosure centers, settled rotation, touch/keyboard toggle, exact expense/transfer/lock preservation, closure cancellation, final cloud write+ACK and paid-state reload.
+- Actual-source full-screen captures11cases passed; disclosure capture6profiles/12states passed.
+- Native static CSS9layers and3offline bundles compiled; no signed package claimed.
+- Financial compatibility receipt proves app differs only in the approved icon span and Ledger only in approved CSS. Money, authorization, closure and sync controllers unchanged after newline normalization.
+- Permanent old-source regressions:2unit failures and1browser failure for the actual2px vertical-center deviation versus.5px limit; same checks pass after the fix.
+
+Test-authoring correction: initial browser run47passed/7failed because the new wait accepted matrix.a magnitude>.99 while b/c were still nonzero; getBoundingClientRect measured an in-flight rotated square. Wait now requires all4rotation terms within1e-6 of their final matrix. All geometry,size,SVG-paint,overflow,keyboard and financial assertions are byte-unchanged after reversing only that wait edit. No retries,skips,timeout increases or production-source changes. Initial report,log,script and artifacts retained; see test-wait-correction.md. The complete final54test rerun passed.
+Normal-suite application/src/scripts/normal-test bytes stayed unchanged after that run; only this E2E wait changed, followed by syntax validation and the fresh full browser run. Documentation appended after verification.
+
+Limits: local synthetic evidence; physical Android/iPhone, signed packages and exact-source release CI remain open. No database change/export, new cost or public/store publication. Git source retention documented separately.
+
+final result: passed

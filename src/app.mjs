@@ -11153,7 +11153,7 @@ function renderTransferRow(
         <div class="transfer-card-meta">
           ${isPersonal ? `<span class="personal-transfer-badge">${personalBadgeLabel}</span>` : '<span class="group-transfer-badge">בין חברים</span>'}
           <span class="transfer-status-cluster">
-            <span class="transfer-expand-indicator" aria-hidden="true">⌄</span>
+            <span class="transfer-expand-indicator" aria-hidden="true">${iconSvg("chevron-left")}</span>
             <small class="transfer-status ${paid ? "status-paid" : ""}">${escapeHtml(statusText)}</small>
           </span>
         </div>

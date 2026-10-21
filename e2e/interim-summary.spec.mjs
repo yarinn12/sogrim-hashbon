@@ -26,6 +26,14 @@ for(const root of [16,20,32]){
   const {cloud,screen}=await setup(page,baseURL,{root});const before=amounts(cloud);
   await expect(screen.locator(".settlement-hero")).toHaveAttribute("data-settlement-phase","interim");
   await expect(screen.locator(".settlement-hero")).toContainText("סיכום ביניים");
+  await expect(screen.locator(".settlement-close-primary")).toHaveText("סגור אירוע והתחל להתחשבן");
+  await expect(screen.locator(".settlement-hero-title-row p")).toHaveText("הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.");
+  const glyphs=await screen.locator(".settlement-close-primary").evaluate(button=>{
+   const b=button.getBoundingClientRect(),walker=document.createTreeWalker(button,NodeFilter.SHOW_TEXT),outside=[];let node;
+   while(node=walker.nextNode())for(let i=0;i<node.length;i++){if(!node.textContent[i].trim())continue;const range=document.createRange();range.setStart(node,i);range.setEnd(node,i+1);for(const r of range.getClientRects())if(r.left<b.left-.5||r.right>b.right+.5||r.top<b.top-.5||r.bottom>b.bottom+.5)outside.push(node.textContent[i]);}
+   return outside;
+  });expect(glyphs).toEqual([]);
+
   await expect(screen.locator(".transfer-status")).toHaveText(["יתרה זמנית","יתרה זמנית"]);
   await expect(screen.locator('[data-action="mark-paid"]')).toHaveCount(0);
   const style=await screen.evaluate(e=>({copy:parseFloat(getComputedStyle(e.querySelector(".settlement-hero-title-row p")).fontSize),title:parseFloat(getComputedStyle(e.querySelector(".settlement-hero-title-row h2")).fontSize),background:getComputedStyle(e.querySelector(".settlement-hero-actions")).backgroundColor,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth}));
@@ -74,3 +82,42 @@ test("empty summary keeps the existing add-expense action without an interim pay
  await expect(screen).toContainText("אין עדיין סיכום");await expect(screen.locator('[data-action="show-expense-form"]')).toBeVisible();
  await expect(screen.locator(".transfer-row")).toHaveCount(0);await expect(screen.locator('[data-settlement-phase="interim"]')).toHaveCount(0);
 });
+
+
+async function expectSettledDisclosureRotation(row,direction){
+ // Bounding rectangles include the in-flight rotated square. Wait for both
+ // diagonal and off-diagonal terms to settle before checking the exact size.
+ await expect.poll(()=>row.locator(".transfer-expand-indicator").evaluate((element,target)=>{
+  const m=new DOMMatrix(getComputedStyle(element).transform),epsilon=.000001;
+  return Math.abs(m.a-target)<epsilon&&Math.abs(m.d-target)<epsilon&&Math.abs(m.b)<epsilon&&Math.abs(m.c)<epsilon;
+ },direction)).toBe(true);
+}
+async function expectCenteredStatus(row){
+ const geometry=await row.locator(".transfer-status-cluster").evaluate(e=>{
+  const arrow=e.querySelector(".transfer-expand-indicator"),label=e.querySelector(".transfer-status"),a=arrow.getBoundingClientRect(),t=label.getBoundingClientRect();
+  const path=arrow.querySelector("svg path");let paintedCenter=null;
+  if(path){const b=path.getBBox(),point=new DOMPoint(b.x+b.width/2,b.y+b.height/2).matrixTransform(path.getScreenCTM());paintedCenter=point.y;}
+  return {centerDifference:Math.abs(a.y+a.height/2-t.y-t.height/2),paintedDifference:paintedCenter===null?null:Math.abs(paintedCenter-t.y-t.height/2),
+   iconSize:a.width,root:parseFloat(getComputedStyle(document.documentElement).fontSize),labelVisible:t.width>0&&t.height>0,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth};
+ });
+ expect(geometry.centerDifference,"the actual status and indicator boxes must share a vertical center").toBeLessThanOrEqual(.5);
+ expect(geometry.paintedDifference,"the shared source chevron must paint at the label center").not.toBeNull();
+ expect(geometry.paintedDifference).toBeLessThanOrEqual(.5);
+ expect(geometry.iconSize).toBeCloseTo(geometry.root*.875,1);
+ expect(geometry.labelVisible).toBe(true);expect(geometry.overflow).toBe(false);
+}
+for(const root of [16,20,32])for(const closed of [false,true]){
+ test("status disclosure remains centered before and after opening at root "+root+" closed "+closed,async({page,baseURL})=>{
+  const {screen,cloud}=await setup(page,baseURL,{root,closed});await page.evaluate(()=>document.fonts.ready);
+  const before=structuredClone(cloud.state().events[0]),row=screen.locator(".transfer-row").first(),cluster=row.locator(".transfer-status-cluster");
+  await expect(row).toHaveAttribute("aria-expanded","false");await expectCenteredStatus(row);
+  await cluster.click();await expect(row).toHaveAttribute("aria-expanded","true");
+  await expect(row.locator(".transfer-explanation")).toHaveAttribute("open","");
+  await expectSettledDisclosureRotation(row,-1);
+  await expectCenteredStatus(row);
+  await row.focus();await row.press("Enter");await expect(row).toHaveAttribute("aria-expanded","false");
+  await expectSettledDisclosureRotation(row,1);
+  await expectCenteredStatus(row);
+  const after=cloud.state().events[0];expect(after.expenses).toEqual(before.expenses);expect(after.transfers).toEqual(before.transfers);expect(after.locked).toBe(before.locked);expect(cloud.errors).toEqual([]);
+ });
+}

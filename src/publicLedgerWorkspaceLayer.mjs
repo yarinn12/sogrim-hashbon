@@ -22676,6 +22676,35 @@ html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[
  }
 }
 
+
+/* Settlement disclosure alignment: shared chevron and optical status center. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-event-view="summary"] .transfer-status-cluster {
+  align-items: center !important;
+  gap: .375rem !important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-event-view="summary"] .transfer-status-cluster .transfer-status {
+  margin: 0 !important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-event-view="summary"] .transfer-expand-indicator {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: .875rem !important;
+  height: .875rem !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  flex: 0 0 auto !important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-event-view="summary"] .transfer-expand-indicator svg {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  flex: 0 0 auto !important;
+  transform: rotate(-90deg) !important;
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
