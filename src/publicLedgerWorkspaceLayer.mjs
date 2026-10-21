@@ -22628,6 +22628,54 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[
 html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .important-action-confirm-button{
  color:var(--ledger-danger,#b42318)!important;background:transparent!important;border:1px solid var(--ledger-line,#e1e8e5)!important;box-shadow:none!important;
 }
+
+/* Approved interim summary: provisional labels, readable copy and responsive heading. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"]:not(.is-explained){
+ width:100%!important;max-width:none!important;box-sizing:border-box!important;margin:12px 0!important;padding:20px!important;
+ background:#fff!important;border:1px solid var(--ledger-line)!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"]:not(.is-explained) .status-chip{display:none!important}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-hero-main,
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-hero-title-row,
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-hero-title-row>div{
+ width:100%!important;max-width:none!important;padding:0!important;margin:0!important;box-sizing:border-box!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-hero-title-row h2{
+ font-size:1.25rem!important;line-height:1.4!important;margin:0!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-hero-title-row p{
+ font-size:.875rem!important;line-height:1.5!important;max-width:none!important;margin:8px 0 0!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"]:not(.is-explained) .settlement-hero-actions{
+ display:block!important;margin:16px 0 0!important;padding:0!important;background:transparent!important;border:0!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-close-primary{
+ width:100%!important;min-height:48px!important;font-size:.9375rem!important;line-height:1.5!important;white-space:normal!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"].is-explained .status-chip{
+ font-size:.875rem!important;line-height:1.5!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-stage{
+ container-type:inline-size!important;container-name:summary-transfer-section!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-stage-heading h2{
+ font-size:1.375rem!important;line-height:1.3!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-stage-heading > div > small{
+ font-size:.75rem!important;line-height:1.5!important;
+}
+@container summary-transfer-section (max-width:20rem){
+ html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-stage-heading{
+  flex-direction:column!important;align-items:flex-start!important;gap:12px!important;
+ }
+ html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-stage-heading>div{
+  width:100%!important;
+ }
+ html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-repayment-shortcut{
+  align-self:flex-start!important;width:100%!important;max-width:100%!important;justify-content:flex-start!important;flex:0 0 auto!important;height:auto!important;min-height:44px!important;padding:10px 14px!important;line-height:1.5!important;
+ }
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

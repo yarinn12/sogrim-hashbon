@@ -23,3 +23,15 @@ export function eventSettlementOptionsView({ roundSettlementTransfers, directSet
     }
   };
 }
+
+
+// Shared summary copy only; closure, validation and payment eligibility stay in the controller.
+export const interimSettlementCopy = Object.freeze({
+  title: "סיכום ביניים",
+  description: "הסכומים עשויים להשתנות. מתחשבנים אחרי סגירת האירוע.",
+  closeLabel: "סגור אירוע"
+});
+
+export function settlementSummaryPhase({isClosed, needsReview}) {
+  return !isClosed && !needsReview ? "interim" : "existing";
+}

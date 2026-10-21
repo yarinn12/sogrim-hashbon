@@ -598,3 +598,18 @@ test("native deletion confirmation removes generic copy and scales distinct expe
  assert(scoped.includes("repeat(auto-fit,minmax(min(100%,8rem),1fr))"));
  assert.match(scoped,/\.important-action-confirm-button\s*\{[^}]*background:transparent!important/);
 });
+
+
+test("native interim summary retains readable copy and stacks the transfer heading without a tall flex-basis",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css"));
+ const scoped=css.slice(css.indexOf("/* Approved interim summary"));
+ assert(scoped.includes('[data-settlement-phase="interim"]'));
+ assert(scoped.includes("font-size:.875rem!important"));
+ assert(scoped.includes("background:transparent!important"));
+ assert(scoped.includes("@container summary-transfer-section (max-width:20rem)"));
+ assert(scoped.includes("flex-direction:column!important"));
+ assert(scoped.includes("flex:0 0 auto!important;height:auto!important"));
+ assert(scoped.includes("font-size:1.375rem!important"));
+});

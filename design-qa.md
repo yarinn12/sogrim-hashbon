@@ -421,3 +421,40 @@ passed
 - First concurrent normal run hit ETIMEDOUT in two unchanged Native-tool helper tests. Both passed independently and the complete unchanged normal suite then passed after browser/capture work finished. All attempts remain in the receipt folder; no thresholds, assertions or production source were changed between these runs.
 
 final result: passed
+
+
+## Interim event summary — approved implementation, 2026-10-21
+
+**Comparison target and state**
+- Approved source visual truth: ../../outputs/design-review-20261021/event-summary-preview/phone-01-top.png.
+- Actual shared-source implementation: ../../outputs/design-review-20261021/interim-summary-implemented/phone-01-top.png.
+- Same synthetic open event,3 participants,80/30 balances, scroll0;393×852 CSS px, density1 and393×852 image px. No crop/density normalization.
+- Combined comparison opened for visual review: ../../outputs/design-review-20261021/interim-summary-implemented/phone-comparison.png.
+- Enlarged summary/heading comparisons: enlarged-01b-hero-comparison.png and enlarged-01c-heading-comparison.png in the same output folder,320×852/root32/density1. The heading combined image was opened and inspected.
+- All13 same-state comparison pairs, including11 profiles/states plus enlarged hero/heading, have zero different pixels. See visual-comparisons.json. Copy, controls and amounts are legible in the full combined images, so a smaller crop was unnecessary.
+
+**Findings and fidelity surfaces**
+- No actionable P0/P1/P2 drift from the selected sketch remains; no visual repair iteration was required.
+- Typography: original Rubik stack and weights,20/14/15px interim title/body/button at root16, scaling through rem. Transfer heading has full width in large text.
+- Layout: existing green header, event tabs, transfer rows and footer retained; the interim card has one white surface. Named text-relative container query stacks the shortcut and resets its horizontal flex-basis.
+- Colors: existing green/ink/muted tokens; no new decorative glow, badge, asset or promotional block.
+- Image/icon fidelity: all original assets and app library icons retained.
+- Copy: interim wording is explicit until closure, including personal transfer rows; closed/paid/validation/read-only/empty guards retain their behavior.
+- The internal data-settlement-phase marker is a presentation category, computed from existing closure/validation values. It does not decide permissions or calculate money.
+- Known Windows WebKit variable-font painting limitation remains documented in docs/engineering-workflow-he.md; same-engine visual matching does not establish physical iPhone typography parity.
+
+**Regression and functional evidence**
+- Before fix: two targeted unit/Native regressions failed; the browser layout regression also failed on the actual old screen (expected heading width>=295px, actual152px).
+- Cause: personal waiting labels took priority before the open/closed display condition, and the shortcut consumed a horizontal heading column in large type.
+- After fix:179 focused tests passed; full normal suite4215JavaScript+9JVM=4224 passed,0failed/skipped.
+- Browser:36passed,0failed/skipped/flaky across Chromium Android profile, WebKit iPhone profile and Firefox. Covers interim labels, cancelled closure, real closure in synthetic data, payment final write+ACK+reload, single transfer, short/empty states, existing direct repayment and paid remainder.
+-11 actual-source capture cases passed; no app page errors or external requests. Calculated amounts and expense records match the approved sketch fixtures.
+- Architecture186modules/433dependencies/0violations;9Native static CSS layers and3offline module bundles verified.
+- Financial calculation module and preparation/closure/payment/reconciliation controllers are byte-equivalent to the pre-change checkpoint after newline normalization; see financial-controller-compatibility.json.
+
+**Limits and next area**
+- Synthetic local/cloud fixtures, not a live database or physical device.
+- No signed package, store build or public deployment was performed.
+- Closed summary/close-confirmation design remains the next user-reviewed area; functionality was tested without restyling those decisions.
+
+final result: passed
