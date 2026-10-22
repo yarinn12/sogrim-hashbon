@@ -1,3 +1,4 @@
+import {renderClosedFixture} from "./helpers/closedSettlementHarness.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -137,24 +138,21 @@ test("closing with pending transfers uses stateful confirmation and stays revers
 });
 
 test("settlement action hierarchy follows payment state", async () => {
+  const open = renderClosedFixture({closedEvent:false}).html;
+  assert.match(open, /class="primary-button settlement-close-primary"/);
+  assert.doesNotMatch(open, /data-action="mark-paid"/);
+  const pending = renderClosedFixture().html;
+  assert.match(pending, /class="settlement-debt-share"/);
+  assert.match(pending, /data-action="share-whatsapp"/);
+  assert.match(pending, /data-action="reopen-event"/);
+  const single = renderClosedFixture({transfers:[{id:"pending",fromParticipantId:"guest-a",toParticipantId:"owner",amount:8000,status:"pending"}]}).html;
+  assert.match(single, /class="primary-button settlement-featured-complete"/);
+  assert(single.indexOf('data-action="mark-paid"') < single.indexOf('class="settlement-debt-share"'));
+  const paid = renderClosedFixture({transfers:[{id:"paid",fromParticipantId:"guest-a",toParticipantId:"owner",amount:8000,status:"paid"}]}).html;
+  assert.doesNotMatch(paid, /data-action="mark-paid"/);
+  assert.match(paid, /שתף סיכום/);
   const app = await readFile("src/app.mjs", "utf8");
-
-  assert.match(
-    app,
-    /const shareButtonClass = isClosed \|\| \(hasPendingTransfers && !personalPendingTransfers\.length\)/
-  );
-  assert.match(app, /data-action="share-whatsapp"/);
-  assert.match(app, /class="settlement-more-actions"/);
-  assert.match(app, /data-action="close-event"/);
-  assert.match(app, /data-action="reopen-event"/);
-  assert.match(
-    app,
-    /data-action="share-whatsapp"[\s\S]*?class="settlement-more-actions"[\s\S]*?data-action="(?:reopen-event|close-event)"/
-  );
-  assert.match(
-    app,
-    /isPersonal \? "primary-button" : "secondary-button transfer-group-complete-button"/
-  );
+  assert.match(app, /isPersonal \? "primary-button" : "secondary-button transfer-group-complete-button"/);
 });
 
 test("settlement summary leads with one ordered transfer list", async () => {

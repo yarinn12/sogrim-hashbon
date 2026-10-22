@@ -1,3 +1,4 @@
+import {renderClosedSettlementHeroView, renderClosedSettlementShareActionsView} from "./ui/closedSettlementPresentation.mjs";
 import {renderSettlementCloseConfirmationView} from "./ui/settlementClosePresentation.mjs";
 import {expenseFormHeading, expenseFormBackLabel, renderExpenseDateFieldView, openExpenseDatePicker, syncExpenseDateCaption, expenseDatePickerOwnsEscape, renderExpenseNotesView, renderExpenseDeletionContextView} from "./ui/expenseFormPresentation.mjs";
 import { EXPENSE_CURRENCY_REENTRY_NOTICE, renderExpenseFxReviewAmountView, renderExpenseFxReviewDetailsView, expenseFxCurrencyNames, renderExpenseFxFieldsView, renderExpenseFxPreviewView, renderExpenseFxSourceMetadataView } from "./ui/expenseFxPresentation.mjs";
@@ -10553,6 +10554,7 @@ function renderSettlementRepaymentShortcut(event) {
 }
 
 function renderSettlementListActions(event) {
+  if (isEventClosed(event)) return "";
   return `
     <details class="settlement-list-actions">
       <summary>
@@ -10765,6 +10767,10 @@ function renderSettlementHero(event, transfers, pendingTotal, issues = []) {
     ? "הפעולה שלך עכשיו"
     : singlePersonalReceipt
     ? "מגיע לך כסף"
+    : isClosed && personalReceipts.length && !personalPayments.length
+    ? "צריכים להחזיר לך"
+    : isClosed && personalPayments.length && !personalReceipts.length
+    ? "עליך להעביר"
     : personalPendingTransfers.length
     ? `${formatCount(personalPendingTransfers.length, "העברה", "העברות")} לטיפול שלך`
     : hasPendingTransfers
@@ -10782,6 +10788,10 @@ function renderSettlementHero(event, transfers, pendingTotal, issues = []) {
     ? `<strong class="settlement-route-person">${escapeHtml(participantName(singlePersonalReceipt.fromParticipantId, event))}</strong> צריך להעביר לך <span class="font-num">${formatEventMoney(event, singlePersonalReceipt.amount)}</span>.`
     : personalPayments.length && personalReceipts.length
     ? `צריך להעביר <span class="font-num">${formatEventMoney(event, personalPaymentTotal)}</span> ולקבל <span class="font-num">${formatEventMoney(event, personalReceiptTotal)}</span>. ההעברות שלך מודגשות למטה.`
+    : isClosed && personalPayments.length
+    ? `${formatCount(personalPayments.length, "העברה", "העברות")} שעדיין לא סומנו כשולמו.`
+    : isClosed && personalReceipts.length
+    ? `${formatCount(personalReceipts.length, "העברה", "העברות")} אליך שעדיין לא סומנו כשולמו.`
     : personalPayments.length
     ? `${formatCount(personalPayments.length, "תשלום", "תשלומים")} לביצוע בסך <span class="font-num">${formatEventMoney(event, personalPaymentTotal)}</span>.`
     : personalReceipts.length
@@ -10793,9 +10803,45 @@ function renderSettlementHero(event, transfers, pendingTotal, issues = []) {
     : isBalancedWithoutTransfers
     ? "אין צורך להעביר כסף בין המשתתפים."
     : "כל ההעברות סומנו כשולמו.";
-  const shareButtonClass = isClosed || (hasPendingTransfers && !personalPendingTransfers.length)
-    ? "primary-button whatsapp-button"
-    : "secondary-button whatsapp-button";
+  if (isClosed) {
+    const participants = eventParticipants(event);
+    const actionsHtml = renderClosedSettlementShareActionsView({
+      eventId: event.id,
+      hasPendingTransfers,
+      formattedSummary: formatSettlementSummary({
+        eventName: event.name,
+        participants,
+        transfers: eventSettlementTransfers(event, participants),
+        currency: event.currency,
+        participantAliases: event.participantAliases,
+        directSettlementTransfers: usesDirectSettlementTransfers(event)
+      })
+    });
+    const onlyReceipts = personalReceipts.length > 0 && !personalPayments.length;
+    const onlyPayments = personalPayments.length > 0 && !personalReceipts.length;
+    return renderClosedSettlementHeroView({
+      eventId: event.id,
+      stateClass: settlementHeroStateClass,
+      balanced: isBalancedWithoutTransfers,
+      title,
+      descriptionHtml,
+      formattedTotal: hasPendingTransfers
+        ? formatEventMoney(event, onlyReceipts ? personalReceiptTotal : onlyPayments ? personalPaymentTotal : pendingTotal)
+        : "",
+      totalLabel: onlyReceipts ? "נותר לקבל" : onlyPayments ? "נותר להעביר" : "נותר לתשלום בקבוצה",
+      groupTotal: !onlyReceipts && !onlyPayments,
+      featured: featuredPersonalTransfer ? {
+        title: singlePersonalPayment ? "עליך להעביר" : "צריכים להחזיר לך",
+        counterparty: (singlePersonalPayment ? "ל־" : "מ־") + participantName(
+          singlePersonalPayment ? featuredPersonalTransfer.toParticipantId : featuredPersonalTransfer.fromParticipantId, event),
+        formattedAmount: formatEventMoney(event, featuredPersonalTransfer.amount),
+        transferId: featuredPersonalTransfer.id,
+        completionLabel: singlePersonalPayment ? "העברתי" : "קיבלתי"
+      } : null,
+      actionsHtml,
+      canManage
+    });
+  }
 
   if (featuredPersonalTransfer) {
     return renderFeaturedSettlementHero(event, featuredPersonalTransfer, {
@@ -10810,97 +10856,52 @@ function renderSettlementHero(event, transfers, pendingTotal, issues = []) {
   return `
     <section data-settlement-phase="${settlementSummaryPhase({isClosed, needsReview})}" class="panel settlement-hero ${settlementHeroStateClass} ${settlementHeroPersonalStateClass} ${isBalancedWithoutTransfers ? "is-balanced" : ""}">
       <div class="settlement-hero-main">
-        <span class="status-chip ${isClosed ? "is-ok" : "is-warn"}">${isClosed ? "האירוע נסגר" : "אירוע פתוח"}</span>
+        <span class="status-chip is-warn">אירוע פתוח</span>
         <div class="settlement-hero-title-row">
           <div>
             <h2>${escapeHtml(title)}</h2>
             ${descriptionHtml ? `<p class="muted">${descriptionHtml}</p>` : ""}
           </div>
-          ${
-            isClosed && hasPendingTransfers
-              ? `
-                  <div class="settlement-hero-total">
-                    <span>סה"כ פתוח בקבוצה</span>
-                    <strong class="settlement-hero-amount amount"><span class="font-num">${formatEventMoney(event, pendingTotal)}</span></strong>
-                  </div>
-                `
-              : ""
-          }
         </div>
       </div>
       <div class="settlement-hero-actions">
-        ${
-          !hasExpenses
-            ? `
-                <button class="primary-button" data-action="show-expense-form" data-event-id="${event.id}"><span>הוסף הוצאה</span></button>
-              `
-            : `
-                ${!isClosed
-                  ? canManage
-                    ? `<button class="primary-button settlement-close-primary" data-action="close-event" data-event-id="${event.id}" ${needsReview ? "disabled" : ""}>${needsReview ? "תקן הוצאות לפני סגירה" : interimSettlementCopy.closeLabel}</button>`
-                    : '<p class="muted settlement-manager-hint">סגירת החשבון זמינה למנהל האירוע.</p>'
-                  : `<button class="${shareButtonClass}" data-action="share-whatsapp" data-event-id="${event.id}">שלח בוואטסאפ</button>
-                ${canManage ? `<button class="secondary-button settlement-reopen-action" data-action="reopen-event" data-event-id="${event.id}">פתח אירוע מחדש</button>` : ""}
-                <details class="settlement-more-actions">
-                  <summary>עוד</summary>
-                  <div>
-                    <button class="secondary-button" data-action="copy-settlement" data-event-id="${event.id}">העתק סיכום</button>
-                    <button class="secondary-button" data-action="copy-event-report" data-event-id="${event.id}">העתק פירוט הוצאות</button>
-                  </div>
-                </details>`
-                }
-              `
+        ${canManage
+          ? `<button class="primary-button settlement-close-primary" data-action="close-event" data-event-id="${event.id}" ${needsReview ? "disabled" : ""}>${needsReview ? "תקן הוצאות לפני סגירה" : interimSettlementCopy.closeLabel}</button>`
+          : '<p class="muted settlement-manager-hint">סגירת החשבון זמינה למנהל האירוע.</p>'
         }
       </div>
     </section>
   `;
 }
 
-function renderFeaturedSettlementHero(
-  event,
-  transfer,
-  {
-    isClosed,
-    needsReview,
-    pendingTransfers,
-    pendingTotal,
-    isCurrentParticipantPaying
-  }
-) {
+function renderFeaturedSettlementHero(event, transfer, {needsReview, isCurrentParticipantPaying}) {
   const otherParticipantId = isCurrentParticipantPaying
-    ? transfer.toParticipantId
-    : transfer.fromParticipantId;
+    ? transfer.toParticipantId : transfer.fromParticipantId;
   const otherParticipantName = participantName(otherParticipantId, event);
   const routeLabel = isCurrentParticipantPaying
-    ? `${isClosed ? "עליך להעביר" : "סכום לא סופי להעברה"} ל־${otherParticipantName}`
-    : `${isClosed ? "אמור להגיע אליך" : "סכום לא סופי לקבלה"} מ־${otherParticipantName}`;
-  const completionLabel = isCurrentParticipantPaying ? "העברתי" : "קיבלתי";
+    ? `סכום לא סופי להעברה ל־${otherParticipantName}`
+    : `סכום לא סופי לקבלה מ־${otherParticipantName}`;
   const canManage = canCurrentParticipantManage(event);
 
   return `
-    <section data-settlement-phase="${settlementSummaryPhase({isClosed, needsReview})}" class="panel settlement-hero is-pending is-personal-pending is-explained">
+    <section data-settlement-phase="${settlementSummaryPhase({isClosed:false, needsReview})}" class="panel settlement-hero is-pending is-personal-pending is-explained">
       <div class="settlement-featured-action">
-        <span class="status-chip ${isClosed ? "is-ok" : "is-warn"}">${isClosed ? "האירוע נסגר" : interimSettlementCopy.title}</span>
+        <span class="status-chip is-warn">${interimSettlementCopy.title}</span>
         <p class="settlement-featured-route">${escapeHtml(routeLabel)}</p>
         <strong class="settlement-featured-amount amount"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></strong>
-        ${isClosed
-          ? `<button class="primary-button settlement-featured-complete" data-action="mark-paid" data-transfer-id="${escapeAttribute(transfer.id)}">${completionLabel}</button>`
-          : canManage
-            ? `<button class="primary-button settlement-close-primary" data-action="close-event" data-event-id="${event.id}" ${needsReview ? "disabled" : ""}>${interimSettlementCopy.closeLabel}</button>`
-            : '<p class="muted settlement-manager-hint">סגירת החשבון זמינה למנהל האירוע.</p>'
+        ${canManage
+          ? `<button class="primary-button settlement-close-primary" data-action="close-event" data-event-id="${event.id}" ${needsReview ? "disabled" : ""}>${interimSettlementCopy.closeLabel}</button>`
+          : '<p class="muted settlement-manager-hint">סגירת החשבון זמינה למנהל האירוע.</p>'
         }
       </div>
-
       <div class="settlement-hero-actions settlement-featured-actions">
         <button class="secondary-button whatsapp-button" data-action="share-whatsapp" data-event-id="${event.id}">שלח בוואטסאפ</button>
-        ${isClosed && canManage ? `<button class="secondary-button settlement-reopen-action" data-action="reopen-event" data-event-id="${event.id}">פתח אירוע מחדש</button>` : ""}
         <details class="settlement-more-actions">
           <summary>עוד</summary>
           <div>
-            ${
-              isClosed || !canManage
-                ? ""
-                : `<button class="secondary-button" data-action="close-event" data-event-id="${event.id}" ${needsReview ? "disabled" : ""}>${needsReview ? "תקן הוצאות לפני סגירה" : "סגור ונעל אירוע"}</button>`
+            ${canManage
+              ? `<button class="secondary-button" data-action="close-event" data-event-id="${event.id}" ${needsReview ? "disabled" : ""}>${needsReview ? "תקן הוצאות לפני סגירה" : "סגור ונעל אירוע"}</button>`
+              : ""
             }
             <button class="secondary-button" data-action="copy-settlement" data-event-id="${event.id}">העתק סיכום</button>
             <button class="secondary-button" data-action="copy-event-report" data-event-id="${event.id}">העתק פירוט הוצאות</button>

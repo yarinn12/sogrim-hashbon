@@ -647,3 +647,21 @@ test("native close confirmation retains scalable leaf text, scroll clearance and
  assert.match(rule(".settlement-close-confirmation"),/overflow-y:\s*auto\s*!important/);
  assert.match(rule(".settlement-close-confirmation"),/max-height:[^;]*--settlement-close-nav-space/);
 });
+
+
+test("native closed summary keeps scalable amounts, intact payment labels and independent debt controls",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css"));
+ const start=css.indexOf("/* Approved closed summary");
+ assert(start>=0,"Closed summary correction must survive native stylesheet extraction");
+ const scoped=css.slice(start);
+ assert.match(scoped,/\.settlement-hero-amount[^}]*font-size:1\.75rem!important/);
+ assert.match(scoped,/\.settlement-hero-amount \.font-num[^}]*font-size:inherit!important/);
+ assert.match(scoped,/\.transfer-action-buttons > button[^}]*white-space:nowrap!important/);
+ assert.match(scoped,/\.settlement-share-currency[^}]*display:inline-block!important;white-space:nowrap!important/);
+ assert.match(scoped,/\.settlement-debt-preview > summary[^}]*min-height:44px!important/);
+ assert.match(scoped,/\.settlement-debt-share > summary[^}]*min-height:48px!important/);
+ assert.match(scoped,/\.settlement-hero-total\.is-group-total[^}]*flex-direction:column!important;align-items:stretch!important/);
+ assert(!scoped.includes("data-review-closed"),"Production styles cannot depend on prototype attributes");
+});

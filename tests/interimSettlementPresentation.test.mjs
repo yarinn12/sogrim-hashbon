@@ -1,3 +1,4 @@
+import * as closedPresentation from "../src/ui/closedSettlementPresentation.mjs";
 import test from "node:test";import assert from "node:assert/strict";import {readFile} from "node:fs/promises";import {runInNewContext} from "node:vm";
 import * as presentation from "../src/ui/eventSettlementOptions.mjs";
 const app=await readFile("src/app.mjs","utf8");
@@ -26,7 +27,7 @@ function render({closed=false,review=false,single=false,manage=true,empty=false}
   hasReliableSettlementIdentity:()=>true,isEventClosed:()=>closed,canCurrentParticipantManage:()=>manage,
   sumMoneyAmounts:a=>a.reduce((n,x)=>n+x,0),formatEventMoney:(_e,n)=>"₪"+(n/100).toFixed(2),
   formatCount:(n,_one,many)=>n+" "+many,participantName:()=>'<אורח>',escapeHtml:escape,escapeAttribute:escape,
-  renderEventEmptyExpenseState:()=>"<div>empty</div>",...presentation};
+  renderEventEmptyExpenseState:()=>"<div>empty</div>",...presentation,...closedPresentation,eventParticipants:()=>[],eventSettlementTransfers:()=>transfers,usesDirectSettlementTransfers:()=>false,formatSettlementSummary:()=>"הכול סגור. אין העברות פתוחות."};
  const html=runInNewContext(extract("renderSettlementHero")+"\n"+extract("renderFeaturedSettlementHero")+"\nrenderSettlementHero(event,transfers,pendingTotal,issues);",ctx);
  assert.equal(JSON.stringify({event,transfers}),before,"rendering never mutates expense amounts or transfers");return html;
 }

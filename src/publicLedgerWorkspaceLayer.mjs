@@ -22705,6 +22705,76 @@ html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[
   transform: rotate(-90deg) !important;
 }
 
+/* Approved closed summary: shared web/native presentation; no financial rules. */
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .status-chip {font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-title-row h2,
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-route {font-size:1.3125rem!important;font-weight:650!important;line-height:1.35!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-title-row p {font-size:.875rem!important;line-height:1.5!important;font-weight:400!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-total > span {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-amount,
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-amount {font-size:1.75rem!important;line-height:1.25!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-amount .font-num,
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-amount .font-num {font-size:inherit!important;line-height:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-actions {display:flex!important;flex-wrap:wrap!important;gap:8px!important;justify-content:flex-start!important;min-height:0!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-actions > button {width:auto!important;max-width:100%!important;min-width:0!important;min-height:44px!important;height:auto!important;padding:10px 14px!important;font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;flex:0 1 auto!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-action {background:transparent!important;border:0!important;box-shadow:none!important;min-height:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-counterparty {display:block!important;margin-block-start:6px!important;font-size:.875rem!important;line-height:1.5!important;font-weight:400!important;color:var(--app-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-complete {font-size:.875rem!important;line-height:1.5!important;min-height:48px!important;height:auto!important;white-space:normal!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] {width:100%!important;max-width:100%!important;margin-inline:0!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-amount, html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-amount {max-width:100%!important;white-space:nowrap!important;overflow-x:auto!important;text-align:right!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-amount .font-num, html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-amount .font-num {display:inline-block!important;white-space:nowrap!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] :is(.settlement-hero-amount,.settlement-featured-amount) {text-align:right!important;}
+
+/* Closed summary: keep payment words and numeric values intact as text grows. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-actions {display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-amount {flex:1 1 auto!important;min-width:max-content!important;max-width:100%!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-action-buttons {flex:0 1 auto!important;max-width:100%!important;flex-wrap:wrap!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-action-buttons > button {width:auto!important;min-width:max-content!important;max-width:100%!important;white-space:nowrap!important;word-break:normal!important;overflow-wrap:normal!important;min-height:44px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-row .font-num {display:inline-block!important;white-space:nowrap!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-equation-item {flex-wrap:wrap!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-equation-item > .amount {flex:0 0 auto!important;max-width:100%!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-amount > .amount {text-align:right!important;}
+
+/* Single visible debt-sharing entry in closed summaries. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share {width:100%!important;min-width:0!important;max-width:100%!important;margin:0!important;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share > summary {display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;min-height:48px!important;padding:12px 16px!important;list-style:none!important;cursor:pointer!important;color:white!important;background:var(--ledger-brand)!important;border:1px solid var(--ledger-brand)!important;border-radius:10px!important;font-size:.875rem!important;line-height:1.5!important;font-weight:650!important;white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share > summary::-webkit-details-marker {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share > summary:focus-visible {outline:3px solid var(--ledger-brand)!important;outline-offset:3px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share-icon {display:inline-flex!important;align-items:center!important;justify-content:center!important;width:20px!important;height:20px!important;flex:0 0 20px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share-icon svg {display:block!important;width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share-options {display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;padding-block:8px 0!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share-options > button {display:block!important;min-width:0!important;max-width:100%!important;width:100%!important;min-height:48px!important;height:auto!important;margin:0!important;padding:12px 8px!important;font-size:.875rem!important;line-height:1.5!important;text-align:start!important;color:var(--ledger-brand)!important;background:transparent!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;box-shadow:none!important;white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share-options > button:last-child {border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero.is-personal-pending .settlement-debt-share > summary {background:white!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-reopen-action {border-color:transparent!important;background:transparent!important;box-shadow:none!important;color:var(--app-muted)!important;}
+
+/* Read only canonical debt lines in the independent preview. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-share-message {min-width:0!important;padding:8px 8px 14px!important;border-bottom:1px solid var(--ledger-line)!important;color:var(--ledger-ink)!important;background:transparent!important;font-family:inherit!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-share-message-line {margin:0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;white-space:pre-wrap!important;word-break:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-share-message-line + .settlement-share-message-line {margin-block-start:8px!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-share-currency {display:inline-block!important;white-space:nowrap!important;word-break:normal!important;overflow-wrap:normal!important;}
+
+/* Inspect debts independently on demand; share options never reveal them automatically. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview {display:block!important;flex:0 1 auto!important;width:auto!important;max-width:100%!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview[open] {flex-basis:100%!important;width:100%!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview > summary {display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;max-width:100%!important;min-height:44px!important;padding:8px 10px!important;list-style:none!important;font-size:.875rem!important;line-height:1.5!important;font-weight:650!important;white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;cursor:pointer!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview > summary::-webkit-details-marker {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview > summary:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:-2px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview-chevron {display:inline-flex!important;align-items:center!important;justify-content:center!important;flex:0 0 16px!important;width:16px!important;height:16px!important;transform:rotate(-90deg)!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview-chevron svg {display:block!important;width:16px!important;height:16px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview[open] .settlement-debt-preview-chevron {transform:rotate(90deg)!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-total.is-group-total > span {display:block!important;font-size:.8125rem!important;line-height:1.5!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-total.is-group-total {flex-direction:column!important;align-items:stretch!important;gap:6px!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
