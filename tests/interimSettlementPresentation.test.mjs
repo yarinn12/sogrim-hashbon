@@ -15,7 +15,7 @@ test("open personal transfer labels are provisional for both payer and receiver"
 });
 test("closed transfers retain the distinct payer, receiver and group pending states",()=>{
  assert.equal(status({closed:true,paying:true}),"מחכה שתעביר");
- assert.equal(status({closed:true,paying:false}),"מחכה שיגיע");
+ assert.equal(status({closed:true,paying:false}),"ממתין לתשלום אליך");
  assert.equal(status({closed:true,personal:false}),"ממתין להעברה");
 });
 const escape=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");

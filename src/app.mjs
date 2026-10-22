@@ -11077,7 +11077,7 @@ function renderTransferRow(
   const pendingStatusText = !paymentActionsEnabled ? "סכום לא סופי" : isPersonal
     ? isCurrentParticipantPaying
       ? "מחכה שתעביר"
-      : "מחכה שיגיע"
+      : "ממתין לתשלום אליך"
     : paymentActionsEnabled ? "ממתין להעברה" : "סכום לא סופי";
   const statusText = paid
     ? isGroupedPaidTransfer

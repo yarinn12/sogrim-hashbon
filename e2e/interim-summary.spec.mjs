@@ -47,7 +47,7 @@ for(const root of [16,20,32]){
   const {cloud,screen}=await setup(page,baseURL,{root}),before=amounts(cloud);
   await screen.locator(".settlement-close-primary").click();await page.locator('[data-action="confirm-close-event"]').click();
   await expect.poll(()=>cloud.state().events[0].locked).toBe(true);await expect(screen.locator(".settlement-hero")).toHaveAttribute("data-settlement-phase","existing");
-  await expect(screen.locator(".transfer-status")).toHaveText(["מחכה שיגיע","מחכה שיגיע"]);
+  await expect(screen.locator(".transfer-status")).toHaveText(["ממתין לתשלום אליך","ממתין לתשלום אליך"]);
   const row=screen.locator(".transfer-row").first(),id=await row.getAttribute("data-transfer-id");
   await row.locator('[data-action="mark-paid"]').click();
   await expect.poll(()=>cloud.state().events[0].transfers.find(t=>t.id===id)?.status).toBe("paid");
@@ -96,16 +96,18 @@ async function expectSettledDisclosureRotation(row,direction){
 async function expectCenteredStatus(row){
  const geometry=await row.locator(".transfer-status-cluster").evaluate(e=>{
   const arrow=e.querySelector(".transfer-expand-indicator"),label=e.querySelector(".transfer-status"),a=arrow.getBoundingClientRect(),t=label.getBoundingClientRect();
+  const bounds=e.getBoundingClientRect(),outside=[],walker=document.createTreeWalker(label,NodeFilter.SHOW_TEXT);let text;
+  while(text=walker.nextNode())for(let i=0;i<text.length;i++){if(!text.textContent[i].trim())continue;const range=document.createRange();range.setStart(text,i);range.setEnd(text,i+1);for(const r of range.getClientRects())if(r.left<bounds.left-.5||r.right>bounds.right+.5||r.top<bounds.top-.5||r.bottom>bounds.bottom+.5)outside.push(text.textContent[i]);}
   const path=arrow.querySelector("svg path");let paintedCenter=null;
   if(path){const b=path.getBBox(),point=new DOMPoint(b.x+b.width/2,b.y+b.height/2).matrixTransform(path.getScreenCTM());paintedCenter=point.y;}
-  return {centerDifference:Math.abs(a.y+a.height/2-t.y-t.height/2),paintedDifference:paintedCenter===null?null:Math.abs(paintedCenter-t.y-t.height/2),
+  return {outside,centerDifference:Math.abs(a.y+a.height/2-t.y-t.height/2),paintedDifference:paintedCenter===null?null:Math.abs(paintedCenter-t.y-t.height/2),
    iconSize:a.width,root:parseFloat(getComputedStyle(document.documentElement).fontSize),labelVisible:t.width>0&&t.height>0,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth};
  });
  expect(geometry.centerDifference,"the actual status and indicator boxes must share a vertical center").toBeLessThanOrEqual(.5);
  expect(geometry.paintedDifference,"the shared source chevron must paint at the label center").not.toBeNull();
  expect(geometry.paintedDifference).toBeLessThanOrEqual(.5);
  expect(geometry.iconSize).toBeCloseTo(geometry.root*.875,1);
- expect(geometry.labelVisible).toBe(true);expect(geometry.overflow).toBe(false);
+ expect(geometry.labelVisible).toBe(true);expect(geometry.overflow).toBe(false);expect(geometry.outside,"every status glyph must fit the visible status cluster at the requested text size").toEqual([]);
 }
 for(const root of [16,20,32])for(const closed of [false,true]){
  test("status disclosure remains centered before and after opening at root "+root+" closed "+closed,async({page,baseURL})=>{

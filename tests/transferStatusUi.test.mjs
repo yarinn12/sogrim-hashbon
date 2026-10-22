@@ -14,7 +14,7 @@ test("settlement screen lets a paid transfer return to pending", async () => {
   assert.doesNotMatch(app, /transfer-complete-button is-static/);
   assert.match(app, /updateTransferStatus/);
   assert.match(app, /"מחכה שתעביר"/);
-  assert.match(app, /"מחכה שיגיע"/);
+  assert.match(app, /"ממתין לתשלום אליך"/);
   assert.match(app, /"סכום לא סופי"/);
   assert.match(app, /"ממתין להעברה"/);
   assert.match(app, /paymentActionsEnabled = isEventClosed\(event\)/);
