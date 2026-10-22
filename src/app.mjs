@@ -1,4 +1,4 @@
-import {renderClosedSettlementHeroView, renderClosedSettlementShareActionsView} from "./ui/closedSettlementPresentation.mjs";
+import {renderClosedSettlementHeroView, renderClosedSettlementShareActionsView, captureClosedSettlementDisclosureState, restoreClosedSettlementDisclosureState} from "./ui/closedSettlementPresentation.mjs";
 import {renderSettlementCloseConfirmationView} from "./ui/settlementClosePresentation.mjs";
 import {expenseFormHeading, expenseFormBackLabel, renderExpenseDateFieldView, openExpenseDatePicker, syncExpenseDateCaption, expenseDatePickerOwnsEscape, renderExpenseNotesView, renderExpenseDeletionContextView} from "./ui/expenseFormPresentation.mjs";
 import { EXPENSE_CURRENCY_REENTRY_NOTICE, renderExpenseFxReviewAmountView, renderExpenseFxReviewDetailsView, expenseFxCurrencyNames, renderExpenseFxFieldsView, renderExpenseFxPreviewView, renderExpenseFxSourceMetadataView } from "./ui/expenseFxPresentation.mjs";
@@ -1661,6 +1661,7 @@ function captureRenderInteractionState() {
     ]
       .map((menu) => menu.dataset.eventId)
       .filter(Boolean),
+    closedSettlementDisclosures: captureClosedSettlementDisclosureState(app),
     settlementMoreActionsOpen: Boolean(
       app.querySelector(".settlement-more-actions[open]")
     ),
@@ -1678,6 +1679,10 @@ function captureRenderInteractionState() {
 
 function restoreRenderInteractionState(snapshot, expectedRenderGeneration) {
   if (!snapshot) return;
+  // Restore before the next paint: a second render must capture the same open state.
+  if (expectedRenderGeneration === renderGeneration && snapshot.closedSettlementDisclosures) {
+    restoreClosedSettlementDisclosureState(app, snapshot.closedSettlementDisclosures);
+  }
   const dialog = snapshot.dialogSelector
     ? app.querySelector(snapshot.dialogSelector)
     : null;

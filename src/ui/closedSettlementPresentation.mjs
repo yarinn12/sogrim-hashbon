@@ -78,3 +78,28 @@ export function renderClosedSettlementHeroView({
     </section>
   `;
 }
+
+
+// Ephemeral DOM state only: never persist disclosures across a different event or debt summary.
+export function captureClosedSettlementDisclosureState(root) {
+  const screen = root.querySelector(".settlement-screen[data-event-id]");
+  const message = screen?.querySelector(".settlement-share-message");
+  if (!message) return null;
+  return {
+    eventId: screen.dataset.eventId,
+    summary: message.textContent,
+    shareOpen: Boolean(screen.querySelector(".settlement-debt-share")?.open),
+    previewOpen: Boolean(screen.querySelector(".settlement-debt-preview")?.open)
+  };
+}
+
+export function restoreClosedSettlementDisclosureState(root, snapshot) {
+  const current = captureClosedSettlementDisclosureState(root);
+  if (!snapshot || !current || current.eventId !== snapshot.eventId || current.summary !== snapshot.summary) return false;
+  const screen = root.querySelector(".settlement-screen[data-event-id]");
+  for (const [selector, open] of [[".settlement-debt-share", snapshot.shareOpen], [".settlement-debt-preview", snapshot.previewOpen]]) {
+    const details = screen.querySelector(selector);
+    if (details) details.open = Boolean(open);
+  }
+  return true;
+}

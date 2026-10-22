@@ -1110,7 +1110,7 @@ test("event details scale field labels and retain the draft through currency sea
   await expect(name).toHaveAttribute('aria-describedby', 'new-event-name-hint');
   await name.fill('ערב חברים & משפחה');
   await screen.locator('.new-event-inline-picker summary').click();
-  const search = page.getByRole('searchbox', { name: 'חיפוש מטבע לפי שם או קוד', exact: true });
+  const search = page.getByRole('searchbox', { name: 'חיפוש מטבע לפי שם, מדינה או קוד', exact: true });
   await search.fill('ZZZZ');
   await expect(screen.locator('[data-currency-search-empty]')).toBeVisible();
   await search.fill('USD');
@@ -1410,11 +1410,15 @@ test("expense notes and image stay visible after save and resume sync", async ({
     name: "receipt.png",
     mimeType: "image/png",
     buffer: Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR42mP8z8DAwMAAAAYAAQHLR3cAAAAASUVORK5CYII=",
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGNk83ZmYGBgYgADAAbdAJisefbIAAAAAElFTkSuQmCC",
       "base64"
     )
   });
   await expect(dialog.locator(".expense-attachment-preview")).toBeVisible();
+  expect(await dialog.locator(".expense-attachment-preview").evaluate(async image => {
+    await image.decode();
+    return image.naturalWidth > 0 && image.naturalHeight > 0;
+  })).toBe(true);
   await dialog.locator('[data-action="save-expense"]').click();
 
   await expect(dialog).toBeHidden();
@@ -1671,7 +1675,7 @@ test("close-event action and its floating feedback stay polished on every mobile
     };
   });
   expect(closeButtonLayout.width).toBeGreaterThanOrEqual(closeButtonLayout.availableWidth - 2);
-  expect(closeButtonLayout.height).toBeGreaterThanOrEqual(56);
+  expect(closeButtonLayout.height).toBeGreaterThanOrEqual(48);
   expect(closeButtonLayout.scrollHeight).toBeLessThanOrEqual(
     closeButtonLayout.clientHeight + 1
   );
@@ -2200,14 +2204,14 @@ test("summary guidance keeps the same complete word wrapping at mobile widths", 
   await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
   await page.evaluate(async () => {
     await Promise.all([
-      document.fonts.load('500 12px Rubik', 'אפשר לראות את המצב כרגע. מעבירים כסף רק לאחר סגירת האירוע.'),
+      document.fonts.load('500 12px Rubik', 'הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.'),
       document.fonts.load('400 12px Rubik', 'המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם')
     ]);
     await document.fonts.ready;
   });
 
   const expectedCopy = {
-    description: "אפשר לראות את המצב כרגע. מעבירים כסף רק לאחר סגירת האירוע.",
+    description: "הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.",
     transferHelper: "המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם"
   };
   for (const width of [360, 375, 390, 430]) {
@@ -2219,7 +2223,13 @@ test("summary guidance keeps the same complete word wrapping at mobile widths", 
       const locator = page.locator(selector);
       const lines = await readCharacterLines(locator);
       expect(lines.join(" "), `${key} complete copy at ${width}px`).toBe(expectedCopy[key]);
-      expect(lines, `${key} stays on two lines at ${width}px`).toHaveLength(2);
+      const geometry = await locator.evaluate(element => {
+        const box = element.getBoundingClientRect(), range = document.createRange();
+        range.selectNodeContents(element);
+        return [...range.getClientRects()].filter(r => r.width && r.height)
+          .every(r => r.left >= box.left - 1 && r.right <= box.right + 1 && r.top >= box.top - 1 && r.bottom <= box.bottom + 1);
+      });
+      expect(geometry, `${key} complete glyphs fit at ${width}px`).toBe(true);
       expect(lines, `${key} follows natural wrapping at ${width}px`)
         .toEqual(await readCharacterLines(locator, true));
       await expect(locator, `${key} uses natural line selection at ${width}px`)

@@ -22775,6 +22775,9 @@ html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlem
 
 html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-total.is-group-total {flex-direction:column!important;align-items:stretch!important;gap:6px!important;}
 
+/* Relationship comparison: constrain the nested track before aligning numeric values. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .relationship-comparison-values > span {grid-template-columns:minmax(0,1fr)!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

@@ -665,3 +665,14 @@ test("native closed summary keeps scalable amounts, intact payment labels and in
  assert.match(scoped,/\.settlement-hero-total\.is-group-total[^}]*flex-direction:column!important;align-items:stretch!important/);
  assert(!scoped.includes("data-review-closed"),"Production styles cannot depend on prototype attributes");
 });
+
+
+
+test("native relationship comparison prevents a long name pill from widening the numeric grid track",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css"));
+ const start=css.indexOf("/* Relationship comparison: constrain");
+ assert(start>=0,"Nested comparison grid must survive native CSS extraction");
+ assert.match(css.slice(start),/\.relationship-comparison-values > span[^}]*grid-template-columns:minmax\(0,1fr\)!important/);
+});

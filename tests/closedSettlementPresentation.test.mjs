@@ -1,3 +1,4 @@
+import {captureClosedSettlementDisclosureState,restoreClosedSettlementDisclosureState} from "../src/ui/closedSettlementPresentation.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {renderClosedFixture} from "./helpers/closedSettlementHarness.mjs";
@@ -77,4 +78,34 @@ test("share view escapes event identifiers and plain messages and never emits ex
  const html=renderClosedSettlementShareActionsView({eventId:'id"><img src=x>',hasPendingTransfers:false,formattedSummary:"<script>alert(1)</script>"});
  assert(!html.includes("<img"));assert(!html.includes("<script>"));assert(html.includes('id&quot;&gt;&lt;img src=x&gt;'));
  assert(html.includes("&lt;script&gt;alert(1)&lt;/script&gt;"));
+});
+
+
+function disclosureRoot({eventId="event",summary="same debts",shareOpen=false,previewOpen=false,closed=true}={}) {
+ const share={open:shareOpen},preview={open:previewOpen},message={textContent:summary};
+ const screen={dataset:{eventId},querySelector:selector=>selector===".settlement-share-message"?closed?message:null:selector===".settlement-debt-share"?share:preview};
+ return {querySelector:()=>screen,share,preview,message};
+}
+test("unchanged debt summary restores independently open share and preview controls",()=>{
+ for(const [shareOpen,previewOpen] of [[true,false],[false,true],[true,true],[false,false]]){
+  const old=disclosureRoot({shareOpen,previewOpen}),snapshot=captureClosedSettlementDisclosureState(old),fresh=disclosureRoot();
+  assert(restoreClosedSettlementDisclosureState(fresh,snapshot));
+  assert.equal(fresh.share.open,shareOpen);assert.equal(fresh.preview.open,previewOpen);
+ }
+});
+test("a different event or changed canonical debts never inherits open disclosures",()=>{
+ const snapshot=captureClosedSettlementDisclosureState(disclosureRoot({shareOpen:true,previewOpen:true}));
+ for(const options of [{eventId:"other"},{summary:"remaining debt changed"}]){
+  const fresh=disclosureRoot(options);assert.equal(restoreClosedSettlementDisclosureState(fresh,snapshot),false);
+  assert.equal(fresh.share.open,false);assert.equal(fresh.preview.open,false);
+ }
+});
+test("open or empty summary has no closed disclosure state and no restoration side effects",()=>{
+ const root=disclosureRoot({closed:false});
+ assert.equal(captureClosedSettlementDisclosureState(root),null);
+ assert.equal(restoreClosedSettlementDisclosureState(root,{eventId:"event",summary:"same debts",shareOpen:true}),false);
+});
+test("missing snapshot cannot open share or preview controls",()=>{
+ const root=disclosureRoot();assert.equal(restoreClosedSettlementDisclosureState(root,null),false);
+ assert.equal(root.share.open,false);assert.equal(root.preview.open,false);
 });

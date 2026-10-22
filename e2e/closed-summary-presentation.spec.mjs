@@ -131,3 +131,17 @@ test("balanced closed event uses the final summary labels without a payable amou
  await expect(page.locator(".settlement-share-message")).toHaveText("הכול סגור. אין העברות פתוחות.");
  expect(finances(cloud)).toEqual(before);await geometry(page,32);expect(cloud.errors).toEqual([]);
 });
+
+
+test("read-only feedback preserves both debt disclosures while the debt summary is unchanged",async({page,baseURL})=>{
+ const cloud=await setup(page,baseURL),before=finances(cloud);
+ const share=page.locator(".settlement-debt-share"),view=page.locator(".settlement-debt-preview");
+ await toggle(view);await toggle(share);
+ await share.locator('[data-action="copy-settlement"]').click();
+ await expect(share).toHaveAttribute("open","");await expect(view).toHaveAttribute("open","");
+ await dismiss(page);
+ await expect(share).toHaveAttribute("open","");await expect(view).toHaveAttribute("open","");
+ await share.locator('[data-action="share-whatsapp"]').click();
+ await expect(share).toHaveAttribute("open","");await expect(view).toHaveAttribute("open","");
+ expect(finances(cloud)).toEqual(before);expect(cloud.errors).toEqual([]);
+});
