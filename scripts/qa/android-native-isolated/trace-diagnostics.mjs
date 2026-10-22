@@ -254,8 +254,11 @@ first=$(toybox tr '\000' '\n' <"/proc/$pid/cmdline" | toybox head -1)
 case "$first" in perfetto|*/perfetto) ;; *) echo 'Refuse foreign tracer before signal' >&2; exit 4;; esac
 [ ! -L "$trace" ] && [ "$(toybox stat -c %d:%i "$trace")" = "$identity" ] || { echo 'Trace inode changed before signal' >&2; exit 5; }
 kill -TERM "$pid"
+# This row is invariant. Avoid a shell fork in every acknowledgement poll;
+# preserve all 120 observations, their delay and the ownership/cleanup guards.
+expected_close_event=$(printf 'w\t%s' "$trace")
 for n in $(toybox seq 1 120); do
-  if toybox grep -Fx "$(printf 'w\t%s' "$trace")" "$events" >/dev/null; then
+  if toybox grep -Fx "$expected_close_event" "$events" >/dev/null; then
     [ ! -L "$trace" ] && [ "$(toybox stat -c %d:%i "$trace")" = "$identity" ] || { echo 'Trace inode changed' >&2; exit 5; }
     close_ack=1
     echo "CLOSE_WRITE $inode $trace"
