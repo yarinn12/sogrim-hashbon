@@ -22778,6 +22778,38 @@ html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlem
 /* Relationship comparison: constrain the nested track before aligning numeric values. */
 html.design-coherence-v1.ledger-workspace-v1 body #app .relationship-comparison-values > span {grid-template-columns:minmax(0,1fr)!important;}
 
+/* Approved all-paid completion: quiet shared mark, bounded viewport and scalable copy. */
+html body #app .settlement-celebration-backdrop {
+  padding:max(14px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom))!important;
+}
+html body #app .settlement-celebration-dialog {
+  box-sizing:border-box!important;
+  width:min(100%,410px)!important;
+  max-height:calc(100dvh - max(14px,env(safe-area-inset-top)) - max(14px,env(safe-area-inset-bottom)))!important;
+  min-height:0!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain;
+  padding:24px 20px 20px!important;
+  gap:12px!important;
+  box-shadow:0 12px 40px rgba(3,24,21,.18)!important;
+}
+html body #app .settlement-celebration-mark {
+  width:clamp(28px,1.75rem,40px)!important;
+  height:clamp(28px,1.75rem,40px)!important;
+  margin:0!important;
+  color:var(--accent-ink,#174f43)!important;
+  background:transparent!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  animation:none!important;
+}
+html body #app .settlement-celebration-mark svg {width:100%!important;height:100%!important;}
+html body #app .settlement-celebration-dialog h2 {font-size:1.5rem!important;line-height:1.25!important;font-weight:800!important;margin:0!important;}
+html body #app .settlement-celebration-dialog p {font-size:.875rem!important;line-height:1.6!important;font-weight:500!important;margin:0!important;}
+html body #app .settlement-celebration-actions {margin-top:8px!important;gap:8px!important;}
+html body #app .settlement-celebration-actions button {font-size:.9375rem!important;line-height:1.4!important;min-height:48px!important;height:auto!important;padding:.75em 1em!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

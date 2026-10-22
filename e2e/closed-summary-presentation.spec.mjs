@@ -14,7 +14,7 @@ async function setup(page,baseURL,c={}) {
   Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:async text=>{window.__debtCopies.push(String(text))}}});
   window.open=url=>{window.__debtUrls.push(String(url));return null};
  },c.root||16);
- const cloud=await personalPinsCloud(page,baseURL,closedSummarySeed(c),{accountId:"closed-summary-owner"});
+ const cloud=await personalPinsCloud(page,baseURL,closedSummarySeed(c),{accountId:"closed-summary-owner",profileUpdatedAt:"2026-09-03T08:00:00.000Z"});
  await openSummary(page);
  if(!c.locked){
   await page.locator(".settlement-close-primary").click();await page.locator('[data-action="confirm-close-event"]').click();
@@ -29,10 +29,16 @@ async function openSummary(page){
  await page.getByRole("button",{name:"פתיחת הסיכום: מי מעביר למי",exact:true}).click();
 }
 async function dismiss(page){
- const x=page.getByRole("button",{name:"סגירת ההודעה",exact:true});if(await x.isVisible())await x.click();
+ // Fixture cleanup, not a dismissal-action test: a toast may expire between
+ // separate visibility and click calls. Resolve and dismiss atomically, then
+ // verify the resulting hidden state without catching or ignoring an error.
+ await page.locator('[data-action="dismiss-notice"]').evaluateAll(buttons=>buttons.forEach(button=>button.click()));
+ await expect(page.getByRole("button",{name:"סגירת ההודעה",exact:true})).toBeHidden();
 }
 async function toggle(details){
- const s=details.locator(":scope > summary");await s.scrollIntoViewIfNeeded();await s.focus();await s.press("Enter");
+ // Locator.press focuses the current node and scrolls it into view. A separate
+ // scroll operation can hold a detached handle across a background render.
+ const s=details.locator(":scope > summary");await s.press("Enter");
 }
 async function canonical(cloud){
  const state=cloud.state(),e=state.events[0];

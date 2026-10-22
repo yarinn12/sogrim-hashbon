@@ -91,7 +91,7 @@ test("settlement transfer identity and disclosure stay platform-neutral", async 
 
 test("the final paid transfer opens one completion celebration without automatic archiving", async () => {
   const [app, styles] = await Promise.all([
-    readFile("src/app.mjs", "utf8"),
+    readFile("src/app.mjs", "utf8").then(async source => source + await readFile("src/ui/settlementCompletionPresentation.mjs", "utf8")),
     readFile("styles.css", "utf8")
   ]);
 
@@ -103,7 +103,7 @@ test("the final paid transfer opens one completion celebration without automatic
   assert.match(app, /settlementCelebration = \{ eventId: event\.id \}/);
   assert.match(app, /data-action="archive-settled-event"/);
   assert.match(app, /סגור חשבון/);
-  assert.match(app, /המעבר לארכיון תמיד ידני/);
+  assert.match(app, /כל התשלומים באירוע סומנו כשולמו\./);
   assert.match(app, /closeCurrentEvent\(eventId, \{ destination: "home" \}\)/);
   assert.match(
     app,
@@ -111,7 +111,7 @@ test("the final paid transfer opens one completion celebration without automatic
   );
   assert.doesNotMatch(app, /\.settlement-complete-state \[data-action="back-to-event"\]/);
   assert.match(styles, /\.settlement-celebration-dialog/);
-  assert.match(styles, /@keyframes settlement-confetti-burst/);
+  assert.doesNotMatch(app, /class="settlement-confetti/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 });
 

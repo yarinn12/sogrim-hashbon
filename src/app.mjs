@@ -1,3 +1,4 @@
+import {renderSettlementCompletionView} from "./ui/settlementCompletionPresentation.mjs";
 import {renderClosedSettlementHeroView, renderClosedSettlementShareActionsView, captureClosedSettlementDisclosureState, restoreClosedSettlementDisclosureState} from "./ui/closedSettlementPresentation.mjs";
 import {renderSettlementCloseConfirmationView} from "./ui/settlementClosePresentation.mjs";
 import {expenseFormHeading, expenseFormBackLabel, renderExpenseDateFieldView, openExpenseDatePicker, syncExpenseDateCaption, expenseDatePickerOwnsEscape, renderExpenseNotesView, renderExpenseDeletionContextView} from "./ui/expenseFormPresentation.mjs";
@@ -5101,47 +5102,7 @@ function renderSettlementCelebration() {
   if (!event || !allTransfersPaid) return "";
 
   const isClosed = isEventClosed(event);
-  const confetti = Array.from(
-    { length: 12 },
-    (_, index) => `<span class="settlement-confetti-piece is-piece-${index + 1}" aria-hidden="true"></span>`
-  ).join("");
-
-  return `
-    <section class="settlement-celebration-backdrop" aria-label="כל ההעברות הושלמו">
-      <section
-        class="settlement-celebration-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="settlement-celebration-title"
-        aria-describedby="settlement-celebration-description"
-        data-event-id="${escapeAttribute(event.id)}"
-        tabindex="-1"
-      >
-        <div class="settlement-confetti" aria-hidden="true">${confetti}</div>
-        <span class="settlement-celebration-mark" aria-hidden="true">✓</span>
-        <span class="settlement-celebration-eyebrow">הכול נסגר</span>
-        <h2 id="settlement-celebration-title">כל ההעברות הושלמו</h2>
-        <p id="settlement-celebration-description">
-          ${isClosed
-            ? `החשבון של "${escapeHtml(event.name)}" שולם ונשאר ברשימת האירועים שלך.`
-            : `החשבון של "${escapeHtml(event.name)}" מאוזן. אפשר לסגור אותו; המעבר לארכיון תמיד ידני.`}
-        </p>
-        <div class="settlement-celebration-actions">
-          <button
-            class="primary-button"
-            type="button"
-            data-action="archive-settled-event"
-            data-event-id="${escapeAttribute(event.id)}"
-          >${isClosed ? "חזרה לאירועים" : "סגור חשבון"}</button>
-          <button
-            class="secondary-button"
-            type="button"
-            data-action="dismiss-settlement-celebration"
-          >הישאר בסיכום</button>
-        </div>
-      </section>
-    </section>
-  `;
+  return renderSettlementCompletionView({eventId: event.id, isClosed});
 }
 
 function renderEventStatusMenu() {

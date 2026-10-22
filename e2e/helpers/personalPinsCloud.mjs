@@ -4,13 +4,21 @@ import { refreshPersonalPinsSnapshot } from "./personalPinsCloudRefresh.mjs";
 
 // A synthetic account workspace served through the real cloud read/write APIs.
 // The private account snapshot is shared by independently connected contexts.
-export async function personalPinsCloud(page, baseURL, initialState, { legacyPins = [], accountId = "personal-pins-cloud-owner", rejectWrites = false } = {}) {
+export async function personalPinsCloud(page, baseURL, initialState, { legacyPins = [], accountId = "personal-pins-cloud-owner", rejectWrites = false, profileUpdatedAt = "" } = {}) {
   const userId = accountId, participantId = `account-${userId}`;
   const space = `personal-pins-cloud-space-${userId}`, key = "synthetic-personal-pins-key-123456";
   const origin = "https://personal-pins-qa.supabase.co";
   const state = JSON.parse(JSON.stringify(initialState).replaceAll(initialState.currentParticipantId, participantId));
   const user = { id: userId, email: "personal-pins@example.test", app_metadata: { provider: "google" },
     user_metadata: { full_name: "בודק נעיצות", username: "personal_pins", account_space_id: space, account_space_key: key } };
+  // An already-synchronized identity keeps read-only UI tests independent of
+  // first-login profile migration. Other callers retain their original fixture.
+  if (profileUpdatedAt) {
+    Object.assign(state.participants.find(participant => participant.id === participantId), {
+      displayName: "בודק נעיצות", avatarPreset: "avatar-1", avatarImage: "",
+      authProvider: "google", authSubject: userId, email: user.email, profileUpdatedAt
+    });
+  }
   let current = { id: space, state, updated_at: "2026-09-03T08:00:00.000Z" };
   const reads = [], writes = [];
   const offlinePages = new WeakSet();
@@ -54,15 +62,15 @@ export async function personalPinsCloud(page, baseURL, initialState, { legacyPin
       writes.push(structuredClone(current));
       return reply([{ updated_at: current.updated_at }]);
     }
-    if (url.pathname.endsWith("/user_profiles")) return reply([{ user_id: userId, username: "personal_pins", display_name: "בודק נעיצות", avatar_preset: "avatar-1", updated_at: "2026-09-03T08:00:00.000Z" }]);
+    if (url.pathname.endsWith("/user_profiles")) return reply([{ user_id: userId, username: "personal_pins", display_name: "בודק נעיצות", avatar_preset: "avatar-1", updated_at: profileUpdatedAt || "2026-09-03T08:00:00.000Z" }]);
     if (request.method() === "GET") return reply([]);
     return route.fulfill({ headers, status: 204 });
   });
-  await clientPage.addInitScript(({ user, state, space, key, participantId, legacyPins }) => {
+  await clientPage.addInitScript(({ user, state, space, key, participantId, legacyPins, profileUpdatedAt }) => {
     if (!localStorage.getItem("qa-cloud-pins-seeded")) {
       localStorage.clear(); sessionStorage.clear();
       localStorage.setItem("settle-friends-account-session", JSON.stringify({ access_token: "synthetic-token", refresh_token: "synthetic-refresh", expires_at: Math.floor(Date.now() / 1000) + 3600, user }));
-      localStorage.setItem(`settle-friends-local-profile:account:${user.id}`, JSON.stringify({ participantId, displayName: "בודק נעיצות", avatarPreset: "avatar-1", authProvider: "google", authSubject: user.id, email: user.email }));
+      localStorage.setItem(`settle-friends-local-profile:account:${user.id}`, JSON.stringify({ participantId, displayName: "בודק נעיצות", avatarPreset: "avatar-1", authProvider: "google", authSubject: user.id, email: user.email, ...(profileUpdatedAt ? {avatarImage:"",profileUpdatedAt} : {}) }));
       localStorage.setItem("settle-friends-cloud-space", space);
       localStorage.setItem(`settle-friends-cloud-key:${space}`, key);
       localStorage.setItem(`settle-friends-state:${space}`, JSON.stringify(state));
@@ -71,7 +79,7 @@ export async function personalPinsCloud(page, baseURL, initialState, { legacyPin
       localStorage.setItem("qa-cloud-pins-seeded", "1");
     }
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
-  }, { user, state, space, key, participantId, legacyPins });
+  }, { user, state, space, key, participantId, legacyPins, profileUpdatedAt });
   await clientPage.goto("/");
   await expect(clientPage.locator(".event-row")).toHaveCount(state.events.length);
   }

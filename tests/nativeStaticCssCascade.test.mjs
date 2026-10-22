@@ -676,3 +676,18 @@ test("native relationship comparison prevents a long name pill from widening the
  assert(start>=0,"Nested comparison grid must survive native CSS extraction");
  assert.match(css.slice(start),/\.relationship-comparison-values > span[^}]*grid-template-columns:minmax\(0,1fr\)!important/);
 });
+
+
+test("native all-paid completion retains viewport containment and relative leaf text",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css"));
+ const rule=selector=>{const found=[...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(m=>m[1].trim().endsWith(selector)).at(-1);assert(found,"Missing native completion rule: "+selector);return found[2]};
+ assert.match(rule(".settlement-celebration-dialog"),/max-height:calc\(100dvh - max\(14px,env\(safe-area-inset-top\)\) - max\(14px,env\(safe-area-inset-bottom\)\)\)!important/);
+ assert.match(rule(".settlement-celebration-dialog"),/overflow-y:auto!important/);
+ assert.match(rule(".settlement-celebration-dialog h2"),/font-size:1\.5rem!important/);
+ assert.match(rule(".settlement-celebration-dialog p"),/font-size:\.875rem!important/);
+ assert.match(rule(".settlement-celebration-actions button"),/font-size:\.9375rem!important/);
+ assert.match(rule(".settlement-celebration-actions button"),/min-height:48px!important/);
+ assert.match(rule(".settlement-celebration-mark"),/box-shadow:none!important/);
+});
