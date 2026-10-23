@@ -691,3 +691,12 @@ test("native all-paid completion retains viewport containment and relative leaf 
  assert.match(rule(".settlement-celebration-actions button"),/min-height:48px!important/);
  assert.match(rule(".settlement-celebration-mark"),/box-shadow:none!important/);
 });
+
+
+test("native friends leaf typography scales without changing normal-size proportions", async () => {
+ const ledger=resolve("src/publicLedgerWorkspaceLayer.mjs"),{extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:ledger}],"fixture-assets");const css=files.get(join("fixture-assets","native-layers.css"));
+ for(const [selector,size] of [[".friend-row-name > strong",".9375rem"],[".friend-identity-heading strong",".9375rem"],[".friend-privacy-summary-label",".75rem"],[".referral-reward-card.is-friends .referral-reward-copy > strong",".875rem"]]){
+  const full="html body #app .friends-hub-screen "+selector+" {",start=css.indexOf(full);assert.ok(start>=0,"Missing shared/native scalable friend leaf rule: "+selector);const rule=css.slice(start,css.indexOf("}",start));assert.ok(rule.includes("font-size:"+size+"!important;"),"Leaf font must scale using rem: "+selector);
+ }
+});

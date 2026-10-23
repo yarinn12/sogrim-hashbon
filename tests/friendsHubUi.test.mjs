@@ -196,8 +196,8 @@ test("friends and groups keep destructive actions compact without hiding them", 
 
   assert.ok(peoplePanel.indexOf("friends-roster") < peoplePanel.indexOf("friend-privacy-note"));
   assert.match(app, /class="friend-remove-button"[\s\S]*?title="הסר חבר"/);
-  assert.match(commandIcons, /"remove-network-friend": "user-minus"/);
-  assert.match(commandIcons, /"remove-offline-friend": "user-minus"/);
+  assert.match(commandIcons, /"remove-network-friend": "trash"/);
+  assert.match(commandIcons, /"remove-offline-friend": "trash"/);
   assert.match(groupRow, /class="secondary-button danger-button group-archive-button"/);
   assert.match(commandIcons, /"archive-group": "archive"/);
 });

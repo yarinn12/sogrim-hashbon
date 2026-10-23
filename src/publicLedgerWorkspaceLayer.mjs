@@ -22810,6 +22810,12 @@ html body #app .settlement-celebration-dialog p {font-size:.875rem!important;lin
 html body #app .settlement-celebration-actions {margin-top:8px!important;gap:8px!important;}
 html body #app .settlement-celebration-actions button {font-size:.9375rem!important;line-height:1.4!important;min-height:48px!important;height:auto!important;padding:.75em 1em!important;}
 
+/* Friends: scale the visible text leaves with the requested root size. */
+html body #app .friends-hub-screen .friend-row-name > strong {font-size:.9375rem!important;}
+html body #app .friends-hub-screen .friend-identity-heading strong {font-size:.9375rem!important;}
+html body #app .friends-hub-screen .friend-privacy-summary-label {font-size:.75rem!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html body #app .friends-hub-screen .referral-reward-card.is-friends .referral-reward-copy > strong {font-size:.875rem!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
