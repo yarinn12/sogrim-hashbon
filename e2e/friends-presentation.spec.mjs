@@ -3,15 +3,24 @@ import {personalPinsCloud} from './helpers/personalPinsCloud.mjs';
 import {seed} from './helpers/closedSummaryFixture.mjs';
 test.use({serviceWorkers:'block'});
 const sizes=[['.friend-row-name > strong',.9375],['.friend-identity-heading strong',.9375],['.friend-privacy-summary-label',.75],['#referral-reward-card-friends .referral-reward-copy > strong',.875]];
-async function setup(page,baseURL,{root=16,w=393,h=852,system=false,long=false,empty=false}={}){
+async function setup(page,baseURL,{root=16,w=393,h=852,system=false,long=false,empty=false,many=false}={}){
  await page.setViewportSize({width:w,height:h});
  if(root>16&&!system)await page.addInitScript(root=>{const u=new URL(location.href);u.searchParams.set('dynamic-type-preview',root);history.replaceState(history.state,'',u)},root);
  if(system)await page.addInitScript(()=>{const supports=CSS.supports.bind(CSS);CSS.supports=(...a)=>a[0]==='font'&&a[1]==='-apple-system-body'?true:supports(...a);const media=matchMedia.bind(window);window.matchMedia=q=>{const m=media(q);return q.replaceAll(' ','')==='(any-pointer:coarse)'?{matches:true,media:q,addEventListener:m.addEventListener.bind(m),removeEventListener:m.removeEventListener.bind(m),addListener:m.addListener.bind(m),removeListener:m.removeListener.bind(m)}:m};const insert=()=>{const s=document.createElement('style');s.id='friends-system-text-fixture';s.textContent='#apple-system-body-size-probe{font-size:34px!important}';document.head.append(s)};if(document.head)insert();else document.addEventListener('DOMContentLoaded',insert,{once:true})});
- const state=seed();if(long)state.participants[1].displayName='דנה אלכסנדרה לוי ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';state.friendContacts=empty?[]:state.participants.slice(1).map(p=>({id:'contact-'+p.id,participantId:p.id,active:true,source:'offline'}));
+ const state=seed();if(many)state.participants.push(...['נועם רז','רונית הדר','תמר שחר'].map((displayName,i)=>({id:'extra-friend-'+i,displayName,kind:'guest'})));if(long)state.participants[1].displayName='דנה אלכסנדרה לוי ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';state.friendContacts=empty?[]:state.participants.slice(1).map(p=>({id:'contact-'+p.id,participantId:p.id,active:true,source:'offline'}));
  const cloud=await personalPinsCloud(page,baseURL,state,{accountId:'friends-text-owner',profileUpdatedAt:'2026-09-03T08:00:00.000Z'});
  await page.getByRole('button',{name:'חברים',exact:true}).click();await expect(page.getByRole('heading',{name:'חברים',exact:true})).toBeVisible();await page.evaluate(()=>document.fonts.ready);await expect.poll(()=>page.evaluate(()=>parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(root);return cloud;
 }
+async function flatRoster(page){
+ await expect(page.locator('.friends-hub-screen > .top .muted')).toHaveCount(0);
+ const lists=await page.locator('.friend-identity-section:visible').evaluateAll(es=>es.map(section=>{
+  const heading=section.querySelector('.friend-identity-heading'),list=section.querySelector('.friend-list'),cs=getComputedStyle(section),hs=getComputedStyle(heading),ls=getComputedStyle(list);
+  return {border:cs.borderWidth,radius:cs.borderRadius,shadow:cs.boxShadow,headingBackground:hs.backgroundColor,headingBorder:hs.borderWidth,headingAboveList:heading.getBoundingClientRect().bottom<=list.getBoundingClientRect().top+1,marker:getComputedStyle(heading.querySelector('.friend-identity-marker')).display,listBorder:ls.borderTopWidth,listShadow:ls.boxShadow,rows:[...list.querySelectorAll('.friend-row:not([hidden])')].map(e=>{const s=getComputedStyle(e);return {radius:s.borderRadius,shadow:s.boxShadow,borderTop:s.borderTopWidth,borderBottom:s.borderBottomWidth}})}
+ }));
+ for(const list of lists){expect(list.border).toBe('0px');expect(list.radius).toBe('0px');expect(list.shadow).toBe('none');expect(list.headingBackground).toBe('rgba(0, 0, 0, 0)');expect(list.headingBorder).toBe('0px');expect(list.headingAboveList).toBe(true);expect(list.marker).toBe('none');expect(list.listBorder).toBe('1px');expect(list.listShadow).toBe('none');list.rows.forEach((row,i)=>{expect(row.radius).toBe('0px');expect(row.shadow).toBe('none');expect(row.borderTop,'Only separators between visible rows should remain').toBe(i?'1px':'0px');expect(row.borderBottom).toBe('0px')})}
+}
 async function glyphs(page,root,{empty=false}={}){
+ await flatRoster(page);
  for(const [selector,ratio] of sizes){if(empty&&selector.startsWith('.friend-')){if(selector!=='.friend-privacy-summary-label')continue;}
  const xs=page.locator(selector);await expect(xs.first()).toBeVisible();const values=await xs.evaluateAll(es=>es.map(e=>{const own=e.getBoundingClientRect(),walk=document.createTreeWalker(e,NodeFilter.SHOW_TEXT),leaves=[],bad=[];let n;while(n=walk.nextNode())for(let i=0;i<n.length;i++){if(!n.textContent[i].trim())continue;const r=document.createRange();r.setStart(n,i);r.setEnd(n,i+1);for(const g of r.getClientRects())if(g.width&&g.height){leaves.push(parseFloat(getComputedStyle(n.parentElement).fontSize));if(g.left<own.left-1||g.right>own.right+1||g.top<own.top-1||g.bottom>own.bottom+1)bad.push(n.textContent[i]);}}return{font:parseFloat(getComputedStyle(e).fontSize),leaves,bad,text:e.textContent.trim()}}));for(const x of values){expect(x.font,selector+' must scale its real leaf text').toBeCloseTo(root*ratio,2);expect(x.leaves.length).toBeGreaterThan(0);for(const f of x.leaves)expect(f).toBeCloseTo(root*ratio,2);expect(x.bad,'wrapped glyphs must fit their own text box: '+selector).toEqual([]);}
  }
@@ -40,4 +49,19 @@ test('friend text survives reload rotation and resetting to normal size',async({
 });
 test('empty friends keep enlarged privacy reward and add action reachable',async({page,baseURL})=>{
  const cloud=await setup(page,baseURL,{root:32,w:320,empty:true});await expect(page.getByRole('heading',{name:'עוד אין חברים',exact:true})).toBeVisible();await glyphs(page,32,{empty:true});await reachable(page.getByRole('button',{name:'הוסף חבר',exact:true}));await reachable(page.locator('#referral-reward-card-friends'));expect(cloud.errors).toEqual([]);
+});
+
+// Filtering must not leave a separator above the first visible friend. Navigation
+// and read-only controls must preserve all contacts and financial history.
+test('flat friends roster preserves search privacy request tabs and add navigation',async({page,baseURL})=>{
+ const cloud=await setup(page,baseURL,{many:true}),before=cloud.state(),search=page.getByRole('searchbox',{name:'חיפוש ברשימת החברים'});
+ await expect(page.locator('.friend-row:visible')).toHaveCount(5);await flatRoster(page);
+ await search.fill('דנה');await expect(page.locator('.friend-row:visible')).toHaveCount(1);await expect(page.locator('.friend-row:visible')).toContainText('דנה לוי');await flatRoster(page);
+ await search.fill('איןכזהחבר');await expect(page.locator('.friend-row:visible')).toHaveCount(0);await expect(page.locator('[data-friends-search-empty]')).toBeVisible();
+ await search.fill('');await expect(page.locator('.friend-row:visible')).toHaveCount(5);await flatRoster(page);
+ const privacy=page.locator('.friend-privacy-note summary');await reachable(privacy);await privacy.click();await expect(page.locator('.friend-privacy-note')).toHaveAttribute('open','');await privacy.click();
+ await reachable(page.locator('#friends-tab-requests'));await page.locator('#friends-tab-requests').click();await expect(page.getByRole('heading',{name:'בקשות',exact:true})).toBeVisible();await expect(page.getByText('אין בקשות שממתינות עכשיו',{exact:true})).toBeVisible();await expect(page.locator('.friends-hub-screen > .top .muted')).toHaveCount(0);
+ await reachable(page.locator('#friends-tab-people'));await page.locator('#friends-tab-people').click();await expect(page.locator('.friend-row:visible')).toHaveCount(5);
+ await reachable(page.getByRole('button',{name:'הוסף חבר',exact:true}));await page.getByRole('button',{name:'הוסף חבר',exact:true}).click();await expect(page.locator('.friend-add-screen')).toBeVisible();await page.getByRole('button',{name:'חזרה למסך הקודם',exact:true}).click();await expect(page.getByRole('heading',{name:'חברים',exact:true})).toBeVisible();await flatRoster(page);
+ expect(cloud.state()).toEqual(before);expect(cloud.errors).toEqual([]);
 });

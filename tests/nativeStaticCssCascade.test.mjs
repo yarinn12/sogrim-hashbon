@@ -700,3 +700,17 @@ test("native friends leaf typography scales without changing normal-size proport
   const full="html body #app .friends-hub-screen "+selector+" {",start=css.indexOf(full);assert.ok(start>=0,"Missing shared/native scalable friend leaf rule: "+selector);const rule=css.slice(start,css.indexOf("}",start));assert.ok(rule.includes("font-size:"+size+"!important;"),"Leaf font must scale using rem: "+selector);
  }
 });
+
+
+test("native friends list keeps a single surface and filtered-row separators", async () => {
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css")),prefix="html.ledger-workspace-v1 body #app .friends-hub-screen ";
+ const rule=selector=>{const start=css.lastIndexOf(prefix+selector+" {");assert.ok(start>=0,"Native must extract the approved flat friends rule: "+selector);return css.slice(start,css.indexOf("}",start))};
+ assert.match(rule(".friend-identity-section"),/border:0!important/);assert.match(rule(".friend-identity-section"),/box-shadow:none!important/);
+ assert.match(rule(".friend-identity-heading"),/background:transparent!important/);
+ assert.match(rule(".friend-identity-marker"),/display:none!important/);
+ assert.match(rule(".friend-list"),/border:1px solid var\(--ledger-line\)!important/);
+ assert.match(rule(".friend-row"),/border:0!important/);assert.match(rule(".friend-row"),/border-radius:0!important/);assert.match(rule(".friend-row"),/box-shadow:none!important/);
+ assert.match(rule(".friend-row:not([hidden]) ~ .friend-row:not([hidden])"),/border-top:1px solid var\(--ledger-line\)!important/);
+});

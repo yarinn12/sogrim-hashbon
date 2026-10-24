@@ -3083,7 +3083,6 @@ function renderGroups() {
         <div class="brand">
           <p class="eyebrow">האנשים שלך</p>
           <h1>${hubTitle}</h1>
-          <p class="muted">חברים ובקשות חברות.</p>
         </div>
       </header>
       ${renderNotice()}
@@ -3192,7 +3191,7 @@ function renderFriendsPeopleTab({
           offlineParticipants,
           "offline",
           "שמות אופליין",
-          "שמות ידניים לניהול משותף ממכשיר אחד"
+          "שמות שהוספת ידנית, בלי חשבון מקושר"
         )}
         ${
           friendCount

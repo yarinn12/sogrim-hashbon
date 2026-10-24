@@ -22816,6 +22816,30 @@ html body #app .friends-hub-screen .friend-identity-heading strong {font-size:.9
 html body #app .friends-hub-screen .friend-privacy-summary-label {font-size:.75rem!important;white-space:normal!important;overflow-wrap:anywhere!important;}
 html body #app .friends-hub-screen .referral-reward-card.is-friends .referral-reward-copy > strong {font-size:.875rem!important;white-space:normal!important;overflow-wrap:anywhere!important;}
 
+/* Approved friends roster: one list surface; separators follow visible rows. */
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-identity-section {
+  overflow:visible!important;border:0!important;border-radius:0!important;
+  background:transparent!important;box-shadow:none!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-identity-heading {
+  grid-template-columns:minmax(0,1fr) auto!important;
+  padding:4px 2px 12px!important;border:0!important;border-radius:0!important;
+  background:transparent!important;box-shadow:none!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-identity-marker {display:none!important;}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-list {
+  overflow:hidden!important;border:1px solid var(--ledger-line)!important;
+  border-radius:16px!important;background:#fff!important;box-shadow:none!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-row {
+  margin:0!important;border:0!important;border-radius:0!important;
+  background:transparent!important;box-shadow:none!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-row:not([hidden]) ~ .friend-row:not([hidden]) {
+  border-top:1px solid var(--ledger-line)!important;
+}
+
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
