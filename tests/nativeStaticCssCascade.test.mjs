@@ -714,3 +714,20 @@ test("native friends list keeps a single surface and filtered-row separators", a
  assert.match(rule(".friend-row"),/border:0!important/);assert.match(rule(".friend-row"),/border-radius:0!important/);assert.match(rule(".friend-row"),/box-shadow:none!important/);
  assert.match(rule(".friend-row:not([hidden]) ~ .friend-row:not([hidden])"),/border-top:1px solid var\(--ledger-line\)!important/);
 });
+
+
+test("native friends privacy keeps its compact roster footer and excludes blocked users", async () => {
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css"));
+ const prefix="html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .friend-privacy-note:not(.blocked-users-panel)";
+ const rule=suffix=>{const start=css.lastIndexOf(prefix+suffix+" {");assert.ok(start>=0,"Native privacy footer must preserve its scoped layout: "+suffix);return css.slice(start,css.indexOf("}",start))};
+ assert.match(rule(""),/margin-block-start:-10px!important/);
+ assert.match(rule(""),/padding:0 14px!important/);
+ assert.match(rule(" > summary"),/display:inline-flex!important/);
+ assert.match(rule(" > summary"),/justify-content:flex-start!important/);
+ assert.match(rule(" > summary"),/gap:6px!important/);
+ assert.match(rule(" > summary"),/width:fit-content!important/);
+ assert.match(rule(" > summary"),/min-height:44px!important/);
+ assert.match(rule(" > summary .friend-privacy-summary-label"),/min-width:0!important/);
+});

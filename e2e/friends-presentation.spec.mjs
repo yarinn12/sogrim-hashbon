@@ -19,8 +19,18 @@ async function flatRoster(page){
  }));
  for(const list of lists){expect(list.border).toBe('0px');expect(list.radius).toBe('0px');expect(list.shadow).toBe('none');expect(list.headingBackground).toBe('rgba(0, 0, 0, 0)');expect(list.headingBorder).toBe('0px');expect(list.headingAboveList).toBe(true);expect(list.marker).toBe('none');expect(list.listBorder).toBe('1px');expect(list.listShadow).toBe('none');list.rows.forEach((row,i)=>{expect(row.radius).toBe('0px');expect(row.shadow).toBe('none');expect(row.borderTop,'Only separators between visible rows should remain').toBe(i?'1px':'0px');expect(row.borderBottom).toBe('0px')})}
 }
+async function privacyPresentation(page){
+ const note=page.locator('.friends-people-panel > .friend-privacy-note:not(.blocked-users-panel)'),summary=note.locator('summary');
+ const geometry=await note.evaluate(e=>{const summary=e.querySelector('summary'),label=e.querySelector('.friend-privacy-summary-label'),path=e.querySelector('svg path'),roster=document.querySelector('[data-friends-roster]'),r=summary.getBoundingClientRect();return {gap:label.getBoundingClientRect().left-path.getBoundingClientRect().right,rosterGap:r.top-roster.getBoundingClientRect().bottom,width:r.width,height:r.height}});
+ expect(geometry.gap,'privacy chevron must stay next to its text, not at the far screen edge').toBeGreaterThanOrEqual(0);expect(geometry.gap).toBeLessThanOrEqual(16);
+ expect(geometry.rosterGap,'privacy help must remain attached directly below the roster').toBeGreaterThanOrEqual(-1);expect(geometry.rosterGap).toBeLessThanOrEqual(1);expect(geometry.width).toBeGreaterThanOrEqual(44);expect(geometry.height).toBeGreaterThanOrEqual(44);
+ await reachable(summary);await summary.click();await expect(note).toHaveAttribute('open','');
+ const fits=await note.locator('p').evaluate(e=>{const own=e.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(e);return [...range.getClientRects()].every(r=>r.left>=own.left-1&&r.right<=own.right+1)});expect(fits,'expanded privacy text must wrap within its own content width').toBe(true);
+ await reachable(summary);await summary.press('Enter');await expect(note).not.toHaveAttribute('open','');await expect(summary).toBeFocused();
+}
 async function glyphs(page,root,{empty=false}={}){
  await flatRoster(page);
+ await privacyPresentation(page);
  for(const [selector,ratio] of sizes){if(empty&&selector.startsWith('.friend-')){if(selector!=='.friend-privacy-summary-label')continue;}
  const xs=page.locator(selector);await expect(xs.first()).toBeVisible();const values=await xs.evaluateAll(es=>es.map(e=>{const own=e.getBoundingClientRect(),walk=document.createTreeWalker(e,NodeFilter.SHOW_TEXT),leaves=[],bad=[];let n;while(n=walk.nextNode())for(let i=0;i<n.length;i++){if(!n.textContent[i].trim())continue;const r=document.createRange();r.setStart(n,i);r.setEnd(n,i+1);for(const g of r.getClientRects())if(g.width&&g.height){leaves.push(parseFloat(getComputedStyle(n.parentElement).fontSize));if(g.left<own.left-1||g.right>own.right+1||g.top<own.top-1||g.bottom>own.bottom+1)bad.push(n.textContent[i]);}}return{font:parseFloat(getComputedStyle(e).fontSize),leaves,bad,text:e.textContent.trim()}}));for(const x of values){expect(x.font,selector+' must scale its real leaf text').toBeCloseTo(root*ratio,2);expect(x.leaves.length).toBeGreaterThan(0);for(const f of x.leaves)expect(f).toBeCloseTo(root*ratio,2);expect(x.bad,'wrapped glyphs must fit their own text box: '+selector).toEqual([]);}
  }

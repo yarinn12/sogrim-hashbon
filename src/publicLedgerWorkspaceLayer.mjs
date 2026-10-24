@@ -22840,6 +22840,22 @@ html.ledger-workspace-v1 body #app .friends-hub-screen .friend-row:not([hidden])
 }
 
 
+
+/* Approved privacy help: attached roster footer with compact label and chevron. */
+html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .friend-privacy-note:not(.blocked-users-panel) {
+  margin-block-start:-10px!important;padding:0 14px!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .friend-privacy-note:not(.blocked-users-panel) > summary {
+  display:inline-flex!important;align-items:center!important;justify-content:flex-start!important;
+  gap:6px!important;width:fit-content!important;max-width:100%!important;
+  min-width:44px!important;min-height:44px!important;list-style:none!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .friend-privacy-note:not(.blocked-users-panel) > summary .friend-privacy-summary-label {
+  min-width:0!important;flex:0 1 auto!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .friend-privacy-note:not(.blocked-users-panel) > summary .friend-privacy-chevron {
+  margin:0!important;flex:0 0 auto!important;
+}
 `;
 
 const RETIRED_ROOT_CLASSES = [
