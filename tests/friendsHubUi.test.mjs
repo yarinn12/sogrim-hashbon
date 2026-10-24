@@ -355,3 +355,30 @@ test("relationship statistics use the app surface system and readable fact rows"
     /\.relationship-fact \{[\s\S]*?grid-template-columns: 40px minmax\(0, 1fr\) auto !important;[\s\S]*?text-align: start !important;/
   );
 });
+
+
+test("friend activity counts explain shared events and retain visibility and history", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const { visibleEventsForParticipant } = await import("../src/domain/personalMemory.mjs");
+  const app = await readFile("src/app.mjs", "utf8");
+  const row = app.slice(app.indexOf("function renderFriendRow("), app.indexOf("function mergeableDuplicateParticipantGroups()"));
+  const count = app.slice(app.indexOf("function formatCount("), app.indexOf("function creationDate("));
+  const friend = { id: "caption-friend", displayName: "דנה לוי" };
+  const owner = "caption-owner";
+  const event = (id, extra = {}) => ({ id, participantIds: [owner, friend.id], ...extra });
+  const shared = [event("open"), event("closed", { locked: true }), event("archived", { archivedAt: "2026-09-01" }), event("fourth"), event("fifth")];
+  const unrelated = [event("not-mine", { participantIds: [friend.id, "other"] }), event("not-friend", { participantIds: [owner, "other"] }), event("inactive", { inactiveParticipantIds: [owner] })];
+  for (const [events, caption] of [[shared, "5 אירועים משותפים"], [[shared[0]], "1 אירוע משותף"], [[], "שם ידני"]]) {
+    const state = { currentParticipantId: owner, participants: [friend], events: [...events, ...unrelated] };
+    const before = JSON.stringify(state);
+    const render = runInNewContext(`${count}\n${row}\nrenderFriendRow`, {
+      state, visibleEventsForParticipant,
+      participantConnectionStatus: () => ({ connected: false }),
+      mergeableDuplicateParticipantGroups: () => [],
+      renderAvatar: () => "", renderParticipantConnectionBadge: () => "",
+      escapeHtml: String, escapeAttribute: String
+    });
+    assert.match(render(friend), new RegExp(`<small>${caption}</small>`));
+    assert.equal(JSON.stringify(state), before, "rendering the activity caption must not mutate events or identity");
+  }
+});

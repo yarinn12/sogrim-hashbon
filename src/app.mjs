@@ -3812,7 +3812,7 @@ function renderFriendRow(participant) {
   const visibleEvents = visibleEventsForParticipant(state, state.currentParticipantId)
     .filter((event) => event.participantIds.includes(participant.id));
   const activity = visibleEvents.length
-    ? formatCount(visibleEvents.length, "אירוע", "אירועים")
+    ? formatCount(visibleEvents.length, "אירוע משותף", "אירועים משותפים")
     : "";
   const helper = isCurrent
     ? "החשבון שלך"

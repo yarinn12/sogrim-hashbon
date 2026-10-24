@@ -24,6 +24,12 @@ async function glyphs(page,root,{empty=false}={}){
  for(const [selector,ratio] of sizes){if(empty&&selector.startsWith('.friend-')){if(selector!=='.friend-privacy-summary-label')continue;}
  const xs=page.locator(selector);await expect(xs.first()).toBeVisible();const values=await xs.evaluateAll(es=>es.map(e=>{const own=e.getBoundingClientRect(),walk=document.createTreeWalker(e,NodeFilter.SHOW_TEXT),leaves=[],bad=[];let n;while(n=walk.nextNode())for(let i=0;i<n.length;i++){if(!n.textContent[i].trim())continue;const r=document.createRange();r.setStart(n,i);r.setEnd(n,i+1);for(const g of r.getClientRects())if(g.width&&g.height){leaves.push(parseFloat(getComputedStyle(n.parentElement).fontSize));if(g.left<own.left-1||g.right>own.right+1||g.top<own.top-1||g.bottom>own.bottom+1)bad.push(n.textContent[i]);}}return{font:parseFloat(getComputedStyle(e).fontSize),leaves,bad,text:e.textContent.trim()}}));for(const x of values){expect(x.font,selector+' must scale its real leaf text').toBeCloseTo(root*ratio,2);expect(x.leaves.length).toBeGreaterThan(0);for(const f of x.leaves)expect(f).toBeCloseTo(root*ratio,2);expect(x.bad,'wrapped glyphs must fit their own text box: '+selector).toEqual([]);}
  }
+ if(!empty){
+  const captions=page.locator('.friend-row-copy > small');
+  await expect(captions).toHaveText(['1 אירוע משותף','1 אירוע משותף']);
+  const values=await captions.evaluateAll(es=>es.map(e=>{const own=e.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(e);return {font:parseFloat(getComputedStyle(e).fontSize),fits:[...range.getClientRects()].every(r=>r.left>=own.left-1&&r.right<=own.right+1&&r.top>=own.top-1&&r.bottom<=own.bottom+1)}}));
+  for(const value of values){expect(value.fits,'shared-event caption glyphs must reflow within their own box').toBe(true);expect(value.font).toBeGreaterThanOrEqual(root>16?13:12)}
+ }
  expect(await page.evaluate(()=>document.documentElement.scrollWidth>document.documentElement.clientWidth)).toBe(false);
 }
 async function reachable(locator){
