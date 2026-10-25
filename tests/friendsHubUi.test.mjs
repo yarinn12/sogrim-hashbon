@@ -415,14 +415,36 @@ test("friend activity counts explain shared events and retain visibility and his
 });
 
 
-test("add-friend instructions identify the friend's username and keep the manual hint short", async () => {
+test("add-friend instructions focus on the friend username and explain manual names", async () => {
  const {runInNewContext}=await import("node:vm"),app=await readFile("src/app.mjs","utf8");
+ const add=app.slice(app.indexOf("function renderFriendAdd()"),app.indexOf("function renderOfflineFriendAddStep()"));
  const network=app.slice(app.indexOf("function renderFriendNetworkPanel()"),app.indexOf("function renderConnectedFriendSection("));
  const offline=app.slice(app.indexOf("function renderOfflineFriendAddStep()"),app.indexOf("function renderFriendsRequestsTab("));
- for(const username of ["","@qa_owner"]){
-  const friendNetwork={status:"ready",stale:false},before=JSON.stringify(friendNetwork);
-  const result=runInNewContext(`${network}\n${offline}\n({online:renderFriendNetworkPanel(),offline:renderOfflineFriendAddStep()})`,{friendNetwork,friendNetworkBusyAction:false,friendCodeDraft:"",friendsNewOfflineName:"",friendInviteUrl:()=>"",currentFriendUsername:()=>username,formatUsername:x=>x,escapeHtml:String,escapeAttribute:String});
-  assert.match(result.online,/מזינים שם משתמש או קישור שקיבלת מהחבר/);assert.match(result.online,/החיבור יושלם אחרי שיאשר/);assert.doesNotMatch(result.online,/כדי שחברים ימצאו אותך/);
-  assert.match(result.online,/data-action="send-friend-request"/);assert.match(result.offline,/placeholder="שם החבר"/);assert.match(result.offline,/השם לא יוכל להיכנס בעצמו או לראות את האירוע/);assert.match(result.offline,/data-action="friends-add-offline"/);assert.equal(JSON.stringify(friendNetwork),before);
+ const render=(friendNetwork,username="",invite="")=>{
+  const context={friendNetwork,friendNetworkBusyAction:false,friendCodeDraft:"friend_qa",friendsNewOfflineName:"שם לבדיקה",friendInviteUrl:()=>invite,currentFriendUsername:()=>username,formatUsername:x=>x,escapeHtml:String,escapeAttribute:String,friendsAddMode:"online",renderAppBackButton:()=>"",renderNotice:()=>"",renderCommandIcon:()=>""};
+  return runInNewContext(`${add}\n${network}\n${offline}\n({online:renderFriendNetworkPanel(),offline:renderOfflineFriendAddStep(),screen:renderFriendAdd()})`,context);
+ };
+ for(const username of ["","@qa_owner"])for(const invite of ["","https://example.test/?friend=abcdefabcdefabcdefab"])for(const stale of [false,true]){
+  const friendNetwork={status:"ready",stale},before=JSON.stringify(friendNetwork),result=render(friendNetwork,username,invite);
+  assert.match(result.online,/מזינים את שם המשתמש של החבר\. החברות תושלם אחרי שיאשר\./);
+  assert.match(result.online,/<span>שם המשתמש של החבר<\/span>/);
+  assert.match(result.online,/<strong>שליחת בקשת חברות<\/strong>/);
+  assert.doesNotMatch(result.online,/friend-add-kind|friend-username|משתמש מחובר|קישור שקיבלת|qa_owner/);
+  assert.match(result.online,/data-action="send-friend-request"/);assert.match(result.online,/value="friend_qa"/);
+  assert.equal(result.online.includes('data-action="copy-friend-link"'),Boolean(invite));
+  assert.equal(result.online.includes('class="friend-network-stale"'),stale);
+  assert.match(result.offline,/איך קוראים לחבר\?/);assert.match(result.offline,/שומרים שם לשימוש באירועים, בלי לפתוח חשבון או לשלוח הזמנה\./);
+  assert.match(result.offline,/placeholder="שם החבר"/);assert.match(result.offline,/data-action="friends-add-offline"/);assert.match(result.offline,/value="שם לבדיקה"/);assert.doesNotMatch(result.offline,/friend-add-kind/);
+  assert.match(result.screen,/<h1>הוספת חבר<\/h1>/);assert.doesNotMatch(result.screen,/בוחרים סוג אחד|class="muted"/);
+  assert.match(result.screen,/משתמש באפליקציה<\/strong><small>נדרש אישור של החבר/);assert.match(result.screen,/שם ידני<\/strong><small>בלי חשבון באפליקציה/);
+  assert.match(result.screen,/data-mode="online"/);assert.match(result.screen,/data-mode="offline"/);assert.match(result.screen,/role="tablist"/);assert.equal(JSON.stringify(friendNetwork),before);
+ }
+ const request=app.slice(app.indexOf("async function sendFriendRequest()"),app.indexOf("async function sendEventFriendRequest("));
+ const invalid={notice:"",renders:0,focuses:0,friendRequestTargetFromDraft:()=>null,beginFriendNetworkAction:()=>{throw new Error("Invalid input must not start a request")}};
+ invalid.render=()=>{invalid.renders+=1};invalid.app={querySelector:()=>({focus:()=>{invalid.focuses+=1}})};
+ await runInNewContext(`${request}\nsendFriendRequest()`,invalid);
+ assert.equal(invalid.notice,"צריך להזין שם משתמש תקין של החבר.");assert.equal(invalid.renders,1);assert.equal(invalid.focuses,1);
+ for(const [status,expected] of [["loading",/טוענים את החברים הפרטיים שלך/],["signed-out",/בקשות חברות זמינות למשתמשים מחוברים/],["error",/data-action="friends-retry-network"/]]){
+  const result=render({status});assert.match(result.online,expected);assert.doesNotMatch(result.online,/data-action="send-friend-request"/);
  }
 });

@@ -82,19 +82,25 @@ test('flat friends roster preserves search privacy request tabs and add navigati
  expect(cloud.state()).toEqual(before);expect(cloud.errors).toEqual([]);
 });
 
-for(const root of [16,32])test('online caption stays unfilled while friend modes and history work at root '+root,async({page,baseURL})=>{
+for(const root of [16,32])test('add-friend choices and approved copy stay clear at root '+root,async({page,baseURL})=>{
  const cloud=await setup(page,baseURL,{root,w:root===32?320:393,ownUsername:true}),before=cloud.state(),add=page.getByRole('button',{name:'הוסף חבר',exact:true});await reachable(add);await add.click();await expect(page.locator('.friend-add-screen')).toBeVisible();
- const online=page.locator('.friend-add-kind.is-online');await expect(online).toHaveText('אונליין');await expect(online).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
- const own=page.locator('.friend-username.is-own');await expect(own).toHaveText('noam_levi');await expect(own).toHaveCSS('background-color','rgba(0, 0, 0, 0)');await expect(own).toHaveCSS('border-width','0px');await expect(own).toHaveCSS('padding','0px');await expect(own).toHaveCSS('border-radius','0px');
- await reachable(page.locator('[data-action="send-friend-request"]'));
- const offline=page.locator('[data-action="friend-add-mode"][data-mode="offline"]');await reachable(offline);await offline.click();await expect(page.locator('[data-action="friends-new-offline-name"]')).toBeFocused();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await expect(page.locator('.friend-add-kind.is-offline')).toHaveText('אופליין');await expect(page.locator('.friend-add-kind.is-offline')).not.toHaveCSS('background-color','rgba(0, 0, 0, 0)');await reachable(page.locator('[data-action="friends-add-offline"]'));
- const tab=page.locator('[data-action="friend-add-mode"][data-mode="online"]');await reachable(tab);await tab.click();await expect(online).toHaveCSS('background-color','rgba(0, 0, 0, 0)');await page.getByRole('button',{name:'חזרה למסך הקודם',exact:true}).click();await expect(page.getByRole('heading',{name:'חברים',exact:true})).toBeVisible();expect(cloud.state()).toEqual(before);expect(cloud.errors).toEqual([]);
+ await expect(page.locator('.friend-add-screen > .top .muted')).toHaveCount(0);
+ await expect(page.locator('.friend-add-mode-button strong')).toHaveText(['משתמש באפליקציה','שם ידני']);
+ await expect(page.locator('.friend-add-mode-button small')).toHaveText(['נדרש אישור של החבר','בלי חשבון באפליקציה']);
+ await expect(page.locator('.friend-add-kind,.friend-username.is-own')).toHaveCount(0);
+ await expect(page.locator('.friend-network-heading strong')).toHaveText('שליחת בקשת חברות');
+ await expect(page.locator('.friend-request-form .field > span')).toHaveText('שם המשתמש של החבר');
+ await reachable(page.locator('[data-action="send-friend-request"]'));await page.locator('[data-action="send-friend-request"]').click();await expect(page.locator('.notice')).toContainText('צריך להזין שם משתמש תקין של החבר.');await expect(page.locator('[data-action="friend-code"]')).toBeFocused();
+ const offline=page.locator('[data-action="friend-add-mode"][data-mode="offline"]');await reachable(offline);await offline.click();await expect(page.locator('[data-action="friends-new-offline-name"]')).toBeFocused();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ await expect(page.locator('.friend-add-kind,.friend-username.is-own')).toHaveCount(0);await expect(page.locator('.friend-add-focus-heading h2')).toHaveText('איך קוראים לחבר?');await expect(page.locator('.friend-add-focus-heading p')).toHaveText('שומרים שם לשימוש באירועים, בלי לפתוח חשבון או לשלוח הזמנה.');await reachable(page.locator('[data-action="friends-add-offline"]'));
+ const tab=page.locator('[data-action="friend-add-mode"][data-mode="online"]');await reachable(tab);await tab.click();await expect(page.locator('[data-action="friend-code"]')).toBeFocused();await expect(page.locator('.friend-network-heading strong')).toHaveText('שליחת בקשת חברות');
+ await page.getByRole('button',{name:'חזרה למסך הקודם',exact:true}).click();await expect(page.getByRole('heading',{name:'חברים',exact:true})).toBeVisible();
+ const profile=page.getByRole('button',{name:'פרופיל',exact:true});await reachable(profile);await profile.click();await expect(page.getByRole('button',{name:'עריכת שם משתמש',exact:true}).locator('bdi')).toHaveText('noam_levi');await page.getByRole('button',{name:'חברים',exact:true}).click();await expect(page.getByRole('heading',{name:'חברים',exact:true})).toBeVisible();expect(cloud.state()).toEqual(before);expect(cloud.errors).toEqual([]);
 });
 
-
 async function addFriendText(page,root,mode){
- const targets=[['.friend-add-mode-button strong',.8125],['.friend-network-heading strong',.9375],['.friend-add-screen :is(.friend-request-form,.friends-add-offline-form) .field > span',.78125],['.friend-add-kind',.625]];
- await expect(page.locator('.friend-add-mode-button strong')).toHaveCount(2);
+ const targets=[['.friend-add-mode-button strong',.8125],['.friend-network-heading strong',.9375],['.friend-add-screen :is(.friend-request-form,.friends-add-offline-form) .field > span',.78125]];
+ await expect(page.locator('.friend-add-mode-button strong')).toHaveCount(2);await expect(page.locator('.friend-add-kind,.friend-username.is-own')).toHaveCount(0);
  for(const [selector,ratio] of targets){
   const rows=await page.locator(selector).evaluateAll(es=>es.map(e=>{const own=e.getBoundingClientRect(),walker=document.createTreeWalker(e,NodeFilter.SHOW_TEXT),fonts=[],overflow=[];let n;while(n=walker.nextNode()){if(!n.textContent.trim())continue;fonts.push(parseFloat(getComputedStyle(n.parentElement).fontSize));const r=document.createRange();r.selectNodeContents(n);for(const g of r.getClientRects())if(g.width&&(g.left<own.left-1||g.right>own.right+1||g.top<own.top-1||g.bottom>own.bottom+1))overflow.push(n.textContent)}return{font:parseFloat(getComputedStyle(e).fontSize),fonts,overflow}}));
   if(selector!=='.friend-network-heading strong'||mode==='online')expect(rows.length,selector+' must exist').toBeGreaterThan(0);
@@ -111,7 +117,7 @@ for(const c of [{name:'normal',root:16,w:393},{name:'enlarged',root:32,w:320},{n
   const changed=await page.locator('.friend-add-screen').getAttribute('data-friend-add-mode')!==mode,tab=page.locator('[data-action="friend-add-mode"][data-mode="'+mode+'"]');await reachable(tab);await tab.click();await expect(page.locator('.friend-add-screen')).toHaveAttribute('data-friend-add-mode',mode);
   const input=page.locator('[data-action="'+(mode==='online'?'friend-code':'friends-new-offline-name')+'"]');if(changed){await expect(input).toBeFocused();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))}
   await addFriendText(page,c.root,mode);
-  if(mode==='online'){await expect(page.locator('.friend-network-heading')).toContainText('מזינים שם משתמש או קישור שקיבלת מהחבר');await expect(page.locator('.friend-network-heading')).toContainText('החיבור יושלם אחרי שיאשר');await expect(page.locator('.friend-add-kind.is-online')).toHaveCSS('background-color','rgba(0, 0, 0, 0)')}
+  if(mode==='online'){await expect(page.locator('.friend-network-heading')).toContainText('מזינים את שם המשתמש של החבר');await expect(page.locator('.friend-network-heading')).toContainText('החברות תושלם אחרי שיאשר');await expect(page.locator('.friend-request-form .field > span')).toHaveText('שם המשתמש של החבר')}
   for(const draft of mode==='online'?['friend_qa','@friend_qa']:['שם לבדיקה']){await input.fill(draft);await expect(input).toHaveValue(draft);await addFriendText(page,c.root,mode)}await input.fill('');await reachable(page.locator('[data-action="'+(mode==='online'?'send-friend-request':'friends-add-offline')+'"]'));
  }
  if(c.system){await cloud.reload();await page.getByRole('button',{name:'חברים',exact:true}).click();await open();await addFriendText(page,32,'online');await page.setViewportSize({width:852,height:320});await addFriendText(page,32,'online');await page.evaluate(()=>{document.getElementById('friends-system-text-fixture').textContent='#apple-system-body-size-probe{font-size:17px!important}';window.dispatchEvent(new Event('resize'))});await expect.poll(()=>page.evaluate(()=>parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(16);await page.setViewportSize({width:393,height:852});await addFriendText(page,16,'online')}

@@ -3281,7 +3281,6 @@ function renderFriendAdd() {
         <div class="brand">
           <p class="eyebrow">חברים</p>
           <h1>הוספת חבר</h1>
-          <p class="muted">בוחרים סוג אחד ומסיימים בלי לעבור בין טפסים.</p>
         </div>
       </header>
       ${renderNotice()}
@@ -3297,7 +3296,7 @@ function renderFriendAdd() {
           tabindex="${mode === "online" ? "0" : "-1"}"
         >
           <span class="friend-add-mode-icon" aria-hidden="true">${renderCommandIcon("participants")}</span>
-          <span><strong>משתמש באפליקציה</strong><small>חשבון אמיתי עם אישור</small></span>
+          <span><strong>משתמש באפליקציה</strong><small>נדרש אישור של החבר</small></span>
         </button>
         <button
           class="friend-add-mode-button ${mode === "offline" ? "is-active" : ""}"
@@ -3309,7 +3308,7 @@ function renderFriendAdd() {
           tabindex="${mode === "offline" ? "0" : "-1"}"
         >
           <span class="friend-add-mode-icon is-offline" aria-hidden="true">${renderCommandIcon("profile")}</span>
-          <span><strong>שם אופליין</strong><small>שם ידני שנשמר אצלך</small></span>
+          <span><strong>שם ידני</strong><small>בלי חשבון באפליקציה</small></span>
         </button>
       </nav>
 
@@ -3324,9 +3323,8 @@ function renderOfflineFriendAddStep() {
   return `
     <section class="friend-add-focus-panel friends-offline-panel" aria-labelledby="friends-offline-add-title">
       <div class="friend-add-focus-heading">
-        <span class="friend-add-kind is-offline">אופליין</span>
-        <h2 id="friends-offline-add-title">איך לקרוא לו באירועים?</h2>
-        <p>השם לא יוכל להיכנס בעצמו או לראות את האירוע. אתה מנהל אותו מהמכשיר שלך.</p>
+        <h2 id="friends-offline-add-title">איך קוראים לחבר?</h2>
+        <p>שומרים שם לשימוש באירועים, בלי לפתוח חשבון או לשלוח הזמנה.</p>
       </div>
       <div class="friends-add-offline-form">
         <label class="field">
@@ -3482,7 +3480,6 @@ function renderFriendNetworkPanel() {
   }
 
   const inviteUrl = friendInviteUrl();
-  const ownUsername = formatUsername(currentFriendUsername());
   return `
     <section class="friend-network-panel">
       ${
@@ -3492,14 +3489,8 @@ function renderFriendNetworkPanel() {
       }
       <div class="friend-network-heading">
         <span>
-          <span class="friend-add-kind is-online">אונליין</span>
-          <strong>משתמש מחובר</strong>
-          ${
-            ownUsername
-              ? `<bdi class="friend-username is-own" dir="ltr">${escapeHtml(ownUsername)}</bdi>`
-              : ""
-          }
-          <small>מזינים שם משתמש או קישור שקיבלת מהחבר. החיבור יושלם אחרי שיאשר.</small>
+          <strong>שליחת בקשת חברות</strong>
+          <small>מזינים את שם המשתמש של החבר. החברות תושלם אחרי שיאשר.</small>
         </span>
         ${
           inviteUrl
@@ -3509,7 +3500,7 @@ function renderFriendNetworkPanel() {
       </div>
       <div class="friend-request-form">
         <label class="field">
-          <span>שם משתמש או קישור שקיבלת</span>
+          <span>שם המשתמש של החבר</span>
           <input
             data-action="friend-code"
             name="friendCode"
@@ -15667,7 +15658,7 @@ function addOfflineFriend() {
 async function sendFriendRequest() {
   const requestTarget = friendRequestTargetFromDraft();
   if (!requestTarget) {
-    notice = "צריך להזין @שם_משתמש תקין או להדביק קישור חברות.";
+    notice = "צריך להזין שם משתמש תקין של החבר.";
     render();
     app.querySelector('[data-action="friend-code"]')?.focus();
     return;
