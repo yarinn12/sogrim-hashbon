@@ -731,3 +731,12 @@ test("native friends privacy keeps its compact roster footer and excludes blocke
  assert.match(rule(" > summary"),/min-height:44px!important/);
  assert.match(rule(" > summary .friend-privacy-summary-label"),/min-width:0!important/);
 });
+
+
+test("native add-friend online caption retains its approved transparent background", async () => {
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css")),selector="html.ledger-workspace-v1 body #app .friend-add-screen .friend-add-kind.is-online {";
+ const start=css.lastIndexOf(selector);assert.ok(start>=0,"Approved online-caption background must reach Native CSS");
+ const rule=css.slice(start,css.indexOf("}",start));assert.match(rule,/background:transparent!important/);
+});

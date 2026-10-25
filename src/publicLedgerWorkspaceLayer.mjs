@@ -22856,6 +22856,11 @@ html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .
 html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .friend-privacy-note:not(.blocked-users-panel) > summary .friend-privacy-chevron {
   margin:0!important;flex:0 0 auto!important;
 }
+
+/* Approved online caption: retain the text without a filled background. */
+html.ledger-workspace-v1 body #app .friend-add-screen .friend-add-kind.is-online {
+  background:transparent!important;
+}
 `;
 
 const RETIRED_ROOT_CLASSES = [

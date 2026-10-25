@@ -81,3 +81,11 @@ test('flat friends roster preserves search privacy request tabs and add navigati
  await reachable(page.getByRole('button',{name:'הוסף חבר',exact:true}));await page.getByRole('button',{name:'הוסף חבר',exact:true}).click();await expect(page.locator('.friend-add-screen')).toBeVisible();await page.getByRole('button',{name:'חזרה למסך הקודם',exact:true}).click();await expect(page.getByRole('heading',{name:'חברים',exact:true})).toBeVisible();await flatRoster(page);
  expect(cloud.state()).toEqual(before);expect(cloud.errors).toEqual([]);
 });
+
+for(const root of [16,32])test('online caption stays unfilled while friend modes and history work at root '+root,async({page,baseURL})=>{
+ const cloud=await setup(page,baseURL,{root,w:root===32?320:393}),before=cloud.state(),add=page.getByRole('button',{name:'הוסף חבר',exact:true});await reachable(add);await add.click();await expect(page.locator('.friend-add-screen')).toBeVisible();
+ const online=page.locator('.friend-add-kind.is-online');await expect(online).toHaveText('אונליין');await expect(online).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+ await reachable(page.locator('[data-action="send-friend-request"]'));
+ const offline=page.locator('[data-action="friend-add-mode"][data-mode="offline"]');await reachable(offline);await offline.click();await expect(page.locator('[data-action="friends-new-offline-name"]')).toBeFocused();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await expect(page.locator('.friend-add-kind.is-offline')).toHaveText('אופליין');await expect(page.locator('.friend-add-kind.is-offline')).not.toHaveCSS('background-color','rgba(0, 0, 0, 0)');await reachable(page.locator('[data-action="friends-add-offline"]'));
+ const tab=page.locator('[data-action="friend-add-mode"][data-mode="online"]');await reachable(tab);await tab.click();await expect(online).toHaveCSS('background-color','rgba(0, 0, 0, 0)');await page.getByRole('button',{name:'חזרה למסך הקודם',exact:true}).click();await expect(page.getByRole('heading',{name:'חברים',exact:true})).toBeVisible();expect(cloud.state()).toEqual(before);expect(cloud.errors).toEqual([]);
+});
