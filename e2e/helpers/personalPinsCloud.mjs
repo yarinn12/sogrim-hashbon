@@ -4,13 +4,14 @@ import { refreshPersonalPinsSnapshot } from "./personalPinsCloudRefresh.mjs";
 
 // A synthetic account workspace served through the real cloud read/write APIs.
 // The private account snapshot is shared by independently connected contexts.
-export async function personalPinsCloud(page, baseURL, initialState, { legacyPins = [], accountId = "personal-pins-cloud-owner", rejectWrites = false, profileUpdatedAt = "" } = {}) {
+export async function personalPinsCloud(page, baseURL, initialState, { legacyPins = [], accountId = "personal-pins-cloud-owner", rejectWrites = false, profileUpdatedAt = "", customUsername = "" } = {}) {
   const userId = accountId, participantId = `account-${userId}`;
   const space = `personal-pins-cloud-space-${userId}`, key = "synthetic-personal-pins-key-123456";
   const origin = "https://personal-pins-qa.supabase.co";
   const state = JSON.parse(JSON.stringify(initialState).replaceAll(initialState.currentParticipantId, participantId));
   const user = { id: userId, email: "personal-pins@example.test", app_metadata: { provider: "google" },
     user_metadata: { full_name: "בודק נעיצות", username: "personal_pins", account_space_id: space, account_space_key: key } };
+  if (customUsername) Object.assign(user.user_metadata, { username: customUsername, username_customized: true });
   // An already-synchronized identity keeps read-only UI tests independent of
   // first-login profile migration. Other callers retain their original fixture.
   if (profileUpdatedAt) {
@@ -62,7 +63,7 @@ export async function personalPinsCloud(page, baseURL, initialState, { legacyPin
       writes.push(structuredClone(current));
       return reply([{ updated_at: current.updated_at }]);
     }
-    if (url.pathname.endsWith("/user_profiles")) return reply([{ user_id: userId, username: "personal_pins", display_name: "בודק נעיצות", avatar_preset: "avatar-1", updated_at: profileUpdatedAt || "2026-09-03T08:00:00.000Z" }]);
+    if (url.pathname.endsWith("/user_profiles")) return reply([{ user_id: userId, username: customUsername || "personal_pins", ...(customUsername ? { username_customized: true } : {}), display_name: "בודק נעיצות", avatar_preset: "avatar-1", updated_at: profileUpdatedAt || "2026-09-03T08:00:00.000Z" }]);
     if (request.method() === "GET") return reply([]);
     return route.fulfill({ headers, status: 204 });
   });

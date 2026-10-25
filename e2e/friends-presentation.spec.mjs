@@ -3,12 +3,12 @@ import {personalPinsCloud} from './helpers/personalPinsCloud.mjs';
 import {seed} from './helpers/closedSummaryFixture.mjs';
 test.use({serviceWorkers:'block'});
 const sizes=[['.friend-row-name > strong',.9375],['.friend-identity-heading strong',.9375],['.friend-privacy-summary-label',.75],['#referral-reward-card-friends .referral-reward-copy > strong',.875]];
-async function setup(page,baseURL,{root=16,w=393,h=852,system=false,long=false,empty=false,many=false}={}){
+async function setup(page,baseURL,{root=16,w=393,h=852,system=false,long=false,empty=false,many=false,ownUsername=false}={}){
  await page.setViewportSize({width:w,height:h});
  if(root>16&&!system)await page.addInitScript(root=>{const u=new URL(location.href);u.searchParams.set('dynamic-type-preview',root);history.replaceState(history.state,'',u)},root);
  if(system)await page.addInitScript(()=>{const supports=CSS.supports.bind(CSS);CSS.supports=(...a)=>a[0]==='font'&&a[1]==='-apple-system-body'?true:supports(...a);const media=matchMedia.bind(window);window.matchMedia=q=>{const m=media(q);return q.replaceAll(' ','')==='(any-pointer:coarse)'?{matches:true,media:q,addEventListener:m.addEventListener.bind(m),removeEventListener:m.removeEventListener.bind(m),addListener:m.addListener.bind(m),removeListener:m.removeListener.bind(m)}:m};const insert=()=>{const s=document.createElement('style');s.id='friends-system-text-fixture';s.textContent='#apple-system-body-size-probe{font-size:34px!important}';document.head.append(s)};if(document.head)insert();else document.addEventListener('DOMContentLoaded',insert,{once:true})});
  const state=seed();if(many)state.participants.push(...['נועם רז','רונית הדר','תמר שחר'].map((displayName,i)=>({id:'extra-friend-'+i,displayName,kind:'guest'})));if(long)state.participants[1].displayName='דנה אלכסנדרה לוי ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';state.friendContacts=empty?[]:state.participants.slice(1).map(p=>({id:'contact-'+p.id,participantId:p.id,active:true,source:'offline'}));
- const cloud=await personalPinsCloud(page,baseURL,state,{accountId:'friends-text-owner',profileUpdatedAt:'2026-09-03T08:00:00.000Z'});
+ const cloud=await personalPinsCloud(page,baseURL,state,{accountId:'friends-text-owner',profileUpdatedAt:'2026-09-03T08:00:00.000Z',customUsername:ownUsername?'noam_levi':''});
  await page.getByRole('button',{name:'חברים',exact:true}).click();await expect(page.getByRole('heading',{name:'חברים',exact:true})).toBeVisible();await page.evaluate(()=>document.fonts.ready);await expect.poll(()=>page.evaluate(()=>parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(root);return cloud;
 }
 async function flatRoster(page){
@@ -83,8 +83,9 @@ test('flat friends roster preserves search privacy request tabs and add navigati
 });
 
 for(const root of [16,32])test('online caption stays unfilled while friend modes and history work at root '+root,async({page,baseURL})=>{
- const cloud=await setup(page,baseURL,{root,w:root===32?320:393}),before=cloud.state(),add=page.getByRole('button',{name:'הוסף חבר',exact:true});await reachable(add);await add.click();await expect(page.locator('.friend-add-screen')).toBeVisible();
+ const cloud=await setup(page,baseURL,{root,w:root===32?320:393,ownUsername:true}),before=cloud.state(),add=page.getByRole('button',{name:'הוסף חבר',exact:true});await reachable(add);await add.click();await expect(page.locator('.friend-add-screen')).toBeVisible();
  const online=page.locator('.friend-add-kind.is-online');await expect(online).toHaveText('אונליין');await expect(online).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+ const own=page.locator('.friend-username.is-own');await expect(own).toHaveText('noam_levi');await expect(own).toHaveCSS('background-color','rgba(0, 0, 0, 0)');await expect(own).toHaveCSS('border-width','0px');await expect(own).toHaveCSS('padding','0px');await expect(own).toHaveCSS('border-radius','0px');
  await reachable(page.locator('[data-action="send-friend-request"]'));
  const offline=page.locator('[data-action="friend-add-mode"][data-mode="offline"]');await reachable(offline);await offline.click();await expect(page.locator('[data-action="friends-new-offline-name"]')).toBeFocused();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await expect(page.locator('.friend-add-kind.is-offline')).toHaveText('אופליין');await expect(page.locator('.friend-add-kind.is-offline')).not.toHaveCSS('background-color','rgba(0, 0, 0, 0)');await reachable(page.locator('[data-action="friends-add-offline"]'));
  const tab=page.locator('[data-action="friend-add-mode"][data-mode="online"]');await reachable(tab);await tab.click();await expect(online).toHaveCSS('background-color','rgba(0, 0, 0, 0)');await page.getByRole('button',{name:'חזרה למסך הקודם',exact:true}).click();await expect(page.getByRole('heading',{name:'חברים',exact:true})).toBeVisible();expect(cloud.state()).toEqual(before);expect(cloud.errors).toEqual([]);

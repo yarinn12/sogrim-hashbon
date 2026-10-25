@@ -739,6 +739,9 @@ test("native add-friend online caption retains its approved transparent backgrou
  const css=files.get(join("fixture-assets","native-layers.css")),selector="html.ledger-workspace-v1 body #app .friend-add-screen .friend-add-kind.is-online {";
  const start=css.lastIndexOf(selector);assert.ok(start>=0,"Approved online-caption background must reach Native CSS");
  const rule=css.slice(start,css.indexOf("}",start));assert.match(rule,/background:transparent!important/);
+ const ownSelector="html.ledger-workspace-v1 .friend-username.is-own {",ownStart=css.lastIndexOf(ownSelector);assert.ok(ownStart>=0,"Own username must reach Native CSS");
+ const ownRule=css.slice(ownStart,css.indexOf("}",ownStart)).replace(/\s+/g,"");
+ for(const property of ["background:transparent!important","border:0!important","border-radius:0!important","padding:0!important"])assert.ok(ownRule.includes(property),"Own username must remain plain text: "+property);
 });
 
 

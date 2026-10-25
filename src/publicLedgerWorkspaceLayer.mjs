@@ -11662,10 +11662,10 @@ const CSS = `
 
   html.ledger-workspace-v1 .friend-username.is-own {
     margin-top: 1px !important;
-    padding: 4px 8px !important;
-    border: 1px solid rgba(6, 125, 111, 0.13) !important;
-    border-radius: 8px !important;
-    background: var(--ledger-accent-soft) !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
   }
 
   html.ledger-workspace-v1 .profile-username-section {
