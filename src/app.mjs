@@ -1,3 +1,4 @@
+import {renderFriendRequestsPanelView, renderFriendRequestSectionView, renderPendingFriendRowView} from "./ui/friendRequestsPresentation.mjs";
 import {renderFriendInvitationView} from "./ui/friendInvitationPresentation.mjs";
 import {renderSettlementCompletionView} from "./ui/settlementCompletionPresentation.mjs";
 import {renderClosedSettlementHeroView, renderClosedSettlementShareActionsView, captureClosedSettlementDisclosureState, restoreClosedSettlementDisclosureState} from "./ui/closedSettlementPresentation.mjs";
@@ -3437,49 +3438,12 @@ function renderOfflineFriendAddStep() {
   `;
 }
 
-function renderFriendsRequestsTab({
-  incomingFriendships,
-  outgoingFriendships
-}) {
-  const hasRequests = incomingFriendships.length || outgoingFriendships.length;
-
-  return `
-    <section
-      class="friends-hub-panel friends-requests-panel"
-      id="friends-panel-requests"
-      role="tabpanel"
-      aria-labelledby="friends-tab-requests"
-    >
-      <div class="friends-panel-heading">
-        <div>
-          <h2>בקשות חברות</h2>
-          <p class="muted">בקשה הופכת לחברות רק אחרי אישור.</p>
-        </div>
-      </div>
-      <div class="friends-roster">
-        ${renderFriendRequestSection(
-          incomingFriendships,
-          "בקשות שקיבלת",
-          "incoming"
-        )}
-        ${renderFriendRequestSection(
-          outgoingFriendships,
-          "בקשות ששלחת",
-          "outgoing"
-        )}
-        ${
-          hasRequests
-            ? ""
-            : `
-              <div class="empty-state friends-requests-empty">
-                <strong>אין בקשות שממתינות עכשיו</strong>
-                <span>בקשות חדשות יופיעו כאן בלי להעמיס על רשימת החברים.</span>
-              </div>
-            `
-        }
-      </div>
-    </section>
-  `;
+function renderFriendsRequestsTab({incomingFriendships, outgoingFriendships}) {
+  return renderFriendRequestsPanelView({
+    incomingHtml:renderFriendRequestSection(incomingFriendships, "בקשות שקיבלת", "incoming"),
+    outgoingHtml:renderFriendRequestSection(outgoingFriendships, "בקשות ששלחת", "outgoing"),
+    hasRequests:Boolean(incomingFriendships.length || outgoingFriendships.length)
+  });
 }
 
 function friendRelationships(status, direction = "") {
@@ -3640,26 +3604,10 @@ function renderConnectedFriendSection(friendships) {
 
 function renderFriendRequestSection(friendships, title, direction) {
   if (!friendships.length) return "";
-  const helper = direction === "incoming"
-    ? "ממתינים לאישור שלך"
-    : "ממתינים לאישור מהצד השני";
-  return `
-    <section class="friend-request-section is-${direction}" data-friend-identity-section="${direction}">
-      <header class="friend-identity-heading">
-        <span class="friend-identity-marker" aria-hidden="true"></span>
-        <span>
-          <strong>${title}</strong>
-          <small>${helper}</small>
-        </span>
-        <bdi>${friendships.length}</bdi>
-      </header>
-      <div class="friend-list">
-        ${friendships
-          .map((friendship) => renderPendingFriendRow(friendship, direction))
-          .join("")}
-      </div>
-    </section>
-  `;
+  return renderFriendRequestSectionView({
+    direction, title, count:friendships.length,
+    rowsHtml:friendships.map(friendship => renderPendingFriendRow(friendship, direction)).join("")
+  });
 }
 
 function renderNetworkFriendRow(friendship) {
@@ -3838,31 +3786,11 @@ function renderPendingFriendRow(friendship, direction) {
     .filter(Boolean)
     .join(" ")
     .toLocaleLowerCase("he");
-  return `
-    <article
-      class="friend-row friend-request-row is-connected"
-      data-friend-name="${escapeAttribute(searchableIdentity)}"
-    >
-      <span class="friend-row-person">
-        ${renderFriendProfileAvatar(profile, participantId)}
-        <span class="friend-row-copy">
-          <span class="friend-row-name"><strong>${escapeHtml(profile.display_name)}</strong></span>
-          ${username ? `<bdi class="friend-username" dir="ltr">${escapeHtml(username)}</bdi>` : ""}
-          <small>${direction === "incoming" ? "רוצה להתחבר אליך כחבר" : "הבקשה נשלחה"}</small>
-        </span>
-      </span>
-      <span class="friend-request-actions">
-        ${
-          direction === "incoming"
-            ? `
-              <button class="primary-button" data-action="accept-friend-request" data-friendship-id="${friendship.id}" type="button" ${busy ? "disabled" : ""}>אשר</button>
-              <button class="secondary-button" data-action="decline-friend-request" data-friendship-id="${friendship.id}" type="button" ${busy ? "disabled" : ""}>דחה</button>
-            `
-            : `<button class="secondary-button" data-action="cancel-friend-request" data-friendship-id="${friendship.id}" type="button" ${busy ? "disabled" : ""}>בטל בקשה</button>`
-        }
-      </span>
-    </article>
-  `;
+  return renderPendingFriendRowView({
+    friendshipId:friendship.id, displayName:profile.display_name, username,
+    searchableIdentity, avatarHtml:renderFriendProfileAvatar(profile, participantId),
+    direction, busy
+  });
 }
 
 function renderFriendIdentitySection(participants, identity, title, description) {

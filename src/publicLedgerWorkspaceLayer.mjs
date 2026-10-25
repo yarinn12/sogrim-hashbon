@@ -1,6 +1,29 @@
 const STYLE_ID = "public-ledger-workspace-layer-style";
 
 const CSS = `
+  /* Approved requests panel: one surface and scalable text. */
+html.ledger-workspace-v1 body #app #friends-panel-requests .friends-roster{display:grid!important;gap:20px!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-section{min-width:0!important;overflow:visible!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-identity-heading{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;min-height:0!important;padding:0 2px 9px!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-identity-heading>span{display:block!important;min-width:0!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-identity-heading strong{font-size:.9375rem!important;font-weight:750!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-identity-heading>bdi{min-width:0!important;height:auto!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-muted)!important;font-size:.8125rem!important;font-weight:500!important;line-height:1.4!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-list{display:grid!important;gap:0!important;overflow:hidden!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;background:var(--ledger-surface)!important;box-shadow:none!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-row{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:12px!important;min-width:0!important;padding:14px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-row~.friend-request-row{border-top:1px solid var(--ledger-line)!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-row-person{display:grid!important;grid-template-columns:44px minmax(0,1fr)!important;align-items:center!important;gap:10px!important;min-width:0!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-row-person>.avatar{width:44px!important;height:44px!important;min-width:44px!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-row-name>strong{font-size:.9375rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-username{max-width:100%!important;font-size:.8125rem!important;line-height:1.4!important;font-weight:500!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;white-space:normal!important;text-overflow:clip!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr))!important;gap:8px!important;width:100%!important;padding:0!important;min-width:0!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-actions button{min-width:0!important;min-height:44px!important;margin:0!important;padding:10px 12px!important;border-radius:10px!important;box-shadow:none!important;font-size:.875rem!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-actions button:only-child{grid-column:1/-1!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-actions .secondary-button{border-color:var(--ledger-line)!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friends-requests-empty{min-height:0!important;gap:8px!important;padding:24px!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;background:var(--ledger-surface)!important;box-shadow:none!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friends-requests-empty strong{font-size:.9375rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friends-requests-empty>span{font-size:.875rem!important;line-height:1.5!important;overflow-wrap:anywhere!important;}
+@media(min-width:661px){html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-row{grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))!important;align-items:center!important;}html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-actions{width:auto!important;min-width:0!important;}}
+
   /* Approved invitation-link confirmation surface. */
 html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-card{display:grid!important;gap:18px!important;}
 html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-person{display:grid!important;grid-template-columns:64px minmax(0,1fr)!important;align-items:center!important;gap:14px!important;min-width:0!important;}

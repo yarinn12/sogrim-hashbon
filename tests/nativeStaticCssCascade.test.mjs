@@ -773,3 +773,12 @@ test("native invitation confirmation retains the approved scalable shared surfac
  const {extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");const css=files.get(join("fixture-assets","native-layers.css"));
  for(const text of [".friend-invitation-screen .friend-invite-card", ".friend-invite-person h2", "font-size:1.25rem!important", "font-size:.875rem!important", "min-height:48px!important", "min-height:44px!important"])assert.ok(css.includes(text),"Missing approved invitation presentation in Native: "+text);
 });
+
+
+test("native friend requests keep the approved single surface and scalable actual leaves",async()=>{
+ const {extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===resolve("src/publicLedgerWorkspaceLayer.mjs")&&process.env.FRIEND_REQUESTS_TEST_LEDGER?process.env.FRIEND_REQUESTS_TEST_LEDGER:file,...args));await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");const css=files.get(join("fixture-assets","native-layers.css")),prefix="html.ledger-workspace-v1 body #app #friends-panel-requests ";
+ const rule=selector=>{const start=css.indexOf(prefix+selector+'{');assert.ok(start>=0,'Native requests missing approved rule: '+selector);return css.slice(start,css.indexOf('}',start))};
+ for(const [selector,size] of [['.friend-identity-heading strong','.9375rem'],['.friend-identity-heading>bdi','.8125rem'],['.friend-row-name>strong','.9375rem'],['.friend-username','.8125rem'],['.friend-request-actions button','.875rem'],['.friends-requests-empty strong','.9375rem'],['.friends-requests-empty>span','.875rem']])assert.ok(rule(selector).includes('font-size:'+size+'!important'));
+ assert.match(rule('.friend-request-section'),/border:0!important/);assert.match(rule('.friend-request-section'),/box-shadow:none!important/);assert.match(rule('.friend-list'),/border:1px solid var\(--ledger-line\)!important/);assert.match(rule('.friend-request-row~.friend-request-row'),/border-top:1px solid var\(--ledger-line\)!important/);assert.match(rule('.friend-request-actions button'),/min-height:44px!important/);assert.match(rule('.friend-request-actions'),/repeat\(auto-fit,minmax\(min\(100%,8rem\),1fr\)\)/);
+ assert.ok(css.includes("grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))!important"),"Desktop requests must wrap before actions squeeze the identity column");
+});

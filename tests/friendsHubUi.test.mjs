@@ -1,3 +1,4 @@
+import {renderPendingFriendRowView} from "../src/ui/friendRequestsPresentation.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -51,7 +52,8 @@ test("friend requests stay out of the main friends roster", async () => {
   assert.match(requestsPanel, /renderFriendRequestSection/);
   assert.match(requestsPanel, /בקשות שקיבלת/);
   assert.match(requestsPanel, /בקשות ששלחת/);
-  assert.match(requestsPanel, /אין בקשות שממתינות עכשיו/);
+  const requestsView = await readFile("src/ui/friendRequestsPresentation.mjs", "utf8");
+  assert.match(requestsView, /אין בקשות חברות שממתינות/);
 });
 
 test("the requests tab remains a real route instead of falling back to people", async () => {
@@ -135,13 +137,14 @@ test("participant pictures alone open the approved relationship statistics route
 
 test("shared events and groups never create friendship without approval", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const requests = await readFile("src/ui/friendRequestsPresentation.mjs", "utf8");
 
   assert.match(app, /<details class="friend-privacy-note">/);
   assert.match(app, /איך נשמרת הפרטיות/);
   assert.match(app, /רק אחרי אישור הדדי/);
   assert.match(app, /data-action="send-friend-request"/);
-  assert.match(app, /data-action="accept-friend-request"/);
-  assert.match(app, /data-action="decline-friend-request"/);
+  assert.match(requests, /data-action="accept-friend-request"/);
+  assert.match(requests, /data-action="decline-friend-request"/);
   assert.match(app, /data-action="remove-network-friend"/);
 });
 
@@ -245,7 +248,7 @@ test("online friends use unique usernames without changing offline names", async
   const pendingRow = app.slice(app.indexOf("function renderPendingFriendRow("), app.indexOf("function renderFriendIdentitySection("));
   const filter = app.slice(app.indexOf("function filterFriendRows("), app.indexOf("function participantCandidateFilter("));
   const profile = { user_id: "qa-friend", display_name: "דנה לוי", username: "qa_friend", username_customized: true };
-  const renderContext = { friendProfileForRelationship: () => profile, publicProfileUsername: profileUsername, formatUsername, renderFriendProfileAvatar: () => "", friendNetworkBusyAction: false, escapeAttribute: String, escapeHtml: String };
+  const renderContext = { renderPendingFriendRowView, friendProfileForRelationship: () => profile, publicProfileUsername: profileUsername, formatUsername, renderFriendProfileAvatar: () => "", friendNetworkBusyAction: false, escapeAttribute: String, escapeHtml: String };
   const rows = runInNewContext(`${networkRow}\n${pendingRow}\n[renderNetworkFriendRow({id:'qa'}),renderPendingFriendRow({id:'qa'},'incoming'),renderPendingFriendRow({id:'qa'},'outgoing')]`, renderContext);
   for (const html of rows) {
     assert.match(html, /class="friend-username" dir="ltr">qa_friend<\/bdi>/);
