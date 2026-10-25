@@ -11,7 +11,7 @@ export function normalizeUsername(value) {
 
 export function formatUsername(value) {
   const username = normalizeUsername(value);
-  return username ? `@${username}` : "";
+  return username;
 }
 
 export function profileUsername(profile) {

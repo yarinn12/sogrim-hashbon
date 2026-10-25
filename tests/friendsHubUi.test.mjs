@@ -226,11 +226,42 @@ test("online friends use unique usernames without changing offline names", async
   assert.match(app, /<span>שם משתמש<\/span>/);
   assert.doesNotMatch(app, /placeholder="@yarin"/);
   assert.doesNotMatch(app, /placeholder="לדוגמה: דני כהן"/);
-  assert.match(app, /data-action="friend-code"[\s\S]+placeholder="@username"/);
+  assert.match(app, /data-action="friend-code"[\s\S]+placeholder="username"/);
   assert.match(app, /class="friend-username"/);
-  assert.match(app, /\[profile\.display_name, username\]/);
+  // Verify rendered identity and actual filtering below, including pasted @ handles.
   assert.match(layer, /\.friend-username/);
   assert.match(layer, /\.profile-username-section/);
+  const { runInNewContext } = await import("node:vm");
+  const field = app.slice(app.indexOf("function renderProfileUsernameField()"), app.indexOf("function renderProfileSetup()"));
+  for (const [draft, visible] of [["Yarin_12", "Yarin_12"], ["@yarin_12", "yarin_12"], ["", ""]]) {
+    const context = { friendNetworkAvailable: () => true, runtimeConfig: {}, friendNetwork: { status: "ready" }, profileUsernameDraft: draft, profileUsernameError: "", escapeAttribute: String, escapeHtml: String };
+    const rendered = runInNewContext(`${field}\nrenderProfileUsernameField()`, context);
+    assert.match(rendered, new RegExp(`value="${visible}"`));
+    assert.doesNotMatch(rendered, /value="@/);
+    assert.equal(context.profileUsernameDraft, draft, "Rendering must not rewrite the stored identity or draft");
+  }
+  const { formatUsername, profileUsername } = await import("../src/domain/usernames.mjs");
+  const networkRow = app.slice(app.indexOf("function renderNetworkFriendRow("), app.indexOf("function renderFriendRelationshipProfile("));
+  const pendingRow = app.slice(app.indexOf("function renderPendingFriendRow("), app.indexOf("function renderFriendIdentitySection("));
+  const filter = app.slice(app.indexOf("function filterFriendRows("), app.indexOf("function participantCandidateFilter("));
+  const profile = { user_id: "qa-friend", display_name: "דנה לוי", username: "qa_friend", username_customized: true };
+  const renderContext = { friendProfileForRelationship: () => profile, publicProfileUsername: profileUsername, formatUsername, renderFriendProfileAvatar: () => "", friendNetworkBusyAction: false, escapeAttribute: String, escapeHtml: String };
+  const rows = runInNewContext(`${networkRow}\n${pendingRow}\n[renderNetworkFriendRow({id:'qa'}),renderPendingFriendRow({id:'qa'},'incoming'),renderPendingFriendRow({id:'qa'},'outgoing')]`, renderContext);
+  for (const html of rows) {
+    assert.match(html, /class="friend-username" dir="ltr">qa_friend<\/bdi>/);
+    const row = { dataset: { friendName: html.match(/data-friend-name="([^"]+)"/)[1] }, hidden: false };
+    const empty = { hidden: false }, roster = { querySelectorAll: (selector) => selector === "[data-friend-name]" ? [row] : [], querySelector: () => empty };
+    for (const query of ["qa_friend", "@qa_friend", "דנה"]) {
+      runInNewContext(`${filter}\nfilterFriendRows(input)`, { input: { value: query, closest: () => ({ querySelector: () => roster }) }, setSearchResultHidden: (target, hidden) => { target.hidden = hidden; } });
+      assert.equal(row.hidden, false, `Existing username search must still find ${query}`);
+      assert.equal(empty.hidden, true);
+    }
+  }
+  const participantFunctions = app.slice(app.indexOf("function participantUsernameLabel("), app.indexOf("function renderParticipantPill("));
+  const participantContext = { formatUsername, state: { currentParticipantId: "qa-owner" }, currentFriendUsername: () => "qa_owner", profileUsernameDraft: "", escapeHtml: String };
+  const participant = runInNewContext(`${participantFunctions}\n({label:renderParticipantUsername({id:'qa-friend',username:'qa_friend'}),search:participantSearchIdentity({id:'qa-friend',username:'qa_friend'},'דנה לוי')})`, participantContext);
+  assert.match(participant.label, />qa_friend<\/bdi>/);
+  assert.equal(participant.search, "דנה לוי @qa_friend");
 });
 
 test("friends hub only highlights duplicate names when identity matching finds them", async () => {

@@ -1909,9 +1909,7 @@ function renderProfileUsernameField() {
     `;
   }
 
-  const usernameValue = profileUsernameDraft
-    ? `@${profileUsernameDraft.replace(/^@+/, "")}`
-    : "";
+  const usernameValue = profileUsernameDraft.replace(/^@+/, "");
   return `
     <div class="profile-username-section">
       <label class="field profile-username-field">
@@ -2007,7 +2005,7 @@ function renderProfileSetup() {
                          <span class="profile-shortcut-icon" aria-hidden="true">${iconSvg("edit")}</span>
                          <span class="profile-identity-copy">
                            <span>שם משתמש</span>
-                           <strong><bdi dir="ltr">${currentFriendUsername() ? `@${escapeHtml(currentFriendUsername())}` : "—"}</bdi></strong>
+                           <strong><bdi dir="ltr">${currentFriendUsername() ? escapeHtml(formatUsername(currentFriendUsername())) : "—"}</bdi></strong>
                          </span>
                          <span class="profile-shortcut-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
                        </button>`
@@ -3171,7 +3169,7 @@ function renderFriendsPeopleTab({
                         type="search"
                         autocomplete="off"
                         enterkeyhint="search"
-                        placeholder="שם או @username"
+                        placeholder="שם או username"
                         aria-label="חיפוש ברשימת החברים"
                       />
                     </label>`
@@ -3254,7 +3252,7 @@ function renderBlockedUsersPanel() {
                   <strong>${escapeHtml(blockedUser.blocked_display_name)}</strong>
                   ${
                     blockedUser.blocked_username
-                      ? `<small><bdi dir="ltr">@${escapeHtml(blockedUser.blocked_username)}</bdi></small>`
+                      ? `<small><bdi dir="ltr">${escapeHtml(formatUsername(blockedUser.blocked_username))}</bdi></small>`
                       : ""
                   }
                 </span>
@@ -3520,7 +3518,7 @@ function renderFriendNetworkPanel() {
             autocapitalize="none"
             spellcheck="false"
             enterkeyhint="send"
-            placeholder="@username"
+            placeholder="username"
             value="${escapeAttribute(friendCodeDraft)}"
           />
         </label>
@@ -3585,7 +3583,7 @@ function renderNetworkFriendRow(friendship) {
   if (!profile) return "";
   const participantId = `account-${profile.user_id}`;
   const username = formatUsername(publicProfileUsername(profile));
-  const searchableIdentity = [profile.display_name, username]
+  const searchableIdentity = [profile.display_name, username ? `@${username}` : ""]
     .filter(Boolean)
     .join(" ")
     .toLocaleLowerCase("he");
@@ -3752,7 +3750,7 @@ function renderPendingFriendRow(friendship, direction) {
   const participantId = `account-${profile.user_id}`;
   const busy = friendNetworkBusyAction === friendship.id;
   const username = formatUsername(publicProfileUsername(profile));
-  const searchableIdentity = [profile.display_name, username]
+  const searchableIdentity = [profile.display_name, username ? `@${username}` : ""]
     .filter(Boolean)
     .join(" ")
     .toLocaleLowerCase("he");
@@ -11641,7 +11639,8 @@ function participantUsernameLabel(participant) {
 }
 
 function participantSearchIdentity(participant, displayName) {
-  return [displayName, participantUsernameLabel(participant)]
+  const username = participantUsernameLabel(participant);
+  return [displayName, username ? `@${username}` : ""]
     .filter(Boolean)
     .join(" ")
     .toLocaleLowerCase("he");
