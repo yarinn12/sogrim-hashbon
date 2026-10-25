@@ -37,6 +37,7 @@ const selfLeaveMarker = "-- Guarded self-leave receipt (2026-10-03).";
 const selfLeaveVerification = readFileSync(new URL("../supabase/verification/verify_20261003090000_allow_guarded_self_leave_receipt.sql", import.meta.url), "utf8");
 const fxBoundaryMigration = readFileSync(new URL("../supabase/migrations/20261011120000_preserve_expense_fx_at_snapshot_boundary.sql", import.meta.url), "utf8");
 const fxBoundaryVerification = readFileSync(new URL("../supabase/verification/verify_20261011120000_expense_fx_snapshot_boundary.sql", import.meta.url), "utf8");
+const friendInvitationMigration = readFileSync(new URL("../supabase/migrations/20261025180000_resolve_friend_invitation.sql", import.meta.url), "utf8");
 const fxBoundaryMarker = "-- Protect converted expenses at the snapshot write boundary (2026-10-11).";
 before(async () => {
   db = new PGlite({ extensions: { pgcrypto } });
@@ -73,6 +74,7 @@ before(async () => {
     await db.exec(selfLeaveMigration);
     await db.exec(selfLeaveVerification);
     await db.exec(fxBoundaryMigration);
+    await db.exec(friendInvitationMigration);
     if (process.env.DATABASE_INTEGRITY_INSTALL_MODE === "upgrade") {
       await db.exec(referralRecoveryMigration);
       await db.exec(referralRecoveryMigration);
@@ -1833,8 +1835,9 @@ test("SQL fresh schema and incremental migration install exactly the same defini
   assert.equal(schema.slice(schema.indexOf(accountLinkReceiptMarker), schema.indexOf(selfLeaveMarker)).trim(), accountLinkReceiptMigration.slice(accountLinkReceiptMigration.indexOf(accountLinkReceiptMarker),accountLinkReceiptMigration.lastIndexOf("commit;")).trim());
   assert.equal(sameSql(schema.slice(schema.indexOf(selfLeaveMarker) + selfLeaveMarker.length, schema.indexOf(referralTriggerMarker))), sameSql(selfLeaveMigration));
   assert.equal(sameSql(schema.slice(schema.indexOf(referralTriggerMarker), schema.indexOf(fxBoundaryMarker))), sameSql(referralRecoveryMigration.slice(referralRecoveryMigration.indexOf(referralTriggerMarker), referralRecoveryMigration.indexOf("create or replace function public.get_referral_program_status()"))));
-  assert.equal(sameSql(schema.slice(schema.indexOf(fxBoundaryMarker) + fxBoundaryMarker.length)),
+  assert.equal(sameSql(schema.slice(schema.indexOf(fxBoundaryMarker) + fxBoundaryMarker.length, schema.indexOf("-- Read-only invitation landing."))),
     sameSql(fxBoundaryMigration.replace(/^begin;\r?\n/, "").replace(/\r?\ncommit;\s*$/, "\n")));
+  assert.equal(sameSql(schema.slice(schema.indexOf("-- Read-only invitation landing."))), sameSql(friendInvitationMigration));
   const statusDefinition = source => source.match(/create or replace function public\.get_referral_program_status\(\)[\s\S]*?\$\$;/)?.[0];
   assert.equal(sameSql(statusDefinition(schema)), sameSql(statusDefinition(referralRecoveryMigration)));
 });
@@ -2510,4 +2513,31 @@ test("SQL attribution does not obstruct account-deletion anonymization", async (
     assert.equal(canonical.events[0].notes[0].createdByParticipantId, ids.sender);
     assert.deepEqual(canonical.events[0].activityLog, previous.events[0].activityLog);
   });
+});
+
+
+test("SQL invitation resolver is authenticated, read-only, block-aware and relationship-specific", async () => {
+  const actor="00000000-0000-4000-8000-000000000941",target="00000000-0000-4000-8000-000000000942";
+  await db.query(`insert into auth.users(id,email,raw_user_meta_data) values ($1::uuid,'invite-actor@example.invalid','{"full_name":"Noam Levi","username":"inv_noam"}'),($2::uuid,'invite-person@example.invalid','{"full_name":"Dana Levi","username":"inv_dana"}')`,[actor,target]);
+  try {
+    const code=(await db.query("select code from public.friend_invite_codes where user_id=$1::uuid",[target])).rows[0].code;
+    const own=(await db.query("select code from public.friend_invite_codes where user_id=$1::uuid",[actor])).rows[0].code;
+    const snapshot=async()=>JSON.stringify((await db.query(`select (select jsonb_agg(to_jsonb(t)) from public.friendships t) as friendships,(select jsonb_agg(to_jsonb(t)) from public.friend_invite_codes t) as invites,(select jsonb_agg(to_jsonb(t)) from public.user_profiles t) as profiles,(select jsonb_agg(to_jsonb(t)) from private.api_rate_limit_buckets t) as quotas`)).rows);
+    const read=async(value=code,owner=actor,role="authenticated")=>{
+      const before=await snapshot();await db.exec("begin read only");
+      try{await db.query("select set_config('request.jwt.claim.sub',$1,true)",[owner||""]);await db.exec(role==="anon"?"set local role anon":"set local role authenticated");return(await db.query("select public.resolve_friend_invitation($1) as value",[value])).rows[0].value}
+      finally{await db.exec("rollback");assert.equal(await snapshot(),before,"Reading an invitation cannot write profiles, relationships, codes or quotas")}
+    };
+    assert.equal((await read()).relationship,"new");const first=await read();assert.equal(first.profile.user_id,target);assert.deepEqual(Object.keys(first.profile).sort(),["user_id","display_name","username","avatar_preset","avatar_image"].sort());
+    assert.deepEqual(await read(own),{status:"self"});assert.deepEqual(await read("00000000000000000000"),{status:"unavailable"});assert.deepEqual(await read("bad"),{status:"unavailable"});assert.deepEqual(await read(null),{status:"unavailable"});
+    await assert.rejects(read(code,null),error=>error.code==="42501");await assert.rejects(read(code,actor,"anon"),error=>error.code==="42501");
+    const access=await db.query("select has_function_privilege('anon','public.resolve_friend_invitation(text)','execute') as anon,has_function_privilege('authenticated','public.resolve_friend_invitation(text)','execute') as authenticated");assert.equal(access.rows[0].anon,false);assert.equal(access.rows[0].authenticated,true);
+    await db.query("insert into public.friendships(requester_id,addressee_id,status) values($1::uuid,$2::uuid,'pending')",[target,actor]);assert.equal((await read()).relationship,"incoming");
+    await db.query("update public.friendships set requester_id=$1::uuid,addressee_id=$2::uuid where user_low=least($1::uuid,$2::uuid) and user_high=greatest($1::uuid,$2::uuid)",[actor,target]);assert.equal((await read()).relationship,"outgoing");
+    await db.query("update public.friendships set status='accepted' where user_low=least($1::uuid,$2::uuid) and user_high=greatest($1::uuid,$2::uuid)",[actor,target]);assert.equal((await read()).relationship,"accepted");
+    await db.query("update public.friendships set status='declined',responded_at=clock_timestamp() where user_low=least($1::uuid,$2::uuid) and user_high=greatest($1::uuid,$2::uuid)",[actor,target]);assert.deepEqual(await read(),{status:"unavailable"});
+    await db.query("update public.friendships set responded_at=clock_timestamp()-interval '25 hours' where user_low=least($1::uuid,$2::uuid) and user_high=greatest($1::uuid,$2::uuid)",[actor,target]);assert.equal((await read()).relationship,"new");
+    for(const [blocker,blocked] of [[actor,target],[target,actor]]){await db.query("insert into public.user_blocks(blocker_user_id,blocked_user_id,blocked_display_name) values($1::uuid,$2::uuid,'Synthetic person')",[blocker,blocked]);assert.deepEqual(await read(),{status:"unavailable"});await db.query("delete from public.user_blocks where blocker_user_id=$1::uuid",[blocker]);}
+    const before=await snapshot();await db.exec(friendInvitationMigration);await db.exec(friendInvitationMigration);assert.equal(await snapshot(),before,"Idempotent resolver installation must not rewrite existing data");
+  }finally{await db.exec("reset role");await db.query("delete from auth.users where id in($1::uuid,$2::uuid)",[actor,target]);}
 });

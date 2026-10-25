@@ -22,7 +22,7 @@ test("primary navigation remains available throughout every signed-in flow", asy
   );
   assert.match(
     brand,
-    /\["home", "event", "settlement", "join-event", "new-event", "groups", "notifications"\]\.includes\(explicitKind\)/
+    /\["home", "event", "settlement", "join-event", "new-event", "groups", "friend-invite", "notifications"\]\.includes\(explicitKind\)/
   );
   assert.match(brand, /shouldShowPrimaryNav\(screen\) \? renderHeaderNav\(\) : ""/);
   assert.doesNotMatch(brand, /PRIMARY_NAV_SCREENS/);

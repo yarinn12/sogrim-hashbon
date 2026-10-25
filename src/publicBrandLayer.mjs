@@ -337,7 +337,7 @@ function enhanceScreenHeroArtwork() {
 function detectBrandScreenKind(screen) {
   const explicitKind = screen.dataset.screenKind;
   if (explicitKind === "event-notes") return "event";
-  if (["home", "event", "settlement", "join-event", "new-event", "groups", "notifications"].includes(explicitKind)) {
+  if (["home", "event", "settlement", "join-event", "new-event", "groups", "friend-invite", "notifications"].includes(explicitKind)) {
     return explicitKind;
   }
   if (explicitKind === "admin") return explicitKind;

@@ -62,7 +62,7 @@ test("moving the home referral entry preserves profile entitlement access", () =
 
 test("friends and event routes keep the correct primary destination highlighted", async () => {
   const { primaryNavigationDestinationForScreen: destination } = await import("../src/ui/primaryNavigationState.mjs");
-  for (const kind of ["groups", "group-workflow"]) assert.equal(destination(kind), "friends");
+  for (const kind of ["groups", "group-workflow", "friend-invite"]) assert.equal(destination(kind), "friends");
   for (const kind of ["home", "event", "event-notes", "settlement", "join-event", "new-event"]) assert.equal(destination(kind), "home");
   assert.equal(destination("notifications"), "notifications");
   for (const kind of ["profile", "admin"]) assert.equal(destination(kind), "profile");

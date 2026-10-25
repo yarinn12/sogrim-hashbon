@@ -1,6 +1,18 @@
 const STYLE_ID = "public-ledger-workspace-layer-style";
 
 const CSS = `
+  /* Approved invitation-link confirmation surface. */
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-card{display:grid!important;gap:18px!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-person{display:grid!important;grid-template-columns:64px minmax(0,1fr)!important;align-items:center!important;gap:14px!important;min-width:0!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-person .avatar{width:64px!important;height:64px!important;min-width:64px!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-person>span{display:grid!important;gap:5px!important;min-width:0!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen :is(.friend-invite-person h2,.friend-invite-state-title){margin:0!important;font-size:1.25rem!important;line-height:1.3!important;font-weight:820!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-username{font-size:.875rem!important;font-weight:540!important;line-height:1.4!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-overflow:clip!important;background:transparent!important;border:0!important;padding:0!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-message{margin:0!important;font-size:.875rem!important;line-height:1.5!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-actions{display:grid!important;gap:8px!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-actions button{width:100%!important;min-height:48px!important;font-size:.9375rem!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-actions .friend-invite-secondary{min-height:44px!important;border:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;font-size:.875rem!important;}
+
   html.ledger-workspace-v1 {
     --font-hebrew: "Rubik", "Heebo", "Assistant", sans-serif;
     --font-num: "Inter", "Rubik", sans-serif;

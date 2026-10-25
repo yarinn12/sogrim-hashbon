@@ -1,3 +1,4 @@
+import {renderFriendInvitationView} from "./ui/friendInvitationPresentation.mjs";
 import {renderSettlementCompletionView} from "./ui/settlementCompletionPresentation.mjs";
 import {renderClosedSettlementHeroView, renderClosedSettlementShareActionsView, captureClosedSettlementDisclosureState, restoreClosedSettlementDisclosureState} from "./ui/closedSettlementPresentation.mjs";
 import {renderSettlementCloseConfirmationView} from "./ui/settlementClosePresentation.mjs";
@@ -229,6 +230,7 @@ import {
   loadOwnFriendProfile,
   manageFriendship,
   normalizeFriendCode,
+  resolveFriendInvitation,
   requestFriendship,
   requestFriendshipByUsername,
   requestFriendshipFromEvent,
@@ -578,6 +580,9 @@ let mergeParticipantsDraft = null;
 let friendsNewOfflineName = "";
 let friendsAddMode = "online";
 let friendCodeDraft = friendInviteCodeFromUrl(window.location.href);
+let friendInvitationIntent = new URL(window.location.href).searchParams.has("friend") || /^\/r\//.test(window.location.pathname);
+let friendInvitationState = { status:"idle" };
+let friendInvitationReadRequest = null;
 let friendNetwork = emptyFriendNetwork();
 let friendNetworkBusyAction = "";
 let friendNetworkPollRequest = null;
@@ -987,6 +992,12 @@ function render() {
 
   if (screen.name === "groups") {
     commitRenderedScreen(renderGroups());
+    return;
+  }
+
+  if (screen.name === "friend-invite") {
+    commitRenderedScreen(renderFriendInvitation());
+    queueMicrotask(() => refreshFriendInvitation().catch(() => {}));
     return;
   }
 
@@ -3270,6 +3281,88 @@ function renderBlockedUsersPanel() {
       </div>
     </details>
   `;
+}
+
+function renderFriendInvitation() {
+  const context = captureFriendAccountContext();
+  const view = context.isCurrent() && friendInvitationState.scope === context.scope &&
+    friendInvitationState.code === screen.code ? friendInvitationState : { status:"loading" };
+  return renderFriendInvitationView({ ...view,
+    profile:view.profile ? { ...view.profile, username:formatUsername(view.profile.username) } : null,
+    avatarHtml:view.profile ? renderFriendProfileAvatar(view.profile) : "",
+    backHtml:renderAppBackButton(), busy:friendNetworkBusyAction === "friend-invitation"
+  });
+}
+
+async function refreshFriendInvitation({ force = false } = {}) {
+  if (screen.name !== "friend-invite") return;
+  const originScreen = screen;
+  const context = captureFriendAccountContext();
+  if (!context.isCurrent()) return;
+  const code = normalizeFriendCode(originScreen.code);
+  if (!force && friendInvitationState.scope === context.scope && friendInvitationState.code === originScreen.code &&
+      !["idle", "loading"].includes(friendInvitationState.status)) return;
+  if (friendInvitationReadRequest?.screen === originScreen && friendInvitationReadRequest.scope === context.scope) return;
+  const request = { screen:originScreen, scope:context.scope };
+  friendInvitationReadRequest = request;
+  const isCurrent = () => context.isCurrent() && screen === originScreen && friendInvitationReadRequest === request;
+  const publish = value => { if (isCurrent()) { friendInvitationState = { ...value, code:originScreen.code, scope:context.scope }; render(); } };
+  publish({ status:"loading" });
+  try {
+    if (!code) { publish({ status:"unavailable" }); return; }
+    if (!context.ownerUserId) { publish({ status:"signed-out" }); return; }
+    const config = await loadRuntimeConfig();
+    if (!isCurrent()) return;
+    if (!context.acceptsConfig(config) || !friendNetworkAvailable(config)) { publish({ status:"signed-out" }); return; }
+    publish(await resolveFriendInvitation(config, code));
+  } catch (error) {
+    publish({ status:error?.status === 401 ? "signed-out" : "error" });
+  } finally {
+    if (friendInvitationReadRequest === request) friendInvitationReadRequest = null;
+  }
+}
+
+async function confirmFriendInvitation() {
+  const view = friendInvitationState;
+  const context = captureFriendAccountContext();
+  if (screen.name !== "friend-invite" || view.status !== "ready" ||
+      !["new", "incoming"].includes(view.relationship) || view.scope !== context.scope || view.code !== screen.code) return;
+  const request = beginFriendNetworkAction("friend-invitation");
+  if (!request) return;
+  const originScreen = screen;
+  const isCurrentSurface = () => request.isCurrent() && screen === originScreen && friendInvitationState.scope === request.scope && friendInvitationState.code === view.code;
+  friendInvitationState = { ...view, actionError:"" };
+  render();
+  try {
+    const config = await loadFriendActionConfig(request);
+    if (!config || !isCurrentSurface()) return;
+    const result = view.relationship === "incoming"
+      ? await manageFriendship(config, view.friendshipId, "accept")
+      : await requestFriendship(config, view.code);
+    if (!request.isCurrent()) return;
+    if (!["pending", "accepted"].includes(result?.status)) throw new Error("Unexpected friendship receipt");
+    if (isCurrentSurface()) friendInvitationState = { ...view, relationship:result.status === "accepted" ? "accepted" : "outgoing", friendshipId:result.id || view.friendshipId, actionError:"" };
+  } catch (error) {
+    if (isCurrentSurface()) friendInvitationState = { ...view, actionError:friendRequestErrorMessage(error) };
+  } finally {
+    finishFriendNetworkAction(request);
+    if (isCurrentSurface()) render();
+  }
+  if (request.isCurrent()) await refreshFriendNetwork({ preserveNotice:true });
+}
+
+function leaveFriendInvitation(tab = "people") {
+  friendInvitationIntent = false;
+  friendCodeDraft = "";
+  friendInvitationReadRequest = null;
+  friendInvitationState = { status:"idle" };
+  const url = new URL(window.location.href);
+  url.searchParams.delete("friend");
+  if (/^\/r\//.test(url.pathname)) url.pathname = "/";
+  window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  screen = { name:"groups", tab:tab === "requests" ? "requests" : "people" };
+  render();
+  refreshFriendNetwork({ preserveNotice:true }).catch(() => {});
 }
 
 function renderFriendAdd() {
@@ -12739,6 +12832,12 @@ async function handleClick(event) {
     }
   }
 
+  if (action === "friend-invite-confirm") { await confirmFriendInvitation(); return; }
+  if (action === "friend-invite-retry") { await refreshFriendInvitation({ force:true }); return; }
+  if (action === "friend-invite-dismiss") { leaveFriendInvitation(); return; }
+  if (action === "friend-invite-return") { leaveFriendInvitation(friendInvitationState.relationship === "outgoing" ? "requests" : "people"); return; }
+  if (action === "friend-invite-sign-in") { screen = { name:"profile" }; render(); return; }
+
   if (action === "open-friend-add") {
     notice = "";
     friendsAddMode = friendNetworkAvailable(runtimeConfig) ? "online" : "offline";
@@ -14569,6 +14668,8 @@ function goBackInApp() {
     renderHistoryFallback();
     return;
   }
+
+  if (screen.name === "friend-invite") { leaveFriendInvitation(); return; }
 
   if (screen.name === "friend-add") {
     screen = { name: "groups", tab: "people" };
@@ -19774,8 +19875,8 @@ async function saveProfileFromDraft() {
   profileUsernameEditing = false;
   const profileSaveDestination = invitedEventId && getEvent(invitedEventId)
     ? { name: "event", eventId: invitedEventId }
-    : friendCodeDraft
-      ? { name: "groups", tab: "people" }
+    : friendInvitationIntent
+      ? { name:"friend-invite", code:friendCodeDraft }
       : { name: "home" };
   screen = profileSaveDestination;
   notice = `נכנסת בתור ${participantName(state.currentParticipantId)}.`;
@@ -24299,8 +24400,8 @@ async function hydrateAppForActiveAccount() {
     window.location.href
   );
   if (!openedNotificationTarget) {
-    if (friendCodeDraft && !invitedEventId) {
-      screen = { name: "groups", tab: "people" };
+    if (friendInvitationIntent && !invitedEventId) {
+      screen = { name:"friend-invite", code:friendCodeDraft };
       friendNetwork = emptyFriendNetwork(
         friendNetworkAvailable(runtimeConfig) ? "loading" : "signed-out"
       );

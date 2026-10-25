@@ -1,0 +1,23 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFile} from "node:fs/promises";
+import {resolveFriendInvitation} from "../src/data/friendsStore.mjs";
+import {renderFriendInvitationView} from "../src/ui/friendInvitationPresentation.mjs";
+const actor="11111111-1111-4111-8111-111111111111",target="22222222-2222-4222-8222-222222222222",id="33333333-3333-4333-8333-333333333333",code="abcdefabcdefabcdefab";
+const config={storage:{mode:"supabase",url:"https://fixture.invalid",anonKey:"synthetic-anon",account:{userId:actor,accessToken:"synthetic-token"}}};
+const payload=relationship=>({status:"ready",relationship,friendship_id:relationship==="new"?null:id,profile:{user_id:target,display_name:"דנה לוי",username:"dana_levi",avatar_preset:"avatar-2",email:"must-not-return@example.invalid",private_space_key:"must-not-return"}});
+for(const relationship of ["new","incoming","outgoing","accepted"]){
+ test(`invitation lookup ${relationship} uses a separate read RPC and only returns public presentation fields`,async()=>{
+  const calls=[];const result=await resolveFriendInvitation(config," ABCDEFABCDEFABCDEFAB ",async(url,options)=>{calls.push({url,options});return new Response(JSON.stringify(payload(relationship)),{status:200})});
+  assert.equal(calls.length,1);assert.equal(calls[0].url,"https://fixture.invalid/rest/v1/rpc/resolve_friend_invitation");assert.equal(calls[0].options.method,"POST");assert.deepEqual(JSON.parse(calls[0].options.body),{p_friend_code:code});assert.equal(calls[0].options.headers.authorization,"Bearer synthetic-token");
+  assert.equal(result.relationship,relationship);assert.equal(result.profile.display_name,"דנה לוי");assert.deepEqual(Object.keys(result.profile).sort(),["user_id","display_name","username","avatar_preset","avatar_image"].sort());
+ });
+}
+test("invalid link and signed-out invitation never perform a request",async()=>{let calls=0;const fetchImpl=()=>{calls++;throw Error("unexpected")};assert.deepEqual(await resolveFriendInvitation(config,"bad",fetchImpl),{status:"unavailable"});await assert.rejects(resolveFriendInvitation({},code,fetchImpl),/Sign in/);assert.equal(calls,0)});
+for(const status of ["self","unavailable"])test(`${status} response cannot leak an attached identity`,async()=>{assert.deepEqual(await resolveFriendInvitation(config,code,async()=>new Response(JSON.stringify({...payload("new"),status}))),{status})});
+for(const corrupt of [p=>p.profile.user_id=actor,p=>p.profile.user_id="bad",p=>p.relationship="blocked",p=>p.friendship_id=null,p=>p.profile.display_name=""]){test("malformed or forged relationship response cannot enable a confirmation",async()=>{const p=payload("incoming");corrupt(p);await assert.rejects(resolveFriendInvitation(config,code,async()=>new Response(JSON.stringify(p))),/Invalid friend invitation response/)})}
+for(const status of [401,503])test(`lookup HTTP${status} remains an error without creating a friendship`,async()=>{await assert.rejects(resolveFriendInvitation(config,code,async()=>new Response(JSON.stringify({message:"unavailable"}),{status})),e=>e.status===status)});
+for(const [relationship,label]of [["new","שלח בקשה"],["incoming","אשר חברות"],["outgoing","לבקשות החברות"],["accepted","לרשימת החברים"]])test(`invitation ${relationship} has an explicit ${label} choice without a search input`,()=>{const html=renderFriendInvitationView({...payload(relationship),profile:payload(relationship).profile});assert.ok(html.includes(label));assert.ok(html.includes("דנה לוי"));assert.doesNotMatch(html,/<input|data-review/);assert.equal(html.includes('data-action="friend-invite-confirm"'),["new","incoming"].includes(relationship))});
+for(const status of ["loading","signed-out","error","unavailable","self"])test(`invitation ${status} cannot show unverified profile or confirm`,()=>{const html=renderFriendInvitationView({status,profile:payload("new").profile});assert.doesNotMatch(html,/דנה לוי|data-action="friend-invite-confirm"/);if(status==="loading")assert.match(html,/disabled/)});
+test("invitation escapes names and usernames and keeps busy/error controls explicit",()=>{const html=renderFriendInvitationView({status:"ready",relationship:"new",profile:{display_name:'<img src=x onerror=alert(1)>',username:'"><script>'},busy:true,actionError:'<script>failure</script>'});assert.doesNotMatch(html,/<script>|<img src=x/);assert.match(html,/&lt;img/);assert.match(html,/role="alert"/);assert.match(html,/disabled/)});
+test("invitation view remains in both offline inventories",async()=>{const sw=await readFile("sw.js","utf8");assert.equal((sw.match(/"\/src\/ui\/friendInvitationPresentation\.mjs"/g)||[]).length,2)});

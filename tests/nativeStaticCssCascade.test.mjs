@@ -767,3 +767,9 @@ test("native unread badge stays out of navigation label layout and clipping rule
   }
   assert.match(css, /\.product-nav-badge\[hidden\]\s*\{\s*display: none !important;/);
 });
+
+
+test("native invitation confirmation retains the approved scalable shared surface",async()=>{
+ const {extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");const css=files.get(join("fixture-assets","native-layers.css"));
+ for(const text of [".friend-invitation-screen .friend-invite-card", ".friend-invite-person h2", "font-size:1.25rem!important", "font-size:.875rem!important", "min-height:48px!important", "min-height:44px!important"])assert.ok(css.includes(text),"Missing approved invitation presentation in Native: "+text);
+});
