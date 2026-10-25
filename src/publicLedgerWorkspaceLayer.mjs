@@ -462,12 +462,16 @@ const CSS = `
     font-size: 12.5px !important;
   }
 
-  html.ledger-workspace-v1 .product-nav-badge {
+  /* Keep the unread overlay outside label resets and the navigation grid. */
+  html.ledger-workspace-v1 .product-nav-button > .product-nav-badge {
     position: absolute !important;
     inset-block-start: 4px !important;
     inset-inline-start: calc(50% + 5px) !important;
     min-width: 17px !important;
+    width: max-content !important;
     height: 17px !important;
+    overflow: visible !important;
+    clip: auto !important;
     display: grid !important;
     place-items: center !important;
     padding-inline: 4px !important;
@@ -481,7 +485,7 @@ const CSS = `
     line-height: 1 !important;
   }
 
-  html.ledger-workspace-v1 .product-nav-badge[hidden] {
+  html.ledger-workspace-v1 .product-nav-button > .product-nav-badge[hidden] {
     display: none !important;
   }
 

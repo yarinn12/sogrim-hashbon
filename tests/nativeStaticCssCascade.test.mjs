@@ -752,3 +752,18 @@ test("native add-friend typography scales real leaves and the placeholder", asyn
   const start=css.lastIndexOf(prefix+selector+" {");assert.ok(start>=0,"Native add-friend must scale its actual text: "+selector);const rule=css.slice(start,css.indexOf("}",start));assert.ok(rule.includes("font-size:"+size+"!important"),"Expected relative or inherited size for "+selector);
  }
 });
+
+
+test("native unread badge stays out of navigation label layout and clipping rules", async () => {
+  const { extractNativeStaticCss, files } = await harness();
+  await extractNativeStaticCss([{ path:resolve("src/publicLedgerWorkspaceLayer.mjs") }], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const selector = "html.ledger-workspace-v1 .product-nav-button > .product-nav-badge {";
+  const start = css.indexOf(selector);
+  assert.ok(start >= 0, "Badge rule must outrank generic navigation span resets in both web and Native");
+  const rule = css.slice(start, css.indexOf("}", start));
+  for (const declaration of ["position: absolute !important;", "width: max-content !important;", "height: 17px !important;", "overflow: visible !important;", "clip: auto !important;"]) {
+    assert.ok(rule.includes(declaration), "Badge must remain a visible overlay: " + declaration);
+  }
+  assert.match(css, /\.product-nav-badge\[hidden\]\s*\{\s*display: none !important;/);
+});

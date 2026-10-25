@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { verifyNotificationNavBadge } from "./helpers/notificationNavBadge.mjs";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import {
@@ -870,6 +871,32 @@ test("delayed profile PATCH retains the newer SQL identity through reload", asyn
     await page.unrouteAll({ behavior: "wait" });
     await database.close();
   }
+});
+
+test("notification nav counter overlays the bell without shifting the icon or label", async ({ page }, testInfo) => {
+  for (const root of [16, 20, 32]) {
+    await page.goto(root === 16 ? "/" : `/?dynamic-type-preview=${root}`);
+    await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+    // Wait for the fixture inbox before injecting presentation-only counter transitions.
+    await expect(page.locator(".product-nav-badge")).toHaveText("2");
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(root);
+    await verifyNotificationNavBadge(page);
+    await page.locator('[data-nav-destination="notifications"]').click();
+    await expect(page.locator('[data-screen-kind="notifications"]')).toBeVisible();
+    await verifyNotificationNavBadge(page);
+  }
+  const initialViewport = page.viewportSize();
+  for (const viewport of [{ width:320, height:390 }, { width:852, height:393 }, initialViewport]) {
+    await page.setViewportSize(viewport);
+    await verifyNotificationNavBadge(page);
+  }
+  await page.goto("/");
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await expect(page.locator(".product-nav-badge")).toHaveText("2");
+  expect(await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(16);
+  await verifyNotificationNavBadge(page);
+  await page.screenshot({ path:testInfo.outputPath("notification-badge-aligned.png"), animations:"disabled" });
 });
 
 test("notification inbox stays readable and completes its main mobile actions", async ({ page }) => {
