@@ -3338,7 +3338,7 @@ function renderOfflineFriendAddStep() {
             name="offlineFriendName"
             autocomplete="off"
             enterkeyhint="done"
-            placeholder="שם פרטי ושם משפחה"
+            placeholder="שם החבר"
             value="${escapeAttribute(friendsNewOfflineName)}"
           />
         </label>
@@ -3501,7 +3501,7 @@ function renderFriendNetworkPanel() {
               ? `<bdi class="friend-username is-own" dir="ltr">${escapeHtml(ownUsername)}</bdi>`
               : ""
           }
-          <small>אפשר לבחור שם משתמש נקי וייחודי כדי שחברים ימצאו אותך. חברות נוצרת רק אחרי אישור.</small>
+          <small>מזינים שם משתמש או קישור שקיבלת מהחבר. החיבור יושלם אחרי שיאשר.</small>
         </span>
         ${
           inviteUrl

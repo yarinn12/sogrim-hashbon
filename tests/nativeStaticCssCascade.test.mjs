@@ -740,3 +740,12 @@ test("native add-friend online caption retains its approved transparent backgrou
  const start=css.lastIndexOf(selector);assert.ok(start>=0,"Approved online-caption background must reach Native CSS");
  const rule=css.slice(start,css.indexOf("}",start));assert.match(rule,/background:transparent!important/);
 });
+
+
+test("native add-friend typography scales real leaves and the placeholder", async () => {
+ const {extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:resolve("src/publicLedgerWorkspaceLayer.mjs")}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css")),prefix="html.ledger-workspace-v1 body #app .friend-add-screen ";
+ for(const [selector,size] of [[".friend-add-mode-button strong",".8125rem"],[".friend-network-heading strong",".9375rem"],[":is(.friend-request-form,.friends-add-offline-form) .field > span",".78125rem"],[".friend-add-kind",".625rem"],[":is(.friend-request-form,.friends-add-offline-form) input","1rem"],[":is(.friend-request-form,.friends-add-offline-form) input::placeholder","inherit"]]){
+  const start=css.lastIndexOf(prefix+selector+" {");assert.ok(start>=0,"Native add-friend must scale its actual text: "+selector);const rule=css.slice(start,css.indexOf("}",start));assert.ok(rule.includes("font-size:"+size+"!important"),"Expected relative or inherited size for "+selector);
+ }
+});

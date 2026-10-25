@@ -382,3 +382,16 @@ test("friend activity counts explain shared events and retain visibility and his
     assert.equal(JSON.stringify(state), before, "rendering the activity caption must not mutate events or identity");
   }
 });
+
+
+test("add-friend instructions identify the friend's username and keep the manual hint short", async () => {
+ const {runInNewContext}=await import("node:vm"),app=await readFile("src/app.mjs","utf8");
+ const network=app.slice(app.indexOf("function renderFriendNetworkPanel()"),app.indexOf("function renderConnectedFriendSection("));
+ const offline=app.slice(app.indexOf("function renderOfflineFriendAddStep()"),app.indexOf("function renderFriendsRequestsTab("));
+ for(const username of ["","@qa_owner"]){
+  const friendNetwork={status:"ready",stale:false},before=JSON.stringify(friendNetwork);
+  const result=runInNewContext(`${network}\n${offline}\n({online:renderFriendNetworkPanel(),offline:renderOfflineFriendAddStep()})`,{friendNetwork,friendNetworkBusyAction:false,friendCodeDraft:"",friendsNewOfflineName:"",friendInviteUrl:()=>"",currentFriendUsername:()=>username,formatUsername:x=>x,escapeHtml:String,escapeAttribute:String});
+  assert.match(result.online,/מזינים שם משתמש או קישור שקיבלת מהחבר/);assert.match(result.online,/החיבור יושלם אחרי שיאשר/);assert.doesNotMatch(result.online,/כדי שחברים ימצאו אותך/);
+  assert.match(result.online,/data-action="send-friend-request"/);assert.match(result.offline,/placeholder="שם החבר"/);assert.match(result.offline,/השם לא יוכל להיכנס בעצמו או לראות את האירוע/);assert.match(result.offline,/data-action="friends-add-offline"/);assert.equal(JSON.stringify(friendNetwork),before);
+ }
+});

@@ -22861,6 +22861,15 @@ html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .
 html.ledger-workspace-v1 body #app .friend-add-screen .friend-add-kind.is-online {
   background:transparent!important;
 }
+
+/* Approved add-friend typography: scale the actual leaves, input and placeholder. */
+html.ledger-workspace-v1 body #app .friend-add-screen .friend-add-mode-button strong {font-size:.8125rem!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-add-screen .friend-network-heading strong {font-size:.9375rem!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-add-screen :is(.friend-request-form,.friends-add-offline-form) .field > span {font-size:.78125rem!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-add-screen .friend-add-kind {font-size:.625rem!important;}
+html.ledger-workspace-v1 body #app .friend-add-screen :is(.friend-request-form,.friends-add-offline-form) input {font-size:1rem!important;}
+
+html.ledger-workspace-v1 body #app .friend-add-screen :is(.friend-request-form,.friends-add-offline-form) input::placeholder {font-size:inherit!important;}
 `;
 
 const RETIRED_ROOT_CLASSES = [
