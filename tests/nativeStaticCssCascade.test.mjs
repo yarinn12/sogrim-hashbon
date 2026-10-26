@@ -798,3 +798,11 @@ test("native profile identity keeps scalable glyphs and a separate arrow column"
  assert.match(rule(".profile-avatar-summary-copy>strong"),/font-size:\.875rem!important/);
  assert.match(rule(".profile-shortcuts .is-editing input"),/font-size:1rem!important/);
 });
+
+
+test("native profile reward keeps scalable heading, full-width helper and action leaves",async()=>{
+ const ledger=resolve("src/publicLedgerWorkspaceLayer.mjs");const {extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.PROFILE_REWARD_TEST_LEDGER?process.env.PROFILE_REWARD_TEST_LEDGER:file,...args));await extractNativeStaticCss([{path:ledger}],"fixture-assets");const css=files.get(join("fixture-assets","native-layers.css"));
+ const prefix="html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen #referral-reward-card-profile ";const rule=selector=>{const i=css.indexOf(prefix+selector+"{");assert.ok(i>=0,"Missing native profile rewards rule: "+selector);return css.slice(i,css.indexOf("}",i))};
+ assert.match(rule(".referral-reward-copy>strong"),/font-size:1rem!important/);const helper=rule(".referral-reward-detail");assert.match(helper,/font-size:\.875rem!important/);assert.match(helper,/grid-column:1\/-1!important/);assert.match(helper,/overflow-wrap:anywhere!important/);
+ assert.match(rule(".referral-reward-action"),/min-height:48px!important/);assert.match(rule(".referral-reward-action"),/font-size:\.875rem!important/);assert.match(rule(".referral-reward-action>span"),/font-size:inherit!important/);
+});

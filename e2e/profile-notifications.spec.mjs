@@ -409,13 +409,14 @@ test("profile sections use one visual surface system without changing their orde
     background: "rgb(255, 255, 255)",
     shadow: "rgba(15, 23, 42, 0.05) 0px 1px 3px 0px"
   });
-  expect(new Set(presentation.titles.map((title) => JSON.stringify(title))).size).toBe(1);
+  expect(new Set(presentation.titles.map(({lineHeight, ...title}) => JSON.stringify(title))).size).toBe(1);
   expect(presentation.titles[0]).toEqual({
     color: "rgb(15, 23, 42)",
     fontSize: "16px",
     fontWeight: "650",
-    lineHeight: "21.6px"
+    lineHeight: "22.4px"
   });
+  expect(presentation.titles.slice(1).map(title=>title.lineHeight)).toEqual(["21.6px","21.6px"]);
 
   await page.evaluate(() => window.scrollTo({ top: 420, behavior: "instant" }));
   const stickyHeader = await profileHeader.evaluate((element) => {

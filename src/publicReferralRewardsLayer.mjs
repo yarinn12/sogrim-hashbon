@@ -1,3 +1,4 @@
+import {renderProfileRewardCardView} from "./ui/profileRewardPresentation.mjs";
 import { loadRuntimeConfig } from "./data/localStore.mjs";
 import { runAfterFirstInteractiveScreen } from "./data/startupScheduler.mjs";
 import {
@@ -382,6 +383,14 @@ function syncReferralRewardCard(screen, context, insertCard) {
 function referralRewardCard(context = "friends") {
   const active = isAdFreeActive(referralStatus);
   const daysRemaining = adFreeDaysRemaining(referralStatus);
+  if (context === "profile") {
+    return renderProfileRewardCardView({
+      status: referralStatus.status, active, daysRemaining,
+      rewardDays: referralStatus.rewardDays,
+      expiryLabel: formatDate(referralStatus.adFreeUntil), giftIconHtml: giftIcon()
+    });
+  }
+
   const isFriends = context === "friends";
   const isProfile = context === "profile";
   const helper = active

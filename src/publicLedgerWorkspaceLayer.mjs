@@ -22925,6 +22925,14 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .pro
 html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .is-editing input::placeholder{font-size:inherit!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .profile-field-actions button{font-size:.875rem!important;line-height:1.4!important;min-height:44px!important;white-space:normal!important;}
 
+
+  /* Approved Profile rewards card: scalable actual text and full-width explanation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen #referral-reward-card-profile .referral-reward-copy{gap:6px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen #referral-reward-card-profile .referral-reward-copy>strong{font-size:1rem!important;font-weight:650!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen #referral-reward-card-profile .referral-reward-detail{grid-column:1/-1!important;margin:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen #referral-reward-card-profile .referral-reward-action{font-size:.875rem!important;line-height:1.4!important;min-height:48px!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen #referral-reward-card-profile .referral-reward-action>span{font-size:inherit!important;line-height:inherit!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
