@@ -679,7 +679,16 @@ test("signed-out invitation fits its content and keeps the account action reacha
     const cardBox = element
       .querySelector(".referral-state-message.is-signin")
       .getBoundingClientRect();
+    const content = element.querySelector(".referral-dialog-content");
+    const shell = element.querySelector(".referral-dialog-shell");
+    const card = element.querySelector(".referral-state-message.is-signin");
+    const value=(el,property)=>parseFloat(getComputedStyle(el)[property])||0;
+    const vertical=(el,properties)=>properties.reduce((sum,property)=>sum+value(el,property),0);
+    const frameInsets=vertical(shell,['paddingTop','paddingBottom','borderTopWidth','borderBottomWidth','rowGap'])
+      +vertical(content,['paddingTop','paddingBottom','marginTop','marginBottom','borderTopWidth','borderBottomWidth'])
+      +vertical(card,['marginTop','marginBottom']);
     return {
+      frameInsets,
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
       shellHeight: shellBox.height, shellTop:shellBox.top, shellBottom:shellBox.bottom, headerHeight:headerBox.height, cardHeight:cardBox.height,
@@ -693,7 +702,7 @@ test("signed-out invitation fits its content and keeps the account action reacha
   expect(Math.abs(layout.cardCenter - layout.availableCenter)).toBeLessThanOrEqual(28);
   expect(layout.shellTop).toBeGreaterThanOrEqual(11);
   expect(layout.shellBottom).toBeLessThanOrEqual(layout.viewportHeight - 11);
-  expect(layout.shellHeight).toBeLessThanOrEqual(layout.headerHeight + layout.cardHeight + 80);
+  expect(layout.shellHeight).toBeLessThanOrEqual(layout.headerHeight + layout.cardHeight + layout.frameInsets + 1);
   expect(layout.cardLeft).toBeGreaterThanOrEqual(0);
   expect(layout.cardRight).toBeLessThanOrEqual(layout.viewportWidth + 1);
   if (process.env.CAPTURE_FIGMA_APPROVED === "1") {
