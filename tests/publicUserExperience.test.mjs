@@ -1,3 +1,4 @@
+import {renderProfileIdentitySummaryView} from "../src/ui/profileIdentityPresentation.mjs";
 import {renderExpenseDateFieldView} from "../src/ui/expenseFormPresentation.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -38,8 +39,9 @@ test("existing profile identity is read-only until the user chooses edit", async
   assert.match(app, /class="profile-identity-grid profile-shortcuts"/);
   assert.match(app, /data-action="edit-profile-name"/);
   assert.match(app, /data-action="edit-profile-username"/);
-  assert.match(app, /aria-label="עריכת שם פרטי ושם משפחה"/);
-  assert.match(app, /aria-label="עריכת שם משתמש"/);
+  const identityHtml=["display-name","username"].map(field=>renderProfileIdentitySummaryView({field,value:"בדיקה",editIconHtml:"",chevronIconHtml:""})).join("");
+  assert.match(identityHtml, /aria-label="עריכת שם פרטי ושם משפחה"/);
+  assert.match(identityHtml, /aria-label="עריכת שם משתמש"/);
   assert.match(app, /data-action="cancel-profile-name-edit"/);
   assert.match(app, /data-action="cancel-profile-username-edit"/);
   assert.match(app, /if \(action === "edit-profile-name"\)/);

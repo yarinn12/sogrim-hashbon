@@ -782,3 +782,19 @@ test("native friend requests keep the approved single surface and scalable actua
  assert.match(rule('.friend-request-section'),/border:0!important/);assert.match(rule('.friend-request-section'),/box-shadow:none!important/);assert.match(rule('.friend-list'),/border:1px solid var\(--ledger-line\)!important/);assert.match(rule('.friend-request-row~.friend-request-row'),/border-top:1px solid var\(--ledger-line\)!important/);assert.match(rule('.friend-request-actions button'),/min-height:44px!important/);assert.match(rule('.friend-request-actions'),/repeat\(auto-fit,minmax\(min\(100%,8rem\),1fr\)\)/);
  assert.ok(css.includes("grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))!important"),"Desktop requests must wrap before actions squeeze the identity column");
 });
+
+
+test("native profile identity keeps scalable glyphs and a separate arrow column",async()=>{
+ const ledger=resolve("src/publicLedgerWorkspaceLayer.mjs");
+ const {extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.PROFILE_IDENTITY_TEST_LEDGER?process.env.PROFILE_IDENTITY_TEST_LEDGER:file,...args));
+ await extractNativeStaticCss([{path:ledger}],"fixture-assets");
+ const css=files.get(join("fixture-assets","native-layers.css"));
+ const prefix="html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen ";
+ const rule=selector=>{const start=css.lastIndexOf(prefix+selector+"{");assert.ok(start>=0,"Missing native profile rule: "+selector);return css.slice(start,css.indexOf("}",start))};
+ assert.match(rule(".profile-identity-grid.profile-shortcuts>.profile-identity-entry"),/grid-template-columns:24px minmax\(0,1fr\) 22px!important/);
+ assert.match(rule(".profile-identity-grid.profile-shortcuts>.profile-identity-entry .profile-identity-copy>strong"),/font-size:1rem!important/);
+ const username=rule(".profile-identity-grid.profile-shortcuts>.profile-identity-entry .profile-identity-copy>strong>bdi");
+ assert.match(username,/font-size:inherit!important/);assert.match(username,/white-space:normal!important/);assert.match(username,/overflow-wrap:anywhere!important/);assert.match(username,/text-align:right!important/);
+ assert.match(rule(".profile-avatar-summary-copy>strong"),/font-size:\.875rem!important/);
+ assert.match(rule(".profile-shortcuts .is-editing input"),/font-size:1rem!important/);
+});

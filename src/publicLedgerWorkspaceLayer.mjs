@@ -22909,6 +22909,22 @@ html.ledger-workspace-v1 body #app .friend-add-screen .friend-add-kind {font-siz
 html.ledger-workspace-v1 body #app .friend-add-screen :is(.friend-request-form,.friends-add-offline-form) input {font-size:1rem!important;}
 
 html.ledger-workspace-v1 body #app .friend-add-screen :is(.friend-request-form,.friends-add-offline-form) input::placeholder {font-size:inherit!important;}
+
+  /* Approved Profile identity overview; scoped, scalable and statically extracted for Native. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry{grid-template-columns:24px minmax(0,1fr) 22px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry .profile-identity-copy{width:100%!important;min-width:0!important;gap:4px!important;text-align:right!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry .profile-identity-copy>span{color:var(--app-muted)!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry .profile-identity-copy>strong{max-width:100%!important;min-width:0!important;overflow:visible!important;color:var(--app-ink)!important;font-size:1rem!important;font-weight:650!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;text-overflow:clip!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry[data-profile-identity="username"] .profile-identity-copy>strong{direction:ltr!important;text-align:right!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry .profile-identity-copy>strong>bdi{display:block!important;width:100%!important;max-width:100%!important;overflow:visible!important;font-size:inherit!important;font-weight:inherit!important;line-height:inherit!important;white-space:normal!important;overflow-wrap:anywhere!important;text-overflow:clip!important;text-align:right!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .profile-shortcut-label{font-size:.875rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-avatar-summary-copy>strong{font-size:.875rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-avatar-summary-copy>small{font-size:.8125rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .is-editing .field>span{font-size:.875rem!important;line-height:1.4!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .is-editing input{font-size:1rem!important;line-height:1.4!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .is-editing input::placeholder{font-size:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .profile-field-actions button{font-size:.875rem!important;line-height:1.4!important;min-height:44px!important;white-space:normal!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

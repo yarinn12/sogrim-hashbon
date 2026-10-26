@@ -1,3 +1,4 @@
+import {renderProfileIdentitySummaryView} from "./ui/profileIdentityPresentation.mjs";
 import {renderFriendRequestsPanelView, renderFriendRequestSectionView, renderPendingFriendRowView} from "./ui/friendRequestsPresentation.mjs";
 import {renderFriendInvitationView} from "./ui/friendInvitationPresentation.mjs";
 import {renderSettlementCompletionView} from "./ui/settlementCompletionPresentation.mjs";
@@ -1972,7 +1973,7 @@ function renderProfileSetup() {
         <div class="brand">
           ${isEditingProfile ? "" : '<p class="eyebrow">סוגרים חשבון</p>'}
           <h1>${title}</h1>
-          <p class="muted">${escapeHtml(helper)}</p>
+          ${isEditingProfile ? "" : `<p class="muted">${escapeHtml(helper)}</p>`}
         </div>
       </header>
       ${renderNotice()}
@@ -1995,14 +1996,7 @@ function renderProfileSetup() {
                            <button class="secondary-button" type="button" data-action="cancel-profile-name-edit">ביטול</button>
                          </div>
                        </section>`
-                    : `<button class="secondary-button profile-identity-summary profile-identity-entry" data-profile-identity="display-name" data-action="edit-profile-name" type="button" aria-label="עריכת שם פרטי ושם משפחה">
-                         <span class="profile-shortcut-icon" aria-hidden="true">${iconSvg("edit")}</span>
-                         <span class="profile-identity-copy">
-                           <span>שם פרטי ושם משפחה</span>
-                           <strong>${escapeHtml(profileNameDraft || localProfile?.displayName || "")}</strong>
-                         </span>
-                         <span class="profile-shortcut-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-                       </button>`
+                    : renderProfileIdentitySummaryView({field: "display-name", value: profileNameDraft || localProfile?.displayName || "", editIconHtml: iconSvg("edit"), chevronIconHtml: iconSvg("chevron-left")})
                 }
                 ${
                   profileUsernameEditing
@@ -2013,14 +2007,7 @@ function renderProfileSetup() {
                            <button class="secondary-button" type="button" data-action="cancel-profile-username-edit">ביטול</button>
                          </div>
                        </section>`
-                    : `<button class="secondary-button profile-identity-summary profile-identity-entry" data-profile-identity="username" data-action="edit-profile-username" type="button" aria-label="עריכת שם משתמש">
-                         <span class="profile-shortcut-icon" aria-hidden="true">${iconSvg("edit")}</span>
-                         <span class="profile-identity-copy">
-                           <span>שם משתמש</span>
-                           <strong><bdi dir="ltr">${currentFriendUsername() ? escapeHtml(formatUsername(currentFriendUsername())) : "—"}</bdi></strong>
-                         </span>
-                         <span class="profile-shortcut-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-                       </button>`
+                    : renderProfileIdentitySummaryView({field: "username", value: currentFriendUsername() ? formatUsername(currentFriendUsername()) : "—", editIconHtml: iconSvg("edit"), chevronIconHtml: iconSvg("chevron-left")})
                 }
                 <button class="secondary-button profile-friends-entry" data-action="groups" data-tab="people" type="button">
                   <span class="profile-shortcut-icon" aria-hidden="true">${iconSvg("users")}</span>

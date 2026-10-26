@@ -6,25 +6,30 @@ export async function verifyNotificationNavBadge(page, onState = async () => {})
   const states = [];
   try {
     for (const count of [0, 1, 9, 10, 99, 0, 1]) {
-      await page.evaluate(value => {
-        document.querySelector("#app").dataset.notificationUnreadCount = String(value);
-        document.dispatchEvent(new CustomEvent("settle-friends:notification-inbox-updated"));
-      }, count);
-      const button = page.locator('[data-nav-destination="notifications"]');
-      const badge = button.locator(".product-nav-badge");
-      await expect(button).toHaveAttribute("aria-label", count ? `התראות, ${count} חדשות` : "התראות");
-      if (count) await expect(badge).toBeVisible();
-      else await expect(badge).toBeHidden();
+      // The inbox may publish its canonical count while a presentation-only
+      // transition is being sampled. Set, synchronously render through the real
+      // screen-rendered branding boundary, and measure in one browser task.
+      // Otherwise an unrelated refresh can replace the injected number before
+      // the asynchronously scheduled notification event is painted.
       await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
-      const state = await button.evaluate((element, count) => {
+      const state = await page.evaluate(count => {
+        const app = document.querySelector("#app");
+        app.dataset.notificationUnreadCount = String(count);
+        document.dispatchEvent(new CustomEvent("settle-friends:notification-inbox-updated"));
+        document.dispatchEvent(new CustomEvent("settle-friends:screen-rendered"));
+        const element = document.querySelector('[data-nav-destination="notifications"]');
         const badge = element.querySelector(".product-nav-badge");
         const rect = node => { const r = node.getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height, right:r.right, bottom:r.bottom }; };
         const style = getComputedStyle(badge);
-        return { count, text:badge.textContent, position:style.position,
+        return { count, text:badge.textContent, position:style.position, hidden:badge.hidden,
+          ariaLabel:element.getAttribute("aria-label"), publishedCount:app.dataset.notificationUnreadCount,
           nav:rect(element.closest("nav")), button:rect(element), icon:rect(element.querySelector("svg")),
           label:rect(element.querySelector(":scope > span:not(.product-nav-badge)")), badge:rect(badge),
           viewport:innerWidth, scrollWidth:document.documentElement.scrollWidth };
       }, count);
+      expect(state.publishedCount).toBe(String(count));
+      expect(state.ariaLabel).toBe(count ? `התראות, ${count} חדשות` : "התראות");
+      expect(state.hidden).toBe(count === 0);
       states.push(state);
       await onState(state);
       expect(state.scrollWidth).toBeLessThanOrEqual(state.viewport);
