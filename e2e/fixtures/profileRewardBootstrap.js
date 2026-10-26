@@ -1,7 +1,7 @@
 (() => {
   if (globalThis.__friendInviteQa) return;
   const params=new URLSearchParams(location.search),actor='11111111-1111-4111-8111-111111111111',target='22222222-2222-4222-8222-222222222222',relation='33333333-3333-4333-8333-333333333333',code='abcdefabcdefabcdefab';
-  const qa=globalThis.__friendInviteQa={referralReads:[],rewardWrites:[],profileWrites:[],phase:params.get('qa-invite-phase')||'new',reads:[],writes:[],release:null,holdRead:params.has('qa-hold-read'),holdWrite:params.has('qa-hold-write')};
+  const qa=globalThis.__friendInviteQa={referralReads:[],rewardWrites:[],shared:[],copied:[],profileWrites:[],phase:params.get('qa-invite-phase')||'new',reads:[],writes:[],release:null,holdRead:params.has('qa-hold-read'),holdWrite:params.has('qa-hold-write')};
   const auth='https://friend-invitation-fixture.supabase.co',space='friend-invitation-space',key='synthetic-friend-invitation-space-key-123456';
   const demoName=params.has('long-profile')?'נועם אלכסנדר לוי כהן עם שם משפחה ארוך ABCDEFGHIJKLMNOPQRSTUVWXYZ':'נועם לוי';
   const demoUsername=params.has('long-profile')?'noam_alexander_levi_1234':'noam_levi';
@@ -27,6 +27,9 @@
   localStorage.setItem('qa-invite-server-row',JSON.stringify(row));
   sessionStorage.setItem('settle-friends-skip-next-splash','1');
   const config={publicUrl:location.origin,storage:{mode:'supabase',url:auth,anonKey:'synthetic-anon',table:'app_snapshots',account:{userId:actor,accessToken:session.access_token,spaceId:space,spaceKey:key}}};
+  if(params.get('reward')==='signed-out')config.storage.mode='local';
+  Object.defineProperty(navigator,'share',{configurable:true,value:async data=>{qa.shared.push(data)}});
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{qa.copied.push(value)}}});
   const original=globalThis.fetch.bind(globalThis),response=(value,status=200)=>Promise.resolve(new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json'}}));
   const gates=[];const pause=async kind=>{if(!qa[kind])return;await new Promise(resolve=>{gates.push(resolve);qa.release=()=>{qa[kind]=false;qa.release=null;for(const done of gates.splice(0))done()}})};
   globalThis.fetch=async(input,options={})=>{
@@ -46,7 +49,7 @@
       const mode=qa.rewardMode||params.get('reward')||'inactive';
       if(mode==='loading')await new Promise(done=>{qa.releaseReward=done});
       if(mode==='error')return response({message:'Synthetic status unavailable'},503);
-      return response({referral_code:'0123456789abcdefabcd',ad_free_active:mode==='active'||mode==='lastday',ad_free_until:mode==='active'||mode==='lastday'?new Date(Date.now()+(mode==='lastday'?.5:12)*86400000).toISOString():null,reward_days:Number(params.get('reward-days')||30),active_entitlement_sources:mode==='active'?['referral']:[]});
+      return response({rewarded_referrals:params.has('stats')?3:0,days_earned:params.has('stats')?90:0,pending_referrals:params.has('stats')?2:0,annual_reward_limit:12,referral_code:'0123456789abcdefabcd',ad_free_active:mode==='active'||mode==='lastday',ad_free_until:mode==='active'||mode==='lastday'?new Date(Date.now()+(mode==='lastday'?.5:12)*86400000).toISOString():null,reward_days:Number(params.get('reward-days')||30),active_entitlement_sources:mode==='active'?['referral']:[]});
     }
     if(rpc==='claim_referral'||rpc==='qualify_referral'){qa.rewardWrites.push({rpc,body});return response({message:'Reward mutations disabled in local sketch'},501)}
     if(rpc==='resolve_friend_invitation'){

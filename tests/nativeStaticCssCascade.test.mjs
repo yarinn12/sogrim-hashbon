@@ -806,3 +806,15 @@ test("native profile reward keeps scalable heading, full-width helper and action
  assert.match(rule(".referral-reward-copy>strong"),/font-size:1rem!important/);const helper=rule(".referral-reward-detail");assert.match(helper,/font-size:\.875rem!important/);assert.match(helper,/grid-column:1\/-1!important/);assert.match(helper,/overflow-wrap:anywhere!important/);
  assert.match(rule(".referral-reward-action"),/min-height:48px!important/);assert.match(rule(".referral-reward-action"),/font-size:\.875rem!important/);assert.match(rule(".referral-reward-action>span"),/font-size:inherit!important/);
 });
+
+
+test("native invitation sharing keeps scalable text, reachable controls and one QR frame",async()=>{
+ const ledger=resolve("src/publicLedgerWorkspaceLayer.mjs"),{extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.INVITATION_TEST_LEDGER?process.env.INVITATION_TEST_LEDGER:file,...args));
+ await extractNativeStaticCss([{path:ledger}],"fixture-assets");const css=files.get(join("fixture-assets","native-layers.css")),prefix="html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog ";
+ const rule=s=>{const i=css.indexOf(prefix+s+'{');assert.ok(i>=0,'Native invitation is missing shared presentation: '+s);return css.slice(i,css.indexOf('}',i))};
+ assert.match(rule('.referral-dialog-header h2'),/font-size:1.25rem!important/);assert.match(rule('.referral-dialog-header h2'),/color:var\(--app-accent\)!important/);
+ assert.match(rule('.referral-benefit-card p'),/font-size:\.875rem!important/);assert.match(rule('.referral-share-actions button>span'),/font-size:inherit!important/);
+ assert.match(rule('.referral-share-actions button'),/min-height:48px!important/);assert.match(rule('.referral-close-button'),/min-height:44px!important/);
+ assert.match(rule('.referral-qr-card'),/border:0!important/);assert.match(rule('.referral-qr-code svg'),/width:156px!important/);
+ assert.match(rule('.referral-dialog-shell'),/max-height:calc\(100dvh - 24px\)!important/);assert.match(rule('.referral-dialog-content'),/background:var\(--app-surface\)!important/);
+});

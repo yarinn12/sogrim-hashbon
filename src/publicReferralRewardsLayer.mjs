@@ -1,3 +1,4 @@
+import {renderReferralInvitationDialogView,renderReferralInvitationQrView} from "./ui/referralInvitationPresentation.mjs";
 import {renderProfileRewardCardView} from "./ui/profileRewardPresentation.mjs";
 import { loadRuntimeConfig } from "./data/localStore.mjs";
 import { runAfterFirstInteractiveScreen } from "./data/startupScheduler.mjs";
@@ -616,138 +617,14 @@ function referralDialogMarkup() {
   const blockingError = Boolean(referralError && !referralStatus.referralCode);
   const dialogStateClass = signedOut ? "is-signin-state" : "";
 
-  return `
-    <div class="referral-dialog-shell ${dialogStateClass}">
-      <header class="referral-dialog-header">
-        <button
-          class="referral-close-button"
-          data-referral-action="close"
-          type="button"
-          aria-label="סגירת מסך הזמנת חברים"
-        >${closeIcon()}</button>
-        <span class="referral-dialog-mark" aria-hidden="true">${giftIcon()}</span>
-        <span class="referral-dialog-header-copy">
-          <small>סוגרים חשבון · הטבת חברים</small>
-          <h2 id="referral-dialog-title">המתנה שלך</h2>
-          <p class="referral-dialog-lead">חודש שקט מפרסומות, בכל פעם שחבר חדש מצטרף ומשתמש.</p>
-        </span>
-      </header>
-
-      <div class="referral-dialog-content">
-        ${
-          loading
-            ? referralLoadingMarkup()
-            : signedOut
-              ? `
-                <div class="referral-state-message is-signin">
-                  <strong>הקישור האישי מחכה לך</strong>
-                  <span>מתחברים לחשבון כדי להזמין חברים ולשמור את החודש ללא פרסומות.</span>
-                  <button class="primary-button" data-referral-action="profile" type="button">לפרופיל ולהתחברות</button>
-                </div>
-              `
-              : blockingError
-                ? `
-                  <div class="referral-state-message is-error" role="status">
-                    <span>${referralError}</span>
-                    <button class="secondary-button" data-referral-action="retry" type="button">נסה שוב</button>
-                  </div>
-                `
-                : `
-                  ${
-                    referralError
-                      ? `
-                        <div class="referral-state-message is-stale" role="status">
-                          <span>${referralError}</span>
-                          <button class="secondary-button" data-referral-action="retry" type="button">רענון</button>
-                        </div>
-                      `
-                      : ""
-                  }
-                  <section class="referral-gift-card" aria-label="המתנה שלך">
-                    <section class="referral-benefit-card" aria-labelledby="referral-benefit-title">
-                      <span class="referral-benefit-label">${active ? "ההטבה שלך פעילה" : "מתנה על כל חבר שמצטרף"}</span>
-                      <strong id="referral-benefit-title"><span class="font-num">${referralStatus.rewardDays}</span><span>ימים בלי פרסומות</span></strong>
-                      <p>החבר נרשם, נכנס לאירוע ומשלים פעולה — והחודש נפתח.</p>
-                      ${
-                        active
-                          ? `<span class="referral-active-until">פעיל עד ${formatDate(referralStatus.adFreeUntil)}</span>`
-                          : ""
-                      }
-                    </section>
-
-                    <section class="referral-share-section" aria-labelledby="referral-share-title">
-                      <span class="referral-section-heading">
-                        <small>הזמנה אישית</small>
-                        <h3 id="referral-share-title">משתפים בדרך שנוחה לכם</h3>
-                        <p>מציגים את ה־QR לידכם או שולחים את הקישור בלחיצה אחת.</p>
-                      </span>
-                      <div class="referral-share-workspace">
-                        ${referralQrMarkup(inviteUrl)}
-                        <div class="referral-share-controls">
-                          <div class="referral-share-actions">
-                            <button class="primary-button" data-referral-action="share" type="button" ${inviteUrl && !referralBusy ? "" : "disabled"} ${referralBusy ? 'aria-busy="true"' : ""}>
-                              ${shareIcon()}
-                              <span>שתף את המתנה</span>
-                            </button>
-                            <button class="secondary-button" data-referral-action="copy" type="button" ${inviteUrl && !referralBusy ? "" : "disabled"} ${referralBusy ? 'aria-busy="true"' : ""}>
-                              ${copyIcon()}
-                              <span>העתק</span>
-                            </button>
-                          </div>
-                          <details class="referral-link-details">
-                            <summary>הצגת הקישור</summary>
-                            <label class="referral-link-field">
-                              <span>קישור לשיתוף</span>
-                              <input value="${escapeAttribute(inviteUrl)}" readonly dir="ltr" />
-                            </label>
-                          </details>
-                        </div>
-                      </div>
-                      ${referralNotice ? `<p class="referral-notice" role="status">${referralNotice}</p>` : ""}
-                    </section>
-                  </section>
-
-                  <details class="referral-more-details">
-                    <summary>
-                      <span>
-                        <strong>איך זה עובד ומה צברתי?</strong>
-                        <small>${progress.rewarded} חברים השלימו שימוש · <span class="font-num">${referralStatus.daysEarned}</span> ימים נצברו</small>
-                      </span>
-                    </summary>
-                    <div class="referral-more-details-content">
-                      <section class="referral-progress-section" aria-labelledby="referral-progress-title">
-                        <div class="referral-progress-heading">
-                          <span>
-                            <h3 id="referral-progress-title">ההתקדמות שלך השנה</h3>
-                            <p>${progress.rewarded} חברים השלימו שימוש${referralStatus.pendingReferrals ? ` · ${referralStatus.pendingReferrals} בדרך` : ""}</p>
-                          </span>
-                          <strong><span class="font-num">${referralStatus.daysEarned}</span> ימים</strong>
-                        </div>
-                        <div
-                          class="referral-progress-track"
-                          role="progressbar"
-                          aria-valuemin="0"
-                          aria-valuemax="${progress.limit}"
-                          aria-valuenow="${progress.rewarded}"
-                          aria-label="מספר ההטבות שנצברו השנה"
-                        >
-                          <span style="width:${progress.percentage}%"></span>
-                        </div>
-                        <small>${progress.remaining} הטבות נוספות זמינות ב-12 החודשים הקרובים.</small>
-                      </section>
-
-                      <ol class="referral-steps">
-                        <li><span>1</span><strong>משתפים</strong><small>קישור או QR</small></li>
-                        <li><span>2</span><strong>החבר מצטרף</strong><small>ונכנס לאירוע</small></li>
-                        <li><span>3</span><strong>המתנה נפתחת</strong><small>אחרי שימוש אמיתי</small></li>
-                      </ol>
-                    </div>
-                  </details>
-                `
-        }
-      </div>
-    </div>
-  `;
+  return renderReferralInvitationDialogView({
+    progress, inviteUrl, active, loading, signedOut, blockingError, dialogStateClass,
+    referralStatus, referralError, referralBusy, referralNotice,
+    expiryLabel: active && !loading && !signedOut && !blockingError ? formatDate(referralStatus.adFreeUntil) : "",
+    closeIconHtml: closeIcon(), shareIconHtml: shareIcon(), copyIconHtml: copyIcon(),
+    qrMarkup: !loading && !signedOut && !blockingError ? referralQrMarkup(inviteUrl) : "",
+    loadingMarkup: loading ? referralLoadingMarkup() : ""
+  });
 }
 
 function referralQrMarkup(inviteUrl) {
@@ -758,15 +635,7 @@ function referralQrMarkup(inviteUrl) {
       quietZone: 3,
       ariaLabel: "QR להזמנת חברים לסוגרים חשבון"
     });
-    return `
-      <figure class="referral-qr-card" data-referral-qr>
-        <div class="referral-qr-code">${qrSvg}</div>
-        <figcaption>
-          <strong>QR להזמנה</strong>
-          <small>פותחים מצלמה וסורקים</small>
-        </figcaption>
-      </figure>
-    `;
+    return renderReferralInvitationQrView(qrSvg);
   } catch {
     return "";
   }

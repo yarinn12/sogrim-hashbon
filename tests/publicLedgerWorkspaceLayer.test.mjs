@@ -826,39 +826,24 @@ test("new-event participant actions remain above the persistent iPhone navigatio
   );
 });
 
-test("referral rewards present one focused gift card with progressive details", async () => {
-  const [referralLayer, ledgerLayer, coherenceLayer] = await Promise.all([
+test("referral invitation keeps one sharing surface and progressive details", async () => {
+  const [referralLayer, ledgerLayer, coherenceLayer, view] = await Promise.all([
     readFile("src/publicReferralRewardsLayer.mjs", "utf8"),
     readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8"),
-    readFile("src/publicDesignCoherenceLayer.mjs", "utf8")
+    readFile("src/publicDesignCoherenceLayer.mjs", "utf8"),
+    readFile("src/ui/referralInvitationPresentation.mjs", "utf8")
   ]);
-
-  assert.match(referralLayer, /class="referral-dialog-lead"/);
-  assert.match(referralLayer, /class="referral-gift-card"/);
-  assert.match(referralLayer, /class="referral-share-workspace"/);
-  assert.match(referralLayer, /class="referral-qr-card" data-referral-qr/);
-  assert.match(referralLayer, /class="referral-more-details"/);
-  assert.match(referralLayer, /class="referral-link-details"/);
-  assert.match(
-    ledgerLayer,
-    /\.referral-dialog-header \{[\s\S]*?min-height: 92px !important;[\s\S]*?background: rgba\(255, 255, 255, 0\.96\) !important/
-  );
-  assert.match(
-    ledgerLayer,
-    /\.referral-benefit-card \{[\s\S]*?linear-gradient\(136deg, #071f18 0%, #0b4a38 60%, #0f6b50 100%\) !important/
-  );
-  assert.match(
-    ledgerLayer,
-    /\.referral-qr-code svg \{[\s\S]*?outline: 1px solid oklch\(0 0 0 \/ 0\.1\) !important/
-  );
-  assert.match(
-    ledgerLayer,
-    /@media \(max-width: 760px\)[\s\S]*?\.referral-share-workspace \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/
-  );
-  assert.doesNotMatch(
-    coherenceLayer,
-    /:is\(\.event-modal-header, \.expense-modal-header, \.app-choice-picker-header, \.referral-dialog-header\)/
-  );
+  assert.match(referralLayer, /renderReferralInvitationDialogView/);
+  assert.doesNotMatch(view, /class="referral-dialog-lead"/);
+  for (const token of ['class="referral-gift-card"','class="referral-share-workspace"','class="referral-qr-card" data-referral-qr','class="referral-more-details"','class="referral-link-details"']) assert.ok(view.includes(token));
+  const prefix="html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog ";
+  const rule=selector=>{const i=ledgerLayer.indexOf(prefix+selector+'{');assert.ok(i>=0,'Missing approved invitation rule: '+selector);return ledgerLayer.slice(i,ledgerLayer.indexOf('}',i))};
+  assert.match(rule('.referral-dialog-header'),/min-height:72px!important/);
+  assert.match(rule('.referral-dialog-header'),/background:var\(--app-surface\)!important/);
+  assert.match(rule('.referral-benefit-card'),/background:transparent!important/);
+  assert.match(rule('.referral-qr-code svg'),/outline:0!important/);
+  assert.match(rule('.referral-share-workspace'),/flex-direction:column!important/);
+  assert.doesNotMatch(coherenceLayer,/:is\(\.event-modal-header, \.expense-modal-header, \.app-choice-picker-header, \.referral-dialog-header\)/);
 });
 
 test("shared route and progress controls keep Android touch targets at least 44px", async () => {
