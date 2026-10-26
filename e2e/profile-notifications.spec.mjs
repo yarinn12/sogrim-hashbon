@@ -1,3 +1,4 @@
+import {control as invitationControl} from "./helpers/referralInvitationPresentation.mjs";
 import { expect, test } from "@playwright/test";
 import { verifyNotificationNavBadge } from "./helpers/notificationNavBadge.mjs";
 import { readFileSync } from "node:fs";
@@ -550,7 +551,7 @@ test("long home event names wrap to two lines without colliding with status", as
   await assertNoHorizontalOverflow(page);
 });
 
-test("ad-free gift opens as a focused share workspace with a working QR", async ({ page }) => {
+test("referral invitation opens as one clear share workspace with a working QR", async ({ page }) => {
   await page.getByRole("button", { name: "חברים", exact: true }).click();
   const entry = page.locator(
     '#referral-reward-card-friends'
@@ -560,10 +561,12 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
 
   const dialog = page.locator("#public-referral-rewards-dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator(".referral-dialog-lead")).toContainText("חודש שקט");
+  await expect(dialog.locator(".referral-dialog-lead")).toHaveCount(0);
+  await expect(dialog.locator("h2")).toHaveText("הזמנת חברים");
+  await invitationControl(dialog.locator('[data-referral-action="close"]'));
   await expect(dialog.locator(".referral-gift-card")).toBeVisible();
   await expect(dialog.locator(".referral-benefit-card")).toContainText(
-    "30ימים בלי פרסומות"
+    "חודש ללא פרסומות"
   );
   await expect(dialog.locator('[data-referral-qr] svg')).toHaveAttribute(
     "aria-label",
@@ -582,6 +585,7 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
   }
 
   const visualState = await dialog.evaluate((element) => {
+    const shell = element.querySelector(".referral-dialog-shell").getBoundingClientRect();
     const header = element.querySelector(".referral-dialog-header");
     const benefit = element.querySelector(".referral-benefit-card");
     const qr = element.querySelector("[data-referral-qr] svg");
@@ -591,6 +595,7 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
     const giftCard = element.querySelector(".referral-gift-card");
     const shareSection = element.querySelector(".referral-share-section");
     return {
+      shellTop:shell.top, shellBottom:shell.bottom, shellLeft:shell.left, shellRight:shell.right,
       headerBackgroundColor: getComputedStyle(header).backgroundColor,
       headerDecorationDisplay: getComputedStyle(header, "::before").display,
       benefitBackground: getComputedStyle(benefit).backgroundImage,
@@ -610,16 +615,20 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
   });
   expect(visualState.headerBackgroundColor).toMatch(/rgba?\(255, 255, 255/);
   expect(visualState.headerDecorationDisplay).toBe("none");
-  expect(visualState.benefitBackground).toContain("linear-gradient");
+  expect(visualState.benefitBackground).toBe("none");
   expect(
     visualState.qrWidth,
     `viewport=${visualState.viewportWidth}, columns=${visualState.shareColumns}`
   ).toBeGreaterThanOrEqual(140);
-  expect(visualState.shareButtonHeight).toBeGreaterThanOrEqual(44);
+  expect(visualState.shareButtonHeight).toBeGreaterThanOrEqual(48);
   if (visualState.viewportWidth <= 760) {
     expect(visualState.shareButtonTop).toBeLessThan(visualState.qrTop);
-    expect(visualState.contentTop).toBeLessThan(160);
+    expect(visualState.contentTop).toBeGreaterThanOrEqual(visualState.headerBottom - 1);
   }
+  expect(visualState.shellTop).toBeGreaterThanOrEqual(11);
+  expect(visualState.shellBottom).toBeLessThanOrEqual(visualState.viewportHeight - 11);
+  expect(visualState.shellLeft).toBeGreaterThanOrEqual(11);
+  expect(visualState.shellRight).toBeLessThanOrEqual(visualState.viewportWidth - 11);
   expect(visualState.shareButtonBottom).toBeLessThanOrEqual(visualState.viewportHeight + 1);
   expect(visualState.contentTop).toBeLessThanOrEqual(visualState.headerBottom + 2);
   expect(visualState.giftCardBottom).toBeGreaterThanOrEqual(visualState.shareSectionBottom - 1);
@@ -639,7 +648,7 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
   await assertNoHorizontalOverflow(page);
 });
 
-test("signed-out gift state uses the available mobile canvas instead of leaving a bottom void", async ({ page }) => {
+test("signed-out invitation fits its content and keeps the account action reachable", async ({ page }) => {
   await page.getByRole("button", { name: "חברים", exact: true }).click();
   await page
     .locator('#referral-reward-card-friends')
@@ -659,6 +668,7 @@ test("signed-out gift state uses the available mobile canvas instead of leaving 
     `;
   });
 
+  await invitationControl(dialog.locator(".is-signin button"));
   const layout = await dialog.evaluate((element) => {
     const shellBox = element
       .querySelector(".referral-dialog-shell")
@@ -672,7 +682,7 @@ test("signed-out gift state uses the available mobile canvas instead of leaving 
     return {
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
-      shellHeight: shellBox.height,
+      shellHeight: shellBox.height, shellTop:shellBox.top, shellBottom:shellBox.bottom, headerHeight:headerBox.height, cardHeight:cardBox.height,
       availableCenter: (headerBox.bottom + shellBox.bottom) / 2,
       cardCenter: (cardBox.top + cardBox.bottom) / 2,
       cardLeft: cardBox.left,
@@ -680,12 +690,10 @@ test("signed-out gift state uses the available mobile canvas instead of leaving 
     };
   });
 
-  if (layout.viewportWidth <= 640) {
-    expect(Math.abs(layout.cardCenter - layout.availableCenter)).toBeLessThanOrEqual(28);
-    expect(layout.shellHeight).toBeGreaterThanOrEqual(layout.viewportHeight - 16);
-  } else {
-    expect(layout.shellHeight).toBeLessThan(layout.viewportHeight * 0.75);
-  }
+  expect(Math.abs(layout.cardCenter - layout.availableCenter)).toBeLessThanOrEqual(28);
+  expect(layout.shellTop).toBeGreaterThanOrEqual(11);
+  expect(layout.shellBottom).toBeLessThanOrEqual(layout.viewportHeight - 11);
+  expect(layout.shellHeight).toBeLessThanOrEqual(layout.headerHeight + layout.cardHeight + 80);
   expect(layout.cardLeft).toBeGreaterThanOrEqual(0);
   expect(layout.cardRight).toBeLessThanOrEqual(layout.viewportWidth + 1);
   if (process.env.CAPTURE_FIGMA_APPROVED === "1") {
