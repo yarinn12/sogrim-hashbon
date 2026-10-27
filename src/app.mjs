@@ -1,3 +1,4 @@
+import { renderFeedbackPageView } from "./ui/feedbackPagePresentation.mjs";
 import {renderProfileIdentitySummaryView} from "./ui/profileIdentityPresentation.mjs";
 import {renderFriendRequestsPanelView, renderFriendRequestSectionView, renderPendingFriendRowView} from "./ui/friendRequestsPresentation.mjs";
 import {renderFriendInvitationView} from "./ui/friendInvitationPresentation.mjs";
@@ -365,6 +366,7 @@ const NOTIFICATION_INBOX_SYNC_INTERVAL_MS = 3_000;
 const PENDING_MUTATION_RETRY_BASE_MS = 5_000;
 const PENDING_MUTATION_RETRY_MAX_MS = 60_000;
 const VISIBLE_BACKGROUND_SYNC_SCREENS = new Set([
+  "feedback",
   "home",
   "event",
   "event-notes",
@@ -508,6 +510,9 @@ let state = syncLocalProfile(loadState());
 profileAvatarDraft =
   normalizeAvatarPreset(localProfile?.avatarPreset) || profileAvatarDraft;
 profileAvatarImageDraft = normalizeAvatarImage(localProfile?.avatarImage);
+const PROFILE_IMAGE_PICKER_RETURN_STORAGE_KEY = "profile-image-picker-return";
+let feedbackReturnFocusPending = false;
+let feedbackFocusFrame = 0;
 let screen = initialScreenFromLaunchAction();
 let newEventDraft = null;
 let createEventBusy = false;
@@ -525,7 +530,6 @@ const expenseDeleteRequests = new Set();
 let paymentReminderBusyId = "";
 let paymentReminderRequest = null;
 const SETTLEMENT_OPEN_TRANSFER_STORAGE_KEY = "settlement-open-transfer-ids";
-const PROFILE_IMAGE_PICKER_RETURN_STORAGE_KEY = "profile-image-picker-return";
 const PROFILE_SHARED_PUBLICATION_STORAGE_KEY_PREFIX =
   "settle-friends-shared-profile-publication:";
 const PENDING_EVENT_MEMBERSHIP_STORAGE_KEY =
@@ -898,6 +902,14 @@ function handleSharedSaveReverted(event) {
   // never add an error to whichever unrelated editor happens to be open now.
 }
 document.addEventListener("settle-friends:notice", handleExternalNotice);
+document.addEventListener("sogrim:account-controls-ready", scheduleFeedbackEntryFocus);
+document.addEventListener("sogrim:feedback-open", () => {
+  screen = { name: "feedback" };
+  render();
+});
+document.addEventListener("sogrim:feedback-close", () => {
+  if (screen.name === "feedback") goBackInApp();
+});
 if ("scrollRestoration" in window.history) {
   window.history.scrollRestoration = "manual";
 }
@@ -917,9 +929,12 @@ function initialScreenFromLaunchAction() {
     }
     const url = new URL(window.location.href);
     const action = url.searchParams.get("action");
-    if (action !== "new-event" && action !== "profile") return { name: "home" };
+    if (!["new-event", "profile", "feedback"].includes(action)) {
+      return { name: window.history.state?.[APP_HISTORY_STATE_KEY] && window.history.state.view?.screen?.name === "feedback" ? "feedback" : "home" };
+    }
     url.searchParams.delete("action");
     window.history.replaceState(window.history.state, "", url);
+    if (action === "feedback") return { name: "feedback" };
     return action === "profile" ? { name: "profile" } : { name: "new-event-type" };
   } catch {
     return { name: "home" };
@@ -955,6 +970,11 @@ function render() {
   ) {
     document.body.classList.remove("app-dialog-open");
     clearDialogBackgroundInert();
+  }
+
+  if (localProfile && screen.name === "feedback") {
+    commitRenderedScreen(renderFeedbackPageView({ backButton: renderAppBackButton() }));
+    return;
   }
 
   if (!localProfile || screen.name === "profile") {
@@ -1107,7 +1127,32 @@ function commitRenderedScreen(html) {
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
     focusRenderedScreen();
+    scheduleFeedbackEntryFocus();
   });
+}
+
+function scheduleFeedbackEntryFocus() {
+  if (!feedbackReturnFocusPending) return;
+  cancelAnimationFrame(feedbackFocusFrame);
+  feedbackFocusFrame = requestAnimationFrame(() => {
+    feedbackFocusFrame = requestAnimationFrame(restoreFeedbackEntryFocus);
+  });
+}
+
+function restoreFeedbackEntryFocus() {
+  if (!feedbackReturnFocusPending) return;
+  if (screen.name !== "profile") { feedbackReturnFocusPending = false; return; }
+  const account = app.querySelector("[data-account-controls]");
+  const target = account?.querySelector('[data-account-action="feedback-open"]');
+  if (!target) return;
+  const active = document.activeElement;
+  if (active !== target && active?.matches?.("input, textarea, select, button") && !active.matches(".app-back-button")) {
+    feedbackReturnFocusPending = false;
+    return;
+  }
+  account.open = true;
+  target.focus({ preventScroll: true });
+  if (document.activeElement === target) feedbackReturnFocusPending = false;
 }
 
 function focusRenderedScreen() {
@@ -1198,7 +1243,7 @@ function productMetricScreen(screenName) {
     return "new_event";
   }
   if (screenName === "join-event") return "invite";
-  if (screenName === "admin-overview") return "profile";
+  if (["admin-overview", "feedback"].includes(screenName)) return "profile";
   if (screenName === "event-notes") return "event";
   return [
     "auth",
@@ -1385,6 +1430,7 @@ function handleBrowserHistoryBack(event) {
     return;
   }
   const targetScreenName = event.state.view?.screen?.name;
+  if (screen.name === "feedback" && targetScreenName === "profile") feedbackReturnFocusPending = true;
   const leavingCompletedEventCreation =
     screen.name === "event" &&
     NEW_EVENT_FLOW_SCREENS.has(targetScreenName) &&
@@ -14312,6 +14358,13 @@ function goBackInApp() {
 
   if (settlementCloseConfirmation) {
     settlementCloseConfirmation = null;
+    renderHistoryFallback();
+    return;
+  }
+
+  if (screen.name === "feedback") {
+    feedbackReturnFocusPending = true;
+    screen = { name: "profile" };
     renderHistoryFallback();
     return;
   }

@@ -48,7 +48,7 @@ test("existing profile identity is read-only until the user chooses edit", async
   assert.match(app, /if \(action === "edit-profile-username"\)/);
 });
 
-test("tester-facing forms use accessible names and polished loading copy", async () => {
+test("user-facing forms use accessible names and polished loading copy", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const accountLayer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
   const coherence = await readFile("src/publicDesignCoherenceLayer.mjs", "utf8");
@@ -62,7 +62,8 @@ test("tester-facing forms use accessible names and polished loading copy", async
   assert.match(dateField, /aria-label="תאריך ההוצאה: 20\.10\.2026"/);
   assert.match(app, /מכין קישור…/);
   assert.match(app, /פותח את האירוע ושומר…/);
-  assert.match(accountLayer, /name="message"[\s\S]*?autocomplete="off"[\s\S]*?השלב הבא…/);
+  const feedbackView = await readFile("src/ui/feedbackPagePresentation.mjs", "utf8");
+  assert.match(feedbackView, /name="message"[\s\S]*?autocomplete="off"[\s\S]*?כתבו כאן את הפרטים…/);
   assert.match(coherence, /\.event-participant-route-modal:focus-visible[\s\S]*?outline: 3px solid/);
   assert.match(
     coherence,

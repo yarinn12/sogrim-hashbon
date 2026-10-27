@@ -304,7 +304,8 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /collapseAccountEmailAuth/);
   assert.match(layer, /data-account-auth-status role="status" aria-live="polite"/);
   assert.match(layer, /account-delete-dialog" role="dialog"[\s\S]*?tabindex="-1"/);
-  assert.match(layer, /account-feedback-dialog" role="dialog"[\s\S]*?tabindex="-1"/);
+  assert.match(layer, /enhanceAccountFeedbackPage/);
+  assert.match(layer, /"sogrim:feedback-open"/);
   assert.match(layer, /ACCOUNT_SETUP_TIMEOUT_MS = 12_000/);
   assert.match(
     layer,

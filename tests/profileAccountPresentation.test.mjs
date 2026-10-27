@@ -14,7 +14,7 @@ function render({ user = true, email = "noam@example.invalid", platform = "web",
     html = h;
     calls++;
   } };
-  runInNewContext(source + ";enhanceAccountControls()", { accountSession: user ? { user: { email } } : null, document: { querySelector: (s) => !noHost && s === hostSelector ? host : null }, globalThis: { Capacitor: { getPlatform: () => platform } }, iconSvg, escapeHtml, renderProfileAccountControlsView, renderProfileAdPrivacyControlView });
+  runInNewContext(source + ";enhanceAccountControls()", { accountSession: user ? { user: { email } } : null, Event: class {}, document: { dispatchEvent() {}, querySelector: (s) => !noHost && s === hostSelector ? host : null }, globalThis: { Capacitor: { getPlatform: () => platform } }, iconSvg, escapeHtml, renderProfileAccountControlsView, renderProfileAdPrivacyControlView, enhanceAccountFeedbackPage() {} });
   return { html, position, calls };
 }
 test("public Profile feedback uses ordinary-user wording and one compact summary", () => {

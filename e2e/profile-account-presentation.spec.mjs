@@ -67,9 +67,9 @@ for (const [id, root, w, h] of [["normal", 16, 393, 852], ["text20", 20, 411, 85
     const feedback = a.locator('[data-account-action="feedback-open"]');
     await control(feedback);
     await feedback.press("Enter");
-    const dialog = page.locator("[data-account-feedback-dialog]");
+    const dialog = page.locator(".feedback-page-screen");
     await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "\u05E1\u05D2\u05D9\u05E8\u05EA \u05D4\u05DE\u05E9\u05D5\u05D1", exact: true }).click();
+    await page.locator(".product-route-controls .app-back-button").click();
     await expect(dialog).toHaveCount(0);
     await expect(feedback).toBeFocused();
     expect(await snapshot(page)).toEqual(before);

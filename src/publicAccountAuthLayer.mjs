@@ -1,3 +1,5 @@
+import { renderFeedbackFormView, renderFeedbackSuccessView } from "./ui/feedbackPagePresentation.mjs";
+import { createFeedbackDraft, feedbackRequestIsCurrent } from "./domain/feedbackDraft.mjs";
 import { renderProfileAccountControlsView, renderProfileAdPrivacyControlView } from "./ui/profileAccountPresentation.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 
@@ -105,7 +107,6 @@ const APP_NOTICE_EVENT = "settle-friends:notice";
 const ACCOUNT_SETUP_TIMEOUT_MS = 12_000;
 const STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS = 2_500;
 const ACCOUNT_DELETE_HISTORY_KEY = "settleFriendsAccountDelete";
-const ACCOUNT_FEEDBACK_HISTORY_KEY = "settleFriendsAccountFeedback";
 const NATIVE_BACK_EVENT = "settle-friends:native-back";
 const ACCOUNT_REFRESH_MARGIN_SECONDS = 5 * 60;
 const ACCOUNT_REFRESH_RETRY_MS = 60_000;
@@ -128,9 +129,9 @@ let accountDeleteReturnFocus = null;
 let accountDeleteHistoryActive = false;
 let accountDeleteHistoryClosing = false;
 let accountFeedbackBusy = false;
-let accountFeedbackReturnFocus = null;
-let accountFeedbackHistoryActive = false;
-let accountFeedbackHistoryClosing = false;
+let accountFeedbackDraft = createFeedbackDraft();
+let accountFeedbackRequestSequence = 0;
+const accountFeedbackMounts = new WeakMap();
 let accountRefreshTimer = null;
 let accountRefreshPromise = null;
 let accountRefreshGeneration = 0;
@@ -170,15 +171,13 @@ setupAccountAuth()
   .catch(handleAccountSetupFailure)
   .finally(() => window.clearTimeout(accountSetupTimeoutId));
 document.addEventListener("click", handleAccountClick);
+document.addEventListener("settle-friends:screen-rendered", enhanceAccountFeedbackPage);
 document.addEventListener("change", handleAccountChange);
 document.addEventListener("keydown", handleAccountGateKeydown);
 document.addEventListener("keydown", handleAccountDeletionKeydown);
-document.addEventListener("keydown", handleAccountFeedbackKeydown);
 window.addEventListener("popstate", handleAccountDeletionHistoryBack, true);
-window.addEventListener("popstate", handleAccountFeedbackHistoryBack, true);
 window.addEventListener(NATIVE_BACK_EVENT, handleAccountGateNativeBack, true);
 window.addEventListener(NATIVE_BACK_EVENT, handleAccountDeletionNativeBack, true);
-window.addEventListener(NATIVE_BACK_EVENT, handleAccountFeedbackNativeBack, true);
 window.addEventListener("online", refreshAccountSessionIfNeeded);
 window.addEventListener("storage", handleAccountSessionStorageSync);
 document.addEventListener("visibilitychange", () => {
@@ -1817,13 +1816,15 @@ async function handleAccountClick(event) {
   }
 
   if (action === "feedback-open") {
-    renderAccountFeedbackDialog();
+    ensureAccountFeedbackDraft();
+    document.dispatchEvent(new Event("sogrim:feedback-open"));
     return;
   }
 
   if (action === "feedback-cancel" || action === "feedback-done") {
     if (accountFeedbackBusy) return;
-    closeAccountFeedbackDialog();
+    if (action === "feedback-done") accountFeedbackDraft = createFeedbackDraft(accountSession?.user?.id ?? "");
+    document.dispatchEvent(new Event("sogrim:feedback-close"));
     return;
   }
 
@@ -2258,6 +2259,7 @@ function handleAccountChange(event) {
 }
 
 function enhanceAccountControls() {
+  enhanceAccountFeedbackPage();
   if (!accountSession?.user) return;
   const host =
     document.querySelector(".profile-summary") ??
@@ -2274,108 +2276,84 @@ function enhanceAccountControls() {
     "beforeend",
     renderProfileAccountControlsView({ email, adPrivacyControl, iconSvg })
   );
+  document.dispatchEvent(new Event("sogrim:account-controls-ready"));
 }
 
-function renderAccountFeedbackDialog() {
-  closeAccountFeedbackDialog({ fromHistory: true, restoreFocus: false });
-  accountFeedbackReturnFocus =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-  const dialog = document.createElement("section");
-  dialog.className = "account-feedback-backdrop";
-  dialog.dataset.accountFeedbackDialog = "true";
-  dialog.innerHTML = `
-    <div class="account-feedback-dialog" role="dialog" aria-modal="true" aria-labelledby="account-feedback-title" aria-describedby="account-feedback-description" tabindex="-1">
-      <header class="account-feedback-header">
-        <div>
-          <p class="eyebrow">עוזרים לנו להשתפר</p>
-          <h2 id="account-feedback-title">מה תרצה לספר לנו?</h2>
-          <p id="account-feedback-description">בחר נושא וכתוב בקצרה מה קרה. פרטי הגרסה יצורפו אוטומטית.</p>
-        </div>
-        <button class="account-feedback-close modal-close-button" type="button" data-account-action="feedback-cancel" aria-label="סגירת המשוב"><span class="modal-control-icon" aria-hidden="true">${iconSvg("x")}</span></button>
-      </header>
-      <form class="account-feedback-form" data-account-feedback-form novalidate>
-        <fieldset class="account-feedback-categories">
-          <legend>נושא המשוב</legend>
-          <label>
-            <input type="radio" name="category" value="bug" checked />
-            <span>תקלה</span>
-          </label>
-          <label>
-            <input type="radio" name="category" value="clarity" />
-            <span>לא היה ברור</span>
-          </label>
-          <label>
-            <input type="radio" name="category" value="idea" />
-            <span>רעיון</span>
-          </label>
-        </fieldset>
-        <label class="account-feedback-message">
-          <span>מה קרה?</span>
-          <textarea
-            name="message"
-            rows="6"
-            minlength="10"
-            maxlength="1200"
-            autocomplete="off"
-            placeholder="לדוגמה: לחצתי על הוספת הוצאה ולא היה לי ברור מה השלב הבא…"
-            required
-          ></textarea>
-          <small>אין צורך לצרף שמות, מספרי טלפון או מידע כספי.</small>
-        </label>
-        <p class="account-feedback-error" role="alert" data-account-feedback-error hidden></p>
-        <div class="account-feedback-actions">
-          <button class="secondary-button" type="button" data-account-action="feedback-cancel">ביטול</button>
-          <button class="primary-button" type="submit">שלח משוב</button>
-        </div>
-      </form>
-    </div>`;
-  document.body.append(dialog);
-  document.querySelector("#app")?.setAttribute("inert", "");
-  document.documentElement.classList.add("account-feedback-open");
-  pushAccountFeedbackHistoryState();
-  dialog
-    .querySelector("[data-account-feedback-form]")
-    ?.addEventListener("submit", handleAccountFeedbackSubmit);
-  dialog.querySelector("textarea")?.focus({ preventScroll: true });
+function ensureAccountFeedbackDraft() {
+  const ownerId = accountSession?.user?.id ?? "";
+  if (accountFeedbackDraft.ownerId !== ownerId) {
+    accountFeedbackDraft = createFeedbackDraft(ownerId);
+    accountFeedbackBusy = false;
+  }
+  return accountFeedbackDraft;
+}
+
+function rememberAccountFeedbackDraft(form) {
+  const draft = ensureAccountFeedbackDraft();
+  const values = new FormData(form);
+  draft.category = String(values.get("category") ?? "bug");
+  draft.message = String(values.get("message") ?? "");
+  return draft;
+}
+
+function enhanceAccountFeedbackPage() {
+  const panel = document.querySelector("[data-account-feedback-page]");
+  const draft = ensureAccountFeedbackDraft();
+  if (!panel || accountFeedbackMounts.get(panel) === draft) return;
+  panel.innerHTML = draft.status === "success"
+    ? renderFeedbackSuccessView()
+    : renderFeedbackFormView({ ...draft, busy: draft.status === "sending", signedIn: Boolean(draft.ownerId) });
+  accountFeedbackMounts.set(panel, draft);
+  const form = panel.querySelector("[data-account-feedback-form]");
+  if (!form) return;
+  form.addEventListener("input", () => rememberAccountFeedbackDraft(form));
+  form.addEventListener("change", () => rememberAccountFeedbackDraft(form));
+  form.addEventListener("submit", handleAccountFeedbackSubmit);
+}
+
+function updateAccountFeedbackPage() {
+  const panel = document.querySelector("[data-account-feedback-page]");
+  const draft = ensureAccountFeedbackDraft();
+  if (!panel || accountFeedbackMounts.get(panel) !== draft) return;
+  const form = panel.querySelector("[data-account-feedback-form]");
+  if (!form) return;
+  const error = form.querySelector("[data-account-feedback-error]");
+  error.hidden = !draft.error;
+  error.textContent = draft.error;
+  const textarea = form.querySelector("textarea");
+  if (draft.error) textarea.setAttribute("aria-invalid", "true");
+  else textarea.removeAttribute("aria-invalid");
+  if (accountFeedbackBusy) form.setAttribute("aria-busy", "true");
+  else form.removeAttribute("aria-busy");
+  form.querySelectorAll("button, input, textarea").forEach((element) => { element.disabled = accountFeedbackBusy; });
 }
 
 async function handleAccountFeedbackSubmit(event) {
   event.preventDefault();
-  if (accountFeedbackBusy) return;
-
   const form = event.currentTarget;
-  const values = new FormData(form);
-  const error = form.querySelector("[data-account-feedback-error]");
-  if (error) {
-    error.hidden = true;
-    error.textContent = "";
-  }
-  const message = String(values.get("message") ?? "").trim();
+  const draft = rememberAccountFeedbackDraft(form);
+  if (accountFeedbackBusy || !draft.ownerId) return;
+  const message = draft.message.trim();
+  draft.error = "";
   if (message.length < 10) {
-    if (error) {
-      error.hidden = false;
-      error.textContent = "כדאי לכתוב לפחות 10 תווים כדי שנוכל להבין מה קרה.";
-    }
+    draft.error = "כדאי לכתוב לפחות 10 תווים כדי שנוכל להבין מה קרה.";
+    updateAccountFeedbackPage();
     form.querySelector('textarea[name="message"]')?.focus({ preventScroll: true });
     return;
   }
+  const request = { draft, ownerId: draft.ownerId, id: ++accountFeedbackRequestSequence };
+  draft.submissionId = request.id;
+  const config = { ...runtimeConfig, storage: { ...runtimeConfig?.storage, account: { ...runtimeConfig?.storage?.account } } };
   setAccountFeedbackBusy(true);
-
   try {
-    await submitAppFeedback(runtimeConfig, {
-      category: values.get("category"),
-      message,
-      context: await accountFeedbackContext()
-    });
+    const context = await accountFeedbackContext();
+    if (!feedbackRequestIsCurrent(accountFeedbackDraft, request, accountSession?.user?.id)) return;
+    await submitAppFeedback(config, { category: draft.category, message, context });
+    if (!feedbackRequestIsCurrent(accountFeedbackDraft, request, accountSession?.user?.id)) return;
     renderAccountFeedbackSuccess();
   } catch {
-    if (error) {
-      error.hidden = false;
-      error.textContent =
-        "לא הצלחנו לשלוח כרגע. כדאי לבדוק את החיבור ולנסות שוב.";
-    }
+    if (!feedbackRequestIsCurrent(accountFeedbackDraft, request, accountSession?.user?.id)) return;
+    draft.error = "לא הצלחנו לשלוח כרגע. כדאי לבדוק את החיבור ולנסות שוב.";
     setAccountFeedbackBusy(false);
   }
 }
@@ -2402,103 +2380,16 @@ async function accountFeedbackContext() {
 }
 
 function renderAccountFeedbackSuccess() {
-  const dialog = document.querySelector(".account-feedback-dialog");
-  if (!dialog) return;
+  const draft = ensureAccountFeedbackDraft();
+  draft.status = "success";
+  draft.message = "";
+  draft.error = "";
   accountFeedbackBusy = false;
-  document.documentElement.classList.remove("account-feedback-busy");
-  dialog.innerHTML = `
-    <div class="account-feedback-success" role="status">
-      <span aria-hidden="true">✓</span>
-      <p class="eyebrow">המשוב נשלח</p>
-      <h2>תודה שעזרת לנו להשתפר</h2>
-      <p>קיבלנו את ההודעה יחד עם פרטי הגרסה. אין צורך לשלוח אותה שוב.</p>
-      <button class="primary-button" type="button" data-account-action="feedback-done">סיום</button>
-    </div>`;
-  dialog
-    .querySelector('[data-account-action="feedback-done"]')
-    ?.focus({ preventScroll: true });
-}
-
-function closeAccountFeedbackDialog({
-  fromHistory = false,
-  restoreFocus = true
-} = {}) {
-  const dialog = document.querySelector("[data-account-feedback-dialog]");
-  if (!dialog) return;
-  if (
-    !fromHistory &&
-    accountFeedbackHistoryActive &&
-    window.history?.back
-  ) {
-    if (accountFeedbackHistoryClosing) return;
-    accountFeedbackHistoryClosing = true;
-    window.history.back();
-    return;
-  }
-
-  accountFeedbackBusy = false;
-  accountFeedbackHistoryActive = false;
-  accountFeedbackHistoryClosing = false;
-  dialog.remove();
-  document.querySelector("#app")?.removeAttribute("inert");
-  document.documentElement.classList.remove(
-    "account-feedback-open",
-    "account-feedback-busy"
-  );
-  const returnTarget = accountFeedbackReturnFocus;
-  accountFeedbackReturnFocus = null;
-  if (restoreFocus) {
-    requestAnimationFrame(() => {
-      if (returnTarget?.isConnected) {
-        returnTarget.focus({ preventScroll: true });
-      }
-    });
-  }
-}
-
-function pushAccountFeedbackHistoryState() {
-  if (!window.history?.pushState) return;
-  try {
-    window.history.pushState(
-      {
-        ...(window.history.state ?? {}),
-        [ACCOUNT_FEEDBACK_HISTORY_KEY]: true
-      },
-      "",
-      window.location.href
-    );
-    accountFeedbackHistoryActive = true;
-  } catch {
-    accountFeedbackHistoryActive = false;
-  }
-}
-
-function handleAccountFeedbackHistoryBack(event) {
-  if (!accountFeedbackHistoryActive) return;
-  event.stopImmediatePropagation();
-  closeAccountFeedbackDialog({ fromHistory: true });
-}
-
-function handleAccountFeedbackNativeBack(event) {
-  if (!document.querySelector("[data-account-feedback-dialog]")) return;
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  closeAccountFeedbackDialog();
-}
-
-function handleAccountFeedbackKeydown(event) {
-  const dialog = document.querySelector(
-    '.account-feedback-dialog[role="dialog"]'
-  );
-  if (!dialog) return;
-
-  if (event.key === "Escape" && !accountFeedbackBusy) {
-    event.preventDefault();
-    closeAccountFeedbackDialog();
-    return;
-  }
-  if (event.key !== "Tab") return;
-  trapAccountDialogFocus(event, dialog);
+  const panel = document.querySelector("[data-account-feedback-page]");
+  if (!panel) return;
+  accountFeedbackMounts.delete(panel);
+  enhanceAccountFeedbackPage();
+  panel.querySelector('[data-account-action="feedback-done"]')?.focus({ preventScroll: true });
 }
 
 function trapAccountDialogFocus(event, dialog) {
@@ -2523,14 +2414,8 @@ function trapAccountDialogFocus(event, dialog) {
 
 function setAccountFeedbackBusy(value) {
   accountFeedbackBusy = value;
-  document.documentElement.classList.toggle("account-feedback-busy", value);
-  document
-    .querySelectorAll(
-      "[data-account-feedback-dialog] button, [data-account-feedback-dialog] input, [data-account-feedback-dialog] textarea"
-    )
-    .forEach((element) => {
-      element.disabled = value;
-    });
+  accountFeedbackDraft.status = value ? "sending" : "editing";
+  updateAccountFeedbackPage();
 }
 
 function renderAccountDeletionDialog() {

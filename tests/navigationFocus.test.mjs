@@ -18,7 +18,7 @@ test("launch actions restore either event creation or the profile before clearin
     "function render()"
   );
 
-  assert.match(launchRoute, /action !== "new-event" && action !== "profile"/);
+  assert.match(launchRoute, /\["new-event", "profile", "feedback"\]\.includes\(action\)/);
   assert.match(launchRoute, /action === "profile" \? \{ name: "profile" \}/);
   assert.match(launchRoute, /url\.searchParams\.delete\("action"\)/);
 });

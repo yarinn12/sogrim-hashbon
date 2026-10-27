@@ -43,6 +43,11 @@
     if(url.pathname.endsWith('/auth/v1/user'))return response(user);
     if(url.pathname.endsWith('/auth/v1/token'))return response({...session,expires_in:3600});
     const rpc=url.pathname.split('/rpc/')[1];
+    if(rpc==='submit_app_feedback'){
+      (qa.feedbackRequests??=[]).push({body,headers:options.headers});
+      if(params.has('feedback-hold')&&!qa.feedbackReleased)await new Promise(resolve=>qa.releaseFeedback=()=>{qa.feedbackReleased=true;resolve()});
+      return params.get('feedback-result')==='success'?response(null,201):response({message:'Synthetic feedback failure'},503);
+    }
     if(rpc==='ensure_account_workspace')return response({status:'existing',workspaceId:space});
     if(rpc==='get_referral_program_status'){
       qa.referralReads.push(body);

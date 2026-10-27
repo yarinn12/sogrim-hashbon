@@ -105,6 +105,8 @@ test("feedback submission releases a hanging mobile request", async () => {
 });
 
 test("feedback storage is write-only and account scoped", async () => {
+  const feedbackView = await readFile("src/ui/feedbackPagePresentation.mjs", "utf8");
+  const app = await readFile("src/app.mjs", "utf8");
   const accountView = await readFile("src/ui/profileAccountPresentation.mjs", "utf8");
   const [schema, applySchema, accountLayer, bridge, serviceWorker, privacy] =
     await Promise.all([
@@ -133,11 +135,11 @@ test("feedback storage is write-only and account scoped", async () => {
   assert.match(accountLayer, /renderProfileAccountControlsView/);
   assert.match(accountView, /data-account-action="feedback-open"/);
   assert.match(accountLayer, /data-account-feedback-form/);
-  assert.match(accountLayer, /data-account-feedback-form novalidate/);
+  assert.match(feedbackView, /data-account-feedback-form novalidate/);
   assert.match(accountLayer, /message\.length < 10/);
   assert.match(accountLayer, /לפחות 10 תווים/);
-  assert.match(accountLayer, /handleAccountFeedbackNativeBack/);
-  assert.match(accountLayer, /ACCOUNT_FEEDBACK_HISTORY_KEY/);
+  assert.match(app, /handleNativeBackRequest/);
+  assert.match(app, /screen\.name === "feedback"/);
   assert.match(accountLayer, /min-height: 100dvh/);
   assert.match(bridge, /appPlugin\?\.getInfo/);
   assert.match(serviceWorker, /appFeedback\.mjs/);

@@ -826,3 +826,18 @@ test("native account support keeps scalable leaves and plain reachable rows",asy
  for(const[s,size]of [['.account-profile-controls-summary-copy>strong','1rem'],['.account-profile-email>bdi','.8125rem'],['.account-feedback-entry-copy>strong','.875rem'],['.account-feedback-entry-copy>small','.8125rem'],['.account-danger-note','.8125rem']])assert.ok(rule(s).includes('font-size:'+size+'!important'));
  assert.match(rule('.account-feedback-entry'),/background:transparent!important/);assert.match(rule('.account-feedback-entry'),/box-shadow:none!important/);assert.match(rule('.account-delete-button'),/min-height:48px!important/);assert.match(rule('.account-profile-email>bdi'),/overflow-wrap:anywhere!important/);assert.match(rule('.account-delete-button>.button-action-icon'),/background:transparent!important/);
 });
+
+test("native feedback page retains shared scalable typography and reachable actions", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, files } = await harness((file, ...args) => readFile(file === ledger && process.env.FEEDBACK_TEST_LEDGER ? process.env.FEEDBACK_TEST_LEDGER : file, ...args));
+  await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const prefix = "html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen";
+  const rule = selector => { const start = css.lastIndexOf(prefix + selector + "{"); assert.ok(start >= 0, "Missing Native feedback presentation: " + selector); return css.slice(start, css.indexOf("}", start)); };
+  assert.match(rule('[data-screen-kind]>.top h1'), /font-size:1.5rem!important/);
+  assert.match(rule(' .account-feedback-categories legend'), /font-size:\.875rem!important/);
+  assert.match(rule(' .account-feedback-message textarea'), /font-size:1rem!important/);
+  assert.match(rule(' .account-feedback-message small'), /font-size:\.8125rem!important/);
+  assert.match(rule(' .account-feedback-actions button'), /min-height:48px!important/);
+  assert.match(rule(' .account-feedback-actions'), /grid-template-columns:minmax\(0,1fr\)!important/);
+});

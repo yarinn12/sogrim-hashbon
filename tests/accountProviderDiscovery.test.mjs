@@ -1,3 +1,4 @@
+import { createFeedbackDraft } from "../src/domain/feedbackDraft.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
@@ -42,7 +43,7 @@ function harness({ platform = "ios", device = "iPhone", responses = [] } = {}) {
     }
   }
   const context = vm.createContext({
-    AbortController, URL, console,
+    AbortController, URL, console, createFeedbackDraft,
     Capacitor: { isNativePlatform: () => platform !== "web", getPlatform: () => platform },
     navigator: { userAgent: device === "iPad" ? "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)" : "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" },
     window: {
