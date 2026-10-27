@@ -417,7 +417,7 @@ test("profile sections use one visual surface system without changing their orde
     fontWeight: "650",
     lineHeight: "22.4px"
   });
-  expect(presentation.titles.slice(1).map(title=>title.lineHeight)).toEqual(["21.6px","21.6px"]);
+  expect(presentation.titles.slice(1).map(title=>title.lineHeight)).toEqual(["21.6px","22.4px"]);
 
   await page.evaluate(() => window.scrollTo({ top: 420, behavior: "instant" }));
   const stickyHeader = await profileHeader.evaluate((element) => {

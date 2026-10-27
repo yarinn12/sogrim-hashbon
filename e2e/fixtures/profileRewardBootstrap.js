@@ -5,7 +5,7 @@
   const auth='https://friend-invitation-fixture.supabase.co',space='friend-invitation-space',key='synthetic-friend-invitation-space-key-123456';
   const demoName=params.has('long-profile')?'נועם אלכסנדר לוי כהן עם שם משפחה ארוך ABCDEFGHIJKLMNOPQRSTUVWXYZ':'נועם לוי';
   const demoUsername=params.has('long-profile')?'noam_alexander_levi_1234':'noam_levi';
-  const user={id:actor,email:'noam@example.invalid',app_metadata:{provider:'google'},user_metadata:{full_name:demoName,username:demoUsername,username_customized:true,account_space_id:space,account_space_key:key}};
+  const user={id:actor,email:params.has('long-email')?'noam.alexander.levi.long.account.name@example.invalid':'noam@example.invalid',app_metadata:{provider:'google'},user_metadata:{full_name:demoName,username:demoUsername,username_customized:true,account_space_id:space,account_space_key:key}};
   const owner={user_id:actor,username:demoUsername,username_customized:true,display_name:demoName,avatar_preset:'avatar-1',updated_at:'2026-10-10T10:00:00.000Z'};
   const person={user_id:target,username:'dana_levi',username_customized:true,display_name:params.has('qa-long-name')?'דנה אלכסנדרה לוי כהן עם שם משפחה ארוך ABCDEFGHIJKLMNOPQRSTUVWXYZ':'דנה לוי',avatar_preset:'avatar-2',updated_at:'2026-10-10T10:00:00.000Z'};
   const mode=params.get('requests')||'mixed';

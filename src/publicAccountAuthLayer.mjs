@@ -1,3 +1,4 @@
+import { renderProfileAccountControlsView, renderProfileAdPrivacyControlView } from "./ui/profileAccountPresentation.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 
 import {
@@ -2267,49 +2268,11 @@ function enhanceAccountControls() {
   const email = String(accountSession.user.email ?? "").trim();
   const adPrivacyControl =
     globalThis.Capacitor?.getPlatform?.() === "android"
-      ? `<button class="account-data-link" type="button" data-account-action="ad-privacy">העדפות פרסום</button>`
+      ? renderProfileAdPrivacyControlView(iconSvg)
       : "";
   host.insertAdjacentHTML(
     "beforeend",
-    `<details class="account-profile-controls" data-account-controls>
-      <summary class="account-profile-controls-summary">
-        <span class="account-profile-controls-summary-copy">
-          <strong>חשבון ותמיכה</strong>
-          <small>פרטיות, התקנה וניהול החשבון</small>
-        </span>
-        <span class="account-profile-controls-summary-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-      </summary>
-      <div class="account-profile-controls-body">
-        <span class="account-profile-email">${escapeHtml(email)}</span>
-        <button class="account-feedback-entry" type="button" data-account-action="feedback-open">
-          <span class="account-feedback-entry-icon" aria-hidden="true">
-            ${iconSvg("message")}
-          </span>
-          <span class="account-feedback-entry-copy">
-            <strong>משוב לבודקים</strong>
-            <small>תקלה, משהו שלא היה ברור או רעיון לשיפור</small>
-          </span>
-          <span class="account-feedback-entry-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-        </button>
-        <nav class="account-data-links" aria-label="מידע על החשבון">
-          <a href="./privacy.html" class="account-data-link">מדיניות פרטיות</a>
-          <a href="./terms.html" class="account-data-link">תנאי שימוש</a>
-          <a href="./accessibility.html" class="account-data-link">הצהרת נגישות</a>
-          <a href="./support.html" class="account-data-link">תמיכה</a>
-          ${adPrivacyControl}
-        </nav>
-        <div class="account-profile-actions">
-          <button class="secondary-button" type="button" data-account-action="signout">התנתק</button>
-        </div>
-        <div class="account-danger-zone">
-          <span class="account-danger-copy">
-            <strong>מחיקת חשבון</strong>
-            <small>החשבון והמידע האישי יימחקו לצמיתות.</small>
-          </span>
-          <button class="secondary-button account-delete-button" type="button" data-account-action="delete-account-open">מחק חשבון</button>
-        </div>
-      </div>
-    </details>`
+    renderProfileAccountControlsView({ email, adPrivacyControl, iconSvg })
   );
 }
 

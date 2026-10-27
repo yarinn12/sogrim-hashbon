@@ -818,3 +818,11 @@ test("native invitation sharing keeps scalable text, reachable controls and one 
  assert.match(rule('.referral-qr-card'),/border:0!important/);assert.match(rule('.referral-qr-code svg'),/width:156px!important/);
  assert.match(rule('.referral-dialog-shell'),/max-height:calc\(100dvh - 24px\)!important/);assert.match(rule('.referral-dialog-content'),/background:var\(--app-surface\)!important/);
 });
+
+
+test("native account support keeps scalable leaves and plain reachable rows",async()=>{
+ const ledger=resolve("src/publicLedgerWorkspaceLayer.mjs"),{extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.PROFILE_ACCOUNT_TEST_LEDGER?process.env.PROFILE_ACCOUNT_TEST_LEDGER:file,...args));await extractNativeStaticCss([{path:ledger}],"fixture-assets");const css=files.get(join("fixture-assets","native-layers.css")),prefix="html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] ";
+ const rule=s=>{const i=css.indexOf(prefix+s+'{');assert.ok(i>=0,'Missing native account rule: '+s);return css.slice(i,css.indexOf('}',i))};
+ for(const[s,size]of [['.account-profile-controls-summary-copy>strong','1rem'],['.account-profile-email>bdi','.8125rem'],['.account-feedback-entry-copy>strong','.875rem'],['.account-feedback-entry-copy>small','.8125rem'],['.account-danger-note','.8125rem']])assert.ok(rule(s).includes('font-size:'+size+'!important'));
+ assert.match(rule('.account-feedback-entry'),/background:transparent!important/);assert.match(rule('.account-feedback-entry'),/box-shadow:none!important/);assert.match(rule('.account-delete-button'),/min-height:48px!important/);assert.match(rule('.account-profile-email>bdi'),/overflow-wrap:anywhere!important/);assert.match(rule('.account-delete-button>.button-action-icon'),/background:transparent!important/);
+});

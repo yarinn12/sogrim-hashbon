@@ -105,6 +105,7 @@ test("feedback submission releases a hanging mobile request", async () => {
 });
 
 test("feedback storage is write-only and account scoped", async () => {
+  const accountView = await readFile("src/ui/profileAccountPresentation.mjs", "utf8");
   const [schema, applySchema, accountLayer, bridge, serviceWorker, privacy] =
     await Promise.all([
       readFile("supabase/schema.sql", "utf8"),
@@ -129,7 +130,8 @@ test("feedback storage is write-only and account scoped", async () => {
   );
   assert.match(schema, /Too many feedback submissions/);
   assert.match(applySchema, /app_feedback_client_access_ready/);
-  assert.match(accountLayer, /data-account-action="feedback-open"/);
+  assert.match(accountLayer, /renderProfileAccountControlsView/);
+  assert.match(accountView, /data-account-action="feedback-open"/);
   assert.match(accountLayer, /data-account-feedback-form/);
   assert.match(accountLayer, /data-account-feedback-form novalidate/);
   assert.match(accountLayer, /message\.length < 10/);

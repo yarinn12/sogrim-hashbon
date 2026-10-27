@@ -151,6 +151,7 @@ test("signup requires a username and keeps it through validation and account com
 });
 
 test("account gate offers email registration, Google, Apple, sign out and deletion", async () => {
+  const accountView = await readFile("src/ui/profileAccountPresentation.mjs", "utf8");
   const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
 
   assert.match(layer, /data-account-mode="login"/);
@@ -276,11 +277,11 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
     terminalSessionFailure,
     /clearLocalAccountData|clearAccountWorkspace/
   );
-  assert.match(layer, /data-account-action="ad-privacy">העדפות פרסום/);
+  assert.match(accountView, /data-account-action="ad-privacy">[^\n]*העדפות פרסום/);
   assert.match(layer, /SogrimAds\?\.showPrivacyOptions/);
   assert.match(layer, /rememberProfileRouteBeforeLegalNavigation/);
   assert.match(layer, /url\.searchParams\.set\("action", "profile"\)/);
-  assert.match(layer, /data-account-action="delete-account-open"/);
+  assert.match(accountView, /data-account-action="delete-account-open"/);
   assert.match(layer, /data-account-action="delete-account-confirm"/);
   assert.match(layer, /clearStoredPushData\(accountSession\?\.user\?\.id\)/);
   assert.match(layer, /clearAllOpenInviteTokens\(\)/);
@@ -402,52 +403,54 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /window\.addEventListener\("online", refreshAccountSessionIfNeeded\)/);
   assert.match(layer, /document\.visibilityState === "visible"/);
   assert.match(layer, /\.profile-setup-panel/);
+  assert.match(layer, /renderProfileAccountControlsView/);
   assert.match(
-    layer,
+    accountView,
     /<details class="account-profile-controls" data-account-controls>/
   );
-  assert.match(layer, /<summary class="account-profile-controls-summary">/);
-  assert.match(layer, /<strong>חשבון ותמיכה<\/strong>/);
+  assert.match(accountView, /<summary class="account-profile-controls-summary">/);
+  assert.match(accountView, /<strong>חשבון ותמיכה<\/strong>/);
   assert.doesNotMatch(
-    layer,
+    accountView,
     /<details class="account-profile-controls" data-account-controls open/
   );
-  assert.match(layer, /class="account-data-links" aria-label="מידע על החשבון"/);
+  assert.match(accountView, /class="account-data-links" aria-label="מידע על החשבון"/);
   assert.match(layer, /\.account-data-link[\s\S]*?min-width: 44px;[\s\S]*?min-height: 44px;/);
   assert.ok(
-    layer.indexOf('class="account-data-links"') <
-      layer.indexOf('class="account-profile-actions"')
+    accountView.indexOf('class="account-data-links"') <
+      accountView.indexOf('class="account-profile-actions"')
   );
   assert.ok(
-    layer.indexOf('data-account-action="signout"') <
-      layer.indexOf('class="account-danger-zone"')
+    accountView.indexOf('data-account-action="signout"') <
+      accountView.indexOf('class="account-danger-zone"')
   );
   assert.ok(
-    layer.indexOf('class="account-danger-zone"') <
-      layer.indexOf('data-account-action="delete-account-open"')
+    accountView.indexOf('class="account-danger-zone"') <
+      accountView.indexOf('data-account-action="delete-account-open"')
   );
-  assert.match(layer, /class="account-danger-copy"/);
+  assert.match(accountView, /class="account-danger-note"/);
+  assert.doesNotMatch(accountView, /class="account-danger-copy"/);
   assert.match(layer, /\.account-danger-zone[\s\S]*?border-top:/);
   assert.match(layer, /account-auth-mark[^\n]+src="\.\/app-icon-exterior-192\.png"/);
   assert.doesNotMatch(layer, /account-auth-mark[^\n]+src="\.\/icon-192\.png"/);
   assert.doesNotMatch(layer, /sogrim-logo-lockup\.png/);
   assert.match(
-    layer,
-    /href="\.\/privacy\.html" class="account-data-link">מדיניות פרטיות<\/a>/
+    accountView,
+    /href="\.\/privacy\.html" class="account-data-link">[^\n]*?<span class="account-row-label">מדיניות פרטיות<\/span>/
   );
   assert.match(
-    layer,
-    /href="\.\/support\.html" class="account-data-link">תמיכה<\/a>/
+    accountView,
+    /href="\.\/support\.html" class="account-data-link">[^\n]*?<span class="account-row-label">עזרה ותמיכה<\/span>/
   );
   assert.match(
-    layer,
-    /href="\.\/terms\.html" class="account-data-link">תנאי שימוש<\/a>/
+    accountView,
+    /href="\.\/terms\.html" class="account-data-link">[^\n]*?<span class="account-row-label">תנאי שימוש<\/span>/
   );
   assert.match(
-    layer,
-    /href="\.\/accessibility\.html" class="account-data-link">הצהרת נגישות<\/a>/
+    accountView,
+    /href="\.\/accessibility\.html" class="account-data-link">[^\n]*?<span class="account-row-label">הצהרת נגישות<\/span>/
   );
-  assert.doesNotMatch(layer, /href="\.\/(?:privacy|support|terms|accessibility|account-deletion)"/);
+  assert.doesNotMatch(accountView, /href="\.\/(?:privacy|support|terms|accessibility|account-deletion)"/);
 });
 
 test("Apple authentication uses Apple's approved localized button artwork", async () => {
