@@ -904,3 +904,20 @@ test("native accessibility settings keep one reachable scroll flow and scalable 
   assert.ok(rule(".accessibility-close-button").includes("min-height:44px!important"));
   assert.ok(css.includes("html.accessibility-high-contrast.design-coherence-v1.ledger-workspace-v1 body .accessibility-center{--app-ink:#07110f!important"));
 });
+
+test("native installation guide preserves bounded scroll and enlarged child typography",async()=>{
+  const {extractNativeStaticCss,files}=await harness();
+  await extractNativeStaticCss([{path:"./src/publicLedgerWorkspaceLayer.mjs"}],"fixture-assets");
+  const css=files.get(join("fixture-assets","native-layers.css")).replace(/\s+/g,"");
+  const rule=selector=>{const key=selector.replace(/\s+/g,"")+"{",declarations=new Map();let at=-1,found=false;while((at=css.indexOf(key,at+1))>=0){found=true;for(const item of css.slice(at+key.length,css.indexOf("}",at)).split(";")){const colon=item.indexOf(":");if(colon>0)declarations.set(item.slice(0,colon),item.slice(colon+1));}}assert.ok(found,"Missing shared Native install style: "+selector);return [...declarations].map(([key,value])=>key+":"+value).join(";");};
+  const base="html.ledger-workspace-v1.install-app-open ";
+  const dialog=rule(base+".install-app-dialog");assert.ok(dialog.includes("height:auto!important"));assert.ok(dialog.includes("overflow:hiddenauto!important"));assert.ok(dialog.includes("100dvh"));
+  assert.ok(rule(base+".install-app-dialog header h2").includes("font-size:1.5rem!important"));
+  assert.ok(rule(base+".install-app-steps strong").includes("font-size:.9375rem!important"));
+  assert.ok(rule(base+".install-app-steps p").includes("font-size:.875rem!important"));
+  assert.ok(rule(base+".install-app-steps li > span").includes("font-size:.875rem!important"));
+  assert.ok(rule(base+".install-app-steps").includes("overflow:visible!important"));
+  assert.ok(rule(base+".install-app-done").includes("min-height:48px!important"));
+  assert.ok(css.includes(".install-app-done::after{content:none!important"));
+  assert.ok(rule("html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .account-profile-actions .account-install-button").includes("scroll-margin-block:120px16px!important"));
+});
