@@ -926,3 +926,11 @@ test("native installation guide preserves bounded scroll and enlarged child typo
 test("native notification inbox scales leaf text and keeps the dot in normal flow",async()=>{
 const{extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:"./src/publicLedgerWorkspaceLayer.mjs"}],"fixture-assets");const css=files.get(join("fixture-assets","native-layers.css")),p='html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] ';
 for(const[s,size]of[[".notification-inbox-header h1","1.5rem"],[".notification-inbox-header .muted",".8125rem"],[".notification-inbox-item-heading strong",".9375rem"],[".notification-inbox-item-copy small",".875rem"],[".notification-inbox-item-copy time",".75rem"],[".notification-inbox-empty h2","1.0625rem"]]){const start=css.lastIndexOf(p+s+"{");assert.ok(start>=0,"Missing shared Native notification style: "+s);assert.ok(css.slice(start,css.indexOf("}",start)).includes("font-size:"+size+"!important"),s)}const start=css.lastIndexOf(p+".notification-unread-dot{");assert.ok(css.slice(start,css.indexOf("}",start)).includes("position:static!important"));});
+
+
+test("native friend profile scales the actual identity and values while keeping one scroll flow",async()=>{
+const{extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:"./src/publicLedgerWorkspaceLayer.mjs"}],"fixture-assets");const css=files.get(join("fixture-assets","native-layers.css")),p="html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen";
+const rule=s=>{const a=css.indexOf(p+s+"{");assert.ok(a>=0,"Missing shared Native friend-profile style: "+s);return css.slice(a,css.indexOf("}",a));};
+for(const[s,size]of[[" > .top h1","1.5rem"],[" .relationship-identity-copy > strong","1.125rem"],[" .friend-activity-values strong","1.5rem"],[" .friend-activity-values small",".8125rem"],[" .friend-activity-more > summary",".875rem"]])assert.ok(rule(s).includes("font-size:"+size+"!important"),s);
+assert.ok(rule("").includes("var(--dynamic-type-bottom-nav-block,82px)"));assert.ok(rule(" .friend-activity-values").includes("minmax(min(100%,9rem),1fr)"));assert.ok(rule(" .event-participant-profile-card").includes("box-shadow:none!important"));
+});

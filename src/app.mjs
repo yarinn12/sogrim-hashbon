@@ -1,3 +1,4 @@
+import {renderFriendRelationshipProfileView} from "./ui/friendRelationshipProfilePresentation.mjs";
 import {renderNotificationInboxView} from "./ui/notificationInboxPresentation.mjs";
 import { renderFeedbackPageView } from "./ui/feedbackPagePresentation.mjs";
 import {renderProfileIdentitySummaryView} from "./ui/profileIdentityPresentation.mjs";
@@ -3628,51 +3629,25 @@ function renderFriendRelationshipProfile() {
     currency: eventCurrency(contextEvent)
   });
 
-  return `
-    <section
-      class="screen font-hebrew friends-hub-screen friend-relationship-screen"
-      data-screen-kind="groups"
-      data-friends-tab="people"
-      data-friend-profile-id="${escapeAttribute(participant.id)}"
-    >
-      <header class="top">
-        ${renderAppBackButton()}
-        <div class="brand">
-          <p class="eyebrow">סטטיסטיקה משותפת</p>
-          <h1>הקשר עם ${escapeHtml(targetName)}</h1>
-          <p class="muted">הפעילות המשותפת שלכם במקום אחד.</p>
-        </div>
-      </header>
-      ${renderNotice()}
-      <main class="friend-relationship-content">
-        <section
-          class="event-participant-profile-card event-participant-detail event-participant-relationship ${identityClass}"
-          data-participant-detail-view="${identityView}"
-          data-participant-id="${escapeAttribute(participant.id)}"
-        >
-          <header class="event-participant-profile-identity event-participant-detail-identity relationship-identity-card">
-            ${renderAvatar(participant.id)}
-            <div class="relationship-identity-copy">
-              <strong>${escapeHtml(targetName)}</strong>
-              ${renderParticipantUsername(participant)}
-            </div>
-            ${acceptedFriend
-              ? '<span class="relationship-friendship-badge is-accepted participant-identity-label">חבר</span>'
-              : renderParticipantConnectionBadge(participant)}
-          </header>
-          ${renderParticipantRelationshipScorecard(
-            contextEvent,
-            participant,
-            insights,
-            { targetName, avatarEvent: null }
-          )}
-          ${renderParticipantRelationshipHabit(targetName, insights)}
-          ${renderParticipantRelationshipFacts(contextEvent, insights)}
-          ${renderParticipantSafetyPanel(null, participant)}
-        </section>
-      </main>
-    </section>
-  `;
+  return renderFriendRelationshipProfileView({
+    participantId: participant.id, targetName, identityView,
+    backHtml: renderAppBackButton(), noticeHtml: renderNotice(),
+    avatarHtml: renderAvatar(participant.id, null, {suppressParticipantAction:true}),
+    usernameHtml: renderParticipantUsername(participant),
+    connectionHtml: acceptedFriend
+      ? '<span class="relationship-friendship-badge is-accepted participant-identity-label">חבר</span>'
+      : renderParticipantConnectionBadge(participant),
+    activity: {
+      hasHistory: insights.hasHistory,
+      note: `מבוסס על ${formatCount(insights.financialEventCount,"אירוע משותף","אירועים משותפים")} במטבע ${currencyCompactLabel(contextEvent)}.`,
+      paid: {current:formatEventMoney(contextEvent,insights.paid.current),target:formatEventMoney(contextEvent,insights.paid.target)},
+      expensesAdded: {current:String(insights.expensesAdded.current),target:String(insights.expensesAdded.target)},
+      involvement: {current:String(insights.involvement.current),target:String(insights.involvement.target)}
+    },
+    habitHtml: renderParticipantRelationshipHabit(targetName,insights).replace("ההרגל שלכם","על התשלומים והתיעוד"),
+    factsHtml: renderParticipantRelationshipFacts(contextEvent,insights).replace("עוד דברים מעניינים","פרטים מהפעילות"),
+    safetyHtml: renderParticipantSafetyPanel(null,participant).replace("דיווח נשמר באופן פרטי. חסימה מונעת בקשות חברות חדשות ולא משנה חישובים קיימים.","חסימה מונעת בקשות חברות חדשות. האירועים וההוצאות המשותפים נשארים בהיסטוריה.")
+  });
 }
 
 function isAcceptedNetworkFriendParticipant(participantId) {

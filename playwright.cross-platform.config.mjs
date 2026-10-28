@@ -5,6 +5,7 @@ import base from "./playwright.config.mjs";
 // layout. Firefox cannot emulate a mobile browser; the compact project verifies
 // reflow and interaction in Firefox, not an Android or iPhone native shell.
 const journeys = [
+  "e2e/friend-profile-presentation.spec.mjs",
   "e2e/notification-inbox-presentation.spec.mjs",
   "e2e/install-guide-presentation.spec.mjs",
   "e2e/accessibility-presentation.spec.mjs",

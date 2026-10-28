@@ -110,9 +110,10 @@ test("participant pictures alone open the approved relationship statistics route
   assert.match(networkRow, /data-action="remove-network-friend"/);
   assert.doesNotMatch(networkRow, /חבר מאושר/);
   assert.doesNotMatch(networkRow, /משתמש מחובר · אפשר לצרף/);
-  assert.match(friendProfile, /friend-relationship-screen/);
-  assert.match(friendProfile, /event-participant-relationship/);
-  assert.match(friendProfile, /renderParticipantRelationshipScorecard/);
+  const profileView = await readFile("src/ui/friendRelationshipProfilePresentation.mjs", "utf8");
+  assert.match(profileView, /friend-relationship-screen/);
+  assert.match(profileView, /event-participant-relationship/);
+  assert.match(friendProfile, /renderFriendRelationshipProfileView/);
   assert.doesNotMatch(friendProfile, /event-participant-profile-account/);
   assert.match(friendProfile, /renderParticipantRelationshipHabit/);
   assert.match(friendProfile, /renderParticipantRelationshipFacts/);
