@@ -41,8 +41,8 @@ test("installation recovers focus after background profile control replacement",
 });
 test("installation respects enlarged system text and restores it after a manual preference",async({page})=>{
   await page.setViewportSize({width:320,height:390});await page.addInitScript(installSyntheticSystemText);await open(page,true);await geometry(page,32);await hit(page.locator(".install-app-done"));await returned(page);
-  const accessibility=page.locator('.product-route-controls [data-open-accessibility]');await accessibility.click();await page.locator('.accessibility-segmented-control label:has(input[value="extra-large"])').click();await page.keyboard.press("Escape");await enter(page);await geometry(page,20);await hit(page.locator(".install-app-done"));await returned(page);
-  await accessibility.click();await page.locator('.accessibility-segmented-control label:has(input[value="system"])').click();await page.keyboard.press("Escape");await enter(page);await geometry(page,32);await hit(page.locator(".install-app-done"));await returned(page);
+  const accessibility=page.locator('.product-route-controls [data-open-accessibility]');await accessibility.click();await page.locator('.accessibility-segmented-control label:has(input[value="extra-large"])').click();await page.keyboard.press("Escape");await expect(page.locator(".accessibility-center")).toHaveCount(0);await expect(accessibility).toBeFocused();await expect(page.locator("#app")).not.toHaveAttribute("inert","");await enter(page);await geometry(page,20);await hit(page.locator(".install-app-done"));await returned(page);
+  await accessibility.click();await page.locator('.accessibility-segmented-control label:has(input[value="system"])').click();await page.keyboard.press("Escape");await expect(page.locator(".accessibility-center")).toHaveCount(0);await expect(accessibility).toBeFocused();await expect(page.locator("#app")).not.toHaveAttribute("inert","");await enter(page);await geometry(page,32);await hit(page.locator(".install-app-done"));await returned(page);
 });
 
 test("installation entry remains pointer reachable between the fixed header and navigation",async({page})=>{

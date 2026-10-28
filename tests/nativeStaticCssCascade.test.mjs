@@ -934,3 +934,9 @@ const rule=s=>{const a=css.indexOf(p+s+"{");assert.ok(a>=0,"Missing shared Nativ
 for(const[s,size]of[[" > .top h1","1.5rem"],[" .relationship-identity-copy > strong","1.125rem"],[" .friend-activity-values strong","1.5rem"],[" .friend-activity-values small",".8125rem"],[" .friend-activity-more > summary",".875rem"]])assert.ok(rule(s).includes("font-size:"+size+"!important"),s);
 assert.ok(rule("").includes("var(--dynamic-type-bottom-nav-block,82px)"));assert.ok(rule(" .friend-activity-values").includes("minmax(min(100%,9rem),1fr)"));assert.ok(rule(" .event-participant-profile-card").includes("box-shadow:none!important"));
 });
+
+
+test("native invitation choices retain full-width title, growing labels and one scroll region",async()=>{
+const{extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:"./src/publicLedgerWorkspaceLayer.mjs"}],"fixture-assets");const css=files.get(join("fixture-assets","native-layers.css")),p="html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen";const rule=s=>{const a=css.indexOf(p+s+"{");assert.ok(a>=0,"Missing Native invitation choice style: "+s);return css.slice(a,css.indexOf("}",a));};
+for(const[s,size]of[[" .event-modal-header h2","1.5rem"],[" .event-modal-header #event-modal-description",".8125rem"],[" .event-invitation-choice-copy strong",".9375rem"],[" .event-invitation-choice-hint",".8125rem"]])assert.ok(rule(s).includes("font-size:"+size+"!important"),s);assert.ok(rule("").includes("overflow:hidden auto!important"));assert.ok(rule(" > .event-modal-header").includes('grid-template-columns:minmax(0,1fr)!important'));assert.ok(rule(" > .event-modal-body").includes("overflow:visible!important"));assert.ok(rule(" .new-event-participant-route-action").includes("min-height:88px!important"));
+});

@@ -71,3 +71,48 @@ test("the pure accessibility presentation ships in both offline inventories", ()
   const ui = readFileSync(uiPath, "utf8");
   assert.doesNotMatch(ui, /localStorage|sessionStorage|fetch\(|saveAccessibilityPreferences|applyAccessibilityPreferences/);
 });
+
+function dispatchAccessibilityKey({key='Escape',open=true,active='middle'}={}) {
+  const calls=[],first={focus:()=>calls.push('first')},last={focus:()=>calls.push('last')},middle={};
+  const center={querySelectorAll:()=>[first,middle,last],contains:element=>[first,middle,last,center].includes(element),focus:()=>calls.push('center')};
+  let stopped=false,prevented=false,parentNavigation=0;
+  const document={querySelector:()=>open?center:null,activeElement:active==='center'?center:active==='first'?first:active==='last'?last:middle};
+  const event={key,shiftKey:false,preventDefault(){prevented=true;calls.push('prevent')},stopImmediatePropagation(){stopped=true;calls.push('stop')}};
+  runInNewContext(fn('handleAccessibilityKeydown')+';handleAccessibilityKeydown(event)',{document,event,closeAccessibilityCenter:()=>calls.push('close')});
+  // Model the actual capture -> underlying document handler propagation boundary.
+  if(!stopped)parentNavigation++;
+  return {calls,stopped,prevented,parentNavigation};
+}
+test('accessibility Escape is owned by the top center and never reaches the underlying route',()=>{
+  const r=dispatchAccessibilityKey();assert.equal(r.parentNavigation,0);assert.equal(r.stopped,true);assert.equal(r.prevented,true);assert.deepEqual(r.calls,['prevent','stop','close']);
+});
+test('accessibility middle Tab keeps browser navigation and does not reach the underlying route',()=>{
+  const r=dispatchAccessibilityKey({key:'Tab'});assert.equal(r.parentNavigation,0);assert.equal(r.stopped,true);assert.equal(r.prevented,false);assert.deepEqual(r.calls,['stop']);
+});
+test('closed accessibility leaves Escape available to the current application route',()=>{
+  const r=dispatchAccessibilityKey({open:false});assert.equal(r.parentNavigation,1);assert.equal(r.stopped,false);assert.equal(r.prevented,false);assert.deepEqual(r.calls,[]);
+});
+test('accessibility does not consume ordinary typing keys',()=>{
+  const r=dispatchAccessibilityKey({key:'a'});assert.equal(r.stopped,false);assert.equal(r.prevented,false);assert.deepEqual(r.calls,[]);
+});
+
+
+function accessibilityCloseHarness() {
+  const frames=[],timers=[],intervals=[],listeners=new Map();let mounted=true;
+  const document={activeElement:null,documentElement:{classList:{remove(){}}},body:{}};
+  class Element {constructor(name){this.name=name;this.isConnected=true;}focus(){document.activeElement=this;}getClientRects(){return [{}];}closest(){return null;}}
+  const opener=new Element('opener'),next=new Element('next');
+  document.querySelector=()=>mounted?{remove(){mounted=false;}}:null;document.querySelectorAll=()=>[opener];
+  document.addEventListener=(key,fn)=>{if(!listeners.has(key))listeners.set(key,new Set());listeners.get(key).add(fn)};
+  document.removeEventListener=(key,fn)=>listeners.get(key)?.delete(fn);
+  const window={setTimeout:(fn,delay)=>{const row={fn,delay};timers.push(row);return row},clearTimeout:row=>{if(row)row.cancelled=true},setInterval:fn=>{const row={fn};intervals.push(row);return row},clearInterval:row=>{if(row)row.cancelled=true},sessionStorage:{removeItem(){}}};
+  const context={document,window,HTMLElement:Element,requestAnimationFrame:fn=>frames.push(fn),BACKDROP_SELECTOR:'.backdrop',ENTRY_SELECTOR:'[data-open-accessibility]',RETURN_FOCUS_STORAGE_KEY:'focus',returnFocus:opener,historyActive:false,historyClosing:false,focusReturnGuardCleanup:null,setBackgroundInert(){},publishAccessibilityCenterState(){}};
+  runInNewContext(fn('closeAccessibilityCenter')+'\n'+fn('maintainAccessibilityReturnFocus')+';closeAccessibilityCenter({fromHistory:true})',context);
+  return {document,opener,next,choose(event){if(event)for(const fn of [...listeners.get(event)||[]])fn();next.focus()},flush(){while(frames.length)for(const fn of frames.splice(0))fn();for(const row of timers.filter(r=>r.delay<8000))if(!row.cancelled)row.fn();for(const row of intervals)if(!row.cancelled)row.fn()}};
+}
+for(const event of ['pointerdown','keydown',null])test('late Accessibility callbacks preserve a newer control after '+(event||'programmatic focus'),()=>{
+ const h=accessibilityCloseHarness();assert.equal(h.document.activeElement,h.opener);h.choose(event);h.flush();assert.equal(h.document.activeElement,h.next);
+});
+test('Accessibility close still restores its opener when no new control was chosen',()=>{
+ const h=accessibilityCloseHarness();h.flush();assert.equal(h.document.activeElement,h.opener);
+});

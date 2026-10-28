@@ -314,14 +314,19 @@ function closeAccessibilityCenter({ fromHistory = false } = {}) {
   document.documentElement.classList.remove("accessibility-center-open");
   publishAccessibilityCenterState(false);
   const target = returnFocus;
+  const recovery = { stopped: false };
   returnFocus = null;
   const restoreFocus = () => {
+    if (recovery.stopped || document.querySelector(BACKDROP_SELECTOR)) return;
     const visibleEntry = [...document.querySelectorAll(`${ENTRY_SELECTOR}:not([disabled])`)]
       .find((entry) => entry.getClientRects().length > 0 && !entry.closest("[inert]"));
     const focusTarget =
       target?.isConnected && target.getClientRects().length > 0
         ? target
         : visibleEntry;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.isConnected && active !== document.body &&
+        active !== document.documentElement && active !== focusTarget) return;
     if (focusTarget instanceof HTMLElement && !focusTarget.closest("[inert]")) {
       focusTarget.focus({ preventScroll: true });
       try {
@@ -337,15 +342,16 @@ function closeAccessibilityCenter({ fromHistory = false } = {}) {
   for (const delay of [120, 400, 1_000, 1_800, 3_000]) {
     window.setTimeout(restoreFocus, delay);
   }
-  maintainAccessibilityReturnFocus(target);
+  maintainAccessibilityReturnFocus(target, recovery);
 }
 
-function maintainAccessibilityReturnFocus(preferredTarget) {
+function maintainAccessibilityReturnFocus(preferredTarget, recovery = { stopped: false }) {
   focusReturnGuardCleanup?.();
   let stopped = false;
   const stop = () => {
     if (stopped) return;
     stopped = true;
+    recovery.stopped = true;
     window.clearInterval(intervalId);
     window.clearTimeout(timeoutId);
     document.removeEventListener("pointerdown", stop, true);
@@ -362,6 +368,9 @@ function maintainAccessibilityReturnFocus(preferredTarget) {
         ? preferredTarget
         : visibleEntry;
     if (!(focusTarget instanceof HTMLElement) || focusTarget.closest("[inert]")) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.isConnected && active !== document.body &&
+        active !== document.documentElement && active !== focusTarget) { stop(); return; }
     if (document.activeElement !== focusTarget) focusTarget.focus();
   };
   document.addEventListener("pointerdown", stop, true);
@@ -451,10 +460,12 @@ function handleAccessibilityKeydown(event) {
   if (!center) return;
   if (event.key === "Escape") {
     event.preventDefault();
+    event.stopImmediatePropagation();
     closeAccessibilityCenter();
     return;
   }
   if (event.key !== "Tab") return;
+  event.stopImmediatePropagation();
 
   const focusable = [
     ...center.querySelectorAll(

@@ -729,7 +729,7 @@ test("participant manager separates the current roster from saved names", async 
   assert.match(app, /function renderEventParticipantAddEditor/);
   assert.match(addDialog, /routeMode: true/);
   assert.match(addDialog, /backAction: "event-participants-back"/);
-  assert.match(addDialog, /backLabel: "חזרה למשתתפים"/);
+  assert.match(addDialog, /backLabel: participantView \? "חזרה לדרכי ההוספה" : "חזרה למסך הקודם"/);
   assert.match(addDialog, /showClose: false/);
   assert.match(addDialog, /event-participant-add-route-modal/);
   assert.match(addDialog, /eyebrow: ""/);
@@ -925,7 +925,7 @@ test("participant manager keeps the roster calm and moves adding into one focuse
   assert.match(addDialog, /title: routeTitle/);
   assert.match(addDialog, /: "מי מצטרף לאירוע\?"/);
   assert.match(addDialog, /event-participant-add-view-back/);
-  assert.match(addDialog, /description: ""/);
+  assert.match(addDialog, /description: participantView \? "" : event\.name/);
   assert.match(addDialog, /routeMode: true/);
   assert.match(addDialog, /showClose: false/);
   assert.match(app, /data-action="open-event-share"/);
@@ -1573,6 +1573,7 @@ test("home event rows prioritize selection details, participants, and one quiet 
 
 test("home event options expose the shared invitation flow and guarded removal", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const choices = await readFile("src/ui/eventInvitationChoices.mjs", "utf8");
 
   assert.match(app, /action === "event-status-select"/);
   assert.match(app, /function renderEventStatusMenu\(\)/);
@@ -1580,9 +1581,9 @@ test("home event options expose the shared invitation flow and guarded removal",
   assert.match(app, /function openEventParticipantAddFromHomeMenu\(eventId\)/);
   assert.match(app, /kind: "participants-add",\s*returnKind: "home"/);
   assert.match(app, /renderEventParticipantAddRoutes/);
-  assert.match(app, /שתף קישור או QR/);
-  assert.match(app, /בחר מחברים/);
-  assert.match(app, /הוסף שם ידנית/);
+  assert.match(choices, /שתף קישור או QR/);
+  assert.match(choices, /בחר מחברים/);
+  assert.match(choices, /הוספה לפי שם/);
   assert.match(app, /data-action="remove-event-from-list"/);
   assert.match(app, /data-action="toggle-personal-event-archive"/);
   assert.match(app, /האירוע יעבור לארכיון רק אצלך/);

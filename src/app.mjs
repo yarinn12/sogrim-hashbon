@@ -1,3 +1,4 @@
+import {renderEventInvitationChoicesView} from "./ui/eventInvitationChoices.mjs";
 import {renderFriendRelationshipProfileView} from "./ui/friendRelationshipProfilePresentation.mjs";
 import {renderNotificationInboxView} from "./ui/notificationInboxPresentation.mjs";
 import { renderFeedbackPageView } from "./ui/feedbackPagePresentation.mjs";
@@ -5405,18 +5406,14 @@ function renderEventParticipantAddDialog(event) {
     eventId: event.id,
     eyebrow: "",
     title: routeTitle,
-    description: "",
+    description: participantView ? "" : event.name,
     backdropClass: "event-participant-route-backdrop",
-    modalClass: "event-participant-route-modal event-participant-add-route-modal",
+    modalClass: "event-participant-route-modal event-participant-add-route-modal" + (participantView ? "" : " event-invitation-choice-screen"),
     routeMode: true,
     backAction: participantView
       ? "event-participant-add-view-back"
       : "event-participants-back",
-    backLabel: participantView
-      ? "חזרה לדרכי ההוספה"
-      : eventDialog?.returnKind === "home"
-        ? "חזרה לאירועים"
-        : "חזרה למשתתפים",
+    backLabel: participantView ? "חזרה לדרכי ההוספה" : "חזרה למסך הקודם",
     showClose: false,
     body: `
       <div class="event-participant-add-screen" data-participant-add-view>
@@ -6777,15 +6774,7 @@ function renderEventShareDialog(event) {
 }
 
 function renderEventParticipantAddRoutes(event, availableParticipants, canEdit) {
-  return `
-    <section class="event-participant-add-zone event-participant-add-routes" aria-label="דרכים להוספת משתתפים">
-      <div class="new-event-participant-actions">
-        ${renderExistingEventParticipantAction(event, "open-event-share", "share", "שתף קישור או QR", "is-primary")}
-        ${renderExistingEventParticipantAction(event, "set-event-participant-add-view", "users", "בחר מחברים", "", "friends")}
-        ${renderExistingEventParticipantAction(event, "set-event-participant-add-view", "user-plus", "הוסף שם ידנית", "", "manual")}
-      </div>
-    </section>
-  `;
+  return renderEventInvitationChoicesView({eventId:event.id});
 }
 
 function renderExistingEventParticipantAction(event, action, icon, title, className = "", view = "", disabled = false) {
