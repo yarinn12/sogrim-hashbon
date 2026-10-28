@@ -1,3 +1,4 @@
+import {prioritizeOwnedShellTestChild} from "./helpers/ownedShellTestProcess.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,existsSync,rmSync} from 'node:fs';
@@ -21,6 +22,7 @@ function runShell(directory){return new Promise(resolve=>{
  child.stdout.on('data',b=>{stdout+=b.toString();});child.stderr.on('data',b=>{stderr+=b.toString();});child.on('error',e=>finish(null,e));
  child.on('exit',code=>{exitCode=code;clearTimeout(deadline);grace=setTimeout(()=>finish(code===0?null:code,Object.assign(new Error('Inherited stderr did not close after owned shell exit'),{code:'ETIMEDOUT'})),500);});
  child.on('close',code=>finish(code));
+ try { prioritizeOwnedShellTestChild(child); } catch (error) { finish(null,error); }
 });}
 async function exercise(t,mode){
  const directory=mkdtempSync(join(tmpdir(),'sogrim-close-child-'));assert.ok(resolve(directory).startsWith(resolve(tmpdir())+sep));

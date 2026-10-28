@@ -59,12 +59,18 @@ if (testFiles.length === 0) {
 const javaProbeNames = ["androidWebViewLoadOrder.test.mjs", "androidWebViewProbeModel.test.mjs"];
 const isJavaProbe = (file) => javaProbeNames.some((name) => file.endsWith(name));
 const javaProbeFiles = process.platform === "win32" ? testFiles.filter(isJavaProbe) : [];
-const remainingFiles = testFiles.filter((file) => !javaProbeFiles.includes(file));
+// Git Bash forks real observer processes. Keep its fixed transport deadline
+// independent of unrelated file-worker load, as with the javac phase above.
+const lifecycleFiles = process.platform === "win32"
+  ? testFiles.filter((file) => file.endsWith("androidNativeCloseWatchCleanup.test.mjs"))
+  : [];
+const remainingFiles = testFiles.filter((file) => !javaProbeFiles.includes(file) && !lifecycleFiles.includes(file));
 // Process-lifecycle tests launch their own observers. A large host CPU count
 // must not oversubscribe those children and turn fixed safety deadlines flaky.
 const normalConcurrency = Math.min(4, Math.max(1, availableParallelism() - 1));
 const groups = [
   ...(javaProbeFiles.length ? [{ files: javaProbeFiles, concurrency: 1 }] : []),
+  ...(lifecycleFiles.length ? [{ files: lifecycleFiles, concurrency: 1 }] : []),
   ...(remainingFiles.length ? [{ files: remainingFiles, concurrency: normalConcurrency }] : [])
 ];
 let exitStatus = 0;
