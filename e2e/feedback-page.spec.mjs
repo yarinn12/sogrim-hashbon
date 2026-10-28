@@ -172,3 +172,54 @@ test("feedback launch and reload use the ordinary page and shared native back", 
   await expect(page.locator(".feedback-page-screen")).toHaveCount(0);
   await expect(page.locator(".profile-edit-screen>.top h1")).toHaveText("הפרופיל שלך");
 });
+
+
+// Exercise the receipt after the real submit adapter receives a mocked server ACK.
+for (const [id, root, width, height] of [["normal",16,393,852],["text20",20,411,852],["text32",32,320,852],["short",32,320,390],["landscape",32,852,393]]) test("feedback success presentation " + id, async ({ page }, info) => {
+  await page.setViewportSize({width,height});
+  await open(page, "&feedback-hold=1&feedback-result=success"+(root>16?"&dynamic-type-preview="+root:""));
+  const before=await writes(page);
+  await page.locator('textarea').fill('בדיקת אישור מקומית בלבד ללא מידע אישי');
+  await click(page.locator('button[type="submit"]'));
+  await expect(page.locator('button[type="submit"]')).toBeDisabled();
+  await expect.poll(()=>page.evaluate(()=>__friendInviteQa.feedbackRequests?.length)).toBe(1);
+  await expect(page.locator('.account-feedback-success')).toHaveCount(0);
+  await page.evaluate(()=>__friendInviteQa.releaseFeedback());
+  const receipt=page.locator('.account-feedback-success'),done=receipt.getByRole('button',{name:'חזרה לפרופיל',exact:true});
+  await expect(receipt.getByRole('heading',{level:2})).toHaveText('המשוב נשלח');
+  await expect(receipt.locator('p')).toHaveText('תודה על המשוב.');
+  await expect(receipt.locator('button')).toHaveCount(1);
+  await expect(receipt.locator('.eyebrow')).toHaveCount(0);
+  await expect(receipt.locator('svg')).toHaveCount(1);
+  await expect(done).toBeFocused();
+  await expect(page.locator('[data-account-feedback-form]')).toHaveCount(0);
+  const geometry=await receipt.evaluate(e=>{
+    const box=e.getBoundingClientRect(),bad=[],fonts={},title=e.querySelector('h2'),icon=e.querySelector('svg path'),range=document.createRange();range.selectNodeContents(title);
+    const text=range.getBoundingClientRect(),mark=icon.getBoundingClientRect(),button=e.querySelector('button').getBoundingClientRect();
+    for(const selector of ['h2','p','button']){const el=e.querySelector(selector);fonts[selector]=parseFloat(getComputedStyle(el).fontSize);const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n;
+      while(n=walker.nextNode())for(let i=0;i<n.length;i++){if(!n.textContent[i].trim())continue;const r=document.createRange();r.setStart(n,i);r.setEnd(n,i+1);for(const b of r.getClientRects())if(b.left<box.left-1||b.right>box.right+1)bad.push({selector,left:b.left,right:b.right})}}
+    return {root:parseFloat(getComputedStyle(document.documentElement).fontSize),overflow:document.documentElement.scrollWidth-innerWidth,bad,fonts,paddingLeft:button.left-box.left,paddingRight:box.right-button.right,visibleIconGap:mark.left-text.right,visibleIconCenterDifference:Math.abs((mark.top+mark.bottom)/2-(text.top+text.bottom)/2)};
+  });
+  expect(geometry.root).toBe(root);expect(geometry.overflow).toBe(0);expect(geometry.bad).toEqual([]);
+  expect(geometry.fonts).toEqual({h2:root*1.25,p:root*.875,button:root*.875});
+  expect(geometry.paddingLeft).toBeCloseTo(20,0);expect(geometry.paddingRight).toBeCloseTo(20,0);
+  expect(geometry.visibleIconGap).toBeGreaterThanOrEqual(10);expect(geometry.visibleIconGap).toBeLessThanOrEqual(12+root*.5);
+  expect(geometry.visibleIconCenterDifference).toBeLessThanOrEqual(4.5);
+  for(const selector of ['h2','p'])await textLines(receipt.locator(selector));
+  await control(done);await page.screenshot({path:info.outputPath('feedback-success-'+id+'.png'),animations:'disabled'});
+  if(id==='normal')await done.press('Enter');else await click(done);
+  await expect(page.locator('.feedback-page-screen')).toHaveCount(0);
+  await expect(page.locator('[data-account-action="feedback-open"]')).toBeFocused();
+  await reopen(page);await expect(page.locator('textarea')).toHaveValue('');await expect(page.locator('input[value="bug"]')).toBeChecked();
+  await expect(page.locator('.account-feedback-success')).toHaveCount(0);
+  expect(await writes(page)).toEqual(before);expect(await page.evaluate(()=>__friendInviteQa.feedbackRequests.length)).toBe(1);
+});
+
+test("feedback success keeps its receipt across ordinary Back until the explicit return completes it",async({page})=>{
+  await open(page,'&feedback-result=success');await page.locator('textarea').fill('בדיקת חזרה באישור משוב בלבד');await click(page.locator('button[type="submit"]'));
+  await expect(page.locator('.account-feedback-success')).toBeVisible();await page.goBack();
+  await expect(page.locator('.feedback-page-screen')).toHaveCount(0);await expect(page.locator('[data-account-action="feedback-open"]')).toBeFocused();
+  await reopen(page);const done=page.getByRole('button',{name:'חזרה לפרופיל',exact:true});await expect(done).toBeVisible();await click(done);
+  await expect(page.locator('[data-account-action="feedback-open"]')).toBeFocused();await reopen(page);await expect(page.locator('textarea')).toHaveValue('');
+  expect(await page.evaluate(()=>__friendInviteQa.feedbackRequests.length)).toBe(1);
+});

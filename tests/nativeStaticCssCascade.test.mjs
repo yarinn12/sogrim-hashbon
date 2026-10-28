@@ -841,3 +841,24 @@ test("native feedback page retains shared scalable typography and reachable acti
   assert.match(rule(' .account-feedback-actions button'), /min-height:48px!important/);
   assert.match(rule(' .account-feedback-actions'), /grid-template-columns:minmax\(0,1fr\)!important/);
 });
+
+
+test("native feedback success uses the approved scalable receipt and full-width return action", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, files } = await harness((file, ...args) => readFile(file === ledger && process.env.FEEDBACK_TEST_LEDGER ? process.env.FEEDBACK_TEST_LEDGER : file, ...args));
+  await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const prefix = "html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen ";
+  const rule = selector => { const start = css.lastIndexOf(prefix + selector + "{"); assert.ok(start >= 0, "Missing Native feedback success: " + selector); return css.slice(start, css.indexOf("}", start)); };
+  assert.match(rule('.account-feedback-success'), /min-height:0!important/);
+  assert.match(rule('.account-feedback-success'), /padding:24px 20px!important/);
+  assert.match(rule('.account-feedback-success'), /text-align:start!important/);
+  assert.match(rule('.account-feedback-success-heading'), /align-items:center!important/);
+  assert.match(rule('.account-feedback-success-mark'), /box-shadow:none!important/);
+  assert.match(rule('.account-feedback-success-mark'), /width:1.5rem!important/);
+  assert.match(rule('.account-feedback-success h2'), /font-size:1.25rem!important/);
+  assert.match(rule('.account-feedback-success p'), /font-size:\.875rem!important/);
+  assert.match(rule('.account-feedback-success .primary-button'), /font-size:\.875rem!important/);
+  assert.match(rule('.account-feedback-success .primary-button'), /width:100%!important/);
+  assert.match(rule('.account-feedback-success .primary-button'), /min-height:48px!important/);
+});

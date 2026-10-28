@@ -1,3 +1,4 @@
+import { iconSvg } from "../uiIcons.mjs";
 function escapeHtml(value) {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 }
@@ -48,10 +49,11 @@ export function renderFeedbackFormView({ category = "bug", message = "", error =
 }
 export function renderFeedbackSuccessView() {
   return `<div class="account-feedback-success" role="status">
-      <span aria-hidden="true">✓</span>
-      <p class="eyebrow">המשוב נשלח</p>
-      <h2>תודה שעזרת לנו להשתפר</h2>
-      <p>קיבלנו את ההודעה יחד עם פרטי הגרסה. אין צורך לשלוח אותה שוב.</p>
-      <button class="primary-button" type="button" data-account-action="feedback-done">סיום</button>
+      <div class="account-feedback-success-heading">
+        <span class="account-feedback-success-mark" aria-hidden="true">${iconSvg("check")}</span>
+        <h2>המשוב נשלח</h2>
+      </div>
+      <p>תודה על המשוב.</p>
+      <button class="primary-button" type="button" data-account-action="feedback-done">חזרה לפרופיל</button>
     </div>`;
 }

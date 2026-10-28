@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { createFeedbackDraft, feedbackRequestIsCurrent } from "../src/domain/feedbackDraft.mjs";
+import { iconSvg } from "../src/uiIcons.mjs";
 import { renderFeedbackPageView, renderFeedbackFormView, renderFeedbackSuccessView } from "../src/ui/feedbackPagePresentation.mjs";
 const app = readFileSync(process.env.FEEDBACK_TEST_APP || "src/app.mjs", "utf8"), auth = readFileSync(process.env.FEEDBACK_TEST_ACCOUNT || "src/publicAccountAuthLayer.mjs", "utf8");
 function fn(source, name) {
@@ -95,12 +96,20 @@ test("signed-out feedback deep links do not expose a submission form", () => {
   assert.match(html, /יש להתחבר/);
   assert.doesNotMatch(html, /<form|type="submit"/);
 });
-test("success retains the existing receipt copy and done action", () => {
+test("feedback success gives one clear receipt and the existing Profile return action", () => {
   const html = renderFeedbackSuccessView();
   assert.match(html, /role="status"/);
-  assert.match(html, /אין צורך לשלוח אותה שוב/);
-  assert.match(html, /data-account-action="feedback-done"/);
+  assert.ok(html.includes("<h2>המשוב נשלח</h2>"));
+  assert.ok(html.includes("<p>תודה על המשוב.</p>"));
+  assert.equal([...html.matchAll(/<h2>/g)].length, 1);
+  assert.equal([...html.matchAll(/<p>/g)].length, 1);
+  assert.equal([...html.matchAll(/<button/g)].length, 1);
+  assert.match(html, /data-account-action="feedback-done">חזרה לפרופיל/);
+  assert.ok(html.includes(iconSvg("check")), "reuse the shared check asset");
+  assert.match(html, /account-feedback-success-mark" aria-hidden="true"/);
+  assert.doesNotMatch(html, /eyebrow|✓|תודה שעזרת|אין צורך לשלוח|feedback-cancel|role="dialog"/);
 });
+
 test("feedback drafts are independent across account owners", () => {
   const a = createFeedbackDraft("a"), b = createFeedbackDraft("b");
   a.message = "private a";
