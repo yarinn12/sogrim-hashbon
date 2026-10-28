@@ -1,3 +1,4 @@
+import { renderAccountDeletionConfirmationView } from "./ui/accountDeletionPresentation.mjs";
 import { renderFeedbackFormView, renderFeedbackSuccessView } from "./ui/feedbackPagePresentation.mjs";
 import { createFeedbackDraft, feedbackRequestIsCurrent } from "./domain/feedbackDraft.mjs";
 import { renderProfileAccountControlsView, renderProfileAdPrivacyControlView } from "./ui/profileAccountPresentation.mjs";
@@ -1829,7 +1830,7 @@ async function handleAccountClick(event) {
   }
 
   if (action === "delete-account-open") {
-    renderAccountDeletionDialog();
+    renderAccountDeletionDialog(event.target.closest("[data-account-action]"));
     return;
   }
 
@@ -2418,34 +2419,20 @@ function setAccountFeedbackBusy(value) {
   updateAccountFeedbackPage();
 }
 
-function renderAccountDeletionDialog() {
+function renderAccountDeletionDialog(returnFocusTarget = document.activeElement) {
   closeAccountDeletionDialog({ fromHistory: true, restoreFocus: false });
-  accountDeleteReturnFocus = document.activeElement instanceof HTMLElement
-    ? document.activeElement
+  accountDeleteReturnFocus = returnFocusTarget instanceof HTMLElement
+    ? returnFocusTarget
     : null;
   const dialog = document.createElement("section");
   dialog.className = "account-delete-backdrop";
   dialog.dataset.accountDeleteDialog = "true";
-  dialog.innerHTML = `
-    <div class="account-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="account-delete-title" aria-describedby="account-delete-description" tabindex="-1">
-      <p class="eyebrow">חשבון ופרטיות</p>
-      <h2 id="account-delete-title">למחוק את החשבון?</h2>
-      <p id="account-delete-description">החשבון, סביבת הענן והמידע האישי יימחקו לצמיתות. ברישומי הוצאות משותפים השם שלך יוחלף ב"משתמש שנמחק", כדי לא לפגוע בחישובים של חברים אחרים.</p>
-      <label class="account-delete-confirmation">
-        <input type="checkbox" name="deleteAccountConfirmation" data-account-delete-confirmation />
-        <span>אני מבין שהפעולה קבועה ואי אפשר לבטל אותה.</span>
-      </label>
-      <p class="account-delete-error" role="alert" data-account-delete-error hidden></p>
-      <div class="account-delete-actions">
-        <button class="secondary-button" type="button" data-account-action="delete-account-cancel">חזרה</button>
-        <button class="primary-button account-delete-confirm" type="button" data-account-action="delete-account-confirm" disabled>מחק את החשבון</button>
-      </div>
-    </div>`;
+  dialog.innerHTML = renderAccountDeletionConfirmationView();
   document.body.append(dialog);
   document.querySelector("#app")?.setAttribute("inert", "");
   document.documentElement.classList.add("account-delete-open");
   pushAccountDeletionHistoryState();
-  dialog.querySelector("[data-account-delete-confirmation]")?.focus();
+  dialog.querySelector(".account-delete-dialog")?.focus({ preventScroll: true });
 }
 
 function closeAccountDeletionDialog({

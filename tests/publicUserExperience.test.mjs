@@ -97,7 +97,7 @@ test("participant validation stays inside the app and returns focus to the choic
 
 test("interactive form controls expose stable browser field names", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const account = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const deletionView = await readFile("src/ui/accountDeletionPresentation.mjs", "utf8");
 
   for (const name of [
     "friendSearch",
@@ -116,7 +116,7 @@ test("interactive form controls expose stable browser field names", async () => 
     const markup = name === "expenseDate" ? renderExpenseDateFieldView({value:"2026-10-20"}) : app;
     assert.match(markup, new RegExp(`name="${name}"`));
   }
-  assert.match(account, /name="deleteAccountConfirmation"/);
+  assert.match(deletionView, /name="deleteAccountConfirmation"/);
 });
 
 test("public account gate supports password and Google login with one cloud identity", async () => {

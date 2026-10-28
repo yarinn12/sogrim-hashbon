@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readSource as readFile } from "./helpers/readSource.mjs";
+const deletionView = await readFile("src/ui/accountDeletionPresentation.mjs", "utf8");
 
 test("account auth layer loads before the app and visual layers", async () => {
   const index = await readFile("index.html", "utf8");
@@ -282,7 +283,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /rememberProfileRouteBeforeLegalNavigation/);
   assert.match(layer, /url\.searchParams\.set\("action", "profile"\)/);
   assert.match(accountView, /data-account-action="delete-account-open"/);
-  assert.match(layer, /data-account-action="delete-account-confirm"/);
+  assert.match(deletionView, /data-account-action="delete-account-confirm"/);
   assert.match(layer, /clearStoredPushData\(accountSession\?\.user\?\.id\)/);
   assert.match(layer, /clearAllOpenInviteTokens\(\)/);
   assert.match(layer, /deleteAccount/);
@@ -303,7 +304,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /handleAccountGateNativeBack/);
   assert.match(layer, /collapseAccountEmailAuth/);
   assert.match(layer, /data-account-auth-status role="status" aria-live="polite"/);
-  assert.match(layer, /account-delete-dialog" role="dialog"[\s\S]*?tabindex="-1"/);
+  assert.match(deletionView, /account-delete-dialog" role="dialog"[\s\S]*?tabindex="-1"/);
   assert.match(layer, /enhanceAccountFeedbackPage/);
   assert.match(layer, /"sogrim:feedback-open"/);
   assert.match(layer, /ACCOUNT_SETUP_TIMEOUT_MS = 12_000/);

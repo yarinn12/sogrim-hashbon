@@ -34,6 +34,11 @@
   const gates=[];const pause=async kind=>{if(!qa[kind])return;await new Promise(resolve=>{gates.push(resolve);qa.release=()=>{qa[kind]=false;qa.release=null;for(const done of gates.splice(0))done()}})};
   globalThis.fetch=async(input,options={})=>{
     const url=new URL(typeof input==='string'?input:input.url,location.href),method=String(options.method||input?.method||'GET').toUpperCase(),body=options.body?JSON.parse(options.body):{};
+    if(url.pathname==='/api/account'&&method==='DELETE'){
+      (qa.deletionRequests??=[]).push({method,body,authorization:options.headers?.authorization});
+      if(params.has('deletion-hold')&&!qa.deletionReleased)await new Promise(resolve=>qa.releaseDeletion=()=>{qa.deletionReleased=true;resolve()});
+      return response({error:'Synthetic deletion blocked'},503);
+    }
     if(url.pathname==='/api/config')return response(config);
     if(url.pathname==='/api/health')return response({ok:true});
     if(url.pathname.startsWith('/api/notifications'))return response({ok:true,notifications:[],unreadCount:0});

@@ -862,3 +862,25 @@ test("native feedback success uses the approved scalable receipt and full-width 
   assert.match(rule('.account-feedback-success .primary-button'), /width:100%!important/);
   assert.match(rule('.account-feedback-success .primary-button'), /min-height:48px!important/);
 });
+
+
+test("native account deletion confirmation scales all leaf text and avoids sticky occlusion", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs"), { extractNativeStaticCss, files } = await harness((file, ...args) => readFile(file === ledger && process.env.ACCOUNT_DELETION_TEST_LEDGER ? process.env.ACCOUNT_DELETION_TEST_LEDGER : file, ...args));
+  await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css")), prefix = "html.design-coherence-v1.ledger-workspace-v1 body ";
+  const rule = (s) => {
+    const start = css.indexOf(prefix + s + "{");
+    assert.ok(start >= 0, "Missing Native account deletion rule: " + s);
+    return css.slice(start, css.indexOf("}", start));
+  };
+  assert.match(rule(".account-delete-backdrop"), /padding:max\(14px,env\(safe-area-inset-top\)\)/);
+  assert.match(rule(".account-delete-dialog"), /max-height:calc\(100dvh - 28px/);
+  assert.match(rule(".account-delete-dialog"), /overflow:auto!important/);
+  assert.match(rule(".account-delete-dialog"), /grid-auto-rows:max-content!important/);
+  for (const [s, size] of [[".account-delete-dialog h2", "1.5rem"], [".account-delete-description", ".875rem"], [".account-delete-confirmation span", ".875rem"], [".account-delete-actions button", ".875rem"], [".account-delete-error", ".875rem"]]) assert.ok(rule(s).includes("font-size:" + size + "!important"), s);
+  assert.match(rule(".account-delete-confirmation"), /background:transparent!important/);
+  assert.match(rule(".account-delete-confirmation"), /border:0!important/);
+  assert.match(rule(".account-delete-actions"), /position:static!important/);
+  assert.match(rule(".account-delete-actions button"), /min-height:48px!important/);
+  assert.match(css, /dynamic-type-preview[\s\S]*?\.account-delete-actions\{grid-template-columns:minmax\(0,1fr\)!important/);
+});
