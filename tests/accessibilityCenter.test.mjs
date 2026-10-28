@@ -49,27 +49,28 @@ test("accessibility preferences persist on the device", () => {
 });
 
 test("accessibility center is semantic, persistent and compatible with app navigation", async () => {
-  const [index, app, layer, splash, motion, icons, ledger] = await Promise.all([
+  const [index, app, layer, splash, motion, icons, ledger, presentation] = await Promise.all([
     readFile("index.html", "utf8"),
     readFile("src/app.mjs", "utf8"),
     readFile("src/publicAccessibilityLayer.mjs", "utf8"),
     readFile("src/publicAppSplashLayer.mjs", "utf8"),
     readFile("src/publicFramerMotionLayer.mjs", "utf8"),
     readFile("src/uiIcons.mjs", "utf8"),
-    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8")
+    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8"),
+    readFile("src/ui/accessibilityPresentation.mjs", "utf8")
   ]);
 
   assert.match(index, /publicAccessibilityLayer\.mjs/);
   assert.match(layer, /aria-label="פתיחת הגדרות נגישות"/);
   assert.match(app, /class="secondary-button profile-accessibility-entry" data-open-accessibility/);
-  assert.match(layer, /role="dialog"/);
-  assert.match(layer, /aria-modal="true"/);
-  assert.match(layer, /aria-labelledby="accessibility-center-title"/);
-  assert.match(layer, /aria-describedby="accessibility-center-description"/);
+  assert.match(presentation, /role="dialog"/);
+  assert.match(presentation, /aria-modal="true"/);
+  assert.match(presentation, /aria-labelledby="accessibility-center-title"/);
+  assert.match(presentation, /aria-describedby="accessibility-center-description"/);
   assert.match(layer, /\.accessibility-entry-auth \{[\s\S]*?left: 14px;[\s\S]*?right: auto;/);
-  assert.match(layer, /role="status" aria-live="polite"/);
-  assert.match(layer, /role="switch"/);
-  assert.match(layer, /href="\.\/accessibility\.html"/);
+  assert.match(presentation, /role="status" aria-live="polite"/);
+  assert.match(presentation, /role="switch"/);
+  assert.match(presentation, /href="\.\/accessibility\.html"/);
   assert.match(layer, /min-height: 44px/);
   assert.match(layer, /handleAccessibilityHistoryBack/);
   assert.match(layer, /handleAccessibilityNativeBack/);

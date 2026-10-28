@@ -884,3 +884,23 @@ test("native account deletion confirmation scales all leaf text and avoids stick
   assert.match(rule(".account-delete-actions button"), /min-height:48px!important/);
   assert.match(css, /dynamic-type-preview[\s\S]*?\.account-delete-actions\{grid-template-columns:minmax\(0,1fr\)!important/);
 });
+
+test("native accessibility settings keep one reachable scroll flow and scalable child controls", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs"), { extractNativeStaticCss, files } = await harness((file, ...args) => readFile(file === ledger && process.env.ACCESSIBILITY_TEST_LEDGER ? process.env.ACCESSIBILITY_TEST_LEDGER : file, ...args));
+  await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css")), prefix = "html.design-coherence-v1.ledger-workspace-v1 body ";
+  const rule = (s) => {
+    const a = css.indexOf(prefix + s + "{");
+    assert.ok(a >= 0, "Missing Native accessibility presentation: " + s);
+    return css.slice(a, css.indexOf("}", a));
+  };
+  assert.ok(rule(".accessibility-center-backdrop").includes("padding:max(14px,env(safe-area-inset-top))"));
+  for (const text of ["grid-auto-rows:max-content!important", "height:auto!important", "max-height:calc(100dvh - 28px", "overflow:auto!important"]) assert.ok(rule(".accessibility-center").includes(text), text);
+  assert.ok(rule(".accessibility-center-content").includes("overflow:visible!important"));
+  assert.ok(rule(".accessibility-center-footer").includes("grid-template-columns:minmax(0,1fr)!important"));
+  for (const [s, size] of [[".accessibility-center-header h2", "1.5rem"], [".accessibility-center-header #accessibility-center-description", ".8125rem"], [".accessibility-segmented-control span", ".875rem"], [".accessibility-setting-row strong", ".9375rem"], [".accessibility-setting-row small", ".8125rem"], [".accessibility-center-footer button", ".875rem"]]) assert.ok(rule(s).includes("font-size:" + size + "!important"), s);
+  assert.ok(rule(".accessibility-segmented-control").includes("border:0!important"));
+  assert.ok(rule(".accessibility-segmented-control span").includes("min-height:48px!important"));
+  assert.ok(rule(".accessibility-close-button").includes("min-height:44px!important"));
+  assert.ok(css.includes("html.accessibility-high-contrast.design-coherence-v1.ledger-workspace-v1 body .accessibility-center{--app-ink:#07110f!important"));
+});

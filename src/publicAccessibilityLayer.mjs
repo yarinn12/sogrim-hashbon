@@ -1,3 +1,4 @@
+import { renderAccessibilityCenterView } from "./ui/accessibilityPresentation.mjs";
 import {
   DEFAULT_ACCESSIBILITY_PREFERENCES,
   loadAccessibilityPreferences,
@@ -219,97 +220,7 @@ function openAccessibilityCenter(trigger = document.activeElement) {
     // Focus restoration still works without session storage on the same page.
   }
 
-  document.body.insertAdjacentHTML(
-    "beforeend",
-    `
-      <div class="accessibility-center-backdrop">
-        <section
-          class="accessibility-center"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="accessibility-center-title"
-          aria-describedby="accessibility-center-description"
-          tabindex="-1"
-        >
-          <header class="accessibility-center-header">
-            <div>
-              <p class="accessibility-center-eyebrow">תצוגה נוחה יותר</p>
-              <h2 id="accessibility-center-title">נגישות</h2>
-              <p id="accessibility-center-description">
-                בחרו את ההעדפות שנוחות לכם במכשיר הזה.
-              </p>
-            </div>
-            <button
-              class="accessibility-close-button"
-              data-close-accessibility
-              type="button"
-              aria-label="סגירת הגדרות נגישות"
-              title="סגור"
-            >${iconSvg("x")}</button>
-          </header>
-
-          <div class="accessibility-center-content">
-            <fieldset class="accessibility-text-size-control">
-              <legend>גודל טקסט</legend>
-              <p>ברירת המחדל מתאימה את הטקסט להגדרת המכשיר.</p>
-              <div class="accessibility-segmented-control">
-                ${renderTextSizeOption("system", "לפי המכשיר")}
-                ${renderTextSizeOption("large", "גדול")}
-                ${renderTextSizeOption("extra-large", "גדול מאוד")}
-              </div>
-            </fieldset>
-
-            <label class="accessibility-setting-row">
-              <span>
-                <strong>ניגודיות גבוהה</strong>
-                <small>מחזקת טקסט, גבולות וכפתורים.</small>
-              </span>
-              <input
-                data-accessibility-contrast
-                type="checkbox"
-                role="switch"
-                aria-label="ניגודיות גבוהה"
-              />
-              <span class="accessibility-switch" aria-hidden="true"></span>
-            </label>
-
-            <label class="accessibility-setting-row">
-              <span>
-                <strong>הפחתת תנועה</strong>
-                <small>מצמצמת אנימציות ומעברים.</small>
-              </span>
-              <input
-                data-accessibility-motion
-                type="checkbox"
-                role="switch"
-                aria-label="הפחתת תנועה"
-              />
-              <span class="accessibility-switch" aria-hidden="true"></span>
-            </label>
-
-            <a class="accessibility-statement-link" href="./accessibility.html">
-              <span>
-                <strong>הצהרת נגישות</strong>
-                <small>מידע, התאמות ויצירת קשר.</small>
-              </span>
-              <span aria-hidden="true">${iconSvg("chevron-left")}</span>
-            </a>
-          </div>
-
-          <footer class="accessibility-center-footer">
-            <button class="accessibility-reset-button" data-reset-accessibility type="button">
-              איפוס הגדרות
-            </button>
-            <button class="accessibility-done-button" data-close-accessibility type="button">
-              סיום
-            </button>
-          </footer>
-          <p class="visually-hidden" data-accessibility-status role="status" aria-live="polite"></p>
-        </section>
-      </div>
-    `
-  );
-
+  document.body.insertAdjacentHTML("beforeend", renderAccessibilityCenterView());
   setBackgroundInert(true);
   document.documentElement.classList.add("accessibility-center-open");
   publishAccessibilityCenterState(true);
@@ -327,20 +238,6 @@ function openAccessibilityCenter(trigger = document.activeElement) {
   // render as well without stealing it once the user moved inside the dialog.
   requestAnimationFrame(() => requestAnimationFrame(focusCenterIfNeeded));
   window.setTimeout(focusCenterIfNeeded, 120);
-}
-
-function renderTextSizeOption(value, label) {
-  return `
-    <label>
-      <input
-        data-accessibility-text-size
-        type="radio"
-        name="accessibility-text-size"
-        value="${value}"
-      />
-      <span>${label}</span>
-    </label>
-  `;
 }
 
 function syncAccessibilityControls() {
