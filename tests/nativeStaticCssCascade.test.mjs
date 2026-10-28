@@ -921,3 +921,8 @@ test("native installation guide preserves bounded scroll and enlarged child typo
   assert.ok(css.includes(".install-app-done::after{content:none!important"));
   assert.ok(rule("html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .account-profile-actions .account-install-button").includes("scroll-margin-block:120px16px!important"));
 });
+
+
+test("native notification inbox scales leaf text and keeps the dot in normal flow",async()=>{
+const{extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:"./src/publicLedgerWorkspaceLayer.mjs"}],"fixture-assets");const css=files.get(join("fixture-assets","native-layers.css")),p='html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] ';
+for(const[s,size]of[[".notification-inbox-header h1","1.5rem"],[".notification-inbox-header .muted",".8125rem"],[".notification-inbox-item-heading strong",".9375rem"],[".notification-inbox-item-copy small",".875rem"],[".notification-inbox-item-copy time",".75rem"],[".notification-inbox-empty h2","1.0625rem"]]){const start=css.lastIndexOf(p+s+"{");assert.ok(start>=0,"Missing shared Native notification style: "+s);assert.ok(css.slice(start,css.indexOf("}",start)).includes("font-size:"+size+"!important"),s)}const start=css.lastIndexOf(p+".notification-unread-dot{");assert.ok(css.slice(start,css.indexOf("}",start)).includes("position:static!important"));});

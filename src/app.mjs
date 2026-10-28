@@ -1,3 +1,4 @@
+import {renderNotificationInboxView} from "./ui/notificationInboxPresentation.mjs";
 import { renderFeedbackPageView } from "./ui/feedbackPagePresentation.mjs";
 import {renderProfileIdentitySummaryView} from "./ui/profileIdentityPresentation.mjs";
 import {renderFriendRequestsPanelView, renderFriendRequestSectionView, renderPendingFriendRowView} from "./ui/friendRequestsPresentation.mjs";
@@ -2333,99 +2334,11 @@ async function refreshAdminAnalytics({ force = false } = {}) {
 }
 
 function renderNotificationInbox() {
-  const visibleItems = visibleNotificationInboxItems();
-  const unread = notificationUnreadCount();
-  const accountPending = notificationInbox.status !== "loading"
-    && !notificationInbox.error
-    && !notificationInbox.available;
-  const content = notificationInbox.status === "loading"
-    ? renderNotificationInboxLoading()
-    : notificationInbox.error
-      ? `
-        <section class="notification-inbox-empty" role="status">
-          <span class="notification-inbox-empty-icon is-error" aria-hidden="true">${iconSvg("x")}</span>
-          <h2>לא הצלחנו לטעון את ההתראות</h2>
-          <p>אפשר לנסות שוב. האירועים וההוצאות שלך נשארו שמורים.</p>
-          <button class="secondary-button" type="button" data-action="retry-notifications">נסה שוב</button>
-        </section>
-      `
-      : !notificationInbox.available
-        ? `
-          <section class="notification-inbox-empty is-account-pending">
-            <div class="notification-account-pending-heading">
-              <span class="notification-inbox-empty-icon" aria-hidden="true">${iconSvg("bell")}</span>
-              <h2>ההתראות מחכות בחשבון שלך</h2>
-            </div>
-            <button class="primary-button" type="button" data-action="edit-profile">לפרופיל</button>
-          </section>
-        `
-        : visibleItems.length
-          ? `
-            <div class="notification-inbox-list" role="list">
-              ${visibleItems.map(renderNotificationInboxItem).join("")}
-            </div>
-          `
-          : `
-            <section class="notification-inbox-empty">
-              <span class="notification-inbox-empty-icon" aria-hidden="true">${iconSvg("check")}</span>
-              <h2>הכול מעודכן</h2>
-              <p>הוצאות חדשות, הצטרפויות ותזכורות יופיעו כאן.</p>
-            </section>
-          `;
-
-  return `
-    <section class="screen font-hebrew notification-inbox-screen" data-screen-kind="notifications">
-      <header class="top notification-inbox-header">
-        ${renderAppBackButton()}
-        <div class="brand">
-          <h1>התראות</h1>
-          <p class="muted">כל מה שהתעדכן באירועים שמשותפים איתך.</p>
-        </div>
-        ${
-          unread
-            ? `<button class="notification-mark-all" type="button" data-action="mark-all-notifications-read">סמן הכול כנקרא</button>`
-            : ""
-        }
-      </header>
-      ${renderNotice()}
-      <section class="panel notification-inbox-panel ${accountPending ? "is-account-pending" : ""}" aria-live="polite">
-        ${content}
-      </section>
-    </section>
-  `;
-}
-
-function renderNotificationInboxItem(item) {
-  const icon = item.kind === "friend-request"
-    ? "user-plus"
-    : item.kind === "expense-created"
-    ? "receipt"
-    : item.kind === "participant-joined"
-      ? "user-plus"
-      : item.kind === "event-invite"
-        ? "log-in"
-        : "check";
-  return `
-    <button
-      class="notification-inbox-item ${item.readAt ? "is-read" : "is-unread"}"
-      type="button"
-      role="listitem"
-      data-action="open-notification"
-      data-notification-id="${escapeAttribute(item.id)}"
-      data-event-id="${escapeAttribute(item.eventId)}"
-      data-notification-view="${item.view === "friends" ? "friends" : item.view === "summary" ? "summary" : "event"}"
-    >
-      <span class="notification-inbox-item-icon" aria-hidden="true">${iconSvg(icon)}</span>
-      <span class="notification-inbox-item-copy">
-        <span class="notification-inbox-item-heading">
-          <strong>${escapeHtml(item.title)}</strong>
-          <time datetime="${escapeAttribute(item.createdAt)}">${escapeHtml(formatNotificationTime(item.createdAt))}</time>
-        </span>
-        <small>${escapeHtml(item.body)}</small>
-      </span>
-      ${item.readAt ? "" : '<span class="notification-unread-dot" aria-label="לא נקרא"></span>'}
-    </button>
-  `;
+  return renderNotificationInboxView({
+    items: visibleNotificationInboxItems().map(item => ({...item, timeLabel: formatNotificationTime(item.createdAt)})),
+    unread: notificationUnreadCount(), status: notificationInbox.status, available: notificationInbox.available, error: notificationInbox.error,
+    backHtml: renderAppBackButton(), noticeHtml: renderNotice(), loadingHtml: renderNotificationInboxLoading()
+  });
 }
 
 function renderNotificationInboxLoading() {
@@ -21630,7 +21543,7 @@ async function refreshNotificationInbox({ force = false } = {}) {
     return followUpRequest;
   }
 
-  const previousRenderKey = notificationInboxRenderKey();
+  let previousRenderKey = notificationInboxRenderKey();
   lastNotificationInboxRefreshAt = Date.now();
   const hasUsableInbox = notificationInbox.status === "ready";
   if (!hasUsableInbox) {
@@ -21639,6 +21552,8 @@ async function refreshNotificationInbox({ force = false } = {}) {
       status: "loading",
       error: ""
     };
+    // Compare completion with the loading state actually rendered, including repeated identical failures.
+    previousRenderKey = notificationInboxRenderKey();
     if (notificationInboxCanRender()) render();
   }
 

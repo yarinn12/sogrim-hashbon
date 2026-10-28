@@ -553,3 +553,14 @@ for (const operation of ["one", "all"]) {
     assert.equal(h.context.notice, "New session notice");
   });
 }
+
+
+test("repeated inbox failure replaces loading with the same error state already seen before retry", async () => {
+  const h=harness({load:async()=>{throw Object.assign(new Error("Unavailable"),{status:503})}}),statuses=[];
+  h.context.notificationInbox={status:"error",available:false,items:[],error:"load-failed"};
+  h.context.render=()=>statuses.push(h.context.notificationInbox.status);
+  await h.context.refreshNotificationInbox();
+  assert.deepEqual(statuses,["loading","error"]);
+  assert.equal(h.context.notificationInbox.status,"error");
+  assert.equal(h.context.notificationInboxRequest,null);
+});
