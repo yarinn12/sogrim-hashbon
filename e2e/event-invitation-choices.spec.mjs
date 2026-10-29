@@ -10,7 +10,7 @@ test.beforeEach(async({page})=>{
   page.on('pageerror',error=>record.errors.push(error.message));
   await page.route('**/*',route=>new URL(route.request().url()).hostname==='127.0.0.1'?route.continue():(record.external.push(route.request().url()),route.abort()));
   await page.addInitScript({content:fixture});
-  for(const[env,file]of[['INVITATION_TEST_APP','app.mjs'],['INVITATION_TEST_LEDGER','publicLedgerWorkspaceLayer.mjs']])if(process.env[env])await page.route('**/src/'+file+'*',r=>r.fulfill({contentType:'text/javascript',body:readFileSync(process.env[env],'utf8')}));
+  for(const[env,file]of[['INVITATION_TEST_APP','app.mjs'],['INVITATION_TEST_LEDGER','publicLedgerWorkspaceLayer.mjs'],['INVITATION_TEST_ACCESSIBILITY','publicAccessibilityLayer.mjs']])if(process.env[env])await page.route('**/src/'+file+'*',r=>r.fulfill({contentType:'text/javascript',body:readFileSync(process.env[env],'utf8')}));
 });
 test.afterEach(async({page})=>{
   expect(evidence.get(page).errors).toEqual([]);expect(evidence.get(page).external).toEqual([]);
@@ -89,11 +89,10 @@ test('accessibility Tab stays inside the center above an invitation route',async
 
 test('delayed Accessibility return never steals a newly focused invitation action',async({page})=>{
  await page.addInitScript(()=>{
-  const timeout=window.setTimeout.bind(window),interval=window.setInterval.bind(window),frame=window.requestAnimationFrame.bind(window),queue=[];
+  const timeout=window.setTimeout.bind(window),interval=window.setInterval.bind(window),queue=[];
   window.__holdAxReturn=false;window.__flushAxReturn=()=>{const held=queue.splice(0);for(const fn of held)fn();return held.length};
   window.setTimeout=(fn,delay,...args)=>window.__holdAxReturn&&fn?.name==='restoreFocus'?(queue.push(()=>fn(...args)),0):timeout(fn,delay,...args);
   window.setInterval=(fn,delay,...args)=>window.__holdAxReturn&&String(fn).includes('preferredTarget')?(queue.push(()=>fn(...args)),0):interval(fn,delay,...args);
-  window.requestAnimationFrame=fn=>window.__holdAxReturn&&fn?.name==='restoreFocus'?(queue.push(()=>fn(performance.now())),0):frame(fn);
  });
  await open(page);const modal=page.locator('.event-participant-add-route-modal'),entry=modal.locator('[data-open-accessibility]');
  await entry.click();await expect(page.locator('.accessibility-center')).toBeVisible();await page.evaluate(()=>window.__holdAxReturn=true);
