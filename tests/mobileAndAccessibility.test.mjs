@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const app = readFileSync("src/app.mjs", "utf8");
+const noticeView = readFileSync("src/ui/appNoticePresentation.mjs", "utf8");
 const ledger = readFileSync("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 const mobileModal = readFileSync("src/publicMobileModalLayer.mjs", "utf8");
 const inviteJoinLayer = readFileSync("src/publicInviteJoinFixLayer.mjs", "utf8");
@@ -201,10 +202,10 @@ test("validation errors are announced, including the profile screen", () => {
 
 test("status messages use a polite live region", () => {
   assert.match(
-    app,
-    /class="notice app-toast" role="status" aria-live="polite" aria-atomic="true"/
+    noticeView,
+    /class="notice app-toast app-inline-notice"[^>]*role="status" aria-live="polite" aria-atomic="true"/
   );
-  assert.match(app, /data-action="dismiss-notice" aria-label="סגירת ההודעה"/);
+  assert.match(noticeView, /data-action="dismiss-notice" aria-label="סגירת ההודעה"/);
   assert.match(app, /class="expense-loop-status" role="status" aria-live="polite"/);
 });
 

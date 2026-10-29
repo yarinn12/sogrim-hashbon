@@ -1,3 +1,4 @@
+import {appNoticeModel, renderAppNoticeView, shouldConsolidateShareError, placeAppNotice, revealAppNotice, clearAppNoticeView} from "./ui/appNoticePresentation.mjs";
 import {renderEventShareLinkView, shouldSuppressReadyShareNotice} from "./ui/eventSharePresentation.mjs";
 import { renderEventFriendsPickerView } from "./ui/eventFriendsPicker.mjs";
 import {renderEventInvitationChoicesView} from "./ui/eventInvitationChoices.mjs";
@@ -2888,29 +2889,19 @@ function renderNotice() {
     notice, isLinkView,
     preparationStatus: isLinkView ? eventSharePreparationState(getEvent(eventDialog.eventId)).status : ""
   })) return "";
-  const presentation = noticePresentation(notice);
-  return presentation.visible
-    ? `
-        <div class="notice app-toast" role="status" aria-live="polite" aria-atomic="true">
-          <span class="app-toast-icon" aria-hidden="true">${iconSvg("bell")}</span>
-          <span class="app-toast-copy">${escapeHtml(notice)}</span>
-          <button class="app-toast-close" type="button" data-action="dismiss-notice" aria-label="סגירת ההודעה" title="סגירת ההודעה">
-            ${iconSvg("x")}
-          </button>
-        </div>
-      `
-    : "";
+  return renderAppNoticeView({message: notice, presentation: appNoticeModel(notice, noticePresentation(notice))});
 }
 
 function clearRenderedNotice() {
   cancelNoticeDismissTimer();
   notice = "";
   lastCommittedScreenMarkup = "";
-  app.querySelector(".app-toast")?.remove();
+  clearAppNoticeView(app);
 }
 
 function syncNoticeLifecycleAfterRender() {
-  const presentation = noticePresentation(notice);
+  placeAppNotice(app);
+  const presentation = appNoticeModel(notice, noticePresentation(notice));
   if (!presentation.visible) {
     cancelNoticeDismissTimer();
     if (notice) notice = "";
@@ -2918,16 +2909,20 @@ function syncNoticeLifecycleAfterRender() {
   }
 
   const noticeKey = `${presentation.kind}:${notice}`;
-  if (scheduledNoticeKey === noticeKey && noticeDismissTimer) return;
+  if (scheduledNoticeKey === noticeKey && (noticeDismissTimer || presentation.ttlMs === 0)) return;
   cancelNoticeDismissTimer();
   scheduledNoticeKey = noticeKey;
+  if (presentation.ttlMs === 0) {
+    revealAppNotice(app, () => scheduledNoticeKey === noticeKey);
+    return;
+  }
   noticeDismissTimer = window.setTimeout(() => {
-    if (`${noticePresentation(notice).kind}:${notice}` !== noticeKey) return;
+    if (`${appNoticeModel(notice, noticePresentation(notice)).kind}:${notice}` !== noticeKey) return;
     notice = "";
     scheduledNoticeKey = "";
     noticeDismissTimer = 0;
     lastCommittedScreenMarkup = "";
-    app.querySelector(".app-toast")?.remove();
+    clearAppNoticeView(app);
   }, presentation.ttlMs);
 }
 
@@ -6723,6 +6718,7 @@ function renderEventShareDialog(event) {
       : shareView === "link"
         ? renderEventShareLinkView({
             eventId: event.id, inviteUrl, shareReady, shareFailed, shareDelayed,
+            showPreparationStatus: !shouldConsolidateShareError({shareFailed, notice, shareFailureMessage}),
             shareUnavailableLabel, shareFailureMessage, shareCanRetry
           })
         : renderEventShareMenu(event)
@@ -12040,6 +12036,7 @@ async function handleClick(event) {
   if (action === "dismiss-notice") {
     event.preventDefault();
     clearRenderedNotice();
+    if (eventDialog?.kind === "share" && eventDialog.shareView === "link") render();
     return;
   }
 

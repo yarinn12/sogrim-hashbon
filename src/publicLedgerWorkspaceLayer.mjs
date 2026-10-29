@@ -23364,6 +23364,47 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-partic
 html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-modal-header-actions .modal-section-back-button{border:1px solid var(--ledger-line-strong)!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important;}
 
 
+/* Approved shared in-flow notice presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.app-inline-notice {
+  position: static !important; inset: auto !important; inset-block: auto !important; inset-inline: auto !important;
+  z-index: auto !important; box-sizing: border-box !important; display: grid !important;
+  grid-template-columns: minmax(0,1fr) 44px !important; align-items: start !important; gap: 12px !important;
+  width: 100% !important; max-width: none !important; min-width: 0 !important; min-height: 0 !important;
+  margin: 0 0 24px !important; padding: 12px 12px 12px 0 !important;
+  border: 0 !important; border-inline-start: 2px solid var(--ledger-line) !important; border-radius: 0 !important;
+  background: transparent !important; color: var(--ledger-ink) !important; box-shadow: none !important;
+  font-family: inherit !important; font-size: .875rem !important; font-weight: 400 !important; line-height: 1.65 !important;
+  direction: rtl !important; pointer-events: auto !important; animation: none !important; transform: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .app-inline-notice .app-toast-copy {
+  display: block !important; min-width: 0 !important; margin: 0 !important; padding: 0 !important;
+  font-size: inherit !important; font-weight: 400 !important; line-height: inherit !important;
+  overflow-wrap: anywhere !important; word-break: normal !important; text-align: start !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .app-inline-notice .app-toast-close {
+  align-self: start !important; justify-self: end !important; box-sizing: border-box !important;
+  width: 44px !important; min-width: 44px !important; height: 44px !important; min-height: 44px !important;
+  padding: 0 !important; margin: 0 !important; border: 1px solid var(--ledger-line) !important; border-radius: 10px !important;
+  background: #fff !important; color: var(--ledger-muted) !important; box-shadow: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .app-inline-notice .app-toast-close .ui-icon-svg {
+  width: 18px !important; height: 18px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .app-inline-notice .app-toast-close:focus-visible {
+  outline: 2px solid var(--app-brand) !important; outline-offset: 3px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .app-inline-notice .app-toast-close:active {
+  transform: scale(.96) !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-link-share-screen .event-modal-body:has(>.app-inline-notice) .invite-link-row {
+  margin-top: 0 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.app-inline-notice[data-notice-kind="error"] { border-inline-start-color:var(--ledger-danger,#a1242b)!important; }
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .product-home-screen > .top + .app-inline-notice + .home-quick-actions { margin-top:0!important; }
+
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

@@ -1,7 +1,7 @@
 import "./platformCompatibility.mjs";
 import { hasUpdateSensitiveWork } from "./domain/updateSafety.mjs";
 
-const PWA_RELEASE = "518";
+const PWA_RELEASE = "519";
 const SERVICE_WORKER_URL = `/sw.js?pwa_release=${PWA_RELEASE}`;
 const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
 
