@@ -23405,6 +23405,92 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.app-inl
 html.design-coherence-v1.ledger-workspace-v1 body #app .product-home-screen > .top + .app-inline-notice + .home-quick-actions { margin-top:0!important; }
 
 
+
+/* Approved independent connection and pending-save presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.sync-inline-notice {
+  position: static !important; inset: auto !important; inset-block: auto !important; inset-inline: auto !important;
+  z-index: auto !important; box-sizing: border-box !important; display: grid !important;
+  grid-template-columns: minmax(0,1fr) 44px !important; align-items: start !important; gap: 12px !important;
+  width: 100% !important; max-width: none !important; min-width: 0 !important; min-height: 0 !important;
+  margin: 0 0 24px !important; padding: 12px 12px 12px 0 !important;
+  border: 0 !important; border-inline-start: 2px solid var(--ledger-line) !important; border-radius: 0 !important;
+  background: transparent !important; color: var(--ledger-ink) !important; box-shadow: none !important;
+  font-family: inherit !important; font-size: .875rem !important; font-weight: 400 !important; line-height: 1.65 !important;
+  direction: rtl !important; pointer-events: auto !important; animation: none !important; transform: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-notice .app-toast-copy {
+  display: block !important; min-width: 0 !important; margin: 0 !important; padding: 0 !important;
+  font-size: inherit !important; font-weight: 400 !important; line-height: inherit !important;
+  overflow-wrap: anywhere !important; word-break: normal !important; text-align: start !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-notice .app-toast-close {
+  align-self: start !important; justify-self: end !important; box-sizing: border-box !important;
+  width: 44px !important; min-width: 44px !important; height: 44px !important; min-height: 44px !important;
+  padding: 0 !important; margin: 0 !important; border: 1px solid var(--ledger-line) !important; border-radius: 10px !important;
+  background: #fff !important; color: var(--ledger-muted) !important; box-shadow: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-notice .app-toast-close .ui-icon-svg {
+  width: 18px !important; height: 18px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-notice .app-toast-close:focus-visible {
+  outline: 2px solid var(--app-brand) !important; outline-offset: 3px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-notice .app-toast-close:active {
+  transform: scale(.96) !important;
+}
+
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.sync-inline-notice {border-inline-start-color:var(--ledger-danger,#a1242b)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.sync-inline-notice[hidden],
+html.design-coherence-v1.ledger-workspace-v1 body #app [data-route-sync-status].sync-inline-route[hidden] {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.sync-inline-notice.is-conflict {border-inline-start-color:var(--ledger-line-strong)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal [data-route-sync-status].sync-inline-route {
+ display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:16px!important;box-sizing:border-box!important;
+ width:100%!important;max-width:none!important;min-width:0!important;margin:0 0 24px!important;padding:12px 12px 12px 0!important;
+ border:0!important;border-inline-start:2px solid var(--ledger-danger,#a1242b)!important;border-radius:0!important;
+ background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-route [data-inline-sync-status] {
+ display:block!important;min-width:0!important;max-width:100%!important;white-space:normal!important;word-break:normal!important;overflow-wrap:anywhere!important;
+ font-size:inherit!important;font-weight:400!important;line-height:inherit!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-route [data-inline-sync-status][hidden] {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-route [data-sync-retry],
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context .sync-pending-retry {
+ box-sizing:border-box!important;display:block!important;width:100%!important;min-width:0!important;max-width:100%!important;min-height:48px!important;height:auto!important;
+ margin:0!important;padding:12px 16px!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important;color:var(--ledger-ink)!important;
+ font-family:inherit!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;text-align:center!important;text-decoration:none!important;
+ white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-route [data-sync-retry][hidden] {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app [data-sync-account-summary].sync-pending-context {
+ box-sizing:border-box!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:12px!important;width:100%!important;min-width:0!important;
+ margin:20px 0!important;padding:12px 12px 12px 0!important;border:0!important;border-inline-start:2px solid var(--ledger-danger,#a1242b)!important;border-radius:0!important;
+ background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;font-size:.875rem!important;line-height:1.65!important;text-align:start!important;word-break:normal!important;overflow-wrap:anywhere!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app [data-sync-account-summary].sync-pending-context[hidden] {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context .sync-pending-heading {
+ display:block!important;min-width:0!important;margin:0!important;font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context .sync-pending-explanation {
+ display:block!important;min-width:0!important;margin:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-muted)!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context [data-sync-event-details] {min-width:0!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context [data-sync-event-details]>summary {
+ box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;width:100%!important;min-width:0!important;min-height:48px!important;
+ margin:0!important;padding:8px 0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;
+ color:var(--ledger-ink)!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;text-decoration:none!important;list-style:none!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context summary::-webkit-details-marker {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-chevron {display:grid!important;place-items:center!important;flex:0 0 24px!important;width:24px!important;height:24px!important;transform:rotate(-90deg)!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-chevron svg {width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app details[open] .sync-pending-chevron {transform:rotate(90deg)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context ul {display:grid!important;gap:12px!important;min-width:0!important;margin:8px 0 0!important;padding:0!important;list-style:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context li {display:block!important;min-width:0!important;padding:12px 0!important;border-top:1px solid var(--ledger-line)!important;font-size:.8125rem!important;line-height:1.6!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context [data-action="open-event"] {box-sizing:border-box!important;display:block!important;min-width:0!important;width:100%!important;min-height:44px!important;height:auto!important;margin:0!important;padding:8px 0!important;color:var(--ledger-ink)!important;font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;text-align:start!important;text-decoration:none!important;white-space:normal!important;word-break:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context :is(button,summary):focus-visible,
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-route button:focus-visible {outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

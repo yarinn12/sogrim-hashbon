@@ -964,3 +964,15 @@ test('native share presentation scales leaf text and keeps QR and actions reacha
 test('native actionable notices scale their actual text and flow with the page',async()=>{
  const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs'),{extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.APP_NOTICE_TEST_LEDGER?process.env.APP_NOTICE_TEST_LEDGER:file,...args));await extractNativeStaticCss([{path:ledger}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css')),p='html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.app-inline-notice';const normalized=css.replace(/\s+([{}:;,])/g,'$1').replace(/([{}:;,])\s+/g,'$1').replace(/\s+!important/g,'!important');const start=normalized.indexOf(p+'{');assert.ok(start>=0,'Missing Native in-flow notice rule');const rule=normalized.slice(start,normalized.indexOf('}',start));assert.ok(rule.includes('position:static!important'));assert.ok(rule.includes('font-size:.875rem!important'));assert.ok(rule.includes('grid-template-columns:minmax(0,1fr) 44px!important'));assert.ok(rule.includes('box-shadow:none!important'));assert.ok(normalized.includes('.app-inline-notice .app-toast-copy{'));assert.ok(normalized.includes('font-size:inherit!important'));assert.ok(normalized.includes('.app-inline-notice .app-toast-close{'));
 });
+
+
+test('native independent sync notices scale text, hide dismissed nodes and keep retry rows full width',async()=>{
+ const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs'),{extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.SYNC_NOTICE_TEST_LEDGER?process.env.SYNC_NOTICE_TEST_LEDGER:file,...args));await extractNativeStaticCss([{path:ledger}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css')).replace(/\s+([{}:;,])/g,'$1').replace(/([{}:;,])\s+/g,'$1').replace(/\s+!important/g,'!important');
+ const p='html.design-coherence-v1.ledger-workspace-v1 body #app ',rule=s=>{const start=css.indexOf(p+s+'{');assert.ok(start>=0,'Missing native sync style '+s);return css.slice(start,css.indexOf('}',start))};
+ for(const expected of ['position:static!important','font-size:.875rem!important','box-shadow:none!important','grid-template-columns:minmax(0,1fr) 44px!important'])assert.ok(rule('.notice.app-toast.sync-inline-notice').includes(expected),expected);
+ assert.ok(rule('.event-modal [data-route-sync-status].sync-inline-route').includes('grid-template-columns:minmax(0,1fr)!important'));
+ assert.ok(rule('.sync-inline-notice .app-toast-close').includes('width:44px!important'));
+ assert.ok(css.includes('.sync-inline-notice[hidden],'));assert.ok(css.includes('.sync-inline-route[hidden]{display:none!important;'));
+ assert.ok(rule('[data-sync-account-summary].sync-pending-context[hidden]').includes('display:none!important'));
+});

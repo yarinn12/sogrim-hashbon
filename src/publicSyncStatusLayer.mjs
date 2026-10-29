@@ -3,7 +3,7 @@ import {
   loadRuntimeConfig,
   pendingSharedSyncStatus
 } from "./data/localStore.mjs";
-import { iconSvg } from "./uiIcons.mjs";
+import { createSyncNoticePresentation, renderPendingSyncSummary } from "./ui/syncNoticePresentation.mjs";
 import { pendingSaveMessage } from "./domain/userNoticePolicy.mjs";
 
 const STYLE_ID = "public-sync-status-layer-style";
@@ -30,6 +30,7 @@ const ONLINE_MUTATION_ACTIONS = new Set([
 // a stale sync state must never turn a visible control into a no-op.
 const ONLINE_MUTATION_CHANGE_ACTIONS = new Set();
 
+const syncNoticeView = createSyncNoticePresentation();
 let currentStatus = "";
 const initialPendingStatus = pendingSharedSyncStatus({ includeFailureKind: true });
 let pendingSync = initialPendingStatus.pending;
@@ -282,26 +283,7 @@ function showStatus(status) {
   currentStatus = status;
   const message = statusMessage(status);
 
-  let node = document.querySelector("[data-sync-status]");
-  if (!node) {
-    node = document.createElement("div");
-    node.className = "public-sync-status app-toast";
-    node.dataset.syncStatus = "";
-    node.setAttribute("role", "status");
-    node.setAttribute("aria-live", "polite");
-    node.setAttribute("aria-atomic", "true");
-    document.body.append(node);
-  }
-
-  node.className = `public-sync-status app-toast is-${status}`;
-  node.hidden = false;
-  node.innerHTML = `
-    <span class="app-toast-icon" aria-hidden="true">${iconSvg("bell")}</span>
-    <span class="app-toast-copy">${message}</span>
-    <button class="app-toast-close" type="button" data-sync-dismiss aria-label="סגירת ההודעה" title="סגירת ההודעה">
-      ${iconSvg("x")}
-    </button>
-  `;
+  syncNoticeView.render({ status, message });
   syncInlineStatusTargets();
 
 }
@@ -366,77 +348,11 @@ function syncInlineStatusTargets() {
       (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId)));
   });
   syncMutationControls();
+  syncNoticeView.place(currentStatus);
 }
 
 function renderAccountPendingSummary(target, message, failureDetails = {}) {
-  const ids = Array.isArray(pendingEventIds) ? [...new Set(pendingEventIds)] : [];
-  let supplied = [];
-  try {
-    const parsed = JSON.parse(target.dataset.syncAccountEvents || "[]");
-    if (Array.isArray(parsed)) supplied = parsed.filter(item =>
-      typeof item?.id === "string" && typeof item?.name === "string");
-  } catch { /* Older home markup can still resolve its visible event row. */ }
-  const rows = [...document.querySelectorAll('.product-home-screen [data-action="open-event"]')]
-    .filter(button => !target.contains(button));
-  const events = ids.map(id => {
-    const row = rows.find(button => button.dataset.eventId === id);
-    const name = supplied.find(item => item.id === id)?.name ||
-      (id === target.dataset.syncAccountEventId ? target.dataset.syncAccountEventName : "") ||
-      row?.querySelector(".event-row-title strong, .recent-event-main strong")?.textContent?.trim() || "";
-    return { id, name, failureKind: failureDetails.eventFailures?.find(item => item.id === id)?.failureKind || "" };
-  });
-  const key = JSON.stringify([message, events]);
-  if (target.dataset.syncSummaryKey === key) return;
-  target.dataset.syncSummaryKey = key;
-  target.replaceChildren();
-  if (!message) return;
-
-  const eventName = events[0]?.name;
-  const context = ids.length > 1
-    ? `עדכונים ב־${ids.length} אירועים לא סונכרנו. `
-    : eventName ? `עדכונים באירוע ״${eventName}״ לא סונכרנו. `
-      : ids.length === 1 ? "עדכונים באירוע לא סונכרנו. " : "עדכונים בחשבון לא סונכרנו. ";
-  const guidance = failureDetails.failureKind === "permission"
-    ? "השרת דחה שמירה בגלל הרשאה. פרטי האירועים מופיעים כאן."
-    : message;
-  target.append(document.createTextNode(`${context}${guidance} העדכונים הממתינים שמורים במכשיר הזה.`));
-  const retry = document.createElement("button");
-  retry.type = "button";
-  retry.className = "pending-sync-review";
-  retry.dataset.syncRetry = "";
-  retry.textContent = "ניסיון סנכרון נוסף";
-  target.append(document.createTextNode(" "), retry);
-  const addReview = (container, event) => {
-    if (!event.name) {
-      container.append(document.createTextNode("אירוע שהוסר או אינו זמין — עדכון ממתין לסנכרון"));
-      return;
-    }
-    const review = document.createElement("button");
-    review.type = "button";
-    review.className = "pending-sync-review";
-    review.dataset.action = "open-event";
-    review.dataset.eventId = event.id;
-    review.textContent = event.name;
-    review.setAttribute("aria-label", `פתיחת האירוע ${event.name} לבדיקת העדכון הממתין`);
-    container.append(document.createTextNode(" "), review);
-    if (event.failureKind) container.append(document.createTextNode(
-      event.failureKind === "permission" ? " — השמירה נחסמה בגלל הרשאה" : " — נדרש לבדוק את העדכון"));
-  };
-  if (events.length === 1) { addReview(target, events[0]); return; }
-  if (!events.length) return;
-  const details = document.createElement("details");
-  details.dataset.syncEventDetails = "";
-  const summary = document.createElement("summary");
-  summary.className = "pending-sync-review";
-  summary.textContent = `הצגת ${events.length} האירועים`;
-  const list = document.createElement("ul");
-  for (const event of events) {
-    const item = document.createElement("li");
-    addReview(item, event);
-    list.append(item);
-  }
-  details.append(summary, list);
-  target.append(details);
+  return renderPendingSyncSummary(target, message, { pendingEventIds, failureDetails });
 }
 
 function syncMutationControls() {
@@ -487,14 +403,14 @@ function syncMutationControls() {
 
 function statusMessage(status) {
   if (status === "conflict") {
-    return "המידע עודכן במכשיר אחר";
+    return pendingSaveMessage("conflict");
   }
 
   if (status === "unavailable") {
     return "הסנכרון מתעכב כרגע";
   }
 
-  return "אין רשת כרגע";
+  return "אין חיבור לאינטרנט כרגע. התחברו ונסו שוב.";
 }
 
 function injectStyles() {

@@ -1,4 +1,5 @@
 import test from "node:test";
+import {renderPendingSyncSummary} from "../src/ui/syncNoticePresentation.mjs";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
@@ -84,7 +85,7 @@ function functionSource(name) {
 }
 test("late permission status keeps its review target stable across observer passes", () => {
   const target = {
-    dataset: { syncAccountSummary: "" }, children: [],
+    dataset: { syncAccountSummary: "" }, classList: {add() {}}, children: [],
     replaceChildren() { this.children = []; },
     append(...nodes) { this.children.push(...nodes); },
     contains(node) { return this.children.includes(node); }
@@ -101,7 +102,7 @@ test("late permission status keeps its review target stable across observer pass
     createTextNode: (textContent) => ({ textContent }),
     createElement: () => ({ dataset: {}, setAttribute() {}, querySelector: () => null })
   };
-  const context = vm.createContext({ document, pendingEventIds: ["event-a"] });
+  const context = vm.createContext({ document, renderPendingSyncSummary: (target,message,options) => renderPendingSyncSummary(target,message,{...options,document}), pendingEventIds: ["event-a"] });
   vm.runInContext(functionSource("renderAccountPendingSummary"), context);
   const reviewButtons = () => target.children.filter((child) => child.dataset?.action === "open-event");
   const retryButtons = () => target.children.filter((child) => child.dataset?.syncRetry !== undefined);
@@ -131,7 +132,7 @@ function harness(result) {
     flushPendingSharedState: async () => { if (result instanceof Error) throw result; return result; },
     loadRuntimeConfig: async () => ({ storage: { mode: "supabase" } }),
     pendingSharedSyncStatus: () => ({ pending: false, pendingEventIds: [] }),
-    showStatus: status => statuses.push(status), syncMutationControls: () => {},
+    showStatus: status => statuses.push(status), syncMutationControls: () => {}, syncNoticeView: {place() {}},
     activeSaveScreenSignature: "", screenSignature: () => "event:notes",
     document: { body: { classList: { toggle() {} } }, querySelector: () => null,
       querySelectorAll: selector => selector === "[data-inline-sync-status]" ? [target] : [] }
@@ -329,7 +330,7 @@ test("a new save stays silent after the previous outbox is acknowledged", () => 
 
 
 test("the five-event permission summary names every event and keeps its controls stable", () => {
-  const node = () => ({ dataset: {}, children: [], textContent: "", setAttribute() {},
+  const node = () => ({ dataset: {}, classList: {add() {}}, children: [], textContent: "", setAttribute() {},
     replaceChildren() { this.children = []; }, append(...children) { this.children.push(...children); },
     contains(child) { return this.children.some(item => item === child || item.contains?.(child)); }, querySelector: () => null });
   const events = [1, 2, 3, 4, 5].map(number => ({ id: `event-${number}`, name: `אירוע ${number}` }));
@@ -338,7 +339,7 @@ test("the five-event permission summary names every event and keeps its controls
   target.dataset.syncAccountEvents = JSON.stringify(events);
   const document = { querySelectorAll: () => [], createElement: node,
     createTextNode: textContent => ({ textContent }) };
-  const context = vm.createContext({ document, pendingEventIds: events.map(event => event.id) });
+  const context = vm.createContext({ document, renderPendingSyncSummary: (target,message,options) => renderPendingSyncSummary(target,message,{...options,document}), pendingEventIds: events.map(event => event.id) });
   vm.runInContext(functionSource("renderAccountPendingSummary"), context);
   const descendants = root => root.children.flatMap(child => [child, ...(child.children ? descendants(child) : [])]);
   const failureDetails = { failureKind: "permission", eventFailures: [{ id: "event-1", failureKind: "permission" }] };

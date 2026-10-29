@@ -31,7 +31,8 @@ test("public sync status reports cloud saves and recovery without cluttering scr
 
   assert.match(index, /publicSyncStatusLayer\.mjs/);
   assert.match(sw, /publicSyncStatusLayer\.mjs/);
-  assert.match(layer, /aria-live/);
+  const view = await readFile("src/ui/syncNoticePresentation.mjs", "utf8");
+  assert.match(view, /aria-live/);
   assert.match(layer, /body\.app-dialog-open \.public-sync-status/);
   assert.doesNotMatch(layer, /body\.app-dialog-open\.has-event-route-dialog \.public-sync-status/);
   assert.match(layer, /data-inline-sync-status/);
@@ -102,7 +103,7 @@ test("public sync status reports cloud saves and recovery without cluttering scr
     /importantActionDialog\.kind === "merge-participants" \? 'data-allow-offline-mutation="true"'/
   );
   assert.doesNotMatch(layer, /let mutationLockReason = navigator\.onLine === false/);
-  assert.match(layer, /return "אין רשת כרגע"/);
+  assert.match(layer, /return "אין חיבור לאינטרנט כרגע. התחברו ונסו שוב."/);
   assert.match(layer, /return "הסנכרון מתעכב כרגע"/);
   assert.match(layer, /MutationObserver/);
   assert.match(layer, /let lastScreenSignature = screenSignature\(\)/);
@@ -120,13 +121,13 @@ test("public sync status reports cloud saves and recovery without cluttering scr
     /status === "saved" && !activeSaveScreenSignature[\s\S]*?showStatus\(""\)[\s\S]*?return/
   );
   assert.match(layer, /ROUTINE_SYNC_STATUSES\.has\(status\)/);
-  assert.match(layer, /import \{ iconSvg \} from "\.\/uiIcons\.mjs"/);
-  assert.match(layer, /class="app-toast-icon"/);
-  assert.match(layer, /class="app-toast-copy"/);
-  assert.match(layer, /class="app-toast-close"[^>]*data-sync-dismiss/);
-  assert.match(layer, /iconSvg\("bell"\)/);
-  assert.match(layer, /iconSvg\("x"\)/);
-  assert.match(layer, /aria-atomic/);
+  assert.match(view, /import \{ iconSvg \} from "\.\.\/uiIcons\.mjs"/);
+  assert.doesNotMatch(view, /class="app-toast-icon"/);
+  assert.match(view, /class="app-toast-copy"/);
+  assert.match(view, /class="app-toast-close"[^>]*data-sync-dismiss/);
+  assert.doesNotMatch(view, /iconSvg\("bell"\)/);
+  assert.match(view, /iconSvg\("x"\)/);
+  assert.match(view, /aria-atomic/);
   assert.match(
     layer,
     /function handleDismissClick[\s\S]*?node\.hidden = true;[\s\S]*?currentStatus = "";/
@@ -159,7 +160,7 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   }
   assert.match(layer, /if \(routeStatus\) routeStatus\.hidden = !message;/);
   assert.doesNotMatch(layer, /background: #fffaf0/);
-  assert.match(layer, /return "המידע עודכן במכשיר אחר"/);
+  assert.match(layer, /return pendingSaveMessage\("conflict"\)/);
   assert.doesNotMatch(layer, /public-sync-dot/);
   assert.doesNotMatch(layer, /data-sync-retry>נסה שוב/);
   assert.match(layer, /target\.closest\("\[data-route-sync-status\]"\)/);

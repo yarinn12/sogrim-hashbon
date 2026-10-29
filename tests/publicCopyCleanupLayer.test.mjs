@@ -8,7 +8,7 @@ test("public copy cleanup layer loads last", async () => {
   assert.match(index, /publicCopyCleanupLayer\.mjs/);
   assert.match(
     index,
-    /publicVisualRefreshLayer\.mjs\?pwa_release=519"><\/script>[\s\S]+publicCopyCleanupLayer\.mjs\?pwa_release=519"><\/script>/
+    /publicVisualRefreshLayer\.mjs\?pwa_release=520"><\/script>[\s\S]+publicCopyCleanupLayer\.mjs\?pwa_release=520"><\/script>/
   );
   assert.ok(
     index.lastIndexOf("publicCopyCleanupLayer.mjs") >

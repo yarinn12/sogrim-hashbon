@@ -680,6 +680,10 @@ test('live expense changes preserve close confirmation focus through payment and
     await a.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
     await a.locator('[data-action="close-event"]').first().click();
     const confirm=a.locator('[data-action="confirm-close-event"]');
+    // The approved large-text dialog opens on its readable heading. Then
+    // preserve a user's explicit move to the confirm button through live updates.
+    await expect(a.locator('#settlement-close-confirmation-title')).toBeFocused();
+    await confirm.focus();
     await expect(confirm).toBeFocused();
     await newExpense(b,'מונית שנוספה לפני סגירה','20');
     await expect.poll(()=>storedEvent(a,f.personal[0].id).then(event=>event.expenses.length)).toBe(2);
