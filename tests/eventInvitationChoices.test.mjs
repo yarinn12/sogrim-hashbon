@@ -38,7 +38,7 @@ function harness(view='',canEdit=true){
     {id:'hidden',displayName:'לא ברשימה',connected:true}
   ].map(Object.freeze));
   const calls={filter:[],routes:[],editors:[]};
-  const context=vm.createContext({state:{participants},eventDialog:{eventId:event.id,kind:'participants-add',participantView:view,message:'הודעה'},
+  const context=vm.createContext({manualParticipantCopy,state:{participants},eventDialog:{eventId:event.id,kind:'participants-add',participantView:view,message:'הודעה'},
     canCurrentParticipantEdit:()=>canEdit,
     participantCandidateFilter:(ids,kind)=>{calls.filter.push({ids:Array.from(ids),kind});return p=>p.id!=='hidden'},
     participantConnectionStatus:p=>({connected:p.connected}),normalizeParticipantDisplayName:s=>String(s).trim(),
@@ -62,8 +62,9 @@ for(const view of ['friends','manual'])test('invitation styling and context do n
   const{result,calls,event}=harness(view,false);
   assert.equal(calls.routes.length,0);assert.equal(calls.editors.length,1);
   assert.equal(calls.editors[0][0],event);assert.equal(calls.editors[0][2],false);assert.equal(calls.editors[0][3],view);
-  assert.equal(result.description,view==='friends'?event.name:'');assert.doesNotMatch(result.modalClass,/event-invitation-choice-screen/);
+  assert.equal(result.description,event.name);assert.doesNotMatch(result.modalClass,/event-invitation-choice-screen/);
   assert.equal(result.modalClass.includes('event-friends-picker-screen'),view==='friends');
+  assert.equal(result.modalClass.includes('event-manual-name-screen'),view==='manual');
   assert.equal(result.backAction,'event-participant-add-view-back');assert.equal(result.backLabel,'חזרה לדרכי ההוספה');
 });
 test('invitation route adapter passes only the event identifier into presentation',()=>{

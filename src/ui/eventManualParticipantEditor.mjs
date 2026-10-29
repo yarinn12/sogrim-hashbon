@@ -20,3 +20,17 @@ export function renderEventManualParticipantEditorView({ value = "" } = {}) {
     </section>
   `;
 }
+
+// Existing-event actions and validation stay in app.mjs. This view only renders the form.
+export function renderExistingEventManualParticipantEditorView({ eventId = "", value = "", canEdit = false } = {}) {
+    return `
+      <section class="new-event-participant-editor new-event-offline-add">
+        <p class="event-manual-explanation">${escapeHtml(manualParticipantCopy.explanation)}</p>
+        <div class="event-participant-offline-form">
+          <label for="event-offline-participant-name">שם המשתתף</label>
+          <input id="event-offline-participant-name" class="guest-input" data-action="event-guest-name" name="eventGuestName" autocomplete="off" enterkeyhint="done" aria-label="שם המשתתף" placeholder="שם מלא" value="${escapeHtml(value)}" ${!canEdit ? "disabled" : ""} />
+        </div>
+        <button class="primary-button" data-action="event-add-guest" data-event-id="${escapeHtml(eventId)}" ${!canEdit ? "disabled" : ""}>הוסף לאירוע</button>
+      </section>
+    `;
+}

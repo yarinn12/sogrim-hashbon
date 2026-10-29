@@ -925,7 +925,7 @@ test("participant manager keeps the roster calm and moves adding into one focuse
   assert.match(addDialog, /title: routeTitle/);
   assert.match(addDialog, /: "מי מצטרף לאירוע\?"/);
   assert.match(addDialog, /event-participant-add-view-back/);
-  assert.match(addDialog, /description: participantView === "manual" \? "" : event\.name/);
+  assert.match(addDialog, /description: event\.name/);
   assert.match(addDialog, /routeMode: true/);
   assert.match(addDialog, /showClose: false/);
   assert.match(app, /data-action="open-event-share"/);
@@ -937,8 +937,10 @@ test("participant manager keeps the roster calm and moves adding into one focuse
   assert.match(participantRoute, /new-event-participant-route-action/);
   assert.match(participantRoute, /escapeHtml\(className\)/);
   assert.match(app, /הזמן בקישור/);
-  assert.match(app, /הוסף שם ידנית/);
-  assert.match(app, /participant-add-privacy-note/);
+  assert.match(app, /manualParticipantCopy\.title/);
+  const manualEditor = await readFile("src/ui/eventManualParticipantEditor.mjs", "utf8");
+  assert.match(manualEditor, /event-manual-explanation/);
+  assert.doesNotMatch(manualEditor, /participant-add-privacy-note/);
   assert.doesNotMatch(addDialog, /בחר מאנשי הקשר/);
   assert.match(
     app,
@@ -1143,8 +1145,10 @@ test("participant manager offers a clear group link without leaving the event", 
   assert.match(app, /הזמן בקישור/);
   assert.match(app, /data-action="open-event-share"/);
   assert.match(app, /set-event-participant-add-view/);
-  assert.match(app, /aria-label="שם חדש להוספה ידנית"/);
-  assert.match(app, /הוסף שם ידנית/);
+  const manualEditor = await readFile("src/ui/eventManualParticipantEditor.mjs", "utf8");
+  assert.match(manualEditor, /aria-label="שם המשתתף"/);
+  assert.match(manualEditor, /data-action="event-add-guest"/);
+  assert.match(app, /manualParticipantCopy\.title/);
 });
 
 test("single-participant events name the existing share action as an invitation", async () => {

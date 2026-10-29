@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync,existsSync} from "node:fs";
 import vm from "node:vm";
+import {renderExistingEventManualParticipantEditorView} from "../src/ui/eventManualParticipantEditor.mjs";
 import {iconSvg} from "../src/uiIcons.mjs";
 const source=readFileSync(process.env.EVENT_FRIENDS_TEST_APP||"src/app.mjs","utf8"),viewPath=new URL("../src/ui/eventFriendsPicker.mjs",import.meta.url),view=existsSync(viewPath)?await import(viewPath):null;
 function fn(name){const start=source.indexOf("function "+name+"("),next=source.slice(start+1).search(/\r?\n(?:async )?function /);assert.ok(start>=0,name);return source.slice(start,next<0?source.length:start+1+next)}
@@ -15,7 +16,7 @@ function harness({empty=false,hasSaved=true,canEdit=true,pending="friend",addInP
   participantSearchIdentity:(p,n)=>n,escapeHtml:escape,escapeAttribute:escape,iconSvg,
   renderAvatar:(id,event,options)=>{avatars.push({id,eventId:event.id,options});return options?.suppressParticipantAction?'<span class="avatar" aria-hidden="true"></span>':'<span class="avatar" data-action="open-participant-statistics" role="button"></span>'},
   renderParticipantUsername:p=>p.connected?'<bdi class="participant-username">itay_cohen</bdi>':'',renderParticipantMembershipStatus:()=>'',
-  renderEventFriendsPickerView:view?.renderEventFriendsPickerView
+  renderExistingEventManualParticipantEditorView,renderEventFriendsPickerView:view?.renderEventFriendsPickerView
  });
  vm.runInContext(fn('renderAvailableEventParticipantGroup')+'\n'+fn('renderAvailableEventParticipantRow')+'\n'+fn('renderEventParticipantAddEditor'),context);
  const html=context.renderEventParticipantAddEditor(event,empty?[]:Object.freeze([friend,offline]),canEdit,mode);

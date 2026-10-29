@@ -948,3 +948,11 @@ test("native saved-friends picker scales names and keeps a single reachable scro
  for(const[s,size]of [[" .event-modal-header h2","1.5rem"],[" .event-participant-person-copy > strong",".9375rem"],[" .participant-username",".8125rem"],[" .event-participant-add-confirmation .primary-button",".9375rem"],[" .event-participant-empty-friends-panel h2","1.125rem"]])assert.ok(rule(s).includes("font-size:"+size+"!important"),s);
  assert.ok(rule("").includes("overflow:hidden auto!important"));assert.ok(rule(" > .event-modal-body").includes("overflow:visible!important"));assert.ok(rule(" .event-friend-choice-row").includes("min-height:76px!important"));assert.ok(rule(" .event-friend-choice-row:focus-visible .event-participant-selection-check").includes("outline:2px solid"));
 });
+
+test("native existing-event manual editor scales field, placeholder and validation in one reachable scroll region",async()=>{
+ const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs'),{extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.EVENT_MANUAL_TEST_LEDGER?process.env.EVENT_MANUAL_TEST_LEDGER:file,...args));await extractNativeStaticCss([{path:ledger}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css')),p='html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen';
+ const rule=s=>{const a=css.indexOf(p+s+'{');assert.ok(a>=0,'Missing Native existing manual style: '+s);return css.slice(a,css.indexOf('}',a));};
+ for(const[s,size]of[[' .event-modal-header h2','1.5rem'],[' .event-manual-explanation','.875rem'],[' .event-participant-offline-form > label','.875rem'],[' .event-participant-offline-form > input','1rem'],[' .new-event-offline-add > .primary-button','.9375rem'],[' .new-event-offline-add > .field-error','.8125rem']])assert.ok(rule(s).includes('font-size:'+size+'!important'),s);
+ assert.ok(rule('  .event-participant-offline-form > input::placeholder').includes('font-size:inherit!important'));assert.ok(rule('').includes('scroll-padding-block:12px!important'));assert.ok(rule('').includes('overflow:hidden auto!important'));assert.ok(rule(' > .event-modal-body').includes('overflow:visible!important'));assert.ok(rule(' .event-participant-offline-form > input').includes('scroll-margin-block:12px!important'));
+});

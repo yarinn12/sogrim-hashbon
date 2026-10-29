@@ -16,7 +16,7 @@ import { renderExpenseFlowProgressView } from "./ui/expenseFlowProgress.mjs";
 import { renderExpensePayerAmountView } from "./ui/expensePayerAmount.mjs";
 import { renderExpenseTitleView, renderExpenseParticipantsHeadingView, renderExpenseParticipantShareView } from "./ui/expenseDisclosure.mjs";
 import { renderEventActionDockView, renderEventPersonalBalanceView } from "./ui/eventFinancialCards.mjs";
-import { manualParticipantCopy, renderEventManualParticipantEditorView } from "./ui/eventManualParticipantEditor.mjs";
+import { manualParticipantCopy, renderEventManualParticipantEditorView, renderExistingEventManualParticipantEditorView } from "./ui/eventManualParticipantEditor.mjs";
 import { renderEventParticipantRouteView } from "./ui/eventParticipantRoute.mjs";
 import { eventSettlementOptionsView, interimSettlementCopy, settlementSummaryPhase } from "./ui/eventSettlementOptions.mjs";
 import { renderEventDetailsNameFieldView } from "./ui/eventDetailsNameField.mjs";
@@ -5400,16 +5400,16 @@ function renderEventParticipantAddDialog(event) {
   const routeTitle = participantView === "friends"
     ? "בחר מחברים"
     : participantView === "manual"
-      ? "הוסף שם ידנית"
+      ? manualParticipantCopy.title
       : "מי מצטרף לאירוע?";
 
   return renderEventDialogShell({
     eventId: event.id,
     eyebrow: "",
     title: routeTitle,
-    description: participantView === "manual" ? "" : event.name,
+    description: event.name,
     backdropClass: "event-participant-route-backdrop",
-    modalClass: "event-participant-route-modal event-participant-add-route-modal" + (participantView === "friends" ? " event-friends-picker-screen" : participantView ? "" : " event-invitation-choice-screen"),
+    modalClass: "event-participant-route-modal event-participant-add-route-modal" + (participantView === "friends" ? " event-friends-picker-screen" : participantView === "manual" ? " event-manual-name-screen" : " event-invitation-choice-screen"),
     routeMode: true,
     backAction: participantView
       ? "event-participant-add-view-back"
@@ -6827,16 +6827,9 @@ function renderEventParticipantAddEditor(event, participants, canEdit, participa
     });
   }
   if (participantView === "manual") {
-    return `
-      <section class="new-event-participant-editor new-event-offline-add">
-        <header><h2>הוסף שם ידנית</h2><p>לאדם שלא יתחבר לאפליקציה.</p></header>
-        <div class="event-participant-offline-form">
-          <input id="event-offline-participant-name" class="guest-input" data-action="event-guest-name" name="eventGuestName" autocomplete="off" enterkeyhint="done" aria-label="שם חדש להוספה ידנית" placeholder="שם מלא" value="${escapeAttribute(eventDialog?.contactNameDraft ?? "")}" ${!canEdit ? "disabled" : ""} />
-          <button class="secondary-button" data-action="event-add-guest" data-event-id="${escapeAttribute(event.id)}" ${!canEdit ? "disabled" : ""}>הוסף לאירוע</button>
-        </div>
-        <p class="participant-add-privacy-note"><strong>שם ידני</strong><span>השם יוצג למשתתפי האירוע, אך לא ייצור לאדם חשבון.</span></p>
-      </section>
-    `;
+    return renderExistingEventManualParticipantEditorView({
+      eventId: event.id, value: eventDialog?.contactNameDraft ?? "", canEdit
+    });
   }
   return "";
 }

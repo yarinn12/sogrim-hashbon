@@ -1,3 +1,4 @@
+import {renderExistingEventManualParticipantEditorView} from "../src/ui/eventManualParticipantEditor.mjs";
 import {renderProfileIdentitySummaryView} from "../src/ui/profileIdentityPresentation.mjs";
 import {renderExpenseDateFieldView} from "../src/ui/expenseFormPresentation.mjs";
 import test from "node:test";
@@ -113,7 +114,7 @@ test("interactive form controls expose stable browser field names", async () => 
     "expenseDate",
     "participantSelection"
   ]) {
-    const markup = name === "expenseDate" ? renderExpenseDateFieldView({value:"2026-10-20"}) : app;
+    const markup = name === "expenseDate" ? renderExpenseDateFieldView({value:"2026-10-20"}) : name === "eventGuestName" ? renderExistingEventManualParticipantEditorView({canEdit:true}) : app;
     assert.match(markup, new RegExp(`name="${name}"`));
   }
   assert.match(deletionView, /name="deleteAccountConfirmation"/);
