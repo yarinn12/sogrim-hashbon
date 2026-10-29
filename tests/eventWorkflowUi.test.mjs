@@ -739,7 +739,7 @@ test("participant manager separates the current roster from saved names", async 
   assert.match(app, /data-action="select-event-participant-candidate"/);
   assert.match(app, /data-action="confirm-event-participant-add"/);
   assert.match(app, /pendingParticipantId/);
-  assert.match(app, /אישור והוספה לאירוע/);
+  assert.match(await readFile("src/ui/eventFriendsPicker.mjs", "utf8"), /הוסף לאירוע/);
   assert.match(app, /aria-pressed="\$\{selected\}"/);
   assert.match(design, /\.event-participant-selection-button\.is-selected/);
   assert.match(design, /\.event-participant-add-confirmation/);
@@ -925,7 +925,7 @@ test("participant manager keeps the roster calm and moves adding into one focuse
   assert.match(addDialog, /title: routeTitle/);
   assert.match(addDialog, /: "מי מצטרף לאירוע\?"/);
   assert.match(addDialog, /event-participant-add-view-back/);
-  assert.match(addDialog, /description: participantView \? "" : event\.name/);
+  assert.match(addDialog, /description: participantView === "manual" \? "" : event\.name/);
   assert.match(addDialog, /routeMode: true/);
   assert.match(addDialog, /showClose: false/);
   assert.match(app, /data-action="open-event-share"/);

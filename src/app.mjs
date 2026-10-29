@@ -1,3 +1,4 @@
+import { renderEventFriendsPickerView } from "./ui/eventFriendsPicker.mjs";
 import {renderEventInvitationChoicesView} from "./ui/eventInvitationChoices.mjs";
 import {renderFriendRelationshipProfileView} from "./ui/friendRelationshipProfilePresentation.mjs";
 import {renderNotificationInboxView} from "./ui/notificationInboxPresentation.mjs";
@@ -5406,9 +5407,9 @@ function renderEventParticipantAddDialog(event) {
     eventId: event.id,
     eyebrow: "",
     title: routeTitle,
-    description: participantView ? "" : event.name,
+    description: participantView === "manual" ? "" : event.name,
     backdropClass: "event-participant-route-backdrop",
-    modalClass: "event-participant-route-modal event-participant-add-route-modal" + (participantView ? "" : " event-invitation-choice-screen"),
+    modalClass: "event-participant-route-modal event-participant-add-route-modal" + (participantView === "friends" ? " event-friends-picker-screen" : participantView ? "" : " event-invitation-choice-screen"),
     routeMode: true,
     backAction: participantView
       ? "event-participant-add-view-back"
@@ -6796,14 +6797,6 @@ function renderExistingEventParticipantAction(event, action, icon, title, classN
 
 function renderEventParticipantAddEditor(event, participants, canEdit, participantView) {
   if (participantView === "friends") {
-    if (!participants.length) {
-      return `
-        <section class="new-event-participant-editor event-participant-empty-friends-panel" role="status">
-          <header><h2>עדיין אין חברים זמינים</h2><p>אפשר להוסיף חברים במסך החברים ואז לחזור לאירוע.</p></header>
-          <button class="primary-button" type="button" data-action="open-friends-from-event-add">עבור למסך החברים</button>
-        </section>
-      `;
-    }
     const connected = participants.filter((participant) => participantConnectionStatus(participant).connected);
     const offline = participants.filter((participant) => !participantConnectionStatus(participant).connected);
     const selectedParticipantId = participants.some(
@@ -6814,40 +6807,24 @@ function renderEventParticipantAddEditor(event, participants, canEdit, participa
     const selectedParticipant = participants.find(
       (participant) => participant.id === selectedParticipantId
     );
-    return `
-      <section class="new-event-participant-editor new-event-participant-picker">
-        <header><h2>בחר מחברים</h2><p>בחר אדם, בדוק את הבחירה ואשר לפני ההוספה.</p></header>
-        <div class="event-participant-candidate-list">
-          ${renderAvailableEventParticipantGroup(event, connected, canEdit, {
-            className: "is-connected",
-            title: "משתמשים באפליקציה",
-            description: "חשבונות שאפשר להוסיף ישירות.",
-            selectionMode: true,
-            selectedParticipantId
-          })}
-          ${renderAvailableEventParticipantGroup(event, offline, canEdit, {
-            className: "is-offline",
-            title: "שמות אופליין",
-            description: "שמות ידניים שכבר שמורים אצלך.",
-            selectionMode: true,
-            selectedParticipantId
-          })}
-        </div>
-        <div class="event-participant-add-confirmation" aria-live="polite">
-          <p>${selectedParticipant
-            ? `<strong>${escapeHtml(participantName(selectedParticipant.id, event))}</strong><span>ייבחר להוספה רק לאחר האישור.</span>`
-            : "בחר חבר אחד כדי להמשיך."}</p>
-          <button
-            class="primary-button"
-            type="button"
-            data-action="confirm-event-participant-add"
-            data-event-id="${escapeAttribute(event.id)}"
-            ${selectedParticipant && canEdit && !eventDialog?.addInProgress ? "" : "disabled"}
-            ${eventDialog?.addInProgress ? 'aria-busy="true"' : ""}
-          >${eventDialog?.addInProgress ? "מוסיף…" : "אישור והוספה לאירוע"}</button>
-        </div>
-      </section>
-    `;
+    const hasSaved = !participants.length && state.participants.some((person) =>
+      person.id !== state.currentParticipantId && participantCandidateFilter([], "event-participant")(person)
+    );
+    const rowModel = (person) => ({
+      id: person.id,
+      displayName: participantName(person.id, event),
+      avatarHtml: renderAvatar(person.id, event, { suppressParticipantAction: true }),
+      usernameHtml: renderParticipantUsername(person)
+    });
+    return renderEventFriendsPickerView({
+      eventId: event.id,
+      connected: connected.map(rowModel),
+      offline: offline.map(rowModel),
+      selectedParticipantId: selectedParticipant?.id ?? "",
+      canEdit,
+      addInProgress: Boolean(eventDialog?.addInProgress),
+      emptyKind: hasSaved ? "all-included" : "none"
+    });
   }
   if (participantView === "manual") {
     return `

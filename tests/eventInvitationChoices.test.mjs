@@ -62,7 +62,8 @@ for(const view of ['friends','manual'])test('invitation styling and context do n
   const{result,calls,event}=harness(view,false);
   assert.equal(calls.routes.length,0);assert.equal(calls.editors.length,1);
   assert.equal(calls.editors[0][0],event);assert.equal(calls.editors[0][2],false);assert.equal(calls.editors[0][3],view);
-  assert.equal(result.description,'');assert.doesNotMatch(result.modalClass,/event-invitation-choice-screen/);
+  assert.equal(result.description,view==='friends'?event.name:'');assert.doesNotMatch(result.modalClass,/event-invitation-choice-screen/);
+  assert.equal(result.modalClass.includes('event-friends-picker-screen'),view==='friends');
   assert.equal(result.backAction,'event-participant-add-view-back');assert.equal(result.backLabel,'חזרה לדרכי ההוספה');
 });
 test('invitation route adapter passes only the event identifier into presentation',()=>{
