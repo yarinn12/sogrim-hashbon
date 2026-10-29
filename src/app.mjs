@@ -1,3 +1,4 @@
+import {renderEventShareLinkView, shouldSuppressReadyShareNotice} from "./ui/eventSharePresentation.mjs";
 import { renderEventFriendsPickerView } from "./ui/eventFriendsPicker.mjs";
 import {renderEventInvitationChoicesView} from "./ui/eventInvitationChoices.mjs";
 import {renderFriendRelationshipProfileView} from "./ui/friendRelationshipProfilePresentation.mjs";
@@ -2882,6 +2883,11 @@ function renderEventStatusFilter(events) {
 }
 
 function renderNotice() {
+  const isLinkView = eventDialog?.kind === "share" && eventDialog?.shareView === "link";
+  if (shouldSuppressReadyShareNotice({
+    notice, isLinkView,
+    preparationStatus: isLinkView ? eventSharePreparationState(getEvent(eventDialog.eventId)).status : ""
+  })) return "";
   const presentation = noticePresentation(notice);
   return presentation.visible
     ? `
@@ -6685,8 +6691,8 @@ function renderEventShareDialog(event) {
       }
     : shareView === "link"
       ? {
-          title: `שיתוף ${event.name}`,
-          description: "קישור קבוע, WhatsApp או QR."
+          title: "שיתוף האירוע",
+          description: event.name
         }
       : {
           title: "איך מזמינים?",
@@ -6695,11 +6701,11 @@ function renderEventShareDialog(event) {
 
   return renderEventDialogShell({
     eventId: event.id,
-    eyebrow: "הזמנה לאירוע",
+    eyebrow: shareView === "link" ? "" : "הזמנה לאירוע",
     title: dialogCopy.title,
     description: dialogCopy.description,
     backdropClass: "event-participant-route-backdrop event-share-route-backdrop",
-    modalClass: "event-task-modal event-share-modal event-participant-route-modal",
+    modalClass: "event-task-modal event-share-modal event-participant-route-modal" + (shareView === "link" ? " event-link-share-screen" : ""),
     routeMode: true,
     showClose: false,
     backAction: returnsToParentRoute
@@ -6715,61 +6721,10 @@ function renderEventShareDialog(event) {
     body: shareView === "friends"
       ? renderEventShareFriends(event, canEdit)
       : shareView === "link"
-        ? `
-      <div class="event-share-route" data-event-share-view="link">
-      <section class="event-share-open" aria-labelledby="open-invite-title">
-        <div class="event-share-open-heading">
-          <span>
-            <small>קישור קבוע</small>
-            <strong id="open-invite-title">הזמנה ל${escapeHtml(event.name)}</strong>
-          </span>
-          <p>שולחים את אותו הקישור בכל פעם שרוצים לצרף מישהו.</p>
-        </div>
-        <div class="event-share-link-status ${shareReady ? "is-ready" : shareFailed ? "is-error" : "is-loading"}" role="status">
-          <span aria-hidden="true">${iconSvg(shareReady ? "check" : "share")}</span>
-          <span>
-            <strong>${shareReady ? "הקישור מוכן" : shareFailed ? shareUnavailableLabel : shareDelayed ? "עדיין מכינים את הקישור" : "מכינים את הקישור"}</strong>
-            <small>${shareReady ? "אפשר להעתיק או לשלוח בוואטסאפ." : shareFailed ? escapeHtml(shareFailureMessage) : shareDelayed ? "החיבור איטי מהרגיל, אבל ההכנה ממשיכה ותתעדכן כאן אוטומטית." : "עוד רגע אפשר יהיה לשתף."}</small>
-          </span>
-        </div>
-        <div class="invite-link-row">
-          <label class="event-invite-link-field" aria-label="קישור ההזמנה">
-            <input
-              type="hidden"
-              name="eventInviteUrl"
-              data-share-ready="${shareReady}"
-              value="${shareReady ? escapeAttribute(inviteUrl) : ""}"
-            />
-          </label>
-          <div class="event-invite-link-actions">
-            <button
-              class="primary-button whatsapp-button"
-              data-action="share-invite-whatsapp"
-              data-event-id="${escapeAttribute(event.id)}"
-              ${shareReady ? "" : shareFailed ? 'disabled aria-disabled="true"' : 'disabled aria-disabled="true" aria-busy="true"'}
-            >${shareReady ? "שלח בוואטסאפ" : shareFailed ? shareUnavailableLabel : "מכין קישור…"}</button>
-            <button
-              class="secondary-button"
-              data-action="copy-invite"
-              data-open-link="true"
-              data-event-id="${escapeAttribute(event.id)}"
-              ${shareReady ? "" : 'disabled aria-disabled="true"'}
-            >העתק</button>
-          </div>
-        </div>
-        ${
-          shareCanRetry
-            ? `<button
-                class="secondary-button event-invite-retry-button"
-                type="button"
-                data-action="retry-event-share"
-                data-event-id="${escapeAttribute(event.id)}"
-              >נסה להכין את הקישור הקבוע שוב</button>`
-            : ""
-        }
-      </section>
-      </div>
-    `
+        ? renderEventShareLinkView({
+            eventId: event.id, inviteUrl, shareReady, shareFailed, shareDelayed,
+            shareUnavailableLabel, shareFailureMessage, shareCanRetry
+          })
         : renderEventShareMenu(event)
   });
 }

@@ -69,8 +69,9 @@ test("home keeps event tasks focused while referral rewards live in friends", as
   assert.match(referralLayer, /data-referral-context="\$\{context\}"/);
   assert.doesNotMatch(home[0], /data-action="home-share-event"/);
   assert.match(app, /data-action="open-event-share"/);
-  assert.match(app, /data-action="share-invite-whatsapp"/);
-  assert.match(app, /data-action="copy-invite"/);
+  const shareView = await readFile("src/ui/eventSharePresentation.mjs", "utf8");
+  assert.match(shareView, /data-action="share-invite-whatsapp"/);
+  assert.match(shareView, /data-action="copy-invite"/);
 });
 
 test("native invitation sharing uses the share button and leaves copy as copy", async () => {

@@ -588,7 +588,7 @@ test("inviting from participant management returns to the participant roster", a
     app,
     "function renderEventShareDialog(event)",
     "function renderEventSettingsDialog(event)"
-  );
+  ) + "\n" + await readFile("src/ui/eventSharePresentation.mjs", "utf8");
   const openDialog = sourceBetween(
     app,
     "function openEventDialog(eventId, kind, trigger = document.activeElement)",
@@ -632,7 +632,7 @@ test("event sharing reveals one invitation path at a time", async () => {
     app,
     "function renderEventShareDialog(event)",
     "function renderEventSettingsDialog(event)"
-  );
+  ) + "\n" + await readFile("src/ui/eventSharePresentation.mjs", "utf8");
   const inviteStatus = sourceBetween(
     app,
     "function renderInviteStatus(event, ready, available = ready)",
@@ -647,7 +647,7 @@ test("event sharing reveals one invitation path at a time", async () => {
   assert.match(shareDialog, /activeFriendParticipantIds\(state\)/);
   assert.match(shareDialog, /event-share-link-status/);
   assert.doesNotMatch(shareDialog, /class="event-invite-link-preview"/);
-  assert.match(shareDialog, /הקישור מוכן/);
+  assert.match(shareDialog, /שולחים את הקישור או מציגים QR/);
   assert.match(shareDialog, /type="hidden"\s+name="eventInviteUrl"/);
   assert.doesNotMatch(shareDialog, /event-invite-rotate-button/);
   assert.match(shareDialog, /event-invite-retry-button/);
@@ -1337,15 +1337,16 @@ test("event sharing uses a dedicated invite pass instead of a generic status chi
     app,
     "function renderEventShareDialog(event)",
     "function renderEventSettingsDialog(event)"
-  );
+  ) + "\n" + await readFile("src/ui/eventSharePresentation.mjs", "utf8");
   assert.match(
     shareDialog,
     /event-share-link-status/
   );
   assert.match(shareDialog, /event-invite-link-field/);
   assert.match(shareDialog, /event-invite-link-actions/);
-  assert.match(shareDialog, /הקישור מוכן/);
-  assert.match(shareDialog, /הזמנה ל\$\{escapeHtml\(event\.name\)\}/);
+  assert.match(shareDialog, /שולחים את הקישור או מציגים QR/);
+  assert.match(shareDialog, /title: "שיתוף האירוע"/);
+  assert.match(shareDialog, /description: event\.name/);
   assert.doesNotMatch(shareDialog, /status-chip/);
   assert.match(ledgerStyles, /\.event-share-link-status \{/);
   assert.match(ledgerStyles, /\.event-invite-link-actions/);

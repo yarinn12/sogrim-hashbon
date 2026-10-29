@@ -1,3 +1,4 @@
+import {renderEventShareLinkView} from "../src/ui/eventSharePresentation.mjs";
 import {renderExistingEventManualParticipantEditorView} from "../src/ui/eventManualParticipantEditor.mjs";
 import {renderProfileIdentitySummaryView} from "../src/ui/profileIdentityPresentation.mjs";
 import {renderExpenseDateFieldView} from "../src/ui/expenseFormPresentation.mjs";
@@ -61,7 +62,9 @@ test("user-facing forms use accessible names and polished loading copy", async (
   const dateField=renderExpenseDateFieldView({value:"2026-10-20"});
   assert.match(dateField, /data-action="expense-date" name="expenseDate"/);
   assert.match(dateField, /aria-label="תאריך ההוצאה: 20\.10\.2026"/);
-  assert.match(app, /מכין קישור…/);
+  const preparingShare = renderEventShareLinkView();
+  assert.match(preparingShare, /מכינים את הקישור/);
+  assert.match(preparingShare, /disabled aria-disabled="true" aria-busy="true"/);
   assert.match(app, /פותח את האירוע ושומר…/);
   const feedbackView = await readFile("src/ui/feedbackPagePresentation.mjs", "utf8");
   assert.match(feedbackView, /name="message"[\s\S]*?autocomplete="off"[\s\S]*?כתבו כאן את הפרטים…/);
@@ -114,7 +117,7 @@ test("interactive form controls expose stable browser field names", async () => 
     "expenseDate",
     "participantSelection"
   ]) {
-    const markup = name === "expenseDate" ? renderExpenseDateFieldView({value:"2026-10-20"}) : name === "eventGuestName" ? renderExistingEventManualParticipantEditorView({canEdit:true}) : app;
+    const markup = name === "expenseDate" ? renderExpenseDateFieldView({value:"2026-10-20"}) : name === "eventGuestName" ? renderExistingEventManualParticipantEditorView({canEdit:true}) : name === "eventInviteUrl" ? renderEventShareLinkView() : app;
     assert.match(markup, new RegExp(`name="${name}"`));
   }
   assert.match(deletionView, /name="deleteAccountConfirmation"/);

@@ -165,7 +165,7 @@ async function copyResolvedInviteUrl(button, inviteUrl) {
   const copied = await copyText(inviteUrl);
   button.textContent = copied ? "הועתק" : "לא הועתק";
   window.setTimeout(() => {
-    if (button.isConnected) button.textContent = "העתק";
+    if (button.isConnected) button.textContent = button.dataset.copyRestLabel || "העתק";
   }, 1400);
 }
 
