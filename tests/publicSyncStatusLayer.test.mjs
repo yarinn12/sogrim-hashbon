@@ -14,7 +14,12 @@ test("event route dialogs receive an explicit event id without relying on window
     const html = context.renderEventDialogShell({ eventId: "event-scope-fixture", title: "Share", body: "Fixture", routeMode });
     if (routeMode) assert.match(html, /data-sync-event-id="event-scope-fixture"/);
   }
-  const calls = [...app.matchAll(/return renderEventDialogShell\(\{\s*eventId: event\.id,/g)];
+  const overview = await readFile("src/ui/eventSettingsOverviewPresentation.mjs", "utf8");
+  assert.match(overview, /return renderEventDialogShell\(\{\s*eventId,/);
+  const calls = [
+    ...app.matchAll(/return renderEventDialogShell\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventSettingsOverviewView\(\{\s*eventId: event\.id,/g)
+  ];
   assert.equal(calls.length, 18, "all event dialog callers supply their actual event id");
 });
 

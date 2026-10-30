@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {runInNewContext} from "node:vm";
+import {handleEventSettingsPhotoKeydown} from "../src/ui/eventSettingsOverviewPresentation.mjs";
 const source=await readFile('src/app.mjs','utf8');
 const viewUrl=new URL('../src/ui/expenseFormPresentation.mjs',import.meta.url);
 const views=existsSync(viewUrl)?await import(viewUrl.href):{};
@@ -30,7 +31,7 @@ test('edit overview heading is specific while creation and individual questions 
  assert.match(render('name',4),/<h2 id="expense-modal-title">על מה הייתה ההוצאה\?<\/h2>/);
 });
 test('Escape belongs to the native date field and does not exit expense editing',()=>{
- let back=0;const ctx={...views,handleRadioGroupKeyboardNavigation:()=>false,handleFriendsHubTabKeyboardNavigation:()=>false,handleInputKeyboardShortcut:()=>false,closeOpenTransientMenus:()=>false,settlementCloseConfirmation:null,app:{querySelector:()=>({})},goBackInApp:()=>back++};
+ let back=0;const ctx={...views,handleEventSettingsPhotoKeydown,handleRadioGroupKeyboardNavigation:()=>false,handleFriendsHubTabKeyboardNavigation:()=>false,handleInputKeyboardShortcut:()=>false,closeOpenTransientMenus:()=>false,settlementCloseConfirmation:null,app:{querySelector:()=>({})},goBackInApp:()=>back++};
  const handler=runInNewContext(extract('handleDialogKeydown')+'\nhandleDialogKeydown;',ctx);
  handler({key:'Escape',target:{matches:s=>s==='.expense-date-picker-input',closest:()=>null},preventDefault(){}});
  assert.equal(back,0,'closing a date picker must leave the expense editor open');

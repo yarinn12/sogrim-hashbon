@@ -89,20 +89,21 @@ test("event settings remain still while the user reads or scrolls", async ({ pag
   const settingsDialog = page.locator('.event-settings-modal[role="region"]');
   await expect(settingsDialog).toBeVisible();
   const settingsBody = settingsDialog.locator(':scope > .event-modal-body');
-  const initialScrollMetrics = await settingsBody.evaluate((element) => ({
+  // Approved overview now scrolls the whole foreground route; its body flows.
+  await expect(settingsBody).toHaveCSS("overflow-y", "visible");
+  await expect(settingsBody).toHaveCSS("touch-action", "pan-y");
+  const initialScrollMetrics = await settingsDialog.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
     scrollTop: element.scrollTop,
-    overflowY: getComputedStyle(element).overflowY,
-    touchAction: getComputedStyle(element).touchAction
+    overflowY: getComputedStyle(element).overflowY
   }));
   expect(initialScrollMetrics.scrollHeight).toBeGreaterThan(initialScrollMetrics.clientHeight);
   expect(initialScrollMetrics.overflowY).toBe("auto");
-  expect(initialScrollMetrics.touchAction).toContain("pan-y");
-  await settingsBody.evaluate((element) => {
+  await settingsDialog.evaluate((element) => {
     element.scrollTop = Math.min(180, element.scrollHeight - element.clientHeight);
   });
-  await expect.poll(() => settingsBody.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect.poll(() => settingsDialog.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   const dangerCard = page.locator('[data-settings-section="danger"]');
   await dangerCard.scrollIntoViewIfNeeded();
   await dangerCard.focus();
@@ -293,8 +294,8 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
   await expect(page.locator('[data-settings-section="management"]')).toContainText("ניהול מרוכז");
   await expect(page.locator('[data-settings-section="currency"]')).toContainText("דולר אמריקאי");
   await expect(page.locator('[data-settings-section="repayment"]')).toContainText("לפי מי ששילם");
-  await expect(page.locator('[data-settings-section="rounding"]')).toContainText("דיוק מלא ללא עיגול");
-  await expect(page.locator('[data-settings-section="lock"]')).toContainText("האירוע נעול");
+  await expect(page.locator('[data-settings-section="rounding"] .event-settings-menu-copy small')).toHaveText("ללא עיגול");
+  await expect(page.locator('[data-settings-section="lock"] .event-settings-menu-copy small')).toHaveText("נעול לעריכה");
 });
 
 test("closing the choice picker preserves an account lock acquired while it was open", async ({ page }) => {

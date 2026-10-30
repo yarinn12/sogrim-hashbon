@@ -9,8 +9,10 @@ const design = readFileSync(
 );
 
 test("event settings exposes activity as a focused nested screen", () => {
-  assert.match(app, /section: "activity"/);
-  assert.match(app, /title: "פעילות באירוע"/);
+  const overview = readFileSync(new URL("../src/ui/eventSettingsOverviewPresentation.mjs", import.meta.url), "utf8");
+  assert.match(app, /renderEventSettingsOverviewView/);
+  assert.match(overview, /section: "activity"/);
+  assert.match(overview, /title: "פעילות באירוע"/);
   assert.match(app, /eventDialog\.kind === "settings-activity"/);
   assert.match(app, /backAction: "event-settings-back"/);
   assert.match(

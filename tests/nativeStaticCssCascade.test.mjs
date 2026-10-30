@@ -976,3 +976,11 @@ test('native independent sync notices scale text, hide dismissed nodes and keep 
  assert.ok(css.includes('.sync-inline-notice[hidden],'));assert.ok(css.includes('.sync-inline-route[hidden]{display:none!important;'));
  assert.ok(rule('[data-sync-account-summary].sync-pending-context[hidden]').includes('display:none!important'));
 });
+
+test('native settings overview preserves scaled leaf text, adaptive photo choices and one foreground scroll owner',async()=>{
+ const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs'),{extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.EVENT_SETTINGS_TEST_LEDGER?process.env.EVENT_SETTINGS_TEST_LEDGER:file,...args));await extractNativeStaticCss([{path:ledger}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css')),p='html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen';
+ const rule=s=>{const a=css.indexOf(p+s+'{');assert.ok(a>=0,'Missing Native settings rule: '+s);return css.slice(a,css.indexOf('}',a))};
+ for(const[s,size]of[[' .event-modal-header h2','1.5rem'],[' .event-modal-header #event-modal-description','.8125rem'],[' .event-cover-settings-copy strong','.9375rem'],[' .event-cover-settings-copy small','.8125rem'],[' .event-settings-menu-copy strong','.9375rem'],[' .event-settings-menu-copy small','.8125rem']])assert.ok(rule(s).includes('font-size:'+size+'!important'),s);
+ assert.ok(rule('').includes('overflow:hidden auto!important'));assert.ok(rule(' > .event-modal-body').includes('overflow:visible!important'));assert.ok(rule(' .event-cover-source-grid').includes('repeat(auto-fit,minmax(min(100%,10rem),1fr))'));assert.ok(rule(' .event-settings-menu-copy small').includes('-webkit-line-clamp:unset!important'));assert.ok(rule(' .event-settings-menu').includes('box-shadow:none!important'));assert.ok(css.includes('html:has(.event-settings-modal.settings-overview-screen){overflow:hidden!important;'));
+});

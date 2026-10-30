@@ -1,3 +1,4 @@
+import { renderEventSettingsOverviewView, handleEventSettingsPhotoKeydown } from "./ui/eventSettingsOverviewPresentation.mjs";
 import {appNoticeModel, renderAppNoticeView, shouldConsolidateShareError, placeAppNotice, revealAppNotice, clearAppNoticeView} from "./ui/appNoticePresentation.mjs";
 import {renderEventShareLinkView, shouldSuppressReadyShareNotice} from "./ui/eventSharePresentation.mjs";
 import { renderEventFriendsPickerView } from "./ui/eventFriendsPicker.mjs";
@@ -7101,101 +7102,17 @@ function renderEventShareFriends(event, canEdit) {
 }
 
 function renderEventSettingsDialog(event) {
-  const canManage = canCurrentParticipantManage(event);
-  const canLeave = canLeaveEvent(state, event.id, state.currentParticipantId);
-  const adminNames =
-    eventAdminIds(state, event)
-      .map((participantId) => participantName(participantId, event))
-      .join(", ") || "אין מנהל";
-  const managementStatus = event.adminsCanEditOnly ? "ניהול מרוכז" : "ניהול משותף";
-  const currencyStatus = currencySelectLabel(event.currency);
-  const repaymentStatus = usesDirectSettlementTransfers(event)
-    ? "לפי מי ששילם"
-    : "קיזוז חכם";
-  const roundingStatus = usesRoundedSettlementTransfers(event)
-    ? "פעיל · העברות ביחידות מטבע שלמות"
-    : "כבוי · דיוק מלא ללא עיגול";
-  const lockStatus = event.locked ? "האירוע נעול" : "האירוע פתוח לעריכה";
-  const dangerStatus = canManage ? "עזיבה או מחיקת האירוע" : canLeave ? "עזיבת האירוע" : "אין פעולות זמינות";
-
-  return renderEventDialogShell({
+  return renderEventSettingsOverviewView({
     eventId: event.id,
-    eyebrow: "הגדרות",
-    title: "הגדרות האירוע",
-    description: "בוחרים נושא אחד ומטפלים בו במסך נפרד.",
-    modalClass: "event-task-modal event-settings-modal",
-    backdropClass: "event-settings-route-backdrop",
-    routeMode: true,
-    settingsMode: true,
-    backAction: "close-event-dialog",
-    backLabel: "חזרה לאירוע",
-    showClose: false,
-    body: `
-      <section class="event-cover-settings" aria-labelledby="event-cover-settings-title">
-        <div class="event-cover-settings-copy">
-          <strong id="event-cover-settings-title">תמונת האירוע</strong>
-          <small>${event.coverImage ? "אפשר להחליף או להסיר את התמונה." : "לא חובה · מוסיפה זיהוי מהיר לאירוע."}</small>
-        </div>
-        ${event.coverImage ? `<img src="${escapeAttribute(event.coverImage)}" alt="" />` : ""}
-        <div class="event-cover-settings-actions event-cover-source-grid">
-          <label class="secondary-button event-cover-upload">
-            <span>מהגלריה</span>
-            <input data-action="event-cover-image" data-event-id="${escapeAttribute(event.id)}" type="file" accept="image/*" hidden ${!canManage ? "disabled" : ""} />
-          </label>
-          <label class="secondary-button event-cover-upload">
-            <span>מצלמה</span>
-            <input data-action="event-cover-image" data-event-id="${escapeAttribute(event.id)}" type="file" accept="image/*" capture="environment" hidden ${!canManage ? "disabled" : ""} />
-          </label>
-          ${event.coverImage && canManage ? `<button class="secondary-button" type="button" data-action="remove-event-cover" data-event-id="${escapeAttribute(event.id)}">הסר</button>` : ""}
-        </div>
-      </section>
-      <div class="event-settings-menu">
-        ${renderEventSettingsMenuItem({
-          eventId: event.id,
-          section: "management",
-          title: "אופן ניהול",
-          description: `${managementStatus} · קובע מי יכול לעדכן הוצאות. מנהל: ${adminNames}`
-        })}
-        ${renderEventSettingsMenuItem({
-          eventId: event.id,
-          section: "currency",
-          title: "מטבע האירוע",
-          description: `${currencyStatus} · משותף לכל סכומי האירוע, ללא המרת שערים`
-        })}
-        ${renderEventSettingsMenuItem({
-          eventId: event.id,
-          section: "repayment",
-          title: "חלוקת ההחזרים",
-          description: `${repaymentStatus} · קיזוז בין כולם או החזר ישיר למי ששילם`
-        })}
-        ${renderEventSettingsMenuItem({
-          eventId: event.id,
-          section: "rounding",
-          title: "עיגול סכומים",
-          description: `${roundingStatus} · העברות בלבד; ההוצאות נשארות מדויקות`
-        })}
-        ${renderEventSettingsMenuItem({
-          eventId: event.id,
-          section: "activity",
-          title: "פעילות באירוע",
-          description: "מי הוסיף, עדכן וסימן תשלום"
-        })}
-        ${renderEventSettingsMenuItem({
-          eventId: event.id,
-          section: "lock",
-          title: "עריכת האירוע",
-          description: `${lockStatus} · נעילה מונעת עריכת האירוע`
-        })}
-        ${renderEventSettingsMenuItem({
-          eventId: event.id,
-          section: "danger",
-          title: "עזיבה ומחיקה",
-          description: `${dangerStatus} · משפיע על הגישה לאירוע`,
-          danger: true
-        })}
-      </div>
-    `
-  });
+    eventName: event.name,
+    coverImage: event.coverImage,
+    canManage: canCurrentParticipantManage(event),
+    managementStatus: event.adminsCanEditOnly ? "ניהול מרוכז" : "ניהול משותף",
+    currencyStatus: currencySelectLabel(event.currency),
+    repaymentStatus: usesDirectSettlementTransfers(event) ? "לפי מי ששילם" : "קיזוז בין כולם",
+    roundingStatus: usesRoundedSettlementTransfers(event) ? "סכומים שלמים בהחזרים" : "ללא עיגול",
+    lockStatus: event.locked ? "נעול לעריכה" : "פתוח לעריכה"
+  }, { renderEventDialogShell, renderEventSettingsMenuItem });
 }
 
 function renderEventParticipantIdentityDialog(event) {
@@ -23718,6 +23635,7 @@ function handleDialogKeydown(event) {
   if (handleRadioGroupKeyboardNavigation(event)) return;
   if (handleFriendsHubTabKeyboardNavigation(event)) return;
   if (handleInputKeyboardShortcut(event)) return;
+  if (handleEventSettingsPhotoKeydown(event)) return;
 
   const transferRow = event.target.closest?.(".transfer-row[tabindex]");
   if (

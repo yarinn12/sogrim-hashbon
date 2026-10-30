@@ -1370,11 +1370,9 @@ test("event settings expose leaving and admin deletion actions", async () => {
 test("event settings use a focused hub instead of one overloaded dialog", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const ledgerStyles = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
-  const hub = sourceBetween(
-    app,
-    "function renderEventSettingsDialog(event)",
-    "function renderEventSettingsManagementDialog(event)"
-  );
+  const hub = await readFile("src/ui/eventSettingsOverviewPresentation.mjs", "utf8");
+  assert.match(app, /return renderEventSettingsOverviewView\(\{/);
+
 
   for (const section of ["management", "currency", "repayment", "rounding", "lock", "danger"]) {
     assert.match(hub, new RegExp(`section: "${section}"`));
@@ -1424,11 +1422,9 @@ test("event settings expose friendly settlement rounding with an exact fallback"
 
 test("event cover supports reliable gallery and camera replacement", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const settings = sourceBetween(
-    app,
-    "function renderEventSettingsDialog(event)",
-    "function renderEventSettingsManagementDialog(event)"
-  );
+  const settings = await readFile("src/ui/eventSettingsOverviewPresentation.mjs", "utf8");
+  const settingsAdapter = sourceBetween(app, "function renderEventSettingsDialog(event)", "function renderEventParticipantIdentityDialog(event)");
+  assert.match(settingsAdapter, /canManage: canCurrentParticipantManage\(event\)/);
 
   assert.match(settings, /data-action="event-cover-image"[^>]*accept="image\/\*"/);
   assert.match(settings, /data-action="event-cover-image"[^>]*capture="environment"/);
@@ -1450,11 +1446,9 @@ test("closed events keep non-financial manager controls available", async () => 
     "function renderEventCover(event)",
     "function renderEventEmptyExpenseState"
   );
-  const settings = sourceBetween(
-    app,
-    "function renderEventSettingsDialog(event)",
-    "function renderEventSettingsManagementDialog(event)"
-  );
+  const settings = await readFile("src/ui/eventSettingsOverviewPresentation.mjs", "utf8");
+  const settingsAdapter = sourceBetween(app, "function renderEventSettingsDialog(event)", "function renderEventParticipantIdentityDialog(event)");
+  assert.match(settingsAdapter, /canManage: canCurrentParticipantManage\(event\)/);
   const adminToggle = sourceBetween(
     app,
     "async function toggleEventParticipantAdmin(eventId, participantId, enabled)",

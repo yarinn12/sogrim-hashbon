@@ -31,7 +31,7 @@ test("public app uses a dedicated Hebrew UI font stack", async () => {
   const circleLayer = await readFile("src/publicCircleDesignLayer.mjs", "utf8");
   const localFonts = await readFile("assets/fonts/local.css", "utf8");
 
-  assert.match(html, /href="\.\/assets\/fonts\/local\.css\?pwa_release=520"/);
+  assert.match(html, /href="\.\/assets\/fonts\/local\.css\?pwa_release=521"/);
   assert.match(localFonts, /font-family: 'Inter';[\s\S]*?font-weight: 500 900/);
   assert.match(localFonts, /font-family: 'Rubik';[\s\S]*?font-weight: 400 900/);
   assert.doesNotMatch(html, /IBM\+Plex/);
@@ -51,7 +51,7 @@ test("Hebrew font loading uses local licensed assets without remote requests", a
   const localFonts = await readFile("assets/fonts/local.css", "utf8");
 
   assert.match(html, /rel="preload" href="\.\/assets\/fonts\/rubik-hebrew-v31\.woff2" as="font"/);
-  assert.match(html, /rel="stylesheet" href="\.\/assets\/fonts\/local\.css\?pwa_release=520"/);
+  assert.match(html, /rel="stylesheet" href="\.\/assets\/fonts\/local\.css\?pwa_release=521"/);
   assert.match(localFonts, /rubik-hebrew-v31\.woff2/);
   assert.match(localFonts, /inter-latin-v20\.woff2/);
   assert.doesNotMatch(html, /fonts\.(?:googleapis|gstatic)\.com/);
@@ -155,7 +155,9 @@ test("event tools reuse compact app chrome instead of retired oversized modal st
   ]);
 
   assert.match(app, /modalClass: "event-task-modal event-share-modal(?: [^"]+)?"/);
-  assert.match(app, /modalClass: "event-task-modal event-settings-modal"/);
+  assert.match(app, /renderEventSettingsOverviewView/);
+  const overview = await readFile("src/ui/eventSettingsOverviewPresentation.mjs", "utf8");
+  assert.match(overview, /modalClass: "event-task-modal event-settings-modal settings-overview-screen"/);
   assert.match(
     layer,
     /\.event-task-modal[\s\S]*?> \.event-modal-header[\s\S]*?min-height: 92px !important;[\s\S]*?background: var\(--app-surface\) !important;/
