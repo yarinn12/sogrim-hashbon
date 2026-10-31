@@ -82,6 +82,8 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
       await gate;
       if (cloudMode === "rejected") return reply({ message: "Synthetic publication rejection" }, 403);
       const payload = request.postDataJSON();
+      expect(payload.p_state.events).toHaveLength(1);
+      expect(payload.p_state.events[0].adminsCanEditOnly, "new canonical event must use collaborative management").toBe(false);
       canonical.set(payload.p_snapshot_id, { id: payload.p_snapshot_id, state: payload.p_state, updated_at: new Date().toISOString() });
       return reply(true);
     }
@@ -242,6 +244,7 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
       const eventId = await eventScreen.getAttribute("data-event-id");
       await expect.poll(() => personal.state.events.some(event => event.id === eventId)).toBe(true);
       const committed = personal.state.events.find(event => event.id === eventId);
+      expect(committed.adminsCanEditOnly).toBe(false);
       expect(committed.participantIds).toEqual([`account-${owner}`]);
       expect(committed.sharedSpaceId).toBeFalsy();
       expect(creates).toBe(0); expect(notifications).toBe(0);
@@ -277,6 +280,7 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
       const outbox = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
       const queuedEvent = outbox.events.find(event => event.id === eventId);
       expect(queuedEvent).toBeTruthy();
+      expect(queuedEvent.adminsCanEditOnly).toBe(false);
       expect(queuedEvent.sharedSpaceId).toBeTruthy(); expect(queuedEvent.sharedSpaceKey).toBeTruthy();
       expect(queuedEvent.participantIds).toContain(`account-${peer}`);
       expect(notifications).toBe(0); expect(canonical.size).toBe(mode.endsWith("old-rejected") ? 1 : 0);

@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
+import { normalizeEventType, eventTypeOptions } from "../src/domain/eventTypes.mjs";
+import { canEditEvent, canManageEventSettings } from "../src/domain/permissions.mjs";
 import { saveFailureMessage } from "../src/domain/userNoticePolicy.mjs";
 
 const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
@@ -33,12 +35,13 @@ function harness({ save, invite, share } = {}) {
     state: { currentParticipantId: "account-a", participants: [
       { id: "account-a", displayName: "Owner" }, { id: "account-b", displayName: "Peer" }
     ], events: [{ id: "existing-event", name: "Existing" }], groups: [] },
-    newEventDraft: { name: "New event", participantIds: ["account-a", "account-b"], eventType: "standard", currency: "ILS", managementMode: "all" },
+    newEventDraft: { name: "New event", participantIds: ["account-a", "account-b"], eventType: "standard", currency: "ILS", managementMode: "collaborative" },
     screen: { name: "new-event-participants" }, createEventBusy: false, createEventRequest: null,
     pendingCreatedEventDrafts: new Map(),
     joinEventDraft: null, expenseDraft: null, eventDialog: null, notice: "", appHistoryDepth: 1, lastNavigationViewKey: "old", generation: 0,
-    ensureCurrentParticipantInNewEventDraft() {}, normalizeEventType: value => value,
-    normalizeCurrency: value => value, managementModeRequiresAdmin: () => false,
+    ensureCurrentParticipantInNewEventDraft() {}, normalizeEventType,
+    EVENT_MANAGEMENT_COLLABORATIVE: "collaborative", EVENT_MANAGEMENT_CENTRALIZED: "centralized",
+    normalizeCurrency: value => value,
     initializeParticipantMembership: ids => Object.fromEntries(ids.map(id => [id, "now"])),
     accountUserIdFromParticipantId: id => id.startsWith("account-") ? id.slice(8) : "",
     ensureEventShareCredentials: event => { event.sharedSpaceId = "shared-event"; event.sharedSpaceKey = "synthetic-key"; },
@@ -61,6 +64,12 @@ function harness({ save, invite, share } = {}) {
       return { isCurrent: () => ctx.state.currentParticipantId === participantId && ctx.generation === generation };
     }
   });
+  for (const name of ["ensureNewEventDraft", "managementModeRequiresAdmin"]) {
+    const from = source.indexOf(`function ${name}(`);
+    const next = /\n(?:async )?function /.exec(source.slice(from + 1));
+    assert.ok(from >= 0 && next, `${name} is extracted from the actual app`);
+    vm.runInContext(source.slice(from, from + 1 + next.index), ctx);
+  }
   vm.runInContext(source.slice(start, end), ctx);
   return { ctx, saves, invitations, pending, renders, shares };
 }
@@ -231,3 +240,48 @@ test("a late creation denial restores its own draft before the missing event red
   assert.equal(ctx.eventDialog, null);
   assert.match(ctx.notice, /האירוע לא נשמר/); assert.match(ctx.notice, /הטיוטה נשארה כאן/);
 });
+
+
+test("new draft defaults to collaborative and re-rendering preserves an explicit choice", () => {
+  const h = harness();
+  h.ctx.newEventDraft = null;
+  h.ctx.ensureNewEventDraft();
+  assert.equal(h.ctx.newEventDraft.managementMode, "collaborative");
+  h.ctx.newEventDraft.managementMode = "centralized";
+  h.ctx.ensureNewEventDraft();
+  assert.equal(h.ctx.newEventDraft.managementMode, "centralized");
+});
+
+for (const { id: eventType } of eventTypeOptions()) {
+  test(`${eventType} creation persists the collaborative default without promoting members`, async () => {
+    const h = harness();
+    h.ctx.state.events[0].adminsCanEditOnly = true;
+    h.ctx.newEventDraft = null;
+    h.ctx.ensureNewEventDraft();
+    // Execute the actual type-selection branch, including its reset of a stale draft mode.
+    h.ctx.newEventDraft.managementMode = "centralized";
+    h.ctx.action = "new-event-type";
+    h.ctx.target = { dataset: { eventType } };
+    const from = source.indexOf('  if (action === "new-event-type")');
+    const to = source.indexOf('  if (action === "go-new-event-step")', from);
+    assert.ok(from >= 0 && to > from);
+    const schedule = h.ctx.requestAnimationFrame;
+    h.ctx.requestAnimationFrame = () => {}; // DOM focus is covered by browser journeys.
+    vm.runInContext(source.slice(from, to), h.ctx);
+    h.ctx.requestAnimationFrame = schedule;
+    assert.equal(h.ctx.newEventDraft.managementMode, "collaborative");
+    h.ctx.newEventDraft.name = "Collaborative default check";
+    h.ctx.newEventDraft.participantIds.push("account-b");
+    await h.ctx.createEventFromDraft();
+    const event = h.saves[0].state.events[0];
+    assert.equal(event.eventType, eventType);
+    assert.equal(event.adminsCanEditOnly, false);
+    assert.equal(h.ctx.state.events[0].adminsCanEditOnly, false);
+    assert.equal(h.ctx.state.events.find(e => e.id === "existing-event").adminsCanEditOnly, true);
+    assert.equal(canEditEvent(h.ctx.state, event, "account-b"), true);
+    assert.equal(canManageEventSettings(h.ctx.state, event, "account-b"), false);
+    assert.equal(canEditEvent(h.ctx.state, event, "outsider"), false);
+    assert.equal(canEditEvent(h.ctx.state, { ...event, locked: true }, "account-b"), false);
+    assert.equal(canEditEvent(h.ctx.state, { ...event, inactiveParticipantIds: ["account-b"] }, "account-b"), false);
+  });
+}
