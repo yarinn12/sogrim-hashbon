@@ -22,12 +22,15 @@ test("event route dialogs receive an explicit event id without relying on window
   assert.match(currency, /return renderEventDialogShell\(\{\s*eventId,/);
   const repayment = await readFile("src/ui/eventRepaymentPresentation.mjs", "utf8");
   assert.match(repayment, /return renderEventDialogShell\(\{\s*eventId,/);
+  const rounding = await readFile("src/ui/eventRoundingPresentation.mjs", "utf8");
+  assert.match(rounding, /return renderEventDialogShell\(\{\s*eventId,/);
   const calls = [
     ...app.matchAll(/return renderEventDialogShell\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventSettingsOverviewView\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventManagementView\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventCurrencyView\(\{\s*eventId: event\.id,/g),
-    ...app.matchAll(/return renderEventRepaymentView\(\{\s*eventId: event\.id,/g)
+    ...app.matchAll(/return renderEventRepaymentView\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventRoundingView\(\{\s*eventId: event\.id,/g)
   ];
   assert.equal(calls.length, 18, "all event dialog callers supply their actual event id");
 });

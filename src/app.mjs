@@ -1,3 +1,4 @@
+import { renderEventRoundingView } from "./ui/eventRoundingPresentation.mjs";
 import { renderEventRepaymentView } from "./ui/eventRepaymentPresentation.mjs";
 import { renderEventCurrencyView } from "./ui/eventCurrencyPresentation.mjs";
 import { renderEventManagementView } from "./ui/eventManagementPresentation.mjs";
@@ -7343,74 +7344,12 @@ function renderEventSettingsRepaymentDialog(event) {
 }
 
 function renderEventSettingsRoundingDialog(event) {
-  const canManage = canCurrentParticipantManage(event);
-  const rounded = usesRoundedSettlementTransfers(event);
-
-  return renderEventDialogShell({
+  return renderEventRoundingView({
     eventId: event.id,
-    eyebrow: "הגדרות",
-    title: "עיגול סכומים",
-    description: "בוחרים אם לעגל את ההעברות הסופיות או להשאיר אותן מדויקות.",
-    backAction: "event-settings-back",
-    backdropClass: "event-settings-route-backdrop",
-    routeMode: true,
-    settingsMode: true,
-    showClose: false,
-    body: `
-      <fieldset class="event-management-field event-rounding-field event-settings-management-field">
-        <legend>איך להציג את ההעברות?</legend>
-        <div class="event-management-options" role="radiogroup" aria-label="עיגול סכומי ההעברות">
-          ${[
-            {
-              id: "rounded",
-              enabled: true,
-              title: "סכומים נוחים (מומלץ)",
-              description: "מעגלים ליחידות שלמות במטבע האירוע ומאזנים את ההפרש."
-            },
-            {
-              id: "exact",
-              enabled: false,
-              title: "דיוק מלא",
-              description: "משאירים כל העברה מדויקת, ללא עיגול."
-            }
-          ]
-            .map((option, index) => {
-              const selected = rounded === option.enabled;
-              return `
-                <button
-                  type="button"
-                  class="event-management-option ${selected ? "is-active" : ""}"
-                  data-action="set-event-rounding-mode"
-                  data-event-id="${event.id}"
-                  data-rounding-mode="${option.id}"
-                  role="radio"
-                  aria-checked="${selected}"
-                  tabindex="${selected || (!rounded && index === 1) ? "0" : "-1"}"
-                  ${!canManage ? "disabled" : ""}
-                >
-                  <span class="event-management-copy">
-                    <strong>${option.title}</strong>
-                    <small>${option.description}</small>
-                  </span>
-                  <span class="event-management-check app-selection-check" aria-hidden="true">${iconSvg("check")}</span>
-                </button>
-              `;
-            })
-            .join("")}
-        </div>
-      </fieldset>
-      <p class="event-setting-note">
-        ${rounded
-          ? "ההעברות יוצגו בסכומים שלמים ונוחים לתשלום."
-          : "ההעברות יוצגו בדיוק מלא, ללא עיגול."}
-      </p>
-      <details class="event-setting-more">
-        <summary>מידע נוסף</summary>
-        <p>סכומי ההוצאות נשמרים בדיוק כפי שהוזנו. העיגול משפיע רק על ההעברות הסופיות.</p>
-      </details>
-      ${!canManage ? '<p class="event-setting-note">רק מנהל האירוע יכול לשנות את ההגדרה.</p>' : ""}
-    `
-  });
+    eventName: event.name,
+    rounded: usesRoundedSettlementTransfers(event),
+    canManage: canCurrentParticipantManage(event)
+  }, {renderEventDialogShell});
 }
 
 function renderEventSettingsActivityDialog(event) {

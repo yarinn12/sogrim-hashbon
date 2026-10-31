@@ -1396,6 +1396,7 @@ test("event settings use a focused hub instead of one overloaded dialog", async 
 
 test("event settings expose friendly settlement rounding with an exact fallback", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const roundingView = await readFile("src/ui/eventRoundingPresentation.mjs", "utf8");
   const roundingHandler = sourceBetween(
     app,
     "async function setEventRoundingMode(eventId, mode)",
@@ -1403,11 +1404,11 @@ test("event settings expose friendly settlement rounding with an exact fallback"
   );
 
   assert.match(app, /roundSettlementTransfers: true/);
-  assert.match(app, /title: "עיגול סכומים"/);
-  assert.match(app, /data-action="set-event-rounding-mode"/);
-  assert.match(app, /data-rounding-mode="\$\{option\.id\}"/);
-  assert.match(app, /סכומי ההוצאות נשמרים בדיוק כפי שהוזנו/);
-  assert.match(app, /<details class="event-setting-more">/);
+  assert.match(roundingView, /title: "עיגול סכומים"/);
+  assert.match(roundingView, /data-action="set-event-rounding-mode"/);
+  assert.match(roundingView, /data-rounding-mode="\$\{option\.id\}"/);
+  assert.match(roundingView, /<p class="event-rounding-note">סכומי ההוצאות נשארים בדיוק כפי שהוזנו/);
+  assert.doesNotMatch(roundingView, /<details/);
   assert.match(app, /setEventRoundSettlementTransfers\(state, eventId, enabled\)/);
   assert.match(roundingHandler, /const previousEvent = cloneNavigationValue\(event\)/);
   assert.match(
@@ -1995,6 +1996,7 @@ test("event management settings reuse the app card and selection language", asyn
 
 test("event settings subroutes share one surface and control vocabulary", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const roundingView = await readFile("src/ui/eventRoundingPresentation.mjs", "utf8");
   const repaymentView = await readFile("src/ui/eventRepaymentPresentation.mjs", "utf8");
   const ledgerCss = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
@@ -2002,7 +2004,7 @@ test("event settings subroutes share one surface and control vocabulary", async 
   assert.match(currencyView, /field event-currency-field/);
   assert.doesNotMatch(currencyView, /event-settings-card/);
   assert.match(repaymentView, /event-repayment-field event-settings-management-field/);
-  assert.match(app, /event-rounding-field event-settings-management-field/);
+  assert.match(roundingView, /event-rounding-field event-settings-management-field/);
   assert.match(app, /event-activity-panel event-settings-card/);
   assert.match(app, /event-setting-focus-status event-settings-card/);
   assert.match(app, /event-danger-zone event-settings-card/);
