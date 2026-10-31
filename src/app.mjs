@@ -1,3 +1,4 @@
+import { renderEventActivityView } from "./ui/eventActivityPresentation.mjs";
 import { renderEventRoundingView } from "./ui/eventRoundingPresentation.mjs";
 import { renderEventRepaymentView } from "./ui/eventRepaymentPresentation.mjs";
 import { renderEventCurrencyView } from "./ui/eventCurrencyPresentation.mjs";
@@ -7353,57 +7354,24 @@ function renderEventSettingsRoundingDialog(event) {
 }
 
 function renderEventSettingsActivityDialog(event) {
-  const entries = eventActivityEntries(event);
-
-  return renderEventDialogShell({
+  return renderEventActivityView({
     eventId: event.id,
-    eyebrow: "הגדרות",
-    title: "פעילות באירוע",
-    description: "הפעולות החשובות נשמרות כאן לפי סדר הזמן.",
-    backAction: "event-settings-back",
-    backdropClass: "event-settings-route-backdrop",
-    routeMode: true,
-    settingsMode: true,
-    showClose: false,
-    body: `
-      <section class="event-activity-panel event-settings-card" aria-labelledby="event-activity-heading">
-        <h3 id="event-activity-heading" class="visually-hidden">היסטוריית הפעילות</h3>
-        ${
-          entries.length
-            ? `<ol class="event-activity-list">
-                ${entries.map((entry) => renderEventActivityEntry(event, entry)).join("")}
-              </ol>`
-            : `<p class="event-activity-empty">עוד אין פעילות שנשמרה באירוע.</p>`
-        }
-      </section>
-    `
-  });
+    eventName: event.name,
+    entries: eventActivityEntries(event).map((entry) => eventActivityPresentationModel(event, entry))
+  }, {renderEventDialogShell});
 }
 
-function renderEventActivityEntry(event, entry) {
+function eventActivityPresentationModel(event, entry) {
   const copy = eventActivityCopy(event, entry);
-  const actorName = participantName(entry.actorParticipantId, event);
-  const dateLabel = formatRelativeCalendarDate(entry.occurredAt);
-  const timeLabel = formatClockTime(entry.occurredAt);
-
-  return `
-    <li class="event-activity-item" data-activity-kind="${escapeAttribute(entry.kind)}">
-      <span class="event-activity-marker" aria-hidden="true"></span>
-      <span class="event-activity-copy">
-        <strong>${escapeHtml(copy.title)}</strong>
-        ${copy.detail ? `<span>${escapeHtml(copy.detail)}</span>` : ""}
-        <small>
-          ${escapeHtml(actorName)}
-          <span aria-hidden="true"> · </span>
-          <time datetime="${escapeAttribute(entry.occurredAt)}">
-            ${escapeHtml(dateLabel)}
-            <span aria-hidden="true"> · </span>
-            <span class="font-num" dir="ltr">${escapeHtml(timeLabel)}</span>
-          </time>
-        </small>
-      </span>
-    </li>
-  `;
+  return {
+    kind: entry.kind,
+    title: copy.title,
+    detail: copy.detail,
+    actorName: participantName(entry.actorParticipantId, event),
+    occurredAt: entry.occurredAt,
+    dateLabel: formatRelativeCalendarDate(entry.occurredAt),
+    timeLabel: formatClockTime(entry.occurredAt)
+  };
 }
 
 function eventActivityCopy(event, entry) {
