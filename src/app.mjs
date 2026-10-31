@@ -1,3 +1,4 @@
+import { renderEventManagementView } from "./ui/eventManagementPresentation.mjs";
 import { renderEventSettingsOverviewView, handleEventSettingsPhotoKeydown } from "./ui/eventSettingsOverviewPresentation.mjs";
 import {appNoticeModel, renderAppNoticeView, shouldConsolidateShareError, placeAppNotice, revealAppNotice, clearAppNoticeView} from "./ui/appNoticePresentation.mjs";
 import {renderEventShareLinkView, shouldSuppressReadyShareNotice} from "./ui/eventSharePresentation.mjs";
@@ -7305,36 +7306,18 @@ function renderParticipantAliasEditor(event, participant) {
 
 function renderEventSettingsManagementDialog(event) {
   const canManage = canCurrentParticipantManage(event);
-  const adminNames =
-    eventAdminIds(state, event)
-      .map((participantId) => participantName(participantId, event))
-      .join(", ") || "אין מנהל";
-
-  return renderEventDialogShell({
+  const adminIds = eventAdminIds(state, event);
+  return renderEventManagementView({
     eventId: event.id,
-    eyebrow: "הגדרות",
-    title: "אופן ניהול",
-    description: `מנהל האירוע: ${adminNames}`,
-    backAction: "event-settings-back",
-    backdropClass: "event-settings-route-backdrop",
-    routeMode: true,
-    settingsMode: true,
-    showClose: false,
-    body: `
-      ${renderEventManagementOptions({
-        selectedMode: eventManagementMode(event),
-        action: "set-event-management-mode",
-        eventId: event.id,
-        disabled: !canManage || event.locked,
-        className: "event-settings-management-field"
-      })}
-      ${
-        event.locked
-          ? '<p class="event-setting-note">האירוע נעול. צריך לפתוח עריכה לפני שמשנים את אופן הניהול.</p>'
-          : ""
-      }
-    `
-  });
+    eventName: event.name,
+    adminNames: adminIds.map((participantId) => participantName(participantId, event)).join(", ") || "אין מנהל",
+    adminCount: adminIds.length,
+    selectedMode: eventManagementMode(event),
+    modeIds: {centralized: EVENT_MANAGEMENT_CENTRALIZED, collaborative: EVENT_MANAGEMENT_COLLABORATIVE},
+    disabled: !canManage || event.locked,
+    canManage,
+    locked: event.locked
+  }, {renderEventDialogShell});
 }
 
 function renderEventSettingsCurrencyDialog(event) {

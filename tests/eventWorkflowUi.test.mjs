@@ -1974,7 +1974,9 @@ test("event management settings reuse the app card and selection language", asyn
   const app = await readFile("src/app.mjs", "utf8");
   const ledgerCss = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
-  assert.match(app, /className: "event-settings-management-field"/);
+  const managementView = await readFile("src/ui/eventManagementPresentation.mjs", "utf8");
+  assert.match(app, /renderEventManagementView/);
+  assert.match(managementView, /class="event-management-field event-settings-management-field"/);
   assert.match(
     ledgerCss,
     /\.event-settings-management-field \.event-management-option \{[\s\S]*?border-radius: 16px !important;[\s\S]*?background: var\(--ledger-surface\) !important;[\s\S]*?transition-property: background-color, border-color, box-shadow, color, scale !important;/

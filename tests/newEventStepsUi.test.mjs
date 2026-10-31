@@ -56,7 +56,9 @@ test("event creation defaults to collaborative management and settings keep the 
   assert.match(app, /אני מנהל עבור כולם/);
   assert.match(app, /כולם מעדכנים יחד/);
   assert.match(app, /adminsCanEditOnly: managementModeRequiresAdmin\(newEventDraft\.managementMode\)/);
-  assert.match(app, /action: "set-event-management-mode"/);
+  const managementView = await readFile("src/ui/eventManagementPresentation.mjs", "utf8");
+  assert.match(app, /renderEventManagementView/);
+  assert.match(managementView, /data-action="set-event-management-mode"/);
   assert.match(app, /data-action="\$\{action\}"/);
   assert.match(app, /מי יעדכן את ההוצאות/);
 });
