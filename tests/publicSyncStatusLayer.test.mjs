@@ -26,12 +26,15 @@ test("event route dialogs receive an explicit event id without relying on window
   assert.match(rounding, /return renderEventDialogShell\(\{\s*eventId,/);
   const activity = await readFile("src/ui/eventActivityPresentation.mjs", "utf8");
   assert.match(activity, /return renderEventDialogShell\(\{\s*eventId,/);
+  const editing = await readFile("src/ui/eventEditingPresentation.mjs", "utf8");
+  assert.match(editing, /return renderEventDialogShell\(\{\s*eventId,/);
   const calls = [
     ...app.matchAll(/return renderEventDialogShell\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventSettingsOverviewView\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventManagementView\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventCurrencyView\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventRepaymentView\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventEditingView\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventActivityView\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventRoundingView\(\{\s*eventId: event\.id,/g)
   ];

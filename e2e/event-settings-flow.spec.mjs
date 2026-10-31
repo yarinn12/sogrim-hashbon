@@ -262,12 +262,12 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
   const lock = page.locator('[data-action="toggle-lock"]');
   await lock.click();
   await expect(page.getByText("האירוע נעול לעריכה", { exact: true })).toBeVisible();
-  await expect(lock).toHaveText("פתח עריכה");
+  await expect(lock).toHaveText("פתח שוב לעריכה");
   await expect(lock).toBeFocused();
   await lock.click();
-  await expect(lock).toHaveText("נעל עריכה");
+  await expect(lock).toHaveText("נעל את האירוע");
   await lock.click();
-  await expect(lock).toHaveText("פתח עריכה");
+  await expect(lock).toHaveText("פתח שוב לעריכה");
 
   const saved = await page.evaluate((eventId) => {
     const state = JSON.parse(localStorage.getItem("settle-friends-state") || "{}");

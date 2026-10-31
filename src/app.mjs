@@ -1,3 +1,4 @@
+import { renderEventEditingView } from "./ui/eventEditingPresentation.mjs";
 import { renderEventActivityView } from "./ui/eventActivityPresentation.mjs";
 import { renderEventRoundingView } from "./ui/eventRoundingPresentation.mjs";
 import { renderEventRepaymentView } from "./ui/eventRepaymentPresentation.mjs";
@@ -7415,31 +7416,12 @@ function eventActivityCopy(event, entry) {
 }
 
 function renderEventSettingsLockDialog(event) {
-  const canManage = canCurrentParticipantManage(event);
-
-  return renderEventDialogShell({
+  return renderEventEditingView({
     eventId: event.id,
-    eyebrow: "הגדרות",
-    title: "עריכת האירוע",
-    description: "נעילה מונעת שינוי בהוצאות ובמשתתפים עד שפותחים שוב.",
-    backAction: "event-settings-back",
-    backdropClass: "event-settings-route-backdrop",
-    routeMode: true,
-    settingsMode: true,
-    showClose: false,
-    body: `
-      <div class="event-setting-focus-status event-settings-card ${event.locked ? "is-locked" : "is-open"}">
-        <span class="status-chip ${event.locked ? "is-locked" : "is-open"}">${event.locked ? "נעול" : "פתוח"}</span>
-        <div>
-          <strong>${event.locked ? "האירוע נעול לעריכה" : "אפשר עדיין לעדכן את האירוע"}</strong>
-          <p>${event.locked ? "המידע נשמר וניתן לפתוח אותו שוב בכל זמן." : "משתתפים בעלי הרשאה יכולים להוסיף ולעדכן הוצאות."}</p>
-        </div>
-      </div>
-      <div class="event-setting-primary-action">
-        <button class="${event.locked ? "primary-button" : "secondary-button"}" data-action="toggle-lock" data-event-id="${event.id}" ${!canManage ? "disabled" : ""}>${event.locked ? "פתח עריכה" : "נעל עריכה"}</button>
-      </div>
-    `
-  });
+    eventName: event.name,
+    locked: event.locked,
+    canManage: canCurrentParticipantManage(event)
+  }, {renderEventDialogShell});
 }
 
 function renderEventSettingsDangerDialog(event) {

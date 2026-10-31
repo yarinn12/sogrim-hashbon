@@ -2008,7 +2008,9 @@ test("event settings subroutes share one surface and control vocabulary", async 
   const activityView = await readFile("src/ui/eventActivityPresentation.mjs", "utf8");
   assert.match(activityView, /class="event-activity-panel"/);
   assert.doesNotMatch(activityView, /event-settings-card/);
-  assert.match(app, /event-setting-focus-status event-settings-card/);
+  const editingView = await readFile("src/ui/eventEditingPresentation.mjs", "utf8");
+  assert.match(editingView, /class="event-lock-status"/);
+  assert.doesNotMatch(editingView, /event-settings-card|status-chip/);
   assert.match(app, /event-danger-zone event-settings-card/);
   assert.match(
     ledgerCss,

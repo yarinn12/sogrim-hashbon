@@ -1,0 +1,16 @@
+import {expect} from '@playwright/test';
+import {readable} from './syncNoticePresentation.mjs';
+export {readable};
+export async function settled(page){await expect.poll(()=>page.evaluate(async()=>{const m=await import('/src/data/localStore.mjs');return m.pendingSharedSyncStatus().pending})).toBe(false)}
+export async function geometry({page,menu,root}){
+ const specs=[['h2',1.5],['#event-modal-description',.8125],['#event-lock-state-title',1.125],['.event-lock-status > p',.875],['.event-lock-permission',.875],['[data-action="toggle-lock"]',.9375]];
+ const m=await menu.evaluate((e,specs)=>{const fonts=[],bad=[];for(const[s,ratio]of specs)for(const n of e.querySelectorAll(s)){fonts.push({s,ratio,size:parseFloat(getComputedStyle(n).fontSize)});const box=n.getBoundingClientRect(),walker=document.createTreeWalker(n,NodeFilter.SHOW_TEXT);let t;while(t=walker.nextNode())for(let i=0;i<t.length;i++){if(!t.textContent[i].trim())continue;const r=document.createRange();r.setStart(t,i);r.setEnd(t,i+1);for(const b of r.getClientRects())if(b.width&&(b.left<Math.max(0,box.left)-1||b.right>Math.min(innerWidth,box.right)+1))bad.push(s)}}return {fonts,bad,body:getComputedStyle(e.querySelector('.event-modal-body')).overflowY,document:getComputedStyle(document.documentElement).overflowY,overflow:document.documentElement.scrollWidth-innerWidth}},specs);
+ expect(m.bad).toEqual([]);expect(m.overflow).toBe(0);expect(m.body).toBe('visible');expect(m.document).toBe('hidden');for(const f of m.fonts)expect(f.size,f.s).toBe(root*f.ratio);
+ for(const[s]of specs)for(const n of await menu.locator(s).all())await readable(n);
+ for(const n of await menu.locator('.event-modal-header-actions button,[data-action="toggle-lock"]').all()){const b=await n.boundingBox();expect(b.width).toBeGreaterThanOrEqual(44);expect(b.height).toBeGreaterThanOrEqual(44)}
+ const center=await menu.locator('[data-action="toggle-lock"]').evaluate(e=>{const r=document.createRange();r.selectNodeContents(e);const a=e.getBoundingClientRect(),b=r.getBoundingClientRect();return {x:(a.left+a.right-b.left-b.right)/2,y:(a.top+a.bottom-b.top-b.bottom)/2}});expect(Math.abs(center.x)).toBeLessThanOrEqual(1);expect(Math.abs(center.y)).toBeLessThanOrEqual(3);return m;
+}
+export async function finish(page,{allowStatus=false}={}){
+ const result=await page.evaluate(allowStatus=>{const q=__friendInviteQa,keys=['id','currency','participantIds','expenses','notes','adminIds','createdByParticipantId','adminsCanEditOnly','roundSettlementTransfers','directSettlementTransfers',...(!allowStatus?['locked','closedAt','transfers','activityLog']:[])];const bad=s=>s.events.some(e=>{const seed=q.seedFinancialEvents.find(x=>x.id===e.id);return !seed||keys.some(k=>JSON.stringify(e[k])!==JSON.stringify(seed[k]))});return {profile:q.profileWrites.length,friends:q.writes.length,reward:q.rewardWrites.length,shared:q.shared.length,copied:q.copied.length,windows:q.shareWindows.length,personalFinancial:q.snapshotWrites.filter(w=>{const d=Array.isArray(w.body)?w.body[0]:w.body;return d.state&&bad(d.state)}).length,canonicalFinancial:q.canonicalWrites.filter(bad).length,wrongScope:q.canonicalWrites.filter(s=>s.events.some(e=>e.id!=='friend-weekend')).length}},allowStatus);
+ for(const[k,v]of Object.entries(result))expect(v,k).toBe(0);
+}

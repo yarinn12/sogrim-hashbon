@@ -1,5 +1,5 @@
-const PWA_RELEASE = "526";
-const CACHE_NAME = "settle-friends-live-v526";
+const PWA_RELEASE = "527";
+const CACHE_NAME = "settle-friends-live-v527";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -92,6 +92,7 @@ const CACHE_FILES = [
   "/src/ui/eventRepaymentPresentation.mjs",
   "/src/ui/eventRoundingPresentation.mjs",
   "/src/ui/eventActivityPresentation.mjs",
+  "/src/ui/eventEditingPresentation.mjs",
   "/src/ui/primaryNavigationState.mjs",
   "/src/ui/dynamicTypeNavigation.mjs",
   "/src/ui/eventPressGesture.mjs",
@@ -289,6 +290,7 @@ const CRITICAL_PRECACHE_FILES = new Set([
   "/src/ui/eventRepaymentPresentation.mjs",
   "/src/ui/eventRoundingPresentation.mjs",
   "/src/ui/eventActivityPresentation.mjs",
+  "/src/ui/eventEditingPresentation.mjs",
     "/src/domain/feedbackDraft.mjs",
     "/src/ui/referralInvitationPresentation.mjs",
   "/src/ui/closedSettlementPresentation.mjs",
