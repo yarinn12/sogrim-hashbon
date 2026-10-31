@@ -1,3 +1,4 @@
+import { renderEventRepaymentView } from "./ui/eventRepaymentPresentation.mjs";
 import { renderEventCurrencyView } from "./ui/eventCurrencyPresentation.mjs";
 import { renderEventManagementView } from "./ui/eventManagementPresentation.mjs";
 import { renderEventSettingsOverviewView, handleEventSettingsPhotoKeydown } from "./ui/eventSettingsOverviewPresentation.mjs";
@@ -7333,74 +7334,12 @@ function renderEventSettingsCurrencyDialog(event) {
 }
 
 function renderEventSettingsRepaymentDialog(event) {
-  const canManage = canCurrentParticipantManage(event);
-  const direct = usesDirectSettlementTransfers(event);
-
-  return renderEventDialogShell({
+  return renderEventRepaymentView({
     eventId: event.id,
-    eyebrow: "הגדרות",
-    title: "חלוקת ההחזרים",
-    description: "בוחרים אם לקזז בין כולם או להחזיר ישירות למי ששילם.",
-    backAction: "event-settings-back",
-    backdropClass: "event-settings-route-backdrop",
-    routeMode: true,
-    settingsMode: true,
-    showClose: false,
-    body: `
-      <fieldset class="event-management-field event-repayment-field event-settings-management-field">
-        <legend>איך לחלק את ההחזרים?</legend>
-        <div class="event-management-options" role="radiogroup" aria-label="אופן חישוב ההעברות">
-          ${[
-            {
-              id: "optimized",
-              enabled: false,
-              title: "קיזוז חכם (מומלץ)",
-              description: "מאזנים בין כולם כדי לצמצם את מספר ההעברות."
-            },
-            {
-              id: "direct",
-              enabled: true,
-              title: "החזר לפי מי ששילם",
-              description: "כל אחד מחזיר ישירות למי ששילם עבורו."
-            }
-          ]
-            .map((option, index) => {
-              const selected = direct === option.enabled;
-              return `
-                <button
-                  type="button"
-                  class="event-management-option ${selected ? "is-active" : ""}"
-                  data-action="set-event-repayment-mode"
-                  data-event-id="${event.id}"
-                  data-repayment-mode="${option.id}"
-                  role="radio"
-                  aria-checked="${selected}"
-                  tabindex="${selected || (!direct && index === 0) ? "0" : "-1"}"
-                  ${!canManage ? "disabled" : ""}
-                >
-                  <span class="event-management-copy">
-                    <strong>${option.title}</strong>
-                    <small>${option.description}</small>
-                  </span>
-                  <span class="event-management-check app-selection-check" aria-hidden="true">${iconSvg("check")}</span>
-                </button>
-              `;
-            })
-            .join("")}
-        </div>
-      </fieldset>
-      <p class="event-setting-note">
-        ${direct
-          ? "ההחזרים יועברו ישירות למי ששילם."
-          : "המערכת תאזן את החובות ותציע כמה שפחות העברות."}
-      </p>
-      <details class="event-setting-more">
-        <summary>מידע נוסף</summary>
-        <p>סימוני תשלום שכבר בוצעו נשמרים. לא יוצגו העברות נגדיות או כפולות.</p>
-      </details>
-      ${!canManage ? '<p class="event-setting-note">רק מנהל האירוע יכול לשנות את ההגדרה.</p>' : ""}
-    `
-  });
+    eventName: event.name,
+    direct: usesDirectSettlementTransfers(event),
+    canManage: canCurrentParticipantManage(event)
+  }, {renderEventDialogShell});
 }
 
 function renderEventSettingsRoundingDialog(event) {

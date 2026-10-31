@@ -1465,6 +1465,7 @@ test("closed events keep non-financial manager controls available", async () => 
 
 test("event settings let managers choose direct payer reimbursements", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const repaymentView = await readFile("src/ui/eventRepaymentPresentation.mjs", "utf8");
   const ledgerWorkspace = await readFile(
     "src/publicLedgerWorkspaceLayer.mjs",
     "utf8"
@@ -1476,13 +1477,13 @@ test("event settings let managers choose direct payer reimbursements", async () 
   );
 
   assert.match(app, /directSettlementTransfers: true/);
-  assert.match(app, /title: "חלוקת ההחזרים"/);
-  assert.match(app, /title: "קיזוז חכם \(מומלץ\)"/);
-  assert.match(app, /title: "החזר לפי מי ששילם"/);
-  assert.match(app, /data-action="set-event-repayment-mode"/);
+  assert.match(repaymentView, /title: "חלוקת ההחזרים"/);
+  assert.match(repaymentView, /title: "קיזוז חכם"/);
+  assert.match(repaymentView, /title: "החזר לפי מי ששילם"/);
+  assert.match(repaymentView, /data-action="set-event-repayment-mode"/);
   assert.match(app, /setEventDirectSettlementTransfers\(state, eventId, direct\)/);
-  assert.match(app, /סימוני תשלום שכבר בוצעו נשמרים/);
-  assert.match(app, /לא יוצגו העברות נגדיות או כפולות/);
+  assert.match(repaymentView, /סימוני תשלום שכבר בוצעו נשמרים/);
+  assert.match(repaymentView, /לא יוצגו העברות נגדיות או כפולות/);
   assert.match(repaymentHandler, /const previousEvent = cloneNavigationValue\(event\)/);
   assert.match(repaymentHandler, /const previousTransfers = eventSettlementTransfers\(event\)/);
   assert.match(repaymentHandler, /const transferPlanChanged = settlementTransferPlanKey\(previousTransfers\)/);
@@ -1516,6 +1517,7 @@ test("event settings let managers choose direct payer reimbursements", async () 
 
 test("settlement exposes the active repayment mode without burying it in settings", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const repaymentView = await readFile("src/ui/eventRepaymentPresentation.mjs", "utf8");
   const ledgerStyles = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
   assert.match(app, /function renderSettlementRepaymentShortcut\(event\)/);
@@ -1526,7 +1528,7 @@ test("settlement exposes the active repayment mode without burying it in setting
   assert.match(ledgerStyles, /min-height: 44px !important/);
   assert.match(app, /<h2 id="settlement-transfers-title">מי מעביר למי<\/h2>/);
   assert.match(app, /המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם/);
-  assert.match(app, /המערכת תאזן את החובות ותציע כמה שפחות העברות/);
+  assert.match(repaymentView, /מצמצמים את מספר ההעברות. אפשר להחזיר גם למי שלא שילם עבורכם/);
   assert.match(app, /<small>\$\{canManage \? "הסבר ושינוי" : "הסבר"\}<\/small>/);
 });
 
@@ -1993,12 +1995,13 @@ test("event management settings reuse the app card and selection language", asyn
 
 test("event settings subroutes share one surface and control vocabulary", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const repaymentView = await readFile("src/ui/eventRepaymentPresentation.mjs", "utf8");
   const ledgerCss = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
   const currencyView = await readFile("src/ui/eventCurrencyPresentation.mjs", "utf8");
   assert.match(currencyView, /field event-currency-field/);
   assert.doesNotMatch(currencyView, /event-settings-card/);
-  assert.match(app, /event-repayment-field event-settings-management-field/);
+  assert.match(repaymentView, /event-repayment-field event-settings-management-field/);
   assert.match(app, /event-rounding-field event-settings-management-field/);
   assert.match(app, /event-activity-panel event-settings-card/);
   assert.match(app, /event-setting-focus-status event-settings-card/);

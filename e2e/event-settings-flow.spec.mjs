@@ -228,18 +228,18 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
   const repaymentCard = page.locator('[data-settings-section="repayment"]');
   await repaymentCard.click();
   const repaymentDialog = page.locator('.event-modal:has(.event-repayment-field)');
-  const direct = page.locator(
+  const direct = repaymentDialog.locator(
     '[data-action="set-event-repayment-mode"][data-repayment-mode="direct"]'
   );
-  const optimized = page.locator(
+  const optimized = repaymentDialog.locator(
     '[data-action="set-event-repayment-mode"][data-repayment-mode="optimized"]'
   );
   await direct.click();
   await expect(direct).toHaveAttribute("aria-checked", "true");
-  await expect(repaymentDialog).toContainText("ההחזרים יועברו ישירות למי ששילם");
+  await expect(direct).toContainText("כל אחד מחזיר ישירות למי ששילם עבורו.");
   await optimized.click();
   await expect(optimized).toHaveAttribute("aria-checked", "true");
-  await expect(repaymentDialog).toContainText("המערכת תאזן את החובות ותציע כמה שפחות העברות");
+  await expect(optimized).toContainText("מצמצמים את מספר ההעברות. אפשר להחזיר גם למי שלא שילם עבורכם.");
   await direct.click();
   await expect(direct).toHaveAttribute("aria-checked", "true");
   await expect(direct).toBeFocused();
