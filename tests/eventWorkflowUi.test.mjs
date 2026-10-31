@@ -1995,7 +1995,9 @@ test("event settings subroutes share one surface and control vocabulary", async 
   const app = await readFile("src/app.mjs", "utf8");
   const ledgerCss = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
-  assert.match(app, /event-currency-field event-settings-card/);
+  const currencyView = await readFile("src/ui/eventCurrencyPresentation.mjs", "utf8");
+  assert.match(currencyView, /field event-currency-field/);
+  assert.doesNotMatch(currencyView, /event-settings-card/);
   assert.match(app, /event-repayment-field event-settings-management-field/);
   assert.match(app, /event-rounding-field event-settings-management-field/);
   assert.match(app, /event-activity-panel event-settings-card/);

@@ -4,14 +4,15 @@ import { readFile } from "node:fs/promises";
 
 test("event creation and settings expose an event-level currency", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const currencyView = await readFile("src/ui/eventCurrencyPresentation.mjs", "utf8");
 
   assert.match(app, /currency: "ILS"/);
   assert.match(app, /action: "new-event-currency-choice"/);
   assert.match(app, /data-action="new-event-currency-search"/);
-  assert.match(app, /data-action="event-currency"/);
+  assert.match(currencyView, /data-action="event-currency"/);
   assert.match(app, /currency: normalizeCurrency\(newEventDraft\.currency\)/);
-  assert.match(app, /const hasExistingExpenses = event\.expenses\.length > 0/);
-  assert.match(app, /\$\{!canManage \? "disabled" : ""\}/);
+  assert.match(app, /hasExistingExpenses: event\.expenses\.length > 0/);
+  assert.match(currencyView, /\$\{!canManage \|\| hasConvertedExpenses \? "disabled" : ""\}/);
   assert.match(app, /requestEventCurrencyChange\(event, nextCurrency, target\)/);
   assert.match(app, /kind: "change-event-currency"/);
   assert.match(app, /הסכומים יישארו בדיוק כפי שהוזנו ולא יומרו לפי שער חליפין/);

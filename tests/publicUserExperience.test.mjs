@@ -102,6 +102,7 @@ test("participant validation stays inside the app and returns focus to the choic
 test("interactive form controls expose stable browser field names", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const deletionView = await readFile("src/ui/accountDeletionPresentation.mjs", "utf8");
+  const currencyView = await readFile("src/ui/eventCurrencyPresentation.mjs", "utf8");
 
   for (const name of [
     "friendSearch",
@@ -117,7 +118,7 @@ test("interactive form controls expose stable browser field names", async () => 
     "expenseDate",
     "participantSelection"
   ]) {
-    const markup = name === "expenseDate" ? renderExpenseDateFieldView({value:"2026-10-20"}) : name === "eventGuestName" ? renderExistingEventManualParticipantEditorView({canEdit:true}) : name === "eventInviteUrl" ? renderEventShareLinkView() : app;
+    const markup = name === "expenseDate" ? renderExpenseDateFieldView({value:"2026-10-20"}) : name === "eventGuestName" ? renderExistingEventManualParticipantEditorView({canEdit:true}) : name === "eventInviteUrl" ? renderEventShareLinkView() : name === "eventCurrency" ? currencyView : app;
     assert.match(markup, new RegExp(`name="${name}"`));
   }
   assert.match(deletionView, /name="deleteAccountConfirmation"/);

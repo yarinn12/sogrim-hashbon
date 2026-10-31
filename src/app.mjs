@@ -1,3 +1,4 @@
+import { renderEventCurrencyView } from "./ui/eventCurrencyPresentation.mjs";
 import { renderEventManagementView } from "./ui/eventManagementPresentation.mjs";
 import { renderEventSettingsOverviewView, handleEventSettingsPhotoKeydown } from "./ui/eventSettingsOverviewPresentation.mjs";
 import {appNoticeModel, renderAppNoticeView, shouldConsolidateShareError, placeAppNotice, revealAppNotice, clearAppNoticeView} from "./ui/appNoticePresentation.mjs";
@@ -7321,43 +7322,14 @@ function renderEventSettingsManagementDialog(event) {
 }
 
 function renderEventSettingsCurrencyDialog(event) {
-  const canManage = canCurrentParticipantManage(event);
-  const hasExistingExpenses = event.expenses.length > 0;
-  const hasConvertedExpenses = event.expenses.some((expense) => expense.fxConversion);
-
-  return renderEventDialogShell({
+  return renderEventCurrencyView({
     eventId: event.id,
-    eyebrow: "הגדרות",
-    title: "מטבע האירוע",
-    description: "כל הסכומים באירוע מוצגים באותו מטבע.",
-    backAction: "event-settings-back",
-    backdropClass: "event-settings-route-backdrop",
-    routeMode: true,
-    settingsMode: true,
-    showClose: false,
-    body: `
-      <label class="field event-currency-field event-settings-card section">
-        <span>מטבע האירוע</span>
-        <select
-          data-action="event-currency"
-          name="eventCurrency"
-          data-event-id="${event.id}"
-          ${!canManage || hasConvertedExpenses ? "disabled" : ""}
-        >
-          ${renderCurrencyOptions(event.currency)}
-        </select>
-        <small>${
-          !canManage
-            ? "רק מנהל האירוע יכול לשנות את המטבע."
-            : hasConvertedExpenses
-              ? "יש באירוע הוצאה שהומרה ממטבע אחר. כדי לשמור על משמעות הסכומים והחובות, אי אפשר לשנות כעת את מטבע האירוע."
-            : hasExistingExpenses
-              ? "אפשר לשנות. לפני העדכון נבקש אישור, כי הסכומים הקיימים לא יומרו לפי שער חליפין."
-              : "המטבע יחול על כל ההוצאות וההעברות באירוע."
-        }</small>
-      </label>
-    `
-  });
+    eventName: event.name,
+    currency: event.currency,
+    canManage: canCurrentParticipantManage(event),
+    hasExistingExpenses: event.expenses.length > 0,
+    hasConvertedExpenses: event.expenses.some((expense) => expense.fxConversion)
+  }, {renderEventDialogShell, renderCurrencyOptions});
 }
 
 function renderEventSettingsRepaymentDialog(event) {

@@ -182,7 +182,7 @@ function openChoicePicker(select, trigger) {
   dialog.append(header);
   if (searchable) {
     dialog.classList.add("has-search");
-    dialog.append(renderChoiceSearch(list, emptyState));
+    dialog.append(renderChoiceSearch(list, emptyState, select.dataset.choiceSearchPlaceholder));
   }
   dialog.append(optionsRegion);
   backdrop.append(dialog);
@@ -254,7 +254,7 @@ function renderChoiceOption(option, selectedValue, searchable = false) {
   return button;
 }
 
-function renderChoiceSearch(list, emptyState) {
+function renderChoiceSearch(list, emptyState, placeholder = "חיפוש לפי מטבע, מדינה או קוד") {
   const search = document.createElement("div");
   search.className = "app-choice-search";
   search.setAttribute("role", "search");
@@ -267,7 +267,7 @@ function renderChoiceSearch(list, emptyState) {
   const input = document.createElement("input");
   input.type = "search";
   input.className = "app-choice-search-input";
-  input.placeholder = "חיפוש לפי מטבע, מדינה או קוד";
+  input.placeholder = placeholder;
   input.setAttribute("aria-label", "חיפוש מטבע");
   input.setAttribute("autocomplete", "off");
   input.setAttribute("autocapitalize", "off");
