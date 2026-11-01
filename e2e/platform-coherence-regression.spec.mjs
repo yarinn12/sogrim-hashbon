@@ -226,10 +226,10 @@ test("empty note, validation, long pinned save, return and reload remain coheren
   await openEvent(page, OPEN_EVENT);
   await page.locator('[data-action="open-event-notes"]').click();
   const notes = page.locator(`[data-screen-kind="event-notes"][data-event-id="${OPEN_EVENT}"]`);
-  // The account upgrade intentionally removed the redundant empty-state copy.
-  // Keep the empty-list and complete create/save/reload checks below.
+  // The approved notes batch replaces the repeated introduction with one useful empty state.
   await expect(notes).toBeVisible();
-  await expect(notes.locator(".event-notes-empty")).toHaveCount(0);
+  await expect(notes.locator(".event-notes-empty")).toContainText("עוד אין פתקים באירוע");
+  await expect(notes.locator(".event-notes-intro")).toHaveCount(0);
   await expect(notes.locator(".event-note-row")).toHaveCount(0);
 
   await page.setViewportSize(landscapeFor(testInfo.project.name));
@@ -325,9 +325,10 @@ test("closed event keeps shared note readable and editing disabled", async ({ pa
   await assertNoHorizontalOverflow(page, "closed event notes");
   await notes.locator(".event-note-open").click();
   const modal = page.locator(".event-note-modal");
-  await expect(modal.locator('[data-action="event-note-title"]')).toHaveAttribute("readonly", "");
-  await expect(modal.locator('[data-action="event-note-body"]')).toHaveAttribute("readonly", "");
-  await expect(modal.locator('[data-action="save-event-note"]')).toHaveCount(0);
+  await expect(modal.locator(".event-note-readonly-content h3")).toHaveText(state.events[1].notes[0].title);
+  await expect(modal.locator(".event-note-readonly-content p")).toHaveText(state.events[1].notes[0].body);
+  await expect(modal.locator('input,textarea,.event-note-pin-toggle,.event-note-delete,[data-action="save-event-note"]')).toHaveCount(0);
+  await assertNoHorizontalOverflow(page, "closed note content");
   await expect(modal).toContainText("האירוע סגור");
 });
 
@@ -898,9 +899,14 @@ test(READ_ONLY_EVENT_COPY_TEST,async({page})=>{
   await expect(dock.getByRole('button',{name:'קריאה בלבד',exact:true})).toBeDisabled();
   await expect(dock).not.toContainText('האירוע סגור');
   await page.getByRole('button',{name:'פתיחת פתקים משותפים',exact:true}).click();
-  await expect(page.locator('[data-screen-kind="event-notes"]').getByRole('button',{name:'קריאה בלבד',exact:true})).toBeDisabled();
+  const notes=page.locator('[data-screen-kind="event-notes"]');
+  await expect(notes.getByRole('button',{name:'פתק חדש',exact:true})).toBeDisabled();
+  await expect(notes.locator(".event-notes-heading-copy")).toContainText("הפתקים זמינים לקריאה בלבד.");
   await page.locator('.event-note-open[data-note-id="read-only-note"]').click();
-  await expect(page.locator('.event-note-modal')).toContainText('אין לך הרשאה לערוך פתק זה. אפשר לקרוא את התוכן.');
+  await expect(page.locator('.event-note-modal')).toContainText('אין לך הרשאה לערוך את הפתק. אפשר לקרוא את התוכן.');
+  await expect(page.locator('.event-note-readonly-content h3')).toHaveText('פתק לקריאה');
+  await expect(page.locator('.event-note-readonly-content p')).toHaveText('תוכן בדיקה');
+  await expect(page.locator('.event-note-modal input,.event-note-modal textarea,.event-note-modal .event-note-pin-toggle,.event-note-modal .event-note-delete')).toHaveCount(0);
   await expect(page.locator('.event-note-modal')).not.toContainText('האירוע סגור');
   await expect(page.locator('.event-note-modal [data-action="save-event-note"]')).toHaveCount(0);
 });

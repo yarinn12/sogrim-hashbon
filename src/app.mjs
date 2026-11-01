@@ -1,3 +1,6 @@
+import {renderEventNotesView,renderEventNoteRowView} from "./ui/eventNotesPresentation.mjs";
+import {renderEventNoteEditorView} from "./ui/eventNoteEditorPresentation.mjs";
+import {renderEventNoteDeleteConfirmationView} from "./ui/eventNoteDeleteConfirmationPresentation.mjs";
 import {renderEventReopenConfirmationView,renderEventReopenPaymentOptionsView} from "./ui/eventReopenConfirmationPresentation.mjs";
 import {renderEventCurrencyConfirmationView} from "./ui/eventCurrencyConfirmationPresentation.mjs";
 import {renderEventDeleteConfirmationView} from "./ui/eventDeleteConfirmationPresentation.mjs";
@@ -4811,33 +4814,14 @@ function renderEventNotes(event) {
   const otherNotes = notes.filter((note) => note.pinned !== true);
   const canEdit = canCurrentParticipantEdit(event);
 
-  return `
-    <section class="screen font-hebrew event-notes-screen" data-screen-kind="event-notes" data-event-id="${escapeAttribute(event.id)}">
-      ${renderEventHeader(event, activeEventParticipants(event))}
-      ${renderNotice()}
-      <button class="primary-button event-notes-entry-action" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
-        <span aria-hidden="true">${iconSvg("edit")}</span>
-        <span>${canEdit ? "פתק חדש" : event.locked ? "האירוע סגור" : "קריאה בלבד"}</span>
-      </button>
-      ${renderEventWorkspaceNav(event, "notes")}
-      <p class="muted" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>
-      <section class="panel event-notes-intro" aria-labelledby="event-notes-title">
-        <div>
-          <p class="eyebrow">פתקים משותפים</p>
-          <h2 id="event-notes-title">כל מה שחשוב לאירוע, במקום אחד</h2>
-          <p class="muted">כל משתתף באירוע רואה את העדכונים.</p>
-        </div>
-      </section>
-      <section class="event-notes-content" aria-labelledby="event-notes-list-title">
-        <h2 class="visually-hidden" id="event-notes-list-title">הפתקים באירוע</h2>
-        ${notes.length
-          ? `${renderEventNotesSection(event, pinnedNotes, "מוצמד", true)}${renderEventNotesSection(event, otherNotes, pinnedNotes.length ? "" : "פתקים משותפים", false)}`
-          : ""}
-      </section>
-
-      ${eventDialog?.eventId === event.id ? renderEventDialog(event) : ""}
-    </section>
-  `;
+  return renderEventNotesView({eventId:event.id,canEdit,locked:event.locked,hasNotes:notes.length > 0}, {
+    renderHeader: () => renderEventHeader(event, activeEventParticipants(event)),
+    renderNotice: () => renderNotice(),
+    renderWorkspaceNav: () => renderEventWorkspaceNav(event, "notes"),
+    renderSections: () => `${renderEventNotesSection(event, pinnedNotes, "מוצמד", true)}${renderEventNotesSection(event, otherNotes, "", false)}`,
+    renderDialog: () => eventDialog?.eventId === event.id ? renderEventDialog(event) : "",
+    escapeAttribute
+  });
 }
 
 function renderEventNotesSection(event, notes, label, pinnedSection) {
@@ -4859,33 +4843,9 @@ function renderEventNotesSection(event, notes, label, pinnedSection) {
 function renderEventNoteRow(event, note) {
   const title = String(note.title ?? "").trim() || "פתק ללא כותרת";
   const body = String(note.body ?? "").trim();
-  const participantIds = [
-    ...new Set([note.createdByParticipantId, note.updatedByParticipantId].filter(Boolean))
-  ];
   const updatedBy = participantName(note.updatedByParticipantId, event);
-  const updatedLabel = formatEventNoteUpdatedAt(note.updatedAt);
-
-  return `
-    <article
-      class="event-note-row${note.pinned === true ? " is-pinned" : ""}"
-      data-action="open-event-note"
-      data-event-id="${escapeAttribute(event.id)}"
-      data-note-id="${escapeAttribute(note.id)}"
-    >
-      <button class="event-note-open" type="button" data-action="open-event-note" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(note.id)}" aria-label="פתיחת הפתק ${escapeAttribute(title)}">
-        <span class="event-note-copy">
-          <span class="event-note-title-line">
-            <strong>${escapeHtml(title)}</strong>
-            ${note.pinned === true ? `<span class="event-note-pin" aria-label="פתק מוצמד">${iconSvg("pin")}</span>` : ""}
-          </span>
-          ${body ? `<span class="event-note-preview">${escapeHtml(body)}</span>` : ""}
-          <small>${escapeHtml(updatedBy)} · ${escapeHtml(updatedLabel)}</small>
-        </span>
-      </button>
-      <span class="event-note-avatars">${renderAvatarStack(participantIds, event, { suppressParticipantAction: true })}</span>
-      <button class="event-note-chevron" type="button" data-action="open-event-note" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(note.id)}" aria-label="פתיחת הפתק ${escapeAttribute(title)}">${iconSvg("chevron-left")}</button>
-    </article>
-  `;
+  const updatedLabel = formatEventNoteUpdatedAt(note.updatedAt).replace(/^עודכן\s*/, "");
+  return renderEventNoteRowView({eventId:event.id,noteId:note.id,title,body,pinned:note.pinned,updatedBy,updatedLabel});
 }
 
 function formatEventNoteUpdatedAt(value, now = Date.now()) {
@@ -5151,6 +5111,7 @@ function renderEventStatusMenu() {
 
 function renderImportantActionDialog() {
   if (!importantActionDialog) return "";
+  if (importantActionDialog.kind === "delete-event-note") return renderEventNoteDeleteConfirmationView(importantActionDialog);
   if (importantActionDialog.kind === "reopen-event") return renderEventReopenConfirmationView({...importantActionDialog,paymentMode:importantActionDialog.payload?.paymentMode});
   if (importantActionDialog.kind === "change-event-currency") return renderEventCurrencyConfirmationView(importantActionDialog);
   if (importantActionDialog.kind === "leave-event") return renderEventLeaveConfirmationView(importantActionDialog);
@@ -6807,57 +6768,13 @@ function renderEventNoteDialog(event) {
   const canEdit = canCurrentParticipantEdit(event);
   const pendingDeletion = pendingEventNoteDeletionMatches(event, eventDialog.noteId);
   const title = isNew ? "פתק חדש" : canEdit ? "עריכת פתק" : "פתק משותף";
-  const body = `
-    <form class="event-note-editor" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(eventDialog.noteId ?? "")}">
-      <label class="field event-note-title-field">
-        <span>כותרת</span>
-        <input
-          data-action="event-note-title"
-          type="text"
-          name="eventNoteTitle"
-          maxlength="${MAX_EVENT_NOTE_TITLE_LENGTH}"
-          value="${escapeAttribute(eventDialog.titleDraft ?? note?.title ?? "")}"
-          placeholder="למשל פרטי הטיסה"
-          ${canEdit && !pendingDeletion ? "" : "readonly"}
-        />
-      </label>
-      <label class="field event-note-body-field">
-        <span>תוכן הפתק</span>
-        <textarea
-          data-action="event-note-body"
-          name="eventNoteBody"
-          maxlength="${MAX_EVENT_NOTE_BODY_LENGTH}"
-          rows="8"
-          placeholder="כתבו כאן מידע שכולם צריכים לראות…"
-          ${canEdit && !pendingDeletion ? "" : "readonly"}
-        >${escapeHtml(eventDialog.bodyDraft ?? note?.body ?? "")}</textarea>
-      </label>
-      ${canEdit ? `
-        <button class="event-note-pin-toggle${eventDialog.pinned ? " is-active" : ""}" type="button" data-action="toggle-event-note-pin" aria-pressed="${eventDialog.pinned ? "true" : "false"}" ${pendingDeletion ? "disabled" : ""}>
-          <span aria-hidden="true">${iconSvg("pin")}</span>
-          <span>${eventDialog.pinned ? "הפתק מוצמד" : "הצמד לראש הרשימה"}</span>
-        </button>
-      ` : note?.pinned === true ? `<p class="event-note-readonly-pin"><span aria-hidden="true">${iconSvg("pin")}</span> פתק מוצמד</p>` : ""}
-      ${eventDialog.error ? `<p class="field-error" id="event-note-error" role="alert">${escapeHtml(eventDialog.error)}</p>` : ""}
-      ${canEdit ? `
-        <div class="event-note-editor-actions">
-          ${isNew ? "" : `<button class="secondary-button event-note-delete" type="button" data-action="request-delete-event-note" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(eventDialog.noteId)}">${iconSvg("trash")}<span>${pendingDeletion ? "נסה שוב למחוק" : "מחק פתק"}</span></button>`}
-          <button class="primary-button" type="submit" data-action="save-event-note" data-event-id="${escapeAttribute(event.id)}" ${eventDialog.saving || pendingDeletion ? "disabled" : ""}>${eventDialog.saving ? "שומרים…" : "שמור פתק"}</button>
-        </div>
-      ` : ""}
-    </form>
-  `;
-
-  return renderEventDialogShell({
-    eventId: event.id,
-    eyebrow: event.name,
-    title,
-    description: canEdit ? "השינויים יופיעו אצל כל משתתפי האירוע."
-      : event.locked ? "האירוע סגור ולכן הפתק מוצג לקריאה בלבד."
-      : "אין לך הרשאה לערוך פתק זה. אפשר לקרוא את התוכן.",
-    body,
-    modalClass: "event-note-modal"
-  });
+  return renderEventNoteEditorView({
+    eventId:event.id,eventName:event.name,noteId:eventDialog.noteId,title,isNew,canEdit,
+    locked:event.locked,pendingDeletion:Boolean(pendingDeletion),saving:eventDialog.saving,error:eventDialog.error,
+    titleDraft:eventDialog.titleDraft ?? note?.title ?? "",bodyDraft:eventDialog.bodyDraft ?? note?.body ?? "",
+    pinned:eventDialog.pinned,storedPinned:note?.pinned === true,
+    maxTitleLength:MAX_EVENT_NOTE_TITLE_LENGTH,maxBodyLength:MAX_EVENT_NOTE_BODY_LENGTH
+  }, {renderEventDialogShell});
 }
 
 function renderEventShareMenu(event) {
@@ -16808,6 +16725,7 @@ function requestEventNoteDeletion(eventId, noteId, trigger) {
   openImportantActionDialog(
     {
       kind: "delete-event-note",
+      noteTitle: title,
       label: "פתק משותף",
       title: `למחוק את "${title}"?`,
       description: "הפתק יוסר אצל כל משתתפי האירוע. אי אפשר לבטל את הפעולה.",
@@ -17400,6 +17318,7 @@ function createActionFocusDescriptor(element) {
     choiceSelectAction: element.dataset.choiceSelectAction ?? "",
     eventId: element.dataset.eventId ?? "",
     expenseId: element.dataset.expenseId ?? "",
+    noteId: element.dataset.noteId ?? "",
     groupId: element.dataset.groupId ?? "",
     participantId: element.dataset.participantId ?? ""
   };
@@ -17426,6 +17345,7 @@ function findActionReturnTarget(returnTarget) {
       : element.dataset.action === returnTarget.action) &&
     (!returnTarget.eventId || element.dataset.eventId === returnTarget.eventId) &&
     (!returnTarget.expenseId || element.dataset.expenseId === returnTarget.expenseId) &&
+    (!returnTarget.noteId || element.dataset.noteId === returnTarget.noteId) &&
     (!returnTarget.groupId || element.dataset.groupId === returnTarget.groupId) &&
     (!returnTarget.participantId || element.dataset.participantId === returnTarget.participantId)
   );
@@ -23430,7 +23350,7 @@ function handleDialogKeydown(event) {
     return;
   }
 
-  const dialog = event.target.closest?.('.event-leave-confirmation[role="alertdialog"], .event-delete-confirmation[role="alertdialog"], .event-currency-confirmation[role="alertdialog"]') ?? app.querySelector(
+  const dialog = event.target.closest?.('.event-leave-confirmation[role="alertdialog"], .event-delete-confirmation[role="alertdialog"], .event-currency-confirmation[role="alertdialog"], .event-note-delete-confirmation[role="alertdialog"]') ?? app.querySelector(
     '.settlement-close-confirmation[role="alertdialog"], .important-action-dialog[role="alertdialog"], .settlement-celebration-dialog[role="dialog"], .event-status-menu[role="dialog"], .expense-modal[role="dialog"], .event-modal[role="dialog"], .event-modal[role="region"]'
   );
   if (!dialog) return;

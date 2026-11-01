@@ -228,7 +228,7 @@ test("expense editing opens immediately while the foreground sync is slow", asyn
   await expect(page.locator(".expense-modal")).toBeVisible({ timeout: 800 });
 });
 
-test("the entire existing note card opens immediately while the foreground sync is slow", async ({ page }) => {
+test("the entire existing note open target opens immediately while the foreground sync is slow", async ({ page }) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
@@ -237,9 +237,10 @@ test("the entire existing note card opens immediately while the foreground sync 
   await delayBackgroundRequests(page);
 
   const noteCard = page.locator(
-    '.event-note-row[data-action="open-event-note"][data-note-id="note-close-resilience"]'
+    '.event-note-open[data-action="open-event-note"][data-note-id="note-close-resilience"]'
   );
-  await noteCard.locator(".event-note-avatars").click();
+  await expect(noteCard).toHaveCount(1);
+  await noteCard.locator(".event-note-preview").click();
   await expect(page.locator(".event-note-modal")).toBeVisible({ timeout: 800 });
 });
 

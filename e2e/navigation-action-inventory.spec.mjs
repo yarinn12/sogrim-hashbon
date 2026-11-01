@@ -88,7 +88,7 @@ test("home, event, notes, modal, notifications, profile and friends actions navi
   await expect(page.locator('.screen[data-screen-kind="event-notes"]')).toBeVisible();
   inventory.push(await recordControls(page, testInfo, "notes"));
   await page.locator('[data-action="new-event-note"]').click();
-  await expect(page.locator('.event-note-modal[role="dialog"]')).toBeVisible();
+  await expect(page.locator('.event-note-modal[role="region"]')).toBeVisible();
   inventory.push(await recordControls(page, testInfo, "note-dialog"));
   await page.locator('.event-note-modal [data-action="close-event-dialog"]').click();
   await expect(page.locator('.event-note-modal')).toHaveCount(0);

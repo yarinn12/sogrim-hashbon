@@ -106,7 +106,7 @@ test("pin and unpin several events consecutively, preserve normal order and surv
   expect(errors).toEqual([]);
 });
 
-test("event pin uses the note pin design and remains usable with long Hebrew names", async ({ page }, testInfo) => {
+test("event and note pins share their pin glyph and remain usable with long Hebrew names", async ({ page }, testInfo) => {
   await seed(page);
   const presentation = locator => locator.evaluate(element => {
     const style = getComputedStyle(element), svg = element.querySelector("svg");
@@ -120,23 +120,37 @@ test("event pin uses the note pin design and remains usable with long Hebrew nam
   });
   await row(page, OLD).locator('[data-action="open-event"]').click();
   await page.locator('[data-action="open-event-notes"]').click();
-  const noteMarker = await presentation(page.locator(".event-note-pin").first());
+  // Notes use a single pinned-section marker; the row no longer repeats it.
+  const noteMarker = await presentation(page.locator(".event-notes-section-label").first());
   const noteLabel = await presentation(page.locator(".event-notes-section-label").first());
+  await expect(page.locator(".event-notes-section-label strong")).toHaveText("מוצמד");
+  expect(noteLabel.background).toBe("rgba(0, 0, 0, 0)");
   await page.locator('[data-action="new-event-note"]').click();
   const noteButton = page.locator('[data-action="toggle-event-note-pin"]');
   const inactive = await presentation(noteButton);
+  await expect(noteButton).toHaveAttribute("aria-pressed", "false");
+  await expect(noteButton.locator(".event-note-pin-check svg")).toHaveCSS("opacity", "0");
   await noteButton.click();
   const active = await presentation(noteButton);
+  await expect(noteButton).toHaveAttribute("aria-pressed", "true");
+  await expect(noteButton).toHaveText("להצמיד לראש הרשימה");
+  await expect(noteButton.locator(".event-note-pin-check svg")).toHaveCSS("opacity", "1");
+  expect(active, "selection changes the check, without reshaping or decorating its row").toEqual(inactive);
   await page.locator('.event-note-modal [data-action="close-event-dialog"]').click();
   await page.locator('.product-app-nav [data-nav-destination="home"]').click();
   await menu(page, OLD);
-  expect(await presentation(pinButton(page))).toEqual(inactive);
+  const eventInactive = await presentation(pinButton(page));
+  expect(eventInactive.icon).toBe(noteMarker.icon);
+  await expect(pinButton(page)).toHaveAttribute("aria-pressed", "false");
   await pinButton(page).click();
   await expect(page.locator(".event-status-menu")).toHaveCount(0);
-  expect(await presentation(row(page, OLD).locator(".event-note-pin"))).toEqual(noteMarker);
-  expect(await presentation(page.locator(".event-list .event-notes-section-label"))).toEqual(noteLabel);
+  expect((await presentation(row(page, OLD).locator(".event-note-pin"))).icon).toBe(noteMarker.icon);
+  await expect(page.locator(".event-list .event-notes-section-label")).toContainText("מוצמד");
   await menu(page, OLD);
-  expect(await presentation(pinButton(page))).toEqual(active);
+  await expect(pinButton(page)).toHaveAttribute("aria-pressed", "true");
+  const eventActive = await presentation(pinButton(page));
+  expect(eventActive.icon).toBe(noteMarker.icon);
+  await testInfo.attach("contextual-pin-presentations", {body: JSON.stringify({noteLabel, inactive, active, eventInactive, eventActive}), contentType: "application/json"});
   const bounds = await pinButton(page).boundingBox();
   expect(bounds.height).toBeGreaterThanOrEqual(44);
   await pinButton(page).click();

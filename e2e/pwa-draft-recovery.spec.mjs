@@ -154,7 +154,7 @@ async function openEditor(page, kind) {
   } else {
     await page.locator('[data-action="open-event-notes"]').click();
     await page.locator(kind === "new note" ? '[data-action="new-event-note"]'
-      : '.event-note-row[data-action="open-event-note"][data-note-id="draft-note"]').click();
+      : '.event-note-open[data-action="open-event-note"][data-note-id="draft-note"]').click();
   }
 }
 
@@ -179,6 +179,6 @@ async function resumeEditor(page, kind) {
   } else {
     await page.locator('[data-action="open-event-notes"]').click();
     await page.locator(kind === "new note" ? '[data-action="new-event-note"]'
-      : '.event-note-row[data-action="open-event-note"][data-note-id="draft-note"]').click();
+      : '.event-note-open[data-action="open-event-note"][data-note-id="draft-note"]').click();
   }
 }

@@ -161,7 +161,7 @@ test("shared notes keep the exact event header brand mark", async ({ page }) => 
   }
 });
 
-test("note editor shares the form gutters, spacing and control shapes", async ({ page }, testInfo) => {
+test("note editor shares the route header, form gutters and selection controls", async ({ page }, testInfo) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page.locator('[data-action="open-event-notes"]').click();
   await page.locator('[data-action="new-event-note"]').click();
@@ -174,16 +174,20 @@ test("note editor shares the form gutters, spacing and control shapes", async ({
     const formBox = form.getBoundingClientRect();
     const field = element.querySelector(".field");
     const styles = selector => getComputedStyle(element.querySelector(selector));
-    const root = getComputedStyle(document.documentElement);
+    const panelBackground = getComputedStyle(element).backgroundColor;
+    const backdropBackground = getComputedStyle(element.closest(".event-modal-backdrop")).backgroundColor;
+    const opaque = color => color.startsWith("rgb(") || /,\s*1(?:\.0*)?\)$/.test(color);
     const ancestors = [];
     for (let current = element; current; current = current.parentElement) {
       ancestors.push({ className: current.className, opacity: getComputedStyle(current).opacity });
     }
     return { leftInset: formBox.left - box.left, rightInset: box.right - formBox.right,
-      panelBackground: getComputedStyle(element).backgroundColor, ancestors,
+      panelBackground, backdropBackground, opaqueSurface: opaque(panelBackground) || opaque(backdropBackground), ancestors,
       fieldMargin: getComputedStyle(field).marginBlock,
-      eyebrow: styles(".eyebrow").color, brand: root.getPropertyValue("--app-brand").trim(),
-      pinRadius: styles(".event-note-pin-toggle").borderRadius,
+      titleColor: styles(".event-modal-header h2").color,
+      pinRadius: styles(".event-note-pin-check").borderRadius,
+      pinBackground: styles(".event-note-pin-toggle").backgroundColor,
+      pinTargetHeight: element.querySelector(".event-note-pin-toggle").getBoundingClientRect().height,
       saveRadius: styles('[data-action="save-event-note"]').borderRadius };
   });
   // A late render can start another reveal after the general settle check.
@@ -199,14 +203,23 @@ test("note editor shares the form gutters, spacing and control shapes", async ({
   expect(metrics.rightInset).toBeGreaterThanOrEqual(16);
   expect(Math.abs(metrics.leftInset - metrics.rightInset)).toBeLessThanOrEqual(1);
   expect(metrics.fieldMargin).toBe("0px");
-  expect(metrics.pinRadius).toBe(metrics.saveRadius);
-  expect(metrics.panelBackground).toBe("rgb(255, 255, 255)");
+  expect(metrics.pinRadius).toBe("6px");
+  expect(metrics.saveRadius).toBe("14px");
+  expect(metrics.pinTargetHeight).toBeGreaterThanOrEqual(44);
+  expect(metrics.pinBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(metrics.opaqueSurface, "the route surface must cover background content").toBe(true);
   expect(metrics.ancestors.filter(({ opacity }) => Number(opacity) < 1), "settled form must not show the screen underneath").toEqual([]);
-  await expect(modal.locator(".eyebrow")).toHaveCSS("color", "rgb(6, 75, 67)");
+  expect(metrics.titleColor).toBe("rgb(255, 255, 255)");
+  await expect(modal).toHaveAttribute("role", "region");
+  await expect(modal.getByRole("button", {name: "חזרה לפתקים", exact: true})).toBeVisible();
+  await expect(modal.locator(".eyebrow")).toHaveCount(0);
+  await expect(modal.locator(".event-note-pin-check svg")).toHaveCSS("opacity", "0");
   await modal.locator('[data-action="event-note-title"]').fill("פרטי הטיסה");
   await modal.locator('[data-action="event-note-body"]').fill("נפגשים בטרמינל שלוש, ליד הכניסה.");
   await modal.locator('[data-action="toggle-event-note-pin"]').click();
   await expect(modal.locator('[data-action="toggle-event-note-pin"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(modal.locator('[data-action="toggle-event-note-pin"]')).toHaveText("להצמיד לראש הרשימה");
+  await expect(modal.locator(".event-note-pin-check svg")).toHaveCSS("opacity", "1");
   const save = modal.locator('[data-action="save-event-note"]');
   await save.scrollIntoViewIfNeeded();
   await save.click();

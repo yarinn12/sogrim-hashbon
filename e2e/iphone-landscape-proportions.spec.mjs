@@ -183,16 +183,24 @@ for (const viewport of [{ width: 844, height: 390 }, { width: 667, height: 375 }
 }
 
 for (const viewport of [{ width: 375, height: 667 }, { width: 390, height: 664 }]) {
-  test(`portrait notes keeps the first note action available on opening ${viewport.width}`, async ({ page }, testInfo) => {
+  test(`portrait notes keeps note creation reachable after workspace tabs ${viewport.width}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
     await page.locator('[data-action="open-event-notes"]').click();
     await expect(page.locator('[data-screen-kind="event-notes"]')).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, 0));
     const action = page.locator('[data-action="new-event-note"]');
+    // The approved batch places note creation below the workspace tabs.
+    // Use real document scrolling, then retain the complete visibility and hit checks.
+    await action.evaluate(element => {
+      const nav = [...document.querySelectorAll('.product-app-nav')].find(node => node.getBoundingClientRect().height > 0);
+      const bottom = nav?.getBoundingClientRect().top ?? innerHeight;
+      const rect = element.getBoundingClientRect();
+      window.scrollBy({top: (rect.top + rect.bottom) / 2 - bottom / 2, behavior: 'instant'});
+    });
     const geometry = await recordGeometry(page, action, `portrait-notes-${viewport.width}`, testInfo);
     expect(geometry.top).toBeGreaterThanOrEqual(0);
-    expect(geometry.bottom, 'a long event title must leave room for the first notes action above navigation').toBeLessThanOrEqual(geometry.clipBottom + 1);
+    expect(geometry.bottom, 'note creation remains fully reachable above navigation with a long event title').toBeLessThanOrEqual(geometry.clipBottom + 1);
     expect(geometry.receivesTap).toBe(true);
     const heading = page.locator('.event-notes-screen > .top h1');
     await expect(heading).toHaveText(state.events[0].name);
@@ -208,16 +216,19 @@ for (const viewport of [{ width: 375, height: 667 }, { width: 390, height: 664 }
     const order = await page.locator('.event-notes-screen').evaluate(screen => {
       const children = [...screen.children];
       return {
-        action: children.indexOf(screen.querySelector(':scope > [data-action="new-event-note"]')),
+        action: children.indexOf(screen.querySelector(':scope > .event-notes-heading')),
         tabs: children.indexOf(screen.querySelector(':scope > .event-workspace-nav')),
         header: children.indexOf(screen.querySelector(':scope > .event-overview-header')),
+        actionInsideHeading: Boolean(screen.querySelector(':scope > .event-notes-heading [data-action="new-event-note"]')),
         utilitiesInHeader: Boolean(screen.querySelector(':scope > .event-overview-header .event-header-actions')),
         detachedUtilities: Boolean(screen.querySelector(':scope > .event-header-actions'))
       };
     });
     expect(order.action).toBeGreaterThanOrEqual(0);
-    expect(order.action, 'the notes action must precede tabs in visual and keyboard order').toBeLessThan(order.tabs);
-    expect(order.header, 'the shared reference header precedes the notes action').toBeLessThan(order.action);
+    expect(order.tabs).toBeGreaterThanOrEqual(0);
+    expect(order.tabs, 'workspace tabs precede the notes heading and action in visual and keyboard order').toBeLessThan(order.action);
+    expect(order.header, 'the shared reference header precedes the workspace tabs').toBeLessThan(order.tabs);
+    expect(order.actionInsideHeading).toBe(true);
     expect(order.utilitiesInHeader, 'all event utilities must remain inside the shared header').toBe(true);
     expect(order.detachedUtilities, 'no detached utility bar is permitted below tabs').toBe(false);
     for (const tab of await page.locator('.event-workspace-tab').all()) {
@@ -353,7 +364,7 @@ for (const viewport of [{ width: 375, height: 667 }, { width: 667, height: 375 }
       // Controlled reproduction of the exact historical 0d94 paint regression.
       // No input, bridge, readiness or typography assertion is changed.
       await page.addStyleTag({ content: `@media (max-width: 480px) and (orientation: portrait) {
-        html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen.event-notes-screen > .event-notes-entry-action {
+        html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen.event-notes-screen .event-notes-entry-action {
           position: fixed !important; left: 50% !important; right: auto !important;
           bottom: calc(var(--dynamic-type-bottom-nav-block, 82px) + env(safe-area-inset-bottom) + max(14px, env(safe-area-inset-bottom)) + 12px) !important;
           width: calc(100% - 28px) !important; max-width: 420px !important; margin: 0 !important;

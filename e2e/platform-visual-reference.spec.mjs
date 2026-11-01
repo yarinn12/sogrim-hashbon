@@ -181,7 +181,7 @@ test("shared phone headings use the same compact hierarchy across routes", async
   }
 });
 
-test("short landscape keeps the shared title, tabs, notes intro, and expense form usable", async ({ page }, testInfo) => {
+test("short landscape keeps the shared title, tabs, notes heading and expense form usable", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 914, height: 393 });
   const home = await readHeading(page, ".product-home-screen .top .brand h1");
   await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
@@ -197,7 +197,7 @@ test("short landscape keeps the shared title, tabs, notes intro, and expense for
   await page.locator('[data-action="open-event-notes"]').click();
   await expect(page.locator('[data-screen-kind="event-notes"]')).toBeVisible();
   const notes = await readHeading(page, '[data-screen-kind="event-notes"] .top h1');
-  const notesIntro = await page.locator(".event-notes-intro").evaluate(node => ({
+  const notesHeading = await page.locator(".event-notes-heading").evaluate(node => ({
     display: getComputedStyle(node).display,
     flexDirection: getComputedStyle(node).flexDirection,
     width: node.getBoundingClientRect().width,
@@ -219,7 +219,7 @@ test("short landscape keeps the shared title, tabs, notes intro, and expense for
       viewport: { width: innerWidth, height: innerHeight },
       documentWidth: document.documentElement.scrollWidth };
   });
-  await recordMeasurement(testInfo, "reference-landscape-matrix", { home, event, tabs, notes, notesIntro, expense });
+  await recordMeasurement(testInfo, "reference-landscape-matrix", { home, event, tabs, notes, notesHeading, expense });
   await testInfo.attach("reference-landscape-expense", {
     body: await page.screenshot(), contentType: "image/png"
   });
@@ -237,8 +237,8 @@ test("short landscape keeps the shared title, tabs, notes intro, and expense for
     expect(tab.height, `${tab.text}: compact phone landscape tab`).toBeLessThanOrEqual(50);
     expect(tab.labelFits, `${tab.text}: full tab label`).toBe(true);
   }
-  expect(notesIntro.scrollWidth).toBeLessThanOrEqual(notesIntro.width + 1);
-  expect(notesIntro.buttonHeight).toBeGreaterThanOrEqual(44);
+  expect(notesHeading.scrollWidth).toBeLessThanOrEqual(notesHeading.width + 1);
+  expect(notesHeading.buttonHeight).toBeGreaterThanOrEqual(44);
   expect(expense.viewport).toEqual({ width: 914, height: 393 });
   expect(expense.documentWidth).toBeLessThanOrEqual(915);
   expect.soft(expense.titleSize, "short landscape expense title stays compact").toBeCloseTo(20, 1);

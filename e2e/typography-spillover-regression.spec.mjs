@@ -46,7 +46,7 @@ const targets = {
   ],
   notes: [
     '.product-brand-copy strong', '[data-screen-kind="event-notes"] h1',
-    '.event-notes-intro h2', '.event-notes-intro .muted',
+    '.event-notes-heading h2', '.event-notes-heading p',
     '.event-note-title-line strong', '.event-note-preview',
     '.event-workspace-tab strong', '[data-action="new-event-note"]'
   ],
@@ -188,7 +188,7 @@ test('rendered home, expenses, notes and profile text grow without clipping at 3
       '.event-header-action-label', '.expense-row strong',
       '.event-workspace-tab strong', '[data-action="show-expense-form"]'],
     notes: ['.product-brand-copy strong', '[data-screen-kind="event-notes"] h1',
-      '.event-notes-intro h2', '.event-notes-intro .muted',
+      '.event-notes-heading h2', '.event-notes-heading p',
       '.event-note-title-line strong', '.event-note-preview',
       '[data-action="new-event-note"]'],
     profile: ['.product-brand-copy strong', '[data-screen-kind="profile"] h1',
