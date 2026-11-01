@@ -71,3 +71,23 @@ for(const size of[16,32])test(`account recovery: safe areas and all four screens
  const options={acceptLogin:true,blockUserReads:false},f=await prepareAccountEntry(page,baseURL,options);await emulateAccountSafeArea(page,{top:47,left:31,right:19,bottom:34});const gate=await request(page,{size,width:size===16?393:320,height:568});await assertAccountLayout(gate,size);await send(gate);await expect(gate).toHaveAttribute('data-account-recovery-screen','reset-sent');await assertAccountLayout(gate,size);await gate.locator('[data-account-action=recovery-login]').click();await gate.locator('[data-account-mode=signup]').click();await signup(gate);await expect(gate).toHaveAttribute('data-account-recovery-screen','verify');await assertAccountLayout(gate,size);
  await gate.locator('[data-account-action=recovery-login]').click();options.blockUserReads=true;await gate.locator('input[name=password]').fill('SyntheticOnly123!');await gate.locator('[type=submit]').click();await expect(gate.getByRole('heading',{name:'פתיחת החשבון מתעכבת',exact:true})).toBeVisible();await assertAccountLayout(gate,size);expectNoExternalFailures(f);
 });
+
+for(const native of[false,true])test(`account recovery regression: ${native?'Native Android back':'Escape'} retains the recipient from request, sent and verification`,async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL),gate=await request(page,{size:32,width:320,height:568});
+ const back=async()=>{
+  if(native)expect(await page.evaluate(()=>{const event=new CustomEvent('settle-friends:native-back',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented})).toBe(true);
+  else await page.keyboard.press('Escape');
+  await expect(gate.locator('form')).toHaveAttribute('data-mode','login');await expect(gate.locator('input[name=email]')).toHaveValue(accountEntryEmail);
+ };
+ await back();await gate.locator('[data-account-action=forgot-password]').click();await send(gate);await expect(gate).toHaveAttribute('data-account-recovery-screen','reset-sent');await back();await gate.locator('[data-account-mode=signup]').click();await signup(gate);await expect(gate).toHaveAttribute('data-account-recovery-screen','verify');await back();expect(f.record.recover).toHaveLength(1);expect(f.record.resend).toHaveLength(0);expectNoExternalFailures(f);
+});
+
+test('account recovery: accessibility consumes Escape and Native back before leaving the recovery screen',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL),gate=await request(page,{size:32,width:320,height:568});
+ for(const native of[false,true]){
+  const trigger=gate.locator('.accessibility-entry-auth');await trigger.click();const dialog=page.getByRole('dialog',{name:'נגישות',exact:true});await expect(dialog).toBeVisible();
+  if(native)expect(await page.evaluate(()=>{const event=new CustomEvent('settle-friends:native-back',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented})).toBe(true);else await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();await expect(gate).toHaveAttribute('data-account-recovery-screen','request');await expect(gate.locator('input[name=email]')).toHaveValue(accountEntryEmail);await expect(trigger).toBeFocused();
+ }
+ expect(f.record.recover).toHaveLength(0);expectNoExternalFailures(f);
+});

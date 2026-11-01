@@ -2127,6 +2127,14 @@ function handleAccountGateNativeBack(event) {
 }
 
 function collapseAccountEmailAuth() {
+  const recoveryGate = document.getElementById(GATE_ID);
+  if (["request", "reset-sent", "verify"].includes(recoveryGate?.dataset.accountRecoveryScreen)) {
+    if (authBusy) return false;
+    const email = accountRecoveryEmail();
+    emailAuthExpanded = true;
+    renderAccountGate({ mode: "login", values: { email } });
+    return true;
+  }
   if (
     !document.getElementById(GATE_ID) ||
     !emailAuthExpanded ||
