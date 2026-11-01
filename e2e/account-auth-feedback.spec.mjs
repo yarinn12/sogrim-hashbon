@@ -66,24 +66,24 @@ test("password recovery keeps validation and success feedback visible", async ({
   await expect(gate).toBeVisible();
 
   await gate.getByRole("button", { name: "שכחתי סיסמה" }).click();
+  await gate.getByRole("button", {name:"שלח קישור לאיפוס",exact:true}).click();
   const validation = gate.locator("#account-auth-feedback");
   await expect(validation).toHaveRole("alert");
   await expect(validation).toContainText("צריך להזין אימייל");
   await expect(gate.locator('input[name="email"]')).toBeFocused();
 
   await gate.locator('input[name="email"]').fill("qa@example");
-  await gate.getByRole("button", { name: "שכחתי סיסמה" }).click();
+  await gate.getByRole("button", { name: "שלח קישור לאיפוס",exact:true }).click();
   await expect(gate.locator("#account-auth-feedback")).toContainText(
     "כתובת האימייל אינה תקינה"
   );
   expect(recoveryRequests).toBe(0);
 
   await gate.locator('input[name="email"]').fill("qa@example.com");
-  await gate.getByRole("button", { name: "שכחתי סיסמה" }).click();
+  await gate.getByRole("button", { name: "שלח קישור לאיפוס",exact:true }).click();
 
-  const success = page.locator("#public-account-auth-gate #account-auth-feedback");
-  await expect(success).toHaveRole("status");
-  await expect(success).toContainText("שלחנו קישור לאיפוס הסיסמה");
+  const success = gate.getByRole("heading",{name:"קישור האיפוס נשלח",exact:true});
+  await expect(gate.locator(".account-flow-recipient p")).toHaveText("qa@example.com");
   await expect(success).toBeInViewport();
   await page.waitForTimeout(1_000);
   await expect(success).toBeVisible();

@@ -1,3 +1,4 @@
+import { renderAccountRecoveryView } from "./ui/accountRecoveryPresentation.mjs";
 import { renderAccountEntryView } from "./ui/accountEntryPresentation.mjs";
 import { renderAccountCompletionView } from "./ui/accountCompletionPresentation.mjs";
 import { renderAccountPasswordResetView } from "./ui/accountPasswordResetPresentation.mjs";
@@ -1095,30 +1096,13 @@ function renderAccountRecoveryGate({ connecting = false } = {}) {
 
   const gate = document.createElement("section");
   gate.id = GATE_ID;
-  gate.className = "account-auth-gate";
   gate.setAttribute("role", "main");
   gate.setAttribute("aria-busy", String(connecting));
-  gate.innerHTML = `
-    <div class="account-auth-shell account-auth-shell-compact">
-      <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
-        <div>
-          <p class="eyebrow">סוגרים חשבון</p>
-          <h1>המידע שלך נשאר מוגן</h1>
-          <p>${accountSignInPending ? "עוד רגע והאירועים שלך כאן." : "לא נציג את האירועים לפני שהחיבור לחשבון הושלם."}</p>
-        </div>
-      </section>
-      <section class="account-auth-form-panel">
-        <div class="account-auth-heading">
-          <h2>${accountSignInPending ? "נכנסת בהצלחה" : "החיבור מתעכב"}</h2>
-          <p role="status" aria-live="polite">${connecting ? "פותחים את החשבון שלך…" : accountSignInPending ? "ההתחברות הצליחה. ננסה שוב לפתוח את החשבון בעוד רגע." : "כדאי לבדוק את החיבור לאינטרנט ולנסות שוב."}</p>
-        </div>
-        ${connecting ? "" : `<button class="primary-button account-auth-submit" type="button" data-account-retry>
-          נסה שוב
-        </button>`}
-      </section>
-    </div>
-  `;
+  gate.className = "account-auth-gate font-hebrew account-entry-screen account-recovery-screen";
+  gate.dataset.accountRecoveryScreen = "connection";
+  gate.innerHTML = renderAccountRecoveryView({
+    screen: "connection", connecting, signInPending: accountSignInPending
+  });
   document.body.append(gate);
   gate.querySelector("[data-account-retry]")?.addEventListener("click", retryAccountSetup);
   if (!connecting) scheduleAccountSetupRetry();
@@ -1274,12 +1258,7 @@ async function handleAccountSubmit(event) {
         redirectTo: authRedirectUrl()
       });
       if (!result.session) {
-        renderAccountGate({
-          mode: "login",
-          message: "שלחנו אליך קישור לאישור המייל. אחרי האישור אפשר להתחבר.",
-          values: { email },
-          showVerificationResend: true
-        });
+        renderAccountRecoveryScreen({ screen: "verify", email });
         return;
       }
       accountSession = result.session;
@@ -1350,6 +1329,10 @@ async function handleAccountSubmit(event) {
     const emailNotConfirmed = String(error?.message ?? "")
       .toLowerCase()
       .includes("email not confirmed");
+    if (emailNotConfirmed && runtimeConfig?.launch?.authEmailDeliveryReady === true) {
+      renderAccountRecoveryScreen({ screen: "verify", email });
+      return;
+    }
     renderAccountGate({
       mode,
       values: {
@@ -1420,6 +1403,99 @@ function accountFormValidationError(
   }
 
   return null;
+}
+
+function accountRecoveryEmail() {
+  return document.querySelector('[data-account-form] input[name="email"]')?.value
+    ?? document.getElementById(GATE_ID)?.dataset.accountRecoveryEmail ?? "";
+}
+
+function renderAccountRecoveryScreen({ screen, email = "", error = "", message = "", errorFieldName = "" }) {
+  document.querySelector(".public-profile-gate")?.remove();
+  document.getElementById(GATE_ID)?.remove();
+  document.querySelector("#app")?.setAttribute("inert", "");
+  const gate = document.createElement("section");
+  gate.id = GATE_ID;
+  gate.className = "account-auth-gate font-hebrew account-entry-screen account-recovery-screen";
+  gate.setAttribute("role", "main");
+  gate.dataset.accountRecoveryScreen = screen;
+  gate.dataset.accountRecoveryEmail = email;
+  gate.innerHTML = renderAccountRecoveryView({ screen, email, error, message, errorFieldName,
+    deliveryReady: runtimeConfig?.launch?.authEmailDeliveryReady === true
+  }, { inviteMarkup: accountInviteMarkup(accountInviteContext()) });
+  gate.querySelector("form")?.addEventListener("submit", handleAccountRecoverySubmit);
+  document.body.append(gate);
+  markAccountAuthReady();
+  if (errorFieldName) focusAccountInput(gate, { includeMobile: true, fieldName: errorFieldName });
+  else if (error || message) focusAccountFeedback(gate);
+  else requestAnimationFrame(() => {
+    if (!gate.isConnected || document.getElementById(GATE_ID) !== gate) return;
+    gate.querySelector("#account-recovery-title")?.focus({ preventScroll: true });
+  });
+}
+
+async function handleAccountRecoverySubmit(event) {
+  event.preventDefault();
+  await sendAccountPasswordReset();
+}
+
+async function sendAccountPasswordReset() {
+  if (authBusy || runtimeConfig?.launch?.authEmailDeliveryReady !== true) return;
+  const wasSent = document.getElementById(GATE_ID)?.dataset.accountRecoveryScreen === "reset-sent";
+  const enteredEmail = String(
+    accountRecoveryEmail()
+  ).trim().toLowerCase();
+  const email = normalizeAccountEmail(enteredEmail);
+  if (!email) {
+    renderAccountRecoveryScreen({
+      screen: "request",
+      error: enteredEmail
+        ? "כתובת האימייל אינה תקינה."
+        : "צריך להזין אימייל כדי לשלוח קישור לאיפוס הסיסמה.",
+      email: enteredEmail,
+      errorFieldName: "email"
+    });
+    return;
+  }
+  setAuthBusy(true);
+  try {
+    clearAccountRecoverySession();
+    rememberAccountReturnUrl();
+    const pkce = await createOAuthPkce();
+    const flowId = createAccountOAuthFlowId();
+    const flow = saveAccountOAuthFlow({
+      id: flowId,
+      verifier: pkce.verifier,
+      returnPath: accountReturnPath(),
+      purpose: ACCOUNT_RECOVERY_FLOW_PURPOSE,
+      email
+    });
+    if (!flow) throw new Error("Secure password recovery is unavailable");
+    try {
+      await requestPasswordReset(
+        runtimeConfig,
+        email,
+        authRedirectUrl(flowId)
+      );
+    } catch (error) {
+      clearAccountOAuthFlow(flowId);
+      throw error;
+    }
+    renderAccountRecoveryScreen({
+      screen: "reset-sent",
+      message: wasSent ? "נשלח קישור איפוס חדש. כדאי לבדוק גם בספאם." : "",
+      email
+    });
+  } catch (error) {
+    emitOperationFailure("auth", { screen: "auth", error });
+    renderAccountRecoveryScreen({
+      screen: wasSent ? "reset-sent" : "request",
+      error: accountAuthErrorMessage(error),
+      email
+    });
+  } finally {
+    setAuthBusy(false);
+  }
 }
 
 async function handleAccountClick(event) {
@@ -1529,73 +1605,26 @@ async function handleAccountClick(event) {
   }
 
   if (action === "forgot-password") {
-    const enteredEmail = String(
-      document.querySelector('[data-account-form] input[name="email"]')?.value ?? ""
-    ).trim().toLowerCase();
-    const email = normalizeAccountEmail(enteredEmail);
-    if (!email) {
-      renderAccountGate({
-        mode: "login",
-        error: enteredEmail
-          ? "כתובת האימייל אינה תקינה."
-          : "צריך להזין אימייל כדי לשלוח קישור לאיפוס הסיסמה.",
-        values: { email: enteredEmail }
-      });
-      focusAccountInput(document.getElementById(GATE_ID), {
-        includeMobile: true,
-        fieldName: "email"
-      });
-      return;
-    }
-    setAuthBusy(true);
-    try {
-      clearAccountRecoverySession();
-      rememberAccountReturnUrl();
-      const pkce = await createOAuthPkce();
-      const flowId = createAccountOAuthFlowId();
-      const flow = saveAccountOAuthFlow({
-        id: flowId,
-        verifier: pkce.verifier,
-        returnPath: accountReturnPath(),
-        purpose: ACCOUNT_RECOVERY_FLOW_PURPOSE,
-        email
-      });
-      if (!flow) throw new Error("Secure password recovery is unavailable");
-      try {
-        await requestPasswordReset(
-          runtimeConfig,
-          email,
-          authRedirectUrl(flowId)
-        );
-      } catch (error) {
-        clearAccountOAuthFlow(flowId);
-        throw error;
-      }
-      renderAccountGate({
-        mode: "login",
-        message: "שלחנו קישור לאיפוס הסיסמה. כדאי לבדוק גם בתיקיית הספאם.",
-        values: { email }
-      });
-    } catch (error) {
-      emitOperationFailure("auth", { screen: "auth", error });
-      renderAccountGate({
-        mode: "login",
-        error: accountAuthErrorMessage(error),
-        values: { email }
-      });
-      focusAccountInput(document.getElementById(GATE_ID), {
-        includeMobile: true,
-        fieldName: "email"
-      });
-    } finally {
-      setAuthBusy(false);
-    }
+    if (authBusy || runtimeConfig?.launch?.authEmailDeliveryReady !== true) return;
+    renderAccountRecoveryScreen({ screen: "request", email: accountRecoveryEmail() });
+    return;
+  }
+  if (action === "recovery-login") {
+    if (authBusy) return;
+    const email = accountRecoveryEmail();
+    emailAuthExpanded = true;
+    renderAccountGate({ mode: "login", values: { email } });
+    return;
+  }
+  if (action === "resend-password-reset") {
+    await sendAccountPasswordReset();
     return;
   }
 
   if (action === "resend-verification") {
+    if (authBusy || runtimeConfig?.launch?.authEmailDeliveryReady !== true) return;
     const enteredEmail = String(
-      document.querySelector('[data-account-form] input[name="email"]')?.value ?? ""
+      accountRecoveryEmail()
     ).trim().toLowerCase();
     const email = normalizeAccountEmail(enteredEmail);
     if (!email) {
@@ -1616,19 +1645,17 @@ async function handleAccountClick(event) {
     setAuthBusy(true);
     try {
       await resendSignupConfirmation(runtimeConfig, email, authRedirectUrl());
-      renderAccountGate({
-        mode: "login",
+      renderAccountRecoveryScreen({
+        screen: "verify",
         message: "שלחנו קישור אימות חדש. כדאי לבדוק גם בתיקיית הספאם.",
-        values: { email },
-        showVerificationResend: true
+        email
       });
     } catch (error) {
       emitOperationFailure("auth", { screen: "auth", error });
-      renderAccountGate({
-        mode: "login",
+      renderAccountRecoveryScreen({
+        screen: "verify",
         error: accountAuthErrorMessage(error),
-        values: { email },
-        showVerificationResend: true
+        email
       });
     } finally {
       setAuthBusy(false);
@@ -4147,6 +4174,19 @@ html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entr
 
 /* The gate already owns the top safe area; this control is shell-relative. */
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .accessibility-entry-auth {inset-block-start:14px!important}
+/* Sketch overlay only: shared, already-approved account branding and controls. */
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-copy{margin:0!important;font-size:1rem!important;line-height:1.65!important;color:#20382f!important;overflow-wrap:anywhere!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-hint{margin:0!important;font-size:.875rem!important;line-height:1.6!important;color:#53675e!important;overflow-wrap:anywhere!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-recipient{display:grid!important;gap:6px!important;min-width:0!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-recipient>span{font-size:.875rem!important;line-height:1.6!important;color:#53675e!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-recipient>p{margin:0!important;font-size:1.0625rem!important;font-weight:600!important;line-height:1.5!important;text-align:right!important;unicode-bidi:isolate!important;overflow-wrap:anywhere!important;word-break:normal!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-secondary{display:flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-height:44px!important;width:100%!important;border:0!important;background:transparent!important;box-shadow:none!important;color:#195c49!important;font-size:.95rem!important;line-height:1.5!important;padding:8px!important;border-radius:10px!important;white-space:normal!important;overflow-wrap:anywhere!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-secondary>span{font:inherit!important;color:inherit!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-secondary svg{width:1.1rem!important;height:1.1rem!important;flex:none!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-feedback{margin:0!important;font-size:.95rem!important;line-height:1.6!important;color:#195c49!important;overflow-wrap:anywhere!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-feedback[role=alert]{color:#9c3030!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-feedback:empty{display:none!important}
+
 
   `;
   document.head.append(style);

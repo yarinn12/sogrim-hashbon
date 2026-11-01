@@ -118,7 +118,7 @@ test("accepted email login shows progress immediately and opens the account with
   const holdUser = new Promise(resolve => { releaseUser = resolve; });
   const counts = await prepareLogin(page, { holdUser });
   try {
-    await expect(page.getByRole("heading", { name: "נכנסת בהצלחה" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "פתיחת החשבון מתעכבת" })).toBeVisible();
     await expect(page.getByRole("status", { name: "", exact: true })).toContainText("פותחים את החשבון שלך…");
     await expect(page.locator('input[name="password"]')).toHaveCount(0);
     await expect(page.locator("#app")).toHaveAttribute("inert", "");
@@ -158,7 +158,7 @@ test("email completion waits for the account write acknowledgement before reload
   const counts = await prepareLogin(page, { holdWrite });
   try {
     await expect.poll(() => counts.writes).toBeGreaterThan(0);
-    await expect(page.getByRole("heading", { name: "נכנסת בהצלחה" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "פתיחת החשבון מתעכבת" })).toBeVisible();
     await expect(page.locator("#app")).toHaveAttribute("inert", "");
     expect(counts.documents).toBe(1);
   } finally { releaseWrite(); }

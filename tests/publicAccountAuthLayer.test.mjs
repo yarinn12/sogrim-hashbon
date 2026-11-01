@@ -315,7 +315,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /event\.key === "Escape" && !accountDeleteBusy/);
   assert.match(layer, /function setAccountDeletionBusy\(value\) \{\s*accountDeleteBusy = value;/);
   assert.match(layer, /setAttribute\("inert", ""\)/);
-  assert.equal([...layer.matchAll(/gate\.setAttribute\("role", "main"\)/g)].length, 4);
+  assert.equal([...layer.matchAll(/gate\.setAttribute\("role", "main"\)/g)].length, 5);
   assert.match(completionView, /data-mode="complete-profile"/);
   assert.match(layer, /updateAccountUser/);
   assert.match(layer, /accountFormValidationError/);

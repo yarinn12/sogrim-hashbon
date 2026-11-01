@@ -1,0 +1,63 @@
+import {test,expect} from '@playwright/test';
+import {prepareAccountEntry,openAccountEntry,accountEntryEmail,assertAccountLayout,expectNoExternalFailures,emulateAccountSafeArea} from './helpers/accountEntryBatchPresentation.mjs';
+const sent='קישור האיפוס נשלח';
+const send=gate=>gate.getByRole('button',{name:'שלח קישור לאיפוס',exact:true}).click();
+async function request(page,options={}){const gate=await openAccountEntry(page,options);await gate.locator('input[name=email]').fill(accountEntryEmail);await gate.locator('[data-account-action=forgot-password]').click();await expect(gate).toHaveAttribute('data-account-recovery-screen','request');return gate}
+async function signup(gate){await gate.locator('input[name=displayName]').fill('נועם לוי');await gate.locator('input[name=username]').fill('noam_levi');await gate.locator('input[name=email]').fill(accountEntryEmail);await gate.locator('input[name=password]').fill('SyntheticOnly123!');await gate.getByRole('button',{name:'צור חשבון',exact:true}).click()}
+test('account recovery regression: opening the request does not deliver an email or allocate a secure flow',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL),gate=await request(page);
+ expect(f.record.recover).toHaveLength(0);await expect(gate.locator('input[name=email]')).toHaveValue(accountEntryEmail);await expect(gate.locator('input[name=password]')).toHaveCount(0);await expect(gate.locator('[data-google-auth-slot]')).toHaveCount(0);await expect(gate.locator('#account-recovery-title')).toBeFocused();expectNoExternalFailures(f);
+});
+test('account recovery: empty and malformed email remain editable and cannot reach delivery',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL),gate=await request(page,{size:32,width:320,height:568});
+ for(const email of['','invalid@example']){await gate.locator('input[name=email]').fill(email);await send(gate);await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');await expect(gate.locator('input[name=email]')).toHaveAttribute('aria-invalid','true');await expect(gate.locator('input[name=email]')).toBeFocused();await expect(gate.locator('input[name=email]')).toHaveValue(email)}
+ expect(f.record.recover).toHaveLength(0);await assertAccountLayout(gate,32);expectNoExternalFailures(f);
+});
+test('account recovery: acknowledged delivery uses normalized email and keeps invitation context',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL),gate=await request(page,{query:'event=synthetic-invitation'});await gate.locator('input[name=email]').fill(' Account-Entry@Example.com ');await send(gate);
+ await expect(gate.getByRole('heading',{name:sent,exact:true})).toBeVisible();await expect(gate.locator('#account-recovery-title')).toBeFocused();await expect(gate.locator('.account-flow-recipient p')).toHaveText(accountEntryEmail);await expect(gate.locator('.account-invite-preview')).toBeVisible();
+ expect(f.record.recover).toHaveLength(1);expect(f.record.recover[0].payload).toEqual({email:accountEntryEmail});expect(new URL(f.record.recover[0].redirect).origin).toBe(new URL(baseURL).origin);expect(await page.evaluate(()=>localStorage.getItem('settle-friends-account-session'))).toBeNull();expectNoExternalFailures(f);
+});
+test('account recovery: rejected delivery keeps the recipient and focuses a retryable failure',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL,{rejectRecoverAt:[1]}),gate=await request(page,{size:32,width:320});await send(gate);
+ await expect(gate).toHaveAttribute('data-account-recovery-screen','request');await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');await expect(gate.locator('#account-auth-feedback')).toBeFocused();await expect(gate.locator('input[name=email]')).toHaveValue(accountEntryEmail);await send(gate);
+ await expect(gate).toHaveAttribute('data-account-recovery-screen','reset-sent');expect(f.record.recover).toHaveLength(2);expectNoExternalFailures(f);
+});
+test('account recovery: an in-flight request disables navigation and blocks duplicate submits',async({page,baseURL})=>{
+ let release;const holdRecover=new Promise(r=>release=r);const f=await prepareAccountEntry(page,baseURL,{holdRecover}),gate=await request(page);
+ try{await send(gate);await expect.poll(()=>f.record.recover.length).toBe(1);await expect(gate.locator('[type=submit]')).toBeDisabled();await expect(gate.locator('[data-account-action=recovery-login]')).toBeDisabled();await page.evaluate(()=>document.querySelector('[data-account-form]').requestSubmit());expect(f.record.recover).toHaveLength(1)}finally{release()}
+ await expect(gate).toHaveAttribute('data-account-recovery-screen','reset-sent');expect(f.record.recover).toHaveLength(1);expectNoExternalFailures(f);
+});
+test('account recovery: resend acknowledgement reuses recipient and announces feedback',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL),gate=await request(page,{size:32,width:320,height:568});await send(gate);await gate.locator('[data-account-action=resend-password-reset]').click();
+ await expect(gate.locator('#account-auth-feedback')).toContainText('נשלח קישור איפוס חדש');await expect(gate.locator('#account-auth-feedback')).toHaveRole('status');await expect(gate.locator('#account-auth-feedback')).toBeFocused();await expect(gate.locator('#account-auth-feedback')).toBeInViewport();expect(f.record.recover.map(r=>r.payload)).toEqual([{email:accountEntryEmail},{email:accountEntryEmail}]);await assertAccountLayout(gate,32);expectNoExternalFailures(f);
+});
+test('account recovery: rejected resend does not claim success and explicit retry recovers',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL,{rejectRecoverAt:[2]}),gate=await request(page);await send(gate);await gate.locator('[data-account-action=resend-password-reset]').click();await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');await expect(gate).toHaveAttribute('data-account-recovery-screen','reset-sent');await expect(gate.locator('.account-flow-recipient p')).toHaveText(accountEntryEmail);
+ await gate.locator('[data-account-action=resend-password-reset]').click();await expect(gate.locator('#account-auth-feedback')).toHaveRole('status');expect(f.record.recover).toHaveLength(3);expectNoExternalFailures(f);
+});
+test('account recovery: back retains email and can reopen request without another delivery',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL),gate=await request(page);await send(gate);await gate.locator('[data-account-action=recovery-login]').click();await expect(gate.locator('form')).toHaveAttribute('data-mode','login');await expect(gate.locator('input[name=email]')).toHaveValue(accountEntryEmail);await gate.locator('[data-account-action=forgot-password]').click();await expect(gate).toHaveAttribute('data-account-recovery-screen','request');expect(f.record.recover).toHaveLength(1);expectNoExternalFailures(f);
+});
+test('account verification: signup is pending, has a readable recipient and keeps exact identity payload',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL),gate=await openAccountEntry(page,{mode:'signup',size:32,width:320,height:568});await signup(gate);
+ await expect(gate).toHaveAttribute('data-account-recovery-screen','verify');await expect(gate.locator('.account-flow-recipient p')).toHaveText(accountEntryEmail);await expect(gate.locator('input[name=password]')).toHaveCount(0);expect(f.record.signup[0].payload).toMatchObject({email:accountEntryEmail,password:'SyntheticOnly123!',data:{full_name:'נועם לוי',username:'noam_levi'}});expect(await page.evaluate(()=>localStorage.getItem('settle-friends-account-session'))).toBeNull();await assertAccountLayout(gate,32);expectNoExternalFailures(f);
+});
+test('account verification: unconfirmed login keeps recipient and resend uses exact signup payload',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL,{unconfirmed:true}),gate=await openAccountEntry(page);await gate.locator('input[name=email]').fill(accountEntryEmail);await gate.locator('input[name=password]').fill('SyntheticOnly123!');await gate.locator('[type=submit]').click();await expect(gate).toHaveAttribute('data-account-recovery-screen','verify');await gate.locator('[data-account-action=resend-verification]').click();await expect(gate.locator('#account-auth-feedback')).toHaveRole('status');expect(f.record.resend[0]).toMatchObject({type:'signup',email:accountEntryEmail});expect(f.record.passwords).toHaveLength(1);expect(f.record.userUpdates).toHaveLength(0);expect(await page.evaluate(()=>localStorage.getItem('settle-friends-account-session'))).toBeNull();expectNoExternalFailures(f);
+});
+test('account verification: delivery failure keeps verification and retry retains the same address',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL,{rejectResendOnce:true}),gate=await openAccountEntry(page,{mode:'signup'});await signup(gate);await gate.locator('[data-account-action=resend-verification]').click();await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');await expect(gate.locator('#account-auth-feedback')).toBeFocused();await expect(gate.locator('.account-flow-recipient p')).toHaveText(accountEntryEmail);await gate.locator('[data-account-action=resend-verification]').click();await expect(gate.locator('#account-auth-feedback')).toHaveRole('status');expect(f.record.resend).toHaveLength(2);expect(f.record.resend.map(r=>r.email)).toEqual([accountEntryEmail,accountEntryEmail]);expectNoExternalFailures(f);
+});
+test('account connection: accepted password survives account-read failure and retries without another sign-in',async({page,baseURL})=>{
+ const options={acceptLogin:true,blockUserReads:true},f=await prepareAccountEntry(page,baseURL,options),gate=await openAccountEntry(page);
+ await gate.locator('input[name=email]').fill(accountEntryEmail);await gate.locator('input[name=password]').fill('SyntheticOnly123!');await gate.locator('[type=submit]').click();await expect(gate.getByRole('heading',{name:'פתיחת החשבון מתעכבת',exact:true})).toBeVisible();await expect(gate.locator('input[name=password]')).toHaveCount(0);await expect(gate.locator('[data-account-retry]')).toBeEnabled();expect(f.record.passwords).toHaveLength(1);expect(await page.evaluate(()=>Boolean(localStorage.getItem('settle-friends-account-session')))).toBe(true);
+ options.blockUserReads=false;await gate.locator('[data-account-retry]').click();await expect(gate).toHaveCount(0,{timeout:20000});await expect(page.getByText('אירוע בדיקת החשבון',{exact:true})).toBeVisible();expect(f.record.passwords).toHaveLength(1);expectNoExternalFailures(f);
+});
+test('account connection: restored session does not claim a new successful login during failure',async({page,baseURL})=>{
+ const options={authenticated:true,blockUserReads:true},f=await prepareAccountEntry(page,baseURL,options);await page.goto('/');const gate=page.locator('#public-account-auth-gate');await expect(gate.getByRole('heading',{name:'החיבור מתעכב',exact:true})).toBeVisible();await expect(gate).not.toContainText('הכניסה הצליחה');options.blockUserReads=false;await gate.locator('[data-account-retry]').click();await expect(gate).toHaveCount(0,{timeout:20000});expect(f.record.passwords).toHaveLength(0);expectNoExternalFailures(f);
+});
+for(const size of[16,32])test(`account recovery: safe areas and all four screens reflow at ${size}px`,async({page,baseURL})=>{
+ const options={acceptLogin:true,blockUserReads:false},f=await prepareAccountEntry(page,baseURL,options);await emulateAccountSafeArea(page,{top:47,left:31,right:19,bottom:34});const gate=await request(page,{size,width:size===16?393:320,height:568});await assertAccountLayout(gate,size);await send(gate);await expect(gate).toHaveAttribute('data-account-recovery-screen','reset-sent');await assertAccountLayout(gate,size);await gate.locator('[data-account-action=recovery-login]').click();await gate.locator('[data-account-mode=signup]').click();await signup(gate);await expect(gate).toHaveAttribute('data-account-recovery-screen','verify');await assertAccountLayout(gate,size);
+ await gate.locator('[data-account-action=recovery-login]').click();options.blockUserReads=true;await gate.locator('input[name=password]').fill('SyntheticOnly123!');await gate.locator('[type=submit]').click();await expect(gate.getByRole('heading',{name:'פתיחת החשבון מתעכבת',exact:true})).toBeVisible();await assertAccountLayout(gate,size);expectNoExternalFailures(f);
+});

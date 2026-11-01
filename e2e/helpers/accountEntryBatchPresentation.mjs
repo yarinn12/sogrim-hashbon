@@ -61,10 +61,18 @@ export async function prepareAccountEntry(page, baseURL, options = {}) {
       record.signup.push({ payload: request.postDataJSON(), redirect: url.searchParams.get('redirect_to') });
       return options.rejectSignup ? json({ message: 'User already registered' }, 400) : json({ user });
     }
-    if (url.pathname.endsWith('/auth/v1/recover')) { record.recover.push({ payload: request.postDataJSON(), redirect: url.searchParams.get('redirect_to') });return json({}); }
-    if (url.pathname.endsWith('/auth/v1/resend')) { record.resend.push(request.postDataJSON());return json({}); }
+    if (url.pathname.endsWith('/auth/v1/recover')) {
+      record.recover.push({ payload: request.postDataJSON(), redirect: url.searchParams.get('redirect_to') });
+      if (options.holdRecover) await options.holdRecover;
+      if (options.rejectRecoverAt?.includes(record.recover.length)) return json({message:'temporary email delivery outage'},503);
+      return json({});
+    }
+    if (url.pathname.endsWith('/auth/v1/resend')) { record.resend.push(request.postDataJSON());
+      if (options.rejectResendOnce && record.resend.length===1) return json({message:'temporary email delivery outage'},503);
+      return json({}); }
     if (url.pathname.endsWith('/auth/v1/logout')) return json({});
     if (url.pathname.endsWith('/auth/v1/user')) {
+      if (method === 'GET' && options.blockUserReads) return json({message:'temporary account service outage'},503);
       if (method === 'PUT') {
         const payload = request.postDataJSON();record.userUpdates.push({ payload, authorization: request.headers().authorization });
         if (options.failUserWriteOnce && failedUserWrites++ === 0) return json({ message: 'temporary account service outage' }, 503);

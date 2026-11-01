@@ -62,7 +62,7 @@ test('account entry: signup validates missing full name locally without a reques
 test('account entry: successful signup sends normalized identity and waits for email verification', async ({ page, baseURL }) => {
   const fixture = await prepareAccountEntry(page, baseURL), gate = await openAccountEntry(page, { mode: 'signup' });
   await fillSignup(gate, { username: 'NOAM_LEVI', email: ' Account-Entry@Example.com ' });await gate.getByRole('button', { name: 'צור חשבון', exact: true }).click();
-  await expect(gate.locator('#account-auth-feedback')).toHaveRole('status');await expect(gate.locator('#account-auth-feedback')).toContainText('קישור לאישור המייל');
+  await expect(gate.getByRole('heading',{name:'אימות האימייל',exact:true})).toBeVisible();await expect(gate.locator('.account-flow-recipient')).toContainText(accountEntryEmail);await expect(gate.locator('input[name=password]')).toHaveCount(0);
   expect(fixture.record.signup).toHaveLength(1);const { payload, redirect } = fixture.record.signup[0];
   expect(payload.email).toBe(accountEntryEmail);expect(payload.password).toBe('SyntheticOnly123!');expect(payload.data).toMatchObject({ full_name: 'נועם לוי', username: 'noam_levi' });expect(payload.data.account_space_id).toBeTruthy();expect(payload.data.account_space_key.length).toBeGreaterThanOrEqual(32);expect(new URL(redirect).origin).toBe(new URL(baseURL).origin);
   expect(await page.evaluate(() => localStorage.getItem('settle-friends-account-session'))).toBeNull();await expect(gate.locator('[data-account-action=resend-verification]')).toBeVisible();expectNoExternalFailures(fixture);
@@ -77,11 +77,11 @@ test('account entry: rejected signup retains identity fields with an alert and n
 
 test('account entry: password recovery validates, normalizes and announces the synthetic email result', async ({ page, baseURL }) => {
   const fixture = await prepareAccountEntry(page, baseURL), gate = await openAccountEntry(page, { size: 32, width: 320, height: 568 });
-  await gate.locator('[data-account-action=forgot-password]').click();await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');await expect(gate.locator('input[name=email]')).toBeFocused();
-  await gate.locator('input[name=email]').fill('invalid@example');await gate.locator('[data-account-action=forgot-password]').click();await expect(gate.locator('#account-auth-feedback')).toContainText('אינה תקינה');expect(fixture.record.recover).toHaveLength(0);
-  await gate.locator('input[name=email]').fill(' Account-Entry@Example.com ');await gate.locator('[data-account-action=forgot-password]').click();
-  await expect(gate.locator('#account-auth-feedback')).toHaveRole('status');await expect(gate.locator('#account-auth-feedback')).toContainText('שלחנו קישור לאיפוס הסיסמה');
-  expect(fixture.record.recover).toHaveLength(1);expect(fixture.record.recover[0].payload).toEqual({ email: accountEntryEmail });expect(new URL(fixture.record.recover[0].redirect).origin).toBe(new URL(baseURL).origin);await expect(gate.locator('#account-auth-feedback')).toBeInViewport();
+  await gate.locator('[data-account-action=forgot-password]').click();await gate.getByRole('button',{name:'שלח קישור לאיפוס',exact:true}).click();await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');await expect(gate.locator('input[name=email]')).toBeFocused();
+  await gate.locator('input[name=email]').fill('invalid@example');await gate.getByRole('button',{name:'שלח קישור לאיפוס',exact:true}).click();await expect(gate.locator('#account-auth-feedback')).toContainText('אינה תקינה');expect(fixture.record.recover).toHaveLength(0);
+  await gate.locator('input[name=email]').fill(' Account-Entry@Example.com ');await gate.getByRole('button',{name:'שלח קישור לאיפוס',exact:true}).click();
+  await expect(gate.getByRole('heading',{name:'קישור האיפוס נשלח',exact:true})).toBeVisible();await expect(gate.locator('.account-flow-recipient p')).toHaveText(accountEntryEmail);
+  expect(fixture.record.recover).toHaveLength(1);expect(fixture.record.recover[0].payload).toEqual({ email: accountEntryEmail });expect(new URL(fixture.record.recover[0].redirect).origin).toBe(new URL(baseURL).origin);await expect(gate.getByRole('heading',{name:'קישור האיפוס נשלח',exact:true})).toBeInViewport();
   expectNoExternalFailures(fixture);
 });
 
