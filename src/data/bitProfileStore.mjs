@@ -21,7 +21,7 @@ async function rpc(owner, name, body, fetchImpl) {
     body: JSON.stringify(body)
   }, 12_000, async response => ({response, value: await response.json().catch(() => null)}));
   if (!response.ok) {
-    const code = value?.code === "40001" ? "BIT_CONFLICT" :
+    const code = value?.code === "PT409" || value?.code === "40001" ? "BIT_CONFLICT" :
       response.status === 401 ? "BIT_AUTH" : response.status === 403 ? "BIT_FORBIDDEN" : "BIT_CLOUD";
     throw Object.assign(new Error("Bit profile request failed"), {code, status: response.status});
   }

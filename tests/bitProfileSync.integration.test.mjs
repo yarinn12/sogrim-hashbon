@@ -38,6 +38,13 @@ test('replacement and removal reach another client, and stale concurrent writes 
   assert.equal(concurrent.find(x=>x.status==='rejected').reason.code,'BIT_CONFLICT');
 });
 
+test('stale profile writes use a non-retryable HTTP conflict and preserve the complete saved row',async()=>{
+  await fixture.as(BIT_USERS[0],db=>db.query('select public.set_my_bit_shortcut($1,0)',[BIT_LINKS[0]]));
+  const before=await fixture.db.query('select * from private.user_bit_shortcuts where user_id=$1::uuid',[BIT_USERS[0]]);
+  await assert.rejects(fixture.as(BIT_USERS[0],db=>db.query('select public.set_my_bit_shortcut($1,0)',[BIT_LINKS[1]])),{code:'PT409'});
+  assert.deepEqual((await fixture.db.query('select * from private.user_bit_shortcuts where user_id=$1::uuid',[BIT_USERS[0]])).rows,before.rows);
+});
+
 test('authentication, direct-table privileges, payer scope, membership and blocks are enforced by SQL',async()=>{
   await saveOwnBitProfile(fixture.config(0),{url:BIT_LINKS[0],expectedRevision:0});
   await assert.rejects(fixture.as(null,db=>db.query('select public.get_my_bit_shortcut()')),{code:'42501'});

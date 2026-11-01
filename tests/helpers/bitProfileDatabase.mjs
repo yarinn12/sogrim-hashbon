@@ -27,7 +27,9 @@ export async function createBitProfileDatabase({upgrade=false}={}){
   const migration=await readFile(new URL('../../supabase/migrations/20261101190000_optional_private_bit_profiles.sql',import.meta.url),'utf8');
   await db.exec(upgrade?schema.split('-- Optional private Bit receiving shortcuts (2026-11-01).')[0]:schema);
   await db.exec(migration); // also proves that the migration can be replayed safely
+  await db.exec(await readFile(new URL('../../supabase/migrations/20261101210000_bit_shortcut_http_conflict.sql',import.meta.url),'utf8'));
   await db.exec(await readFile(new URL('../../supabase/verification/verify_20261101190000_optional_private_bit_profiles.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../../supabase/verification/verify_20261101210000_bit_shortcut_http_conflict.sql',import.meta.url),'utf8'));
   for(const [i,id] of BIT_USERS.entries()){
     await db.query('insert into auth.users(id,email,raw_user_meta_data) values($1::uuid,$2,$3::jsonb)',
       [id,`bit-user-${i}@example.invalid`,JSON.stringify({full_name:`Synthetic User ${i}`})]);
@@ -75,7 +77,7 @@ export async function createBitProfileDatabase({upgrade=false}={}){
         throw Object.assign(new Error('Missing RPC'),{code:'PGRST202'});
       });
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'}).end(JSON.stringify(value));
-    }catch(error){res.writeHead(error.code==='40001'?409:error.code==='42501'?403:400,{'content-type':'application/json'}).end(JSON.stringify({code:error.code,message:'Synthetic RPC rejected'}));}
+    }catch(error){res.writeHead(error.code==='PT409'||error.code==='40001'?409:error.code==='42501'?403:400,{'content-type':'application/json'}).end(JSON.stringify({code:error.code,message:'Synthetic RPC rejected'}));}
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const config=index=>({features:{bitQrProfile:true},storage:{mode:'supabase',url:`http://127.0.0.1:${server.address().port}`,

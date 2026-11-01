@@ -1,5 +1,9 @@
 # Repository working rules
 
+## Isolated real Supabase trial — 2026-11-01
+
+The user subsequently authorized a free, separate Supabase trial and an owner-private Sites test link. The only authorized live QA database is `jzbpuitojrpldvktmset` (`sogrim-bit-qr-staging-20261101`); the active application project `mrdbrdjcuaxymcwpfuqu` remains out of scope. The user explicitly approved one-time protected QA-account provisioning after automatic review initially rejected it. Provisioning completed and the helper was replaced with an HTTP 410 handler; do not reactivate it as part of ordinary verification. Keep QA passwords, tokens and operator credentials out of source and logs. App production deployment and migration remain unauthorized.
+
 ## Optional Bit profile candidate — 2026-11-01
 
 The user authorized implementation on `codex/bit-qr-profile-20261101` with cloud persistence and synthetic two-account synchronization checks, without publication or production database changes. `BIT_QR_PROFILE_ENABLED` defaults off. Personal QR import is optional and is shown only in the existing authenticated profile, never as a signup requirement. Decode locally and store only the personal receiving URL in the private account-owned table. Do not upload images or include QR links in shared snapshots, public profiles or logs. Keep name/avatar saving independent. Keep financial calculations, manual transfer marking and the current payment UI unchanged in this implementation stage. Never apply the migration to a live database or enable the production release switch as part of candidate verification.

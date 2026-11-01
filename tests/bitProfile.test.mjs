@@ -45,6 +45,11 @@ test('wrong-owner, malformed and mismatched cloud acknowledgements cannot announ
   }
   assert.throws(()=>normalizeBitProfile({...wire(null,1),updated_at:null},ID));
 });
+
+test('an explicit hosted HTTP 409 revision conflict requires reload instead of an uncertain cloud error',async()=>{
+  await assert.rejects(saveOwnBitProfile(config(),{url:URL,expectedRevision:0},async()=>new Response(
+    JSON.stringify({code:'PT409',message:'Bit shortcut changed; reload before saving'}),{status:409})),{code:'BIT_CONFLICT',status:409});
+});
 test('selecting a QR does not save it; only explicit save uses the loaded revision',async()=>{
   const h=harness();await h.controller.refresh();await h.controller.choose({});
   assert.equal(h.writes.length,0);assert.equal(h.controller.state().draft,URL);
