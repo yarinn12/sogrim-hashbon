@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { accountEntryAuthOrigin, accountEntryEmail, accountEntryUserId, prepareAccountEntry, openAccountEntry, assertAccountLayout, reachable, fillSignup, expectNoExternalFailures } from './helpers/accountEntryBatchPresentation.mjs';
+import { accountEntryAuthOrigin, accountEntryEmail, accountEntryUserId, prepareAccountEntry, openAccountEntry, assertAccountLayout, reachable, fillSignup, expectNoExternalFailures, emulateAccountSafeArea } from './helpers/accountEntryBatchPresentation.mjs';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -154,4 +154,37 @@ test('account entry: late native provider discovery retains typed email and sign
   await gate.locator('[data-account-mode=signup]').click();expect(await gate.locator('[data-google-auth-slot]').evaluate(slot => Boolean(slot.compareDocumentPosition(document.querySelector('[data-account-form]')) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
   await gate.locator('[data-account-mode=login]').click();await gate.locator('[data-account-action=toggle-email]').click();await expect(gate.locator('#account-email-auth')).toBeHidden();await gate.getByRole('button', { name: 'המשך עם Apple', exact: true }).click();
   await expect.poll(() => page.evaluate(() => globalThis.__accountEntryNativeOpened.length)).toBe(1);const url = new URL(await page.evaluate(() => globalThis.__accountEntryNativeOpened[0]));expect(url.origin).toBe(accountEntryAuthOrigin);expect(url.searchParams.get('provider')).toBe('apple');expect(url.searchParams.get('code_challenge_method')).toBe('s256');expectNoExternalFailures(fixture);
+});
+
+test('account entry regression: asymmetric safe areas keep accessibility inside the header at normal and enlarged text', async ({ page, baseURL }) => {
+  const fixture = await prepareAccountEntry(page, baseURL, { nativeProviders: true });
+  const rewrites = await emulateAccountSafeArea(page, { top: 47, left: 31, right: 19, bottom: 34 });
+  for (const size of [16, 32]) {
+    // Firefox preserves the previous document's pointer position. The dialog
+    // roundtrip leaves it over this trigger, whose intentional :hover style
+    // translates -1px. Prepare idle geometry before creating the next document.
+    await page.mouse.move(0, 0);
+    const gate = await openAccountEntry(page, { size, width: size === 16 ? 393 : 320 });
+    await expect(gate.locator('[data-account-action=apple]')).toBeVisible();
+    const button = gate.locator('.accessibility-entry-auth');
+    await expect(button).toBeVisible();
+    await gate.evaluate(async element => { await document.fonts.ready;element.scrollTop = 0;await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
+    const geometry = await gate.evaluate(element => {
+      const rect = selector => { const r = element.querySelector(selector).getBoundingClientRect();return { top: r.top, bottom: r.bottom, left: r.left, right: r.right }; };
+      const button = element.querySelector('.accessibility-entry-auth'), css = getComputedStyle(button);
+      return { shell: rect('.account-auth-shell'), brand: rect('.account-auth-brand'), hero: rect('.account-auth-heading'), button: rect('.accessibility-entry-auth'), state: { hover: button.matches(':hover'), transform: css.transform, insetBlockStart: css.insetBlockStart, gateScrollTop: element.scrollTop } };
+    });
+    await test.info().attach('account-safe-area-' + size, { body: JSON.stringify(geometry, null, 2), contentType: 'application/json' });
+    expect(geometry.button.top - geometry.shell.top).toBeCloseTo(14, 0);
+    expect(geometry.button.top).toBeGreaterThanOrEqual(geometry.brand.top - .5);
+    expect(geometry.button.bottom).toBeLessThanOrEqual(geometry.brand.bottom + .5);
+    expect(geometry.button.left).toBeGreaterThanOrEqual(geometry.brand.left - .5);
+    expect(geometry.button.right).toBeLessThanOrEqual(geometry.brand.right + .5);
+    expect(geometry.button.bottom).toBeLessThanOrEqual(geometry.hero.top + .5);
+    await assertAccountLayout(gate, size);
+    await reachable(button);await button.click();
+    const dialog = page.getByRole('dialog', { name: 'נגישות', exact: true });
+    await expect(dialog).toBeVisible();await page.keyboard.press('Escape');await expect(dialog).toBeHidden();await expect(button).toBeFocused();
+  }
+  expect(rewrites['publicAccountAuthLayer.mjs']).toBeGreaterThan(0);expect(rewrites['publicAccessibilityLayer.mjs']).toBeGreaterThan(0);expectNoExternalFailures(fixture);
 });

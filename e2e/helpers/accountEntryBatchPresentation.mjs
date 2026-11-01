@@ -136,3 +136,25 @@ export async function fillSignup(gate, { displayName = 'נועם לוי', userna
 }
 
 export function expectNoExternalFailures(fixture) { expect(fixture.record.external).toEqual([]);expect(fixture.record.pageErrors).toEqual([]); }
+
+export async function emulateAccountSafeArea(page, insets) {
+  const values = Object.fromEntries(['top', 'left', 'right', 'bottom'].map(edge => {
+    const value = Number(insets[edge]);
+    if (!Number.isFinite(value) || value < 0) throw new Error('Invalid synthetic safe-area inset: ' + edge);
+    return [edge, value];
+  }));
+  const rewrites = {};
+  await page.route(/\/src\/(publicAccountAuthLayer|publicAccessibilityLayer)\.mjs(?:\?.*)?$/, async route => {
+    const name = new URL(route.request().url()).pathname.split('/').at(-1);
+    // route.fetch() bypasses earlier route handlers, including the OLD module
+    // handler. Select the frozen auth source first, then emulate platform env().
+    const baseline = name === 'publicAccountAuthLayer.mjs' && process.env.ACCOUNT_ENTRY_BASELINE_MODULE;
+    const source = baseline ? await readFile(baseline, 'utf8') : await (await route.fetch()).text();
+    let replacements = 0;
+    const body = source.replace(/env\(\s*safe-area-inset-(top|left|right|bottom)\s*(?:,\s*[^)]*)?\)/g, (_match, edge) => { replacements++;return values[edge] + 'px'; });
+    if (!replacements) throw new Error('Safe-area environment boundary changed in ' + name);
+    rewrites[name] = replacements;
+    await route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', headers: { 'cache-control': 'no-store' }, body });
+  });
+  return rewrites;
+}

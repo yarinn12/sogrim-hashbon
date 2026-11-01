@@ -4145,6 +4145,9 @@ html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entr
 
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-google-button {min-height:56px!important}
 
+/* The gate already owns the top safe area; this control is shell-relative. */
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .accessibility-entry-auth {inset-block-start:14px!important}
+
   `;
   document.head.append(style);
 }
