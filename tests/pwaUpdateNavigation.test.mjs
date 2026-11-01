@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import { hasUpdateSensitiveWork } from "../src/domain/updateSafety.mjs";
+import { renderEventNoteEditorView } from "../src/ui/eventNoteEditorPresentation.mjs";
 
 const workerSource = await readFile(new URL("../sw.js", import.meta.url), "utf8");
 const bootstrapSource = await readFile(new URL("../src/pwaBootstrap.mjs", import.meta.url), "utf8");
@@ -169,9 +170,25 @@ test("a single reloading page is not navigated twice when the browser omits its 
 });
 
 test("PWA draft fixtures match the current note, expense and group markup", () => {
+  const noteModel = {eventId: "pwa-note-fixture", eventName: "Draft event", title: "Draft note", canEdit: true,
+    isNew: true, titleDraft: "Synthetic title", bodyDraft: "Synthetic draft", maxTitleLength: 120, maxBodyLength: 12000};
+  const renderNote = overrides => renderEventNoteEditorView({...noteModel, ...overrides}, {
+    renderEventDialogShell: ({body}) => body
+  });
+  assert.match(appSource, /return renderEventNoteEditorView\(/);
+  assert.equal(draftMarkers.note.selector, "#app .event-note-editor");
   for (const [kind, marker] of Object.entries(draftMarkers)) {
-    assert.match(appSource, marker.markup, kind);
+    assert.match(kind === "note" ? renderNote({}) : appSource, marker.markup, kind);
   }
+  for (const isNew of [true, false]) {
+    const html = renderNote({isNew, noteId: isNew ? null : "existing-note"});
+    assert.match(html, /<form class="event-note-editor" data-event-id="pwa-note-fixture"/);
+    assert.match(html, /name="eventNoteTitle"/);
+    assert.match(html, /name="eventNoteBody"/);
+    assert.match(html, /type="submit" data-action="save-event-note"/);
+  }
+  assert.doesNotMatch(renderNote({canEdit: false}), draftMarkers.note.markup,
+    "a read-only note has no editable draft form");
   assert.match(appSource, /document\.dispatchEvent\(new CustomEvent\("settle-friends:screen-rendered"\)\)/u);
   assert.match(storeSource, /window\.dispatchEvent\(new EventConstructor\(SYNC_STATUS_EVENT, \{ detail \}\)\)/u);
 });

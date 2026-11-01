@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { buildAdminAnalyticsViewModel } from "../src/domain/adminAnalytics.mjs";
+import { renderEventNotesView } from "../src/ui/eventNotesPresentation.mjs";
 
 const app = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../src/publicLedgerWorkspaceLayer.mjs", import.meta.url), "utf8");
@@ -48,12 +49,22 @@ test("source UI checks fail closed when either section boundary is missing", () 
   assert.throws(() => section("start", "missing", "start end"), /end is missing/);
 });
 
-test("shared notes have one create action and no empty-state announcement", () => {
+test("shared notes have one contextual create action and one useful empty state", () => {
   const notes = section("function renderEventNotes(event)", "function renderEventNotesSection");
-  assert.match(notes, /פתקים משותפים/);
-  assert.match(notes, /data-action="new-event-note"/);
-  assert.doesNotMatch(notes, /renderEventNotesEmptyState\(\)/);
-  assert.doesNotMatch(app, /עוד אין פתקים משותפים/);
+  assert.match(notes, /return renderEventNotesView\(/);
+  for (const hasNotes of [true, false]) {
+    const html = renderEventNotesView({eventId: "account-notes", canEdit: true, locked: false, hasNotes}, {
+      renderHeader: () => "<original-header></original-header>", renderNotice: () => "",
+      renderWorkspaceNav: () => "<original-tabs></original-tabs>",
+      renderSections: () => "<original-notes></original-notes>", renderDialog: () => ""
+    });
+    assert.equal((html.match(/data-action="new-event-note"/g) ?? []).length, 1);
+    assert.equal((html.match(/class="event-notes-empty"/g) ?? []).length, hasNotes ? 0 : 1);
+    assert.equal(html.includes("עוד אין פתקים באירוע"), !hasNotes);
+    assert.equal(html.includes("original-notes"), hasNotes);
+    assert.doesNotMatch(html, /event-notes-intro|כל מה שחשוב לאירוע/);
+    assert.match(html, /data-action="new-event-note" data-event-id="account-notes"/);
+  }
 });
 
 test("participant onboarding explains manual names and account invites", () => {

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
+import { renderEventNoteEditorView } from "../src/ui/eventNoteEditorPresentation.mjs";
 
 test("event route dialogs receive an explicit event id without relying on window.event", async () => {
   const app = await readFile("src/app.mjs", "utf8");
@@ -30,6 +31,18 @@ test("event route dialogs receive an explicit event id without relying on window
   assert.match(editing, /return renderEventDialogShell\(\{\s*eventId,/);
   const departure = await readFile("src/ui/eventDeparturePresentation.mjs", "utf8");
   assert.match(departure, /return renderEventDialogShell\(\{\s*eventId,/);
+  // Execute the thin note adapter and its real extracted view through the
+  // original shell. An ambient `event` remains undefined throughout the test.
+  const noteStart = app.indexOf("function renderEventNoteDialog(");
+  const noteEnd = app.indexOf("\nfunction renderEventShareMenu", noteStart);
+  assert(noteStart >= 0 && noteEnd > noteStart);
+  Object.assign(context, {renderEventNoteEditorView, eventDialog: {noteId: null},
+    canCurrentParticipantEdit: () => true, pendingEventNoteDeletionMatches: () => false,
+    MAX_EVENT_NOTE_TITLE_LENGTH: 120, MAX_EVENT_NOTE_BODY_LENGTH: 12000});
+  vm.runInContext(app.slice(noteStart, noteEnd), context);
+  const noteHtml = context.renderEventNoteDialog({id: "actual-note-event-scope", name: "Notes", notes: []});
+  assert.match(noteHtml, /data-inline-sync-status[^>]*data-sync-event-id="actual-note-event-scope"/);
+  assert.match(noteHtml, /class="event-note-editor" data-event-id="actual-note-event-scope"/);
   const calls = [
     ...app.matchAll(/return renderEventDialogShell\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventSettingsOverviewView\(\{\s*eventId: event\.id,/g),
@@ -39,7 +52,8 @@ test("event route dialogs receive an explicit event id without relying on window
     ...app.matchAll(/return renderEventDepartureView\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventEditingView\(\{\s*eventId: event\.id,/g),
     ...app.matchAll(/return renderEventActivityView\(\{\s*eventId: event\.id,/g),
-    ...app.matchAll(/return renderEventRoundingView\(\{\s*eventId: event\.id,/g)
+    ...app.matchAll(/return renderEventRoundingView\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventNoteEditorView\(\{\s*eventId:\s*event\.id,/g)
   ];
   assert.equal(calls.length, 18, "all event dialog callers supply their actual event id");
 });
