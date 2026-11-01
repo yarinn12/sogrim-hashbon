@@ -54,6 +54,7 @@ export async function prepareAccountEntry(page, baseURL, options = {}) {
     }
     if (url.pathname.endsWith('/auth/v1/token')) {
       const payload = request.postDataJSON();record.passwords.push({ payload, grant: url.searchParams.get('grant_type') });
+      if (url.searchParams.get('grant_type') === 'refresh_token' && options.blockRefresh) return json({message:'temporary token service outage'},503);
       if (!options.acceptLogin || options.rejectLoginOnce && record.passwords.length === 1) return json({ message: options.unconfirmed ? 'Email not confirmed' : 'Invalid login credentials' }, 400);
       return json({ access_token: session.access_token, refresh_token: session.refresh_token, expires_in: 3600, token_type: 'bearer', user });
     }
@@ -72,6 +73,7 @@ export async function prepareAccountEntry(page, baseURL, options = {}) {
       return json({}); }
     if (url.pathname.endsWith('/auth/v1/logout')) return json({});
     if (url.pathname.endsWith('/auth/v1/user')) {
+      if (method === 'GET' && options.expiredUserRead) return json({message:'Invalid JWT',code:'bad_jwt'},401);
       if (method === 'GET' && options.blockUserReads) return json({message:'temporary account service outage'},503);
       if (method === 'PUT') {
         const payload = request.postDataJSON();record.userUpdates.push({ payload, authorization: request.headers().authorization });
