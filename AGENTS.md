@@ -1,5 +1,9 @@
 # Repository working rules
 
+## Optional Bit profile candidate — 2026-11-01
+
+The user authorized implementation on `codex/bit-qr-profile-20261101` with cloud persistence and synthetic two-account synchronization checks, without publication or production database changes. `BIT_QR_PROFILE_ENABLED` defaults off. Personal QR import is optional and is shown only in the existing authenticated profile, never as a signup requirement. Decode locally and store only the personal receiving URL in the private account-owned table. Do not upload images or include QR links in shared snapshots, public profiles or logs. Keep name/avatar saving independent. Keep financial calculations, manual transfer marking and the current payment UI unchanged in this implementation stage. Never apply the migration to a live database or enable the production release switch as part of candidate verification.
+
 ## Permanent engineering and release workflow
 
 Follow `docs/engineering-workflow-he.md` for every change. Use a separate branch,

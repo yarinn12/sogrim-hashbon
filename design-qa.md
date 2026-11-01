@@ -522,3 +522,16 @@ Limits: local synthetic/browser evidence, no physical device or signed package v
 Application/test bytes frozen during verification; QA documentation appended afterwards.
 
 final result: passed
+## Optional Bit profile candidate — 2026-11-01
+
+Scope: the existing authenticated profile only, behind the default-off `BIT_QR_PROFILE_ENABLED` flag. Existing financial calculations, transfer marking, identity editing, signup and invitation requirements are unchanged. The source baseline is `97eee781a6a4c869540fcc113e9146e44fb6478c`.
+
+Local CUA captures compare the existing profile at 393 × 852 with the same profile after the addition. Original name/username rows, avatar, account/reward areas and persistent navigation remain intact. The new Bit area is a simple section below the existing controls, reusing the approved green, local fonts, secondary buttons and original Bit logo. It adds no nested promotional card, glow, decorative badge or repeated payment confirmation copy. The inherited reward card is unchanged; this task does not broaden that area.
+
+The explanation names the personal QR menu, asks for a complete screenshot and explains gallery selection and explicit saving. Actual file selection, local worker decoding and cloud acknowledgement were exercised with a generated receiving QR. A separate account remained empty, another client of the first account saw the saved state, and removal propagated after refresh. App console warnings/errors captured during this flow: none. Auth/PostgREST transport and user identities were synthetic; the database functions and authorization roles were real candidate SQL in PGlite.
+
+At 320 × 640, both the app's 20px setting and a synthetic 32px system-font probe were checked. Root font and actual control/body fonts were measured, not just an outer scale: body and controls reached 32px and the heading reached 48px. Document scroll width was 305px within a 320px viewport (15px desktop scrollbar), with no horizontal overflow. At 32px the controls wrapped into separate rows and measured 239 × 91px and 233 × 91px. Both received center hit testing above persistent navigation after normal scrolling; content naturally scrolls behind the fixed app bar. At 20px the controls measured 163 × 57px and 148 × 57px and also received hit testing. The tests are synthetic browser checks, not physical system-font or Native proof.
+
+Evidence retained in the task's isolated `work/bit-profile-evidence/`: `profile-before.jpg`, `profile-after-top.jpg`, `profile-bit-empty.jpg`, `profile-bit-saved.jpg`, `profile-bit-320-20px.jpg`, `profile-bit-320-32px-controls.jpg`. The permanent cross-engine synchronization journey is `e2e-sync/bit-profile-cloud.spec.mjs`. Existing iOS font-rendering limits documented by this repository remain applicable.
+
+Local profile/QR browser result: passed. Native/physical-device and production-release approval: not established by this work.
