@@ -222,7 +222,11 @@ for (const googleError of ["JWT expired", "Invalid audience"]) {
 
 test("Apple callback closes the native browser, exchanges the bound code and opens the account", async ({ page }) => {
   const fixture = await prepare(page);
+  // The callback reloads the document. Wait for that lifecycle before checking
+  // rendered account content, rather than counting a removed gate during unload.
+  const accountReloaded = page.waitForEvent('load');
   const id = await fixture.appleCallback();
+  await accountReloaded;
   await expectAccount(page);
   expect(fixture.counts.pkce).toBe(1);
   expect(fixture.counts.writes).toBeGreaterThan(0);

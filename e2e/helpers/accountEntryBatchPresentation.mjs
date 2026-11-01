@@ -101,14 +101,14 @@ export async function prepareAccountEntry(page, baseURL, options = {}) {
   return { record, user: () => user };
 }
 
-export async function openAccountEntry(page, { mode = 'login', size = 16, width = 393, height = 852, query = '' } = {}) {
+export async function openAccountEntry(page, { mode = 'login', size = 16, width = 393, height = 852, query = '', waitUntil = 'load', waitForFonts = true } = {}) {
   await page.setViewportSize({ width, height });
-  await page.goto('/' + (size > 16 ? '?dynamic-type-preview=' + size : '') + (query ? (size > 16 ? '&' : '?') + query : ''));
+  await page.goto('/' + (size > 16 ? '?dynamic-type-preview=' + size : '') + (query ? (size > 16 ? '&' : '?') + query : ''), { waitUntil });
   const gate = page.locator('#public-account-auth-gate');
   await expect(gate).toBeVisible();
   if (mode === 'signup') await gate.locator('[data-account-mode=signup]').click();
   await expect(gate.locator('[data-account-form]')).toHaveAttribute('data-mode', mode === 'reset' ? 'reset-password' : mode === 'complete' ? 'complete-profile' : mode);
-  await page.evaluate(() => document.fonts.ready);
+  if (waitForFonts) await page.evaluate(() => document.fonts.ready);
   return gate;
 }
 

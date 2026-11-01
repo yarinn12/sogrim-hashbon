@@ -149,8 +149,17 @@ test('account entry: an incoming event invitation survives switching between log
 test('account entry: late native provider discovery retains typed email and signup keeps providers after the form', async ({ page, baseURL }) => {
   let release;const holdProviders = new Promise(resolve => { release = resolve; });
   const fixture = await prepareAccountEntry(page, baseURL, { nativeProviders: true, holdProviders });let gate;
-  try { gate = await openAccountEntry(page);await gate.locator('input[name=email]').fill(accountEntryEmail); } finally { release(); }
+  // Interact while the discovery response is held; asset loading must not
+  // consume the production provider timeout before this test releases it.
+  const providersRequested = page.waitForRequest(request => request.url() === accountEntryAuthOrigin + '/auth/v1/settings');
+  try {
+    gate = await openAccountEntry(page, { waitUntil: 'commit', waitForFonts: false });
+    await providersRequested;
+    await gate.locator('input[name=email]').fill(accountEntryEmail);
+    await expect(gate.locator('[data-account-action=apple]')).toHaveCount(0);
+  } finally { release(); }
   await expect(gate.locator('[data-account-action=apple]')).toBeVisible();await expect(gate.locator('[data-account-action=google]')).toBeVisible();await expect(gate.locator('input[name=email]')).toHaveValue(accountEntryEmail);
+  await page.evaluate(() => document.fonts.ready);
   await gate.locator('[data-account-mode=signup]').click();expect(await gate.locator('[data-google-auth-slot]').evaluate(slot => Boolean(slot.compareDocumentPosition(document.querySelector('[data-account-form]')) & Node.DOCUMENT_POSITION_PRECEDING))).toBe(true);
   await gate.locator('[data-account-mode=login]').click();await gate.locator('[data-account-action=toggle-email]').click();await expect(gate.locator('#account-email-auth')).toBeHidden();await gate.getByRole('button', { name: 'המשך עם Apple', exact: true }).click();
   await expect.poll(() => page.evaluate(() => globalThis.__accountEntryNativeOpened.length)).toBe(1);const url = new URL(await page.evaluate(() => globalThis.__accountEntryNativeOpened[0]));expect(url.origin).toBe(accountEntryAuthOrigin);expect(url.searchParams.get('provider')).toBe('apple');expect(url.searchParams.get('code_challenge_method')).toBe('s256');expectNoExternalFailures(fixture);
