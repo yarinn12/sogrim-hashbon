@@ -65,8 +65,9 @@ test("reopening asks whether to keep or reset recorded payments", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
   assert.match(app, /function requestReopenCurrentEvent\(eventId, trigger\)/);
-  assert.match(app, /לשמור תשלומים שבוצעו/);
-  assert.match(app, /לאפס את כל התשלומים/);
+  const reopenView = await readFile("src/ui/eventReopenConfirmationPresentation.mjs", "utf8");
+  assert.match(reopenView, /לשמור סימוני תשלום/);
+  assert.match(reopenView, /לאפס סימוני תשלום/);
   assert.match(app, /paymentMode: "keep"/);
   assert.match(app, /resetPayments: action\.payload\.paymentMode === "reset"/);
   // The reset's persistence behavior is exercised in reopenPaymentReset.test.mjs.

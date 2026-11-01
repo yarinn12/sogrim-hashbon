@@ -147,7 +147,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
   assert.ok(worker.fetchCalls.length >= 8);
   assert.ok(worker.fetchCalls.every(([url, init]) => {
     const parsed = new URL(String(url));
-    return parsed.searchParams.get("pwa_release") === "531" && init?.cache === "no-store";
+    return parsed.searchParams.get("pwa_release") === "532" && init?.cache === "no-store";
   }));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));
@@ -239,7 +239,7 @@ test("an updated worker leaves an unresponsive old page intact", async () => {
     }
   };
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v531"],
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v532"],
     windowClients: [staleWindow]
   });
 
@@ -257,7 +257,7 @@ test("worker navigates only after an explicit safe reply", async () => {
     async navigate(url) { navigations.push(url); }
   };
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v531"],
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v532"],
     windowClients: [client]
   });
   await worker.dispatchActivate();
@@ -268,7 +268,7 @@ test("no reply and a reply after timeout never authorize navigation", async () =
   let delayedPort;
   const navigations = [];
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v531"],
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v532"],
     windowClients: [{
       id: "busy-client",
       url: "https://sogrim-hesbon-app.vercel.app/",
@@ -291,7 +291,7 @@ test("no reply and a reply after timeout never authorize navigation", async () =
 test("worker does not force a navigation when a client has unsynced work", async () => {
   const navigations = [];
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v531"],
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v532"],
     windowClients: [{
       id: "unsynced-client",
       url: "https://sogrim-hesbon-app.vercel.app/",
@@ -306,7 +306,7 @@ test("worker does not force a navigation when a client has unsynced work", async
 test("a first service-worker install does not reload the open page", async () => {
   const navigations = [];
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v531"],
+    cacheNames: ["settle-friends-live-v532"],
     windowClients: [{
       url: "https://sogrim-hesbon-app.vercel.app/",
       async navigate(url) {

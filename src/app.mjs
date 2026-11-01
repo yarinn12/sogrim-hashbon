@@ -1,3 +1,4 @@
+import {renderEventReopenConfirmationView,renderEventReopenPaymentOptionsView} from "./ui/eventReopenConfirmationPresentation.mjs";
 import {renderEventCurrencyConfirmationView} from "./ui/eventCurrencyConfirmationPresentation.mjs";
 import {renderEventDeleteConfirmationView} from "./ui/eventDeleteConfirmationPresentation.mjs";
 import {renderEventLeaveConfirmationView} from "./ui/eventLeaveConfirmationPresentation.mjs";
@@ -5150,6 +5151,7 @@ function renderEventStatusMenu() {
 
 function renderImportantActionDialog() {
   if (!importantActionDialog) return "";
+  if (importantActionDialog.kind === "reopen-event") return renderEventReopenConfirmationView({...importantActionDialog,paymentMode:importantActionDialog.payload?.paymentMode});
   if (importantActionDialog.kind === "change-event-currency") return renderEventCurrencyConfirmationView(importantActionDialog);
   if (importantActionDialog.kind === "leave-event") return renderEventLeaveConfirmationView(importantActionDialog);
   if (importantActionDialog.kind === "delete-event") return renderEventDeleteConfirmationView(importantActionDialog);
@@ -11205,20 +11207,7 @@ function renderParticipantPill(participant, selectedIds, action, event, disabled
 }
 
 function renderReopenPaymentOptions(dialog) {
-  const selectedMode = dialog.payload?.paymentMode === "reset" ? "reset" : "keep";
-  return `
-    <fieldset class="reopen-payment-options">
-      <legend>איך להתייחס להעברות שכבר סומנו?</legend>
-      <button class="reopen-payment-option ${selectedMode === "keep" ? "is-selected" : ""}" type="button" data-action="select-reopen-payment-mode" data-payment-mode="keep" aria-pressed="${selectedMode === "keep"}">
-        <strong>לשמור תשלומים שבוצעו <span class="recommended-label">מומלץ</span></strong>
-        <span>נחשב מחדש רק את היתרה שנותרה</span>
-      </button>
-      <button class="reopen-payment-option is-destructive ${selectedMode === "reset" ? "is-selected" : ""}" type="button" data-action="select-reopen-payment-mode" data-payment-mode="reset" aria-pressed="${selectedMode === "reset"}">
-        <strong>לאפס את כל התשלומים</strong>
-        <span>נחשב מחדש את כל האירוע מההתחלה</span>
-      </button>
-    </fieldset>
-  `;
+  return renderEventReopenPaymentOptionsView({paymentMode:dialog.payload?.paymentMode});
 }
 
 function renderExpenseParticipantRow(participant, selectedIds, event, disabled) {
@@ -11949,8 +11938,9 @@ async function handleClick(event) {
     if (importantActionDialog?.kind !== "reopen-event") return;
     importantActionDialog.payload.paymentMode =
       target.dataset.paymentMode === "reset" ? "reset" : "keep";
+    if (importantActionReturnFocus) dialogReturnFocus = importantActionReturnFocus;
     render();
-    activateDialog(".important-action-dialog");
+    activateDialog(".important-action-dialog", '[data-action="select-reopen-payment-mode"][data-payment-mode="' + importantActionDialog.payload.paymentMode + '"]');
     return;
   }
 
@@ -20456,6 +20446,8 @@ function requestReopenCurrentEvent(eventId, trigger) {
   openImportantActionDialog(
     {
       kind: "reopen-event",
+      eventName: event.name,
+      paidCount,
       label: "פתיחה מחדש",
       title: `לפתוח מחדש את "${event.name}"?`,
       description: paidCount
