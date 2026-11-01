@@ -1,0 +1,4 @@
+jsQR 1.4.0
+Source: https://github.com/cozmo/jsQR
+License: Apache-2.0 (see jsQR-LICENSE.txt).
+Bundled without modifications; used only to decode user-selected images locally.

@@ -65,6 +65,7 @@ export function getRuntimeConfig(env = process.env, trustedPublicUrl = "") {
 
   return {
     publicUrl,
+    features: {bitQrProfile: parseBoolean(env.BIT_QR_PROFILE_ENABLED)},
     auth: {
       googleClientId,
       googleIosClientId

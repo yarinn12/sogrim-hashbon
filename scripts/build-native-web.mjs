@@ -58,6 +58,11 @@ const publicFiles = [
   "terms.html",
   "accessibility.html",
   "account-deletion.html",
+  "assets/bit/bit-logo.png",
+  "assets/bit/qr-worker.js",
+  "assets/bit/vendor/jsQR.js",
+  "assets/bit/vendor/jsQR-LICENSE.txt",
+  "assets/bit/vendor/NOTICE.txt",
   "sw.js"
 ];
 
@@ -65,6 +70,7 @@ await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await mkdir(join(output, "assets"), { recursive: true });
 await mkdir(join(output, "assets", "avatars"), { recursive: true });
+await mkdir(join(output, "assets", "bit", "vendor"), { recursive: true });
 
 for (const file of publicFiles) {
   await cp(join(root, file), join(output, file));

@@ -3,6 +3,15 @@ const CACHE_NAME = "settle-friends-live-v532";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
+  "/src/bitProfileFeature.mjs",
+  "/src/bitProfileController.mjs",
+  "/src/domain/bitProfile.mjs",
+  "/src/data/bitProfileStore.mjs",
+  "/src/data/bitQrImage.mjs",
+  "/src/ui/bitProfilePresentation.mjs",
+  "/assets/bit/bit-logo.png",
+  "/assets/bit/qr-worker.js",
+  "/assets/bit/vendor/jsQR.js",
   "/",
   "/index.html",
   "/styles.css",

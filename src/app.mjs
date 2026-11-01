@@ -20,6 +20,7 @@ import {renderEventInvitationChoicesView} from "./ui/eventInvitationChoices.mjs"
 import {renderFriendRelationshipProfileView} from "./ui/friendRelationshipProfilePresentation.mjs";
 import {renderNotificationInboxView} from "./ui/notificationInboxPresentation.mjs";
 import { renderFeedbackPageView } from "./ui/feedbackPagePresentation.mjs";
+import {createBitProfileFeature} from './bitProfileFeature.mjs';
 import {renderProfileIdentitySummaryView} from "./ui/profileIdentityPresentation.mjs";
 import {renderFriendRequestsPanelView, renderFriendRequestSectionView, renderPendingFriendRowView} from "./ui/friendRequestsPresentation.mjs";
 import {renderFriendInvitationView} from "./ui/friendInvitationPresentation.mjs";
@@ -357,6 +358,7 @@ import {
 import { notificationInboxDestination } from "./domain/notificationInboxDestination.mjs";
 
 const app = document.querySelector("#app");
+const bitProfileFeature=createBitProfileFeature({getConfig:()=>runtimeConfig,getScope:()=>profileSaveOwnerScope()});
 markStartupMilestone("app-module-ready");
 const APP_HISTORY_STATE_KEY = "settleFriendsAppHistory";
 const NATIVE_BACK_EVENT = "settle-friends:native-back";
@@ -970,6 +972,7 @@ function handleExternalNotice(event) {
 }
 
 function render() {
+  if(!localProfile||screen.name!=='profile')bitProfileFeature.unmount();
   rememberExpenseDraft();
   rememberEventNoteDraft();
   syncNewEventDraftFromRenderedDetails();
@@ -1000,6 +1003,7 @@ function render() {
 
   if (!localProfile || screen.name === "profile") {
     commitRenderedScreen(renderProfileSetup());
+    bitProfileFeature.mount(app.querySelector('[data-bit-profile-host]'));
     return;
   }
 
@@ -2107,6 +2111,7 @@ function renderProfileSetup() {
             : ""
         }
       </section>
+      ${isEditingProfile && runtimeConfig.features?.bitQrProfile === true ? '<div data-bit-profile-host></div>' : ''}
     </section>
   `;
 }
