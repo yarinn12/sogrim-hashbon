@@ -38,7 +38,7 @@ test("deletion request still enforces permissions and missing-expense guards bef
 test("expense deletion presentation escapes long untrusted text and leaves other confirmation kinds intact",()=>{
  const ctx=request({name:'<img src=x onerror=alert(1)>'.repeat(10)}),html=render(ctx.config);
  assert(!html.includes("<img "));assert(html.includes("&lt;img"));assert.equal((html.match(/class="expense-delete-context"/g)||[]).length,1);
- const other=render({kind:"delete-event",title:"מחיקת אירוע",description:"הסבר",confirmLabel:"מחק אירוע"});
+ const other=render({kind:"rotate-event-invite",title:"מחיקת אירוע",description:"הסבר",confirmLabel:"מחק אירוע"});
  assert(other.includes('aria-describedby="important-action-description"'));assert(other.includes("פעולה חשובה"));assert(!other.includes("expense-delete-context"));
  assert.match(other,/<button class="secondary-button"[^>]*data-action="cancel-important-action">ביטול/);
  const notes=render({kind:"discard-expense-notes",label:null,title:"לצאת בלי לשמור?",description:"שינויים",confirmLabel:"צא בלי לשמור",cancelLabel:"המשך לערוך"});

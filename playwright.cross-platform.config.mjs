@@ -6,6 +6,7 @@ import base from "./playwright.config.mjs";
 // reflow and interaction in Firefox, not an Android or iPhone native shell.
 const journeys = [
   "e2e/event-leave-confirmation-presentation.spec.mjs",
+  "e2e/event-delete-confirmation-presentation.spec.mjs",
   "e2e/event-departure-presentation.spec.mjs",
   "e2e/event-editing-presentation.spec.mjs",
   "e2e/event-activity-presentation.spec.mjs",

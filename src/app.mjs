@@ -1,3 +1,4 @@
+import {renderEventDeleteConfirmationView} from "./ui/eventDeleteConfirmationPresentation.mjs";
 import {renderEventLeaveConfirmationView} from "./ui/eventLeaveConfirmationPresentation.mjs";
 import {renderEventDepartureView} from "./ui/eventDeparturePresentation.mjs";
 import { renderEventEditingView } from "./ui/eventEditingPresentation.mjs";
@@ -5149,6 +5150,7 @@ function renderEventStatusMenu() {
 function renderImportantActionDialog() {
   if (!importantActionDialog) return "";
   if (importantActionDialog.kind === "leave-event") return renderEventLeaveConfirmationView(importantActionDialog);
+  if (importantActionDialog.kind === "delete-event") return renderEventDeleteConfirmationView(importantActionDialog);
 
   return `
     <section class="important-action-dialog-backdrop" aria-label="${escapeAttribute(importantActionDialog.title)}">
@@ -16927,6 +16929,7 @@ function requestEventDeletion(eventId, trigger) {
   openImportantActionDialog(
     {
       kind: "delete-event",
+      eventName: event.name,
       label: "מחיקת אירוע",
       title: `למחוק את "${event.name}"?`,
       description: "כל ההוצאות, המשתתפים וההעברות באירוע יימחקו לצמיתות. אי אפשר לשחזר אותו.",
@@ -23430,7 +23433,7 @@ function handleDialogKeydown(event) {
     return;
   }
 
-  const dialog = event.target.closest?.('.event-leave-confirmation[role="alertdialog"]') ?? app.querySelector(
+  const dialog = event.target.closest?.('.event-leave-confirmation[role="alertdialog"], .event-delete-confirmation[role="alertdialog"]') ?? app.querySelector(
     '.settlement-close-confirmation[role="alertdialog"], .important-action-dialog[role="alertdialog"], .settlement-celebration-dialog[role="dialog"], .event-status-menu[role="dialog"], .expense-modal[role="dialog"], .event-modal[role="dialog"], .event-modal[role="region"]'
   );
   if (!dialog) return;

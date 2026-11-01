@@ -125,7 +125,7 @@ test("event manager can delete an event and the deletion survives reload", async
   await deleteButton.click();
 
   const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
-  await expect(confirmation).toContainText("מחיקת אירוע");
+  await expect(confirmation).toContainText("למחוק את האירוע?");
   await expect(confirmation).toContainText("משתתפים");
   await expect(confirmation).toContainText("הוצאות");
   await confirmation.locator('[data-action="confirm-important-action"]').click();
