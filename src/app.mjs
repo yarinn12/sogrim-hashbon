@@ -1,3 +1,4 @@
+import {renderEventCurrencyConfirmationView} from "./ui/eventCurrencyConfirmationPresentation.mjs";
 import {renderEventDeleteConfirmationView} from "./ui/eventDeleteConfirmationPresentation.mjs";
 import {renderEventLeaveConfirmationView} from "./ui/eventLeaveConfirmationPresentation.mjs";
 import {renderEventDepartureView} from "./ui/eventDeparturePresentation.mjs";
@@ -5149,6 +5150,7 @@ function renderEventStatusMenu() {
 
 function renderImportantActionDialog() {
   if (!importantActionDialog) return "";
+  if (importantActionDialog.kind === "change-event-currency") return renderEventCurrencyConfirmationView(importantActionDialog);
   if (importantActionDialog.kind === "leave-event") return renderEventLeaveConfirmationView(importantActionDialog);
   if (importantActionDialog.kind === "delete-event") return renderEventDeleteConfirmationView(importantActionDialog);
 
@@ -17318,6 +17320,9 @@ function requestEventCurrencyChange(event, currency, trigger) {
   openImportantActionDialog(
     {
       kind: "change-event-currency",
+      eventName: event.name,
+      currencyLabel: currencyConfig(currency).label,
+      currencyCode: normalizeCurrency(currency),
       title: `לשנות ל${currencySelectLabel(currency)}?`,
       description: `באירוע יש ${expenseLabel}. הסכומים יישארו בדיוק כפי שהוזנו ולא יומרו לפי שער חליפין. רק סימון המטבע באירוע הזה ישתנה; אירועים אחרים לא יושפעו.`,
       confirmLabel: "שנה מטבע",
@@ -23433,7 +23438,7 @@ function handleDialogKeydown(event) {
     return;
   }
 
-  const dialog = event.target.closest?.('.event-leave-confirmation[role="alertdialog"], .event-delete-confirmation[role="alertdialog"]') ?? app.querySelector(
+  const dialog = event.target.closest?.('.event-leave-confirmation[role="alertdialog"], .event-delete-confirmation[role="alertdialog"], .event-currency-confirmation[role="alertdialog"]') ?? app.querySelector(
     '.settlement-close-confirmation[role="alertdialog"], .important-action-dialog[role="alertdialog"], .settlement-celebration-dialog[role="dialog"], .event-status-menu[role="dialog"], .expense-modal[role="dialog"], .event-modal[role="dialog"], .event-modal[role="region"]'
   );
   if (!dialog) return;

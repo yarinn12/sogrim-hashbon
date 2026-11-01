@@ -218,7 +218,7 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
     .locator('.app-choice-option[data-choice-value="USD"]')
     .click();
   const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
-  await expect(confirmation).toContainText("הסכומים יישארו בדיוק כפי שהוזנו");
+  await expect(confirmation).toContainText("סכומי ההוצאות הקיימות לא יומרו לפי שער חליפין");
   await confirmation.locator('[data-action="confirm-important-action"]').click();
   await expect(currency).toHaveValue("USD");
   await expect(currencyTrigger).toBeFocused();

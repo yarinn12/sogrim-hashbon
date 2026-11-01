@@ -7,6 +7,7 @@ import base from "./playwright.config.mjs";
 const journeys = [
   "e2e/event-leave-confirmation-presentation.spec.mjs",
   "e2e/event-delete-confirmation-presentation.spec.mjs",
+  "e2e/event-currency-confirmation-presentation.spec.mjs",
   "e2e/event-departure-presentation.spec.mjs",
   "e2e/event-editing-presentation.spec.mjs",
   "e2e/event-activity-presentation.spec.mjs",
