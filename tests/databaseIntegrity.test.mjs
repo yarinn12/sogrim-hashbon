@@ -37,6 +37,8 @@ const selfLeaveMarker = "-- Guarded self-leave receipt (2026-10-03).";
 const selfLeaveVerification = readFileSync(new URL("../supabase/verification/verify_20261003090000_allow_guarded_self_leave_receipt.sql", import.meta.url), "utf8");
 const fxBoundaryMigration = readFileSync(new URL("../supabase/migrations/20261011120000_preserve_expense_fx_at_snapshot_boundary.sql", import.meta.url), "utf8");
 const fxBoundaryVerification = readFileSync(new URL("../supabase/verification/verify_20261011120000_expense_fx_snapshot_boundary.sql", import.meta.url), "utf8");
+const bitProfileMarker='-- Optional private Bit receiving shortcuts (2026-11-01).';
+const bitProfileMigration=readFileSync(new URL('../supabase/migrations/20261101190000_optional_private_bit_profiles.sql',import.meta.url),'utf8');
 const friendInvitationMigration = readFileSync(new URL("../supabase/migrations/20261025180000_resolve_friend_invitation.sql", import.meta.url), "utf8");
 const fxBoundaryMarker = "-- Protect converted expenses at the snapshot write boundary (2026-10-11).";
 before(async () => {
@@ -75,6 +77,7 @@ before(async () => {
     await db.exec(selfLeaveVerification);
     await db.exec(fxBoundaryMigration);
     await db.exec(friendInvitationMigration);
+    await db.exec(bitProfileMigration);
     if (process.env.DATABASE_INTEGRITY_INSTALL_MODE === "upgrade") {
       await db.exec(referralRecoveryMigration);
       await db.exec(referralRecoveryMigration);
@@ -1837,7 +1840,8 @@ test("SQL fresh schema and incremental migration install exactly the same defini
   assert.equal(sameSql(schema.slice(schema.indexOf(referralTriggerMarker), schema.indexOf(fxBoundaryMarker))), sameSql(referralRecoveryMigration.slice(referralRecoveryMigration.indexOf(referralTriggerMarker), referralRecoveryMigration.indexOf("create or replace function public.get_referral_program_status()"))));
   assert.equal(sameSql(schema.slice(schema.indexOf(fxBoundaryMarker) + fxBoundaryMarker.length, schema.indexOf("-- Read-only invitation landing."))),
     sameSql(fxBoundaryMigration.replace(/^begin;\r?\n/, "").replace(/\r?\ncommit;\s*$/, "\n")));
-  assert.equal(sameSql(schema.slice(schema.indexOf("-- Read-only invitation landing."))), sameSql(friendInvitationMigration));
+  assert.equal(sameSql(schema.slice(schema.indexOf("-- Read-only invitation landing."),schema.indexOf(bitProfileMarker))), sameSql(friendInvitationMigration));
+  assert.equal(sameSql(schema.slice(schema.indexOf(bitProfileMarker))),sameSql(bitProfileMigration));
   const statusDefinition = source => source.match(/create or replace function public\.get_referral_program_status\(\)[\s\S]*?\$\$;/)?.[0];
   assert.equal(sameSql(statusDefinition(schema)), sameSql(statusDefinition(referralRecoveryMigration)));
 });
