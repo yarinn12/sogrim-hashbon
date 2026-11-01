@@ -1,3 +1,4 @@
+import {renderEventLeaveConfirmationView} from "./ui/eventLeaveConfirmationPresentation.mjs";
 import {renderEventDepartureView} from "./ui/eventDeparturePresentation.mjs";
 import { renderEventEditingView } from "./ui/eventEditingPresentation.mjs";
 import { renderEventActivityView } from "./ui/eventActivityPresentation.mjs";
@@ -5147,6 +5148,7 @@ function renderEventStatusMenu() {
 
 function renderImportantActionDialog() {
   if (!importantActionDialog) return "";
+  if (importantActionDialog.kind === "leave-event") return renderEventLeaveConfirmationView(importantActionDialog);
 
   return `
     <section class="important-action-dialog-backdrop" aria-label="${escapeAttribute(importantActionDialog.title)}">
@@ -16899,6 +16901,8 @@ function requestEventLeave(eventId, trigger) {
   openImportantActionDialog(
     {
       kind: "leave-event",
+      eventName: event.name,
+      hasMoneyHistory,
       title: `לעזוב את "${event.name}"?`,
       description: hasMoneyHistory
         ? "הגישה שלך לאירוע תוסר, אבל השם שלך וההוצאות וההעברות שכבר רשומות עליו יישארו בהיסטוריה כשם אופליין. כדי לחזור תצטרך הזמנה חדשה."
@@ -23426,7 +23430,7 @@ function handleDialogKeydown(event) {
     return;
   }
 
-  const dialog = app.querySelector(
+  const dialog = event.target.closest?.('.event-leave-confirmation[role="alertdialog"]') ?? app.querySelector(
     '.settlement-close-confirmation[role="alertdialog"], .important-action-dialog[role="alertdialog"], .settlement-celebration-dialog[role="dialog"], .event-status-menu[role="dialog"], .expense-modal[role="dialog"], .event-modal[role="dialog"], .event-modal[role="region"]'
   );
   if (!dialog) return;
