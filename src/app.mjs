@@ -1,3 +1,4 @@
+import {renderEventDepartureView} from "./ui/eventDeparturePresentation.mjs";
 import { renderEventEditingView } from "./ui/eventEditingPresentation.mjs";
 import { renderEventActivityView } from "./ui/eventActivityPresentation.mjs";
 import { renderEventRoundingView } from "./ui/eventRoundingPresentation.mjs";
@@ -7425,42 +7426,12 @@ function renderEventSettingsLockDialog(event) {
 }
 
 function renderEventSettingsDangerDialog(event) {
-  const canManage = canCurrentParticipantManage(event);
-  const canLeave = canLeaveEvent(state, event.id, state.currentParticipantId);
-
-  return renderEventDialogShell({
+  return renderEventDepartureView({
     eventId: event.id,
-    eyebrow: "הגדרות",
-    title: "עזיבה ומחיקה",
-    description: "הפעולות כאן דורשות אישור לפני ביצוע.",
-    backAction: "event-settings-back",
-    backdropClass: "event-settings-route-backdrop",
-    routeMode: true,
-    settingsMode: true,
-    showClose: false,
-    body: `
-      <section class="event-danger-zone event-settings-card section">
-        <div class="event-danger-zone-heading">
-          <span class="event-danger-zone-icon" aria-hidden="true">${iconSvg("log-out")}</span>
-          <div>
-            <strong>עזיבת האירוע</strong>
-            <p class="muted">אפשר לעזוב גם כשיש הוצאות על שמך. ההיסטוריה תישמר כשם אופליין; מנהל יחיד צריך קודם להעביר ניהול.</p>
-          </div>
-        </div>
-        <button class="secondary-button danger-button" data-action="leave-event" data-event-id="${event.id}" ${!canLeave ? "disabled" : ""}>עזוב אירוע</button>
-      </section>
-      <section class="event-danger-zone event-delete-zone event-settings-card section">
-        <div class="event-danger-zone-heading">
-          <span class="event-danger-zone-icon" aria-hidden="true">${iconSvg("trash")}</span>
-          <div>
-            <strong>מחיקת האירוע</strong>
-            <p class="muted">מחיקה מסירה את האירוע לכל המשתתפים וזמינה למנהל בלבד.</p>
-          </div>
-        </div>
-        <button class="secondary-button danger-button" data-action="delete-event" data-event-id="${event.id}" ${!canManage ? "disabled" : ""}>מחק אירוע</button>
-      </section>
-    `
-  });
+    eventName: event.name,
+    canManage: canCurrentParticipantManage(event),
+    canLeave: canLeaveEvent(state, event.id, state.currentParticipantId)
+  }, {renderEventDialogShell});
 }
 
 function renderEventSettingsMenuItem({

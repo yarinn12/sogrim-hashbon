@@ -1357,9 +1357,12 @@ test("event settings expose leaving and admin deletion actions", async () => {
   const styles = await readFile("styles.css", "utf8");
   const settingsDialog = sourceBetween(app, "function renderEventSettingsDialog(event)", "function renderInviteStatus");
 
-  assert.match(settingsDialog, /data-action="leave-event"/);
-  assert.match(settingsDialog, /data-action="delete-event"/);
-  assert.match(settingsDialog, /danger-button/);
+  const departureView = await readFile("src/ui/eventDeparturePresentation.mjs", "utf8");
+  assert.match(settingsDialog, /return renderEventDepartureView/);
+  assert.match(departureView, /data-action="leave-event"/);
+  assert.match(departureView, /data-action="delete-event"/);
+  assert.match(departureView, /canLeave.*disabled/);
+  assert.match(departureView, /canManage.*disabled/);
   assert.match(app, /requestEventLeave\(target\.dataset\.eventId, target\)/);
   assert.match(app, /requestEventDeletion\(target\.dataset\.eventId, target\)/);
   assert.match(app, /role="alertdialog"/);
@@ -1389,7 +1392,8 @@ test("event settings use a focused hub instead of one overloaded dialog", async 
   assert.match(app, /eventDialog\.kind === "settings-rounding"/);
   assert.match(app, /eventDialog\.kind === "settings-lock"/);
   assert.match(app, /eventDialog\.kind === "settings-danger"/);
-  assert.match(app, /backAction: "event-settings-back"/);
+  const departureView = await readFile("src/ui/eventDeparturePresentation.mjs", "utf8");
+  assert.match(departureView, /backAction: "event-settings-back"/);
   assert.match(app, /action === "event-settings-back"/);
   assert.match(ledgerStyles, /\.event-settings-menu-item/);
 });
@@ -2011,7 +2015,9 @@ test("event settings subroutes share one surface and control vocabulary", async 
   const editingView = await readFile("src/ui/eventEditingPresentation.mjs", "utf8");
   assert.match(editingView, /class="event-lock-status"/);
   assert.doesNotMatch(editingView, /event-settings-card|status-chip/);
-  assert.match(app, /event-danger-zone event-settings-card/);
+  const departureView = await readFile("src/ui/eventDeparturePresentation.mjs", "utf8");
+  assert.match(departureView, /class="event-departure-section/);
+  assert.doesNotMatch(departureView, /event-settings-card|event-danger-zone-icon/);
   assert.match(
     ledgerCss,
     /\.event-settings-route-backdrop \.event-settings-card \{[\s\S]*?border-radius: 16px !important;[\s\S]*?background: var\(--ledger-surface\) !important;/

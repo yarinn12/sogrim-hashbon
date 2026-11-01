@@ -15,7 +15,7 @@ test("event settings exposes activity as a focused nested screen", () => {
   assert.match(overview, /section: "activity"/);
   assert.match(overview, /title: "פעילות באירוע"/);
   assert.match(app, /eventDialog\.kind === "settings-activity"/);
-  assert.match(app, /backAction: "event-settings-back"/);
+  assert.match(view, /backAction: "event-settings-back"/);
   assert.match(
     app,
     /\["management", "currency", "repayment", "rounding", "activity", "lock", "danger"\]/

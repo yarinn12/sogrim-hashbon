@@ -145,7 +145,7 @@ test("event manager can delete an event and the deletion survives reload", async
 test("the only manager must hand over management before leaving", async ({ page }) => {
   await page.locator('[data-settings-section="danger"]').click();
   await expect(page.locator('[data-action="leave-event"]')).toBeDisabled();
-  await expect(page.getByRole("region", { name: "עזיבה ומחיקה" })).toContainText("מנהל יחיד צריך קודם להעביר ניהול");
+  await expect(page.getByRole("region", { name: "עזיבה ומחיקה" })).toContainText("כדי לעזוב, צריך קודם למנות מנהל נוסף דרך רשימת המשתתפים.");
 });
 
 test("activity history opens from settings and returns to its card", async ({ page }) => {
