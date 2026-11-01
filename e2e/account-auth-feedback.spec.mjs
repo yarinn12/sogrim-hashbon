@@ -202,7 +202,7 @@ test("login and signup errors remain visible next to the relevant fields", async
   await expect(gate.locator("#account-auth-feedback")).toContainText(
     "האימייל או הסיסמה אינם נכונים"
   );
-  await expect(gate.getByRole("heading", { name: "נכנסת בהצלחה" })).toHaveCount(0);
+  await expect(gate.getByRole("heading", { name: "פתיחת החשבון מתעכבת" })).toHaveCount(0);
   expect(await page.evaluate(() => localStorage.getItem("settle-friends-account-session"))).toBeNull();
 
   await gate.getByRole("button", { name: "הרשמה", exact: true }).click();
