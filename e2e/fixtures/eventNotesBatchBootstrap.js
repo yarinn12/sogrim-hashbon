@@ -53,12 +53,19 @@ if(params.has('notes-long')&&notesEvent.notes[0]){notesEvent.notes[0].title='×¤×
 if(params.has('notes-locked')){notesEvent.locked=true;notesEvent.closedAt='2026-10-29T10:00:00.000Z';}
 if(params.has('notes-readonly')){notesEvent.adminIds=[friendId];notesEvent.createdByParticipantId=friendId;notesEvent.adminsCanEditOnly=true;}
 qa.noteBatchSeed=structuredClone(notesEvent.notes);
+// A prior accepted outbox can contain more than the note currently edited.
+// Only this scenario adds a second canonical scope; it must ACK unchanged.
+if(params.has('notes-partial'))Object.assign(state.events[1],{sharedSpaceId:'synthetic-share-friday-space',sharedSpaceKey:'synthetic-share-friday-key-abcdefghijklmnopqrstuvwxyz'});
 qa.canonicalWrites=[];const canonicalRow={id:'synthetic-share-event-space',state:{...structuredClone(state),events:[structuredClone(state.events[0])]},updated_at:'2026-10-10T10:00:00.000Z'};
 
 qa.snapshotWrites=[];qa.seedFinancialEvents=structuredClone(state.events);
 // Synthetic server controls. Real app code owns the write, ACK and recovery.
 qa.noteWriteMode='ready';qa.noteDeniedAttempts=[];qa.noteConflictAttempts=[];qa.canonicalRequests=[];qa.offlineRequests=[];
 Object.defineProperty(qa,'canonicalSnapshot',{get:()=>structuredClone(canonicalRow)});
+const siblingRow=params.has('notes-partial')?{id:'synthetic-share-friday-space',state:{...structuredClone(state),events:[structuredClone(state.events[1])]},updated_at:'2026-10-10T10:00:00.000Z'}:null;
+qa.siblingRequests=[];qa.siblingWrites=[];qa.noteUnacknowledgedAttempts=[];
+Object.defineProperty(qa,'canonicalSiblingSnapshot',{get:()=>structuredClone(siblingRow)});
+
 const notesChanged=(next,prior)=>JSON.stringify(next?.events?.find(e=>e.id==='friend-weekend')?.notes)!==JSON.stringify(prior?.events?.find(e=>e.id==='friend-weekend')?.notes)||JSON.stringify(next?.events?.find(e=>e.id==='friend-weekend')?.deletedNotes)!==JSON.stringify(prior?.events?.find(e=>e.id==='friend-weekend')?.deletedNotes);
 
   const row={id:space,state,updated_at:'2026-10-10T10:00:00.000Z'};
@@ -77,6 +84,15 @@ const notesChanged=(next,prior)=>JSON.stringify(next?.events?.find(e=>e.id==='fr
     qa.pendingKey='settle-friends-pending-sync:'+space;qa.pendingSeed=structuredClone(queued);qa.failedPendingAttempts=[];
     localStorage.setItem(qa.pendingKey,JSON.stringify(queued));
   }
+  if(params.has('notes-partial'))qa.seedNotePartialOutbox=async()=>{
+    // Seed previously accepted deliveries at the ready user-action boundary,
+    // after bootstrap has finished consuming older pending payloads.
+    const {loadState}=await import('/src/data/localStore.mjs');
+    const queued=structuredClone(loadState());
+    queued.__pendingSync={version:1,selection:{eventIds:['friend-weekend','friend-friday'],deletedEventIds:[]}};
+    qa.pendingKey='settle-friends-pending-sync:'+space;
+    localStorage.setItem(qa.pendingKey,JSON.stringify(queued));
+  };
   const config={publicUrl:"http://127.0.0.1:60302",storage:{mode:'supabase',url:auth,anonKey:'synthetic-anon',table:'app_snapshots',account:{userId:actor,accessToken:session.access_token,spaceId:space,spaceKey:key}}};
   if(params.get('reward')==='signed-out')config.storage.mode='local';
   Object.defineProperty(navigator,'share',{configurable:true,value:async data=>{qa.shared.push(data)}});
@@ -109,9 +125,20 @@ return response({eventId:body.eventId,token:'synthetic_event_share_token_2026102
     if(url.pathname.endsWith('/auth/v1/token'))return response({...session,expires_in:3600});
     const rpc=url.pathname.split('/rpc/')[1];
     if(rpc==='update_shared_event_snapshot'){
+      if(siblingRow&&body.p_snapshot_id===siblingRow.id){
+        qa.siblingRequests.push(structuredClone(body));
+        if(body.p_space_key!=='synthetic-share-friday-key-abcdefghijklmnopqrstuvwxyz'||body.p_state?.events?.length!==1||body.p_state.events[0].id!=='friend-friday')return response({message:'Wrong synthetic sibling scope'},403);
+        if(body.p_expected_updated_at!==siblingRow.updated_at)return response({status:'conflict'});
+        siblingRow.state=structuredClone(body.p_state);qa.siblingWrites.push(structuredClone(body.p_state));
+        siblingRow.updated_at=new Date(Math.max(Date.now(),Date.parse(siblingRow.updated_at)+1)).toISOString();return response({status:'updated',updatedAt:siblingRow.updated_at});
+      }
       qa.canonicalRequests.push(structuredClone(body));
       if(body.p_snapshot_id!==canonicalRow.id)return response({message:'Wrong synthetic shared scope'},403);
       const mutation=notesChanged(body.p_state,canonicalRow.state);
+      if(mutation&&qa.noteWriteMode==='unacknowledged-shared'){
+        qa.noteUnacknowledgedAttempts.push(structuredClone(body));
+        return response({code:'SYNTHETIC_SHARED_UNACKNOWLEDGED',message:'Synthetic temporary shared delivery failure'},503);
+      }
       if(mutation&&['permission-all','permission-shared'].includes(qa.noteWriteMode)){
         qa.noteDeniedAttempts.push({kind:'canonical',body:structuredClone(body)});
         return response({code:'SHARED_EVENT_MEMBERSHIP_REVOKED',message:'Synthetic note save permission rejected'},403);
@@ -129,6 +156,7 @@ return response({eventId:body.eventId,token:'synthetic_event_share_token_2026102
       return response({status:'updated',updatedAt:canonicalRow.updated_at});
     }
     if(url.pathname.endsWith('/app_snapshots')&&method==='GET'&&url.searchParams.get('id')==='eq.'+canonicalRow.id)return response([canonicalRow]);
+    if(siblingRow&&url.pathname.endsWith('/app_snapshots')&&method==='GET'&&url.searchParams.get('id')==='eq.'+siblingRow.id)return response([siblingRow]);
     if(rpc==='submit_app_feedback'){
       (qa.feedbackRequests??=[]).push({body,headers:options.headers});
       if(params.has('feedback-hold')&&!qa.feedbackReleased)await new Promise(resolve=>qa.releaseFeedback=()=>{qa.feedbackReleased=true;resolve()});

@@ -84,7 +84,7 @@ test('foreground note deletion owns Tab over its editor and restores the delete 
 
 test('notes empty state has one create action and required-content validation preserves the draft',async({page})=>{
   const x=await start(page,{width:320,root:32,query:'&notes=empty'});await expect(x.list.locator('.event-note-row')).toHaveCount(0);await expect(x.list.locator('.event-notes-empty')).toContainText('עוד אין פתקים באירוע');await expect(x.list.locator('[data-action="new-event-note"]')).toHaveCount(1);await geometry({...x,scope:x.list,kind:'list'});
-  const editor=await openNew(x);await save(editor);await expect(editor.locator('#event-note-error')).toContainText('צריך לכתוב כותרת או תוכן');await expect(editor.locator('[name="eventNoteTitle"]')).toBeFocused();await expect(editor.locator('[name="eventNoteTitle"]')).toHaveAttribute('maxlength','120');await expect(editor.locator('[name="eventNoteBody"]')).toHaveAttribute('maxlength','5000');await back(x,editor);await unchanged(page);
+  const editor=await openNew(x);await save(editor);await expect(editor.locator('#event-note-error')).toContainText('צריך לכתוב כותרת או תוכן');const body=editor.locator('[name="eventNoteBody"]');await pointClick(body);await body.pressSequentially('תוכן שנכתב אחרי השגיאה');await expect(body).toBeFocused();await expect(body).toHaveValue('תוכן שנכתב אחרי השגיאה');await expect(editor.locator('[name="eventNoteTitle"]')).toHaveValue('');await editor.locator('[name="eventNoteTitle"]').fill('טיוטה אחרי השגיאה');await keyboardFieldFocus(editor);await expect(editor.locator('[name="eventNoteTitle"]')).toHaveValue('טיוטה אחרי השגיאה');await expect(body).toHaveValue('תוכן שנכתב אחרי השגיאה');await expect(editor.locator('[name="eventNoteTitle"]')).toHaveAttribute('maxlength','120');await expect(editor.locator('[name="eventNoteBody"]')).toHaveAttribute('maxlength','5000');await back(x,editor);await unchanged(page);
 });
 
 for(const mode of['notes-locked','notes-readonly'])test('notes '+mode+' keeps long content readable without edit actions',async({page})=>{
@@ -96,7 +96,7 @@ test('notes create edit pin unpin and delete reach canonical and personal ACK wi
   const x=await start(page,{width:320,root:32});let editor=await openNew(x);
   const title='פרטי ההסעה',body='נפגשים ביום חמישי ב־09:00.\nליד שער הכניסה.';
   await fill(editor,title,body);await pointClick(editor.locator('[data-action="toggle-event-note-pin"]'));await save(editor);await expect(editor).toHaveCount(0);await acknowledged(page,{title,body,pinned:true});
-  const id=await noteId(page,title);expect(id).toBeTruthy();await expect(x.list.locator('.event-notes-section.is-pinned [data-note-id="'+id+'"]')).toHaveCount(1);
+  const id=await noteId(page,title);expect(id).toBeTruthy();await expect(x.list.locator('.event-notes-section.is-pinned .event-note-row[data-note-id="'+id+'"]')).toHaveCount(1);await expect(x.list.locator('.event-notes-section.is-pinned .event-note-open[data-note-id="'+id+'"]')).toHaveCount(1);
   editor=await openNote(x,id);await fill(editor,'פרטי ההסעה המעודכנים','ההסעה יוצאת ב־10:00.');await save(editor);await expect(editor).toHaveCount(0);await acknowledged(page,{id,title:'פרטי ההסעה המעודכנים',body:'ההסעה יוצאת ב־10:00.',pinned:true});
   editor=await openNote(x,id);await pointClick(editor.locator('[data-action="toggle-event-note-pin"]'));await save(editor);await expect(editor).toHaveCount(0);await acknowledged(page,{id,title:'פרטי ההסעה המעודכנים',pinned:false});
   editor=await openNote(x,id);await pointClick(editor.locator('[data-action="toggle-event-note-pin"]'));await save(editor);await expect(editor).toHaveCount(0);await acknowledged(page,{id,pinned:true});
@@ -119,10 +119,18 @@ for(const operation of['create','edit','delete'])test('notes denied '+operation+
 });
 
 test('notes partial shared ACK retains one creation and retries the same ID without duplicate notes',async({page})=>{
-  const x=await start(page),editor=await openNew(x);await fill(editor,'הזמנה משותפת','מספר ההזמנה 12345.');await page.evaluate(()=>__friendInviteQa.noteWriteMode='permission-shared');await save(editor);await expect(editor.locator('#event-note-error')).toContainText('עדיין לא התקבל אישור');await expect(editor.locator('[name="eventNoteTitle"]')).toHaveValue('הזמנה משותפת');
+  const x=await start(page,{query:'&notes-partial=1'}),editor=await openNew(x);
+  await page.evaluate(()=>__friendInviteQa.seedNotePartialOutbox());await fill(editor,'הזמנה משותפת','מספר ההזמנה 12345.');await page.evaluate(()=>__friendInviteQa.noteWriteMode='unacknowledged-shared');await save(editor);
+  await expect(editor.locator('#event-note-error')).toContainText('עדיין לא התקבל אישור');await expect(editor.locator('[name="eventNoteTitle"]')).toHaveValue('הזמנה משותפת');
   expect(await page.evaluate(()=>__friendInviteQa.canonicalSnapshot.state.events[0].notes.some(n=>n.title==='הזמנה משותפת'))).toBe(false);
-  const id=await editor.locator('.event-note-editor').getAttribute('data-note-id');expect(id).toBeTruthy();await page.evaluate(()=>__friendInviteQa.noteWriteMode='ready');await save(editor);await expect(editor).toHaveCount(0);await acknowledged(page,{id,title:'הזמנה משותפת',body:'מספר ההזמנה 12345.',pinned:false});
+  const id=await editor.locator('.event-note-editor').getAttribute('data-note-id');expect(id).toBeTruthy();
+  await expect.poll(()=>page.evaluate(id=>{const q=__friendInviteQa;return q.noteUnacknowledgedAttempts.length>0&&q.siblingWrites.length>0&&q.snapshotWrites.some(w=>(Array.isArray(w.body)?w.body[0]:w.body).state?.events.find(e=>e.id==='friend-weekend')?.notes.some(n=>n.id===id&&n.title==='הזמנה משותפת'))},id)).toBe(true);
+  await expect.poll(()=>page.evaluate(async()=>{const m=await import('/src/data/localStore.mjs');return m.pendingSharedSyncStatus().pending})).toBe(true);
+  const siblingBefore=await page.evaluate(()=>({writes:__friendInviteQa.siblingWrites.length,canonical:__friendInviteQa.canonicalSiblingSnapshot.state.events[0],seed:__friendInviteQa.seedFinancialEvents.find(e=>e.id==='friend-friday')}));
+  for(const key of['id','name','currency','participantIds','expenses','transfers','notes','deletedNotes','adminIds','activityLog'])expect(siblingBefore.canonical[key],key).toEqual(siblingBefore.seed[key]);
+  await page.evaluate(()=>__friendInviteQa.noteWriteMode='ready');await save(editor);await expect(editor).toHaveCount(0);await acknowledged(page,{id,title:'הזמנה משותפת',body:'מספר ההזמנה 12345.',pinned:false});
   expect(await page.evaluate(()=>__friendInviteQa.canonicalSnapshot.state.events[0].notes.filter(n=>n.title==='הזמנה משותפת').length)).toBe(1);
+  expect(await page.evaluate(()=>__friendInviteQa.siblingWrites.length)).toBe(siblingBefore.writes);
 });
 
 test('notes offline creation queues locally then replays the same note to shared and personal storage',async({page,context})=>{
