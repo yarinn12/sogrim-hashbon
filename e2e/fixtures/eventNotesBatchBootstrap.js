@@ -84,11 +84,10 @@ const notesChanged=(next,prior)=>JSON.stringify(next?.events?.find(e=>e.id==='fr
     qa.pendingKey='settle-friends-pending-sync:'+space;qa.pendingSeed=structuredClone(queued);qa.failedPendingAttempts=[];
     localStorage.setItem(qa.pendingKey,JSON.stringify(queued));
   }
-  if(params.has('notes-partial'))qa.seedNotePartialOutbox=async()=>{
+  if(params.has('notes-partial'))qa.seedNotePartialOutbox=snapshot=>{
     // Seed previously accepted deliveries at the ready user-action boundary,
     // after bootstrap has finished consuming older pending payloads.
-    const {loadState}=await import('/src/data/localStore.mjs');
-    const queued=structuredClone(loadState());
+    const queued=structuredClone(snapshot);
     queued.__pendingSync={version:1,selection:{eventIds:['friend-weekend','friend-friday'],deletedEventIds:[]}};
     qa.pendingKey='settle-friends-pending-sync:'+space;
     localStorage.setItem(qa.pendingKey,JSON.stringify(queued));

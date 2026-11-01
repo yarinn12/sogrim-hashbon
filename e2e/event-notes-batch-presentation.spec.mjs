@@ -120,7 +120,7 @@ for(const operation of['create','edit','delete'])test('notes denied '+operation+
 
 test('notes partial shared ACK retains one creation and retries the same ID without duplicate notes',async({page})=>{
   const x=await start(page,{query:'&notes-partial=1'}),editor=await openNew(x);
-  await page.evaluate(()=>__friendInviteQa.seedNotePartialOutbox());await fill(editor,'הזמנה משותפת','מספר ההזמנה 12345.');await page.evaluate(()=>__friendInviteQa.noteWriteMode='unacknowledged-shared');await save(editor);
+  await page.evaluate(async()=>{const {loadState}=await import('/src/data/localStore.mjs');__friendInviteQa.seedNotePartialOutbox(loadState())});await fill(editor,'הזמנה משותפת','מספר ההזמנה 12345.');await page.evaluate(()=>__friendInviteQa.noteWriteMode='unacknowledged-shared');await save(editor);
   await expect(editor.locator('#event-note-error')).toContainText('עדיין לא התקבל אישור');await expect(editor.locator('[name="eventNoteTitle"]')).toHaveValue('הזמנה משותפת');
   expect(await page.evaluate(()=>__friendInviteQa.canonicalSnapshot.state.events[0].notes.some(n=>n.title==='הזמנה משותפת'))).toBe(false);
   const id=await editor.locator('.event-note-editor').getAttribute('data-note-id');expect(id).toBeTruthy();
