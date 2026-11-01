@@ -169,9 +169,9 @@ test("an unconfirmed account can request a fresh verification email", async ({ p
   await gate.locator('input[name="password"]').fill("correct-password");
   await gate.getByRole("button", { name: "התחבר", exact: true }).click();
 
-  await expect(gate.locator("#account-auth-feedback")).toContainText(
-    "צריך לאשר את המייל"
-  );
+  await expect(gate.getByRole("heading", { name: "אימות האימייל", exact: true })).toBeVisible();
+  await expect(gate.locator(".account-flow-recipient p")).toHaveText("qa@example.com");
+  await expect(gate.locator('input[name="password"]')).toHaveCount(0);
   await gate.getByRole("button", { name: "שלח שוב קישור אימות" }).click();
   await expect(gate.locator("#account-auth-feedback")).toContainText(
     "שלחנו קישור אימות חדש"

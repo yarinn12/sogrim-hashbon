@@ -1,5 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {prepareAccountEntry,openAccountEntry,accountEntryEmail,assertAccountLayout,expectNoExternalFailures,emulateAccountSafeArea} from './helpers/accountEntryBatchPresentation.mjs';
+// HTTP fixtures must own every request; a real service worker bypasses page routing.
+test.use({serviceWorkers:'block'});
 const sent='קישור האיפוס נשלח';
 const send=gate=>gate.getByRole('button',{name:'שלח קישור לאיפוס',exact:true}).click();
 async function request(page,options={}){const gate=await openAccountEntry(page,options);await gate.locator('input[name=email]').fill(accountEntryEmail);await gate.locator('[data-account-action=forgot-password]').click();await expect(gate).toHaveAttribute('data-account-recovery-screen','request');return gate}
