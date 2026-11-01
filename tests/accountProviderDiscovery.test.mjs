@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readSource as readFile } from "./helpers/readSource.mjs";
+import { renderAccountEntryView } from "../src/ui/accountEntryPresentation.mjs";
 
 // Run the production request, state transition and rendering boundary. An
 // alternate source is only for demonstrating the pre-fix regression.
@@ -43,7 +44,7 @@ function harness({ platform = "ios", device = "iPhone", responses = [] } = {}) {
     }
   }
   const context = vm.createContext({
-    AbortController, URL, console, createFeedbackDraft,
+    AbortController, URL, console, createFeedbackDraft, renderAccountEntryView,
     Capacitor: { isNativePlatform: () => platform !== "web", getPlatform: () => platform },
     navigator: { userAgent: device === "iPad" ? "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)" : "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" },
     window: {

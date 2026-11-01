@@ -374,8 +374,8 @@ test("password recovery from email returns through the native callback and survi
   const callback = new URL(fixture.getRecoveryRedirect());
   callback.hash = new URLSearchParams({ type: "recovery", access_token: "fixture-recovery-access", refresh_token: "fixture-recovery-refresh", expires_in: "3600" }).toString();
   await page.evaluate(url => globalThis.__roundtripListeners.appUrlOpen({ url }), callback.href);
-  await expect(page.getByRole("heading", { name: "איפוס סיסמה", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "סיסמה חדשה", exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "איפוס סיסמה", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "סיסמה חדשה", exact: true })).toBeVisible();
   expect(fixture.counts.recovery).toBe(1);
 });

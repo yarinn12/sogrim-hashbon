@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readSource as readFile } from "./helpers/readSource.mjs";
+import { renderAccountEntryView } from "../src/ui/accountEntryPresentation.mjs";
+import { renderAccountCompletionView } from "../src/ui/accountCompletionPresentation.mjs";
+import { renderAccountPasswordResetView } from "../src/ui/accountPasswordResetPresentation.mjs";
 const deletionView = await readFile("src/ui/accountDeletionPresentation.mjs", "utf8");
 
 test("account auth layer loads before the app and visual layers", async () => {
@@ -56,11 +59,19 @@ test("a fresh signup never inherits the previous device owner's name", async () 
     layer.indexOf("function scheduleAccountConfigRetry(")
   );
 
-  assert.match(
-    accountGate,
-    /name="displayName"[\s\S]*?value="\$\{escapeAttribute\(values\.displayName \?\? ""\)\}"/
-  );
+  assert.match(accountGate, /values = \{\}/);
+  assert.match(accountGate, /gate\.innerHTML = renderAccountEntryView\(\{[\s\S]*?showVerificationResend, values\s*\}/);
   assert.doesNotMatch(accountGate, /loadLocalProfile|previousProfile/);
+  const previous = renderAccountEntryView({
+    mode: "signup", emailDeliveryReady: true,
+    values: {displayName: "משתמש קודם", username: "previous_owner", email: "previous@example.invalid"}
+  });
+  assert.match(previous, /name="displayName"[^>]*value="משתמש קודם"/);
+  const fresh = renderAccountEntryView({mode: "signup", emailDeliveryReady: true});
+  for (const field of ["displayName", "username", "email"]) {
+    assert.match(fresh, new RegExp(`name="${field}"[^>]*value=""`));
+  }
+  assert.doesNotMatch(fresh, /משתמש קודם|previous_owner|previous@example\.invalid/);
 });
 
 test("a returning session paints local state before remote reconciliation even when its token is expiring", async () => {
@@ -141,8 +152,12 @@ test("signup requires a username and keeps it through validation and account com
     readFile("supabase/schema.sql", "utf8")
   ]);
 
-  assert.match(layer, /<span>שם משתמש<\/span>[\s\S]*?name="username"[\s\S]*?required/);
-  assert.doesNotMatch(layer, /שם משתמש ייחודי \(לא חובה\)/);
+  const signupView = renderAccountEntryView({mode: "signup", emailDeliveryReady: true});
+  const completionView = renderAccountCompletionView();
+  for (const view of [signupView, completionView]) {
+    assert.match(view, /<span>שם משתמש<\/span>[\s\S]*?name="username"[\s\S]*?required/);
+    assert.doesNotMatch(view, /שם משתמש ייחודי \(לא חובה\)/);
+  }
   assert.match(layer, /!normalizeUsername\(username\)/);
   assert.match(layer, /usernameValidationMessage\(username\)/);
   assert.match(layer, /signUpWithPassword\(runtimeConfig, \{[\s\S]*?username,/);
@@ -154,15 +169,20 @@ test("signup requires a username and keeps it through validation and account com
 test("account gate offers email registration, Google, Apple, sign out and deletion", async () => {
   const accountView = await readFile("src/ui/profileAccountPresentation.mjs", "utf8");
   const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const signupView = renderAccountEntryView({mode: "signup", emailDeliveryReady: true, showVerificationResend: true});
+  const completionView = renderAccountCompletionView({
+    displayName: "נועם לוי", hasSavedFullName: true, hasInvite: true,
+    error: "שם המשתמש כבר תפוס", errorFieldName: "username"
+  });
 
-  assert.match(layer, /data-account-mode="login"/);
-  assert.match(layer, /data-account-mode="signup"/);
+  assert.match(signupView, /data-account-mode="login"/);
+  assert.match(signupView, /data-account-mode="signup"/);
   assert.match(layer, /signInWithPassword/);
   assert.match(layer, /signUpWithPassword/);
-  assert.match(layer, /החשבון יופעל רק אחרי פתיחת הקישור/);
+  assert.match(signupView, /אחרי ההרשמה נשלח קישור להפעלת החשבון/);
   assert.match(layer, /normalizeAccountEmail\(email\)/);
   assert.match(layer, /resendSignupConfirmation/);
-  assert.match(layer, /data-account-action="resend-verification"/);
+  assert.match(signupView, /data-account-action="resend-verification"/);
   assert.match(layer, /https:\/\/accounts\.google\.com\/gsi\/client/);
   assert.match(layer, /@capgo\/capacitor-social-login/);
   assert.match(layer, /signInWithIdToken/);
@@ -199,8 +219,10 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
     layer,
     /if \(accountSession\?\.user && accountProfileNeedsCompletion\(error\)\) \{[\s\S]*?renderAccountNameCompletionGate/
   );
-  assert.match(layer, /אחרי השמירה נמשיך אוטומטית לאירוע מהקישור/);
-  assert.match(layer, /hasSavedFullName[\s\S]*type="hidden"/);
+  assert.match(completionView, /אחרי השמירה נמשיך אוטומטית לאירוע מהקישור/);
+  assert.match(completionView, /name="displayName" type="hidden" value="נועם לוי"/);
+  assert.match(layer, /const hasSavedFullName = isFullProfileName\(normalizeProfileName\(displayName\)\)/);
+  assert.match(layer, /renderAccountCompletionView\(\{[\s\S]*?displayName, username, error, errorFieldName, hasSavedFullName,[\s\S]*?hasInvite: Boolean\(inviteContext\)/);
   assert.match(layer, /appleOAuthUrl/);
   assert.match(layer, /aria-label="המשך עם Apple"/);
   assert.match(layer, /assets\/sign-in-with-apple-iw\.png/);
@@ -212,7 +234,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
     layer,
     /if \(action === "apple"\) \{\s*if \(authBusy\) return;\s*setAuthBusy\(true\);[\s\S]*?finally \{\s*setAuthBusy\(false\)/
   );
-  assert.match(layer, /data-account-action="signout"/);
+  assert.match(completionView, /data-account-action="signout"/);
   assert.match(
     layer,
     /const accountSpaceId = getActiveCloudSpaceId\(runtimeConfig\);[\s\S]*?const accountUserId = String\(sessionToSignOut\?\.user\?\.id[\s\S]*?clearLocalAccountData\(accountSpaceId, accountUserId\)/
@@ -294,16 +316,19 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /function setAccountDeletionBusy\(value\) \{\s*accountDeleteBusy = value;/);
   assert.match(layer, /setAttribute\("inert", ""\)/);
   assert.equal([...layer.matchAll(/gate\.setAttribute\("role", "main"\)/g)].length, 4);
-  assert.match(layer, /data-mode="complete-profile"/);
+  assert.match(completionView, /data-mode="complete-profile"/);
   assert.match(layer, /updateAccountUser/);
   assert.match(layer, /accountFormValidationError/);
   assert.match(layer, /errorFieldName = ""/);
-  assert.match(layer, /aria-invalid="true" aria-describedby="account-auth-feedback"/);
+  assert.match(completionView, /name="username"[^>]*aria-invalid="true" aria-describedby="account-auth-feedback"/);
+  assert.match(completionView, /id="account-auth-feedback"[^>]*role="alert">שם המשתמש כבר תפוס/);
   assert.match(layer, /errorFieldName: validationError\.fieldName/);
-  assert.match(layer, /novalidate/);
+  for (const view of [signupView, completionView, renderAccountPasswordResetView()]) {
+    assert.match(view, /novalidate/);
+    assert.match(view, /data-account-auth-status role="status" aria-live="polite"/);
+  }
   assert.match(layer, /handleAccountGateNativeBack/);
   assert.match(layer, /collapseAccountEmailAuth/);
-  assert.match(layer, /data-account-auth-status role="status" aria-live="polite"/);
   assert.match(deletionView, /account-delete-dialog" role="dialog"[\s\S]*?tabindex="-1"/);
   assert.match(layer, /enhanceAccountFeedbackPage/);
   assert.match(layer, /"sogrim:feedback-open"/);
@@ -433,9 +458,11 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(accountView, /class="account-danger-note"/);
   assert.doesNotMatch(accountView, /class="account-danger-copy"/);
   assert.match(layer, /\.account-danger-zone[\s\S]*?border-top:/);
-  assert.match(layer, /account-auth-mark[^\n]+src="\.\/app-icon-exterior-192\.png"/);
-  assert.doesNotMatch(layer, /account-auth-mark[^\n]+src="\.\/icon-192\.png"/);
-  assert.doesNotMatch(layer, /sogrim-logo-lockup\.png/);
+  for (const view of [signupView, completionView, renderAccountPasswordResetView()]) {
+    assert.match(view, /account-auth-mark[^\n]+src="\.\/app-icon-exterior-192\.png"/);
+    assert.doesNotMatch(view, /account-auth-mark[^\n]+src="\.\/icon-192\.png"/);
+    assert.doesNotMatch(view, /sogrim-logo-lockup\.png/);
+  }
   assert.match(
     accountView,
     /href="\.\/privacy\.html" class="account-data-link">[^\n]*?<span class="account-row-label">מדיניות פרטיות<\/span>/
@@ -491,6 +518,11 @@ test("account gate protects private content and preserves interrupted form work"
     readFile("src/publicAccountAuthLayer.mjs", "utf8"),
     readFile("src/publicProfileOverlay.mjs", "utf8")
   ]);
+  const retainedView = renderAccountEntryView({
+    showEmailAuth: true,
+    values: {email: "retained@example.invalid"},
+    error: "החיבור נכשל. נסה שוב."
+  });
 
   assert.match(layer, /lockAccountGate\(\)/);
   assert.doesNotMatch(layer, /renderAccountBootGate|account-auth-boot/);
@@ -525,10 +557,11 @@ test("account gate protects private content and preserves interrupted form work"
       layer.indexOf("// A terminal session failure invalidates credentials"),
     "a transient OAuth callback must be retained before invalid-session cleanup"
   );
-  assert.match(layer, /values\.email/);
+  assert.match(retainedView, /name="email"[^>]*value="retained@example\.invalid"/);
+  assert.match(retainedView, /id="account-auth-feedback"[^>]*role="alert">החיבור נכשל\. נסה שוב\./);
   assert.match(layer, /rememberAccountReturnUrl\(\)/);
-  assert.match(layer, /href="\.\/terms\.html"/);
-  assert.match(layer, /href="\.\/privacy\.html"/);
+  assert.match(retainedView, /href="\.\/terms\.html"/);
+  assert.match(retainedView, /href="\.\/privacy\.html"/);
   assert.match(layer, /prefers-reduced-motion/);
   assert.match(
     layer,
@@ -579,11 +612,16 @@ test("a failed event invite never signs out the connected account", async () => 
 
 test("account gate prioritizes provider login and progressively reveals email", async () => {
   const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const collapsedView = renderAccountEntryView({providerAvailable: true, showEmailAuth: false});
+  const expandedView = renderAccountEntryView({providerAvailable: true, showEmailAuth: true});
 
   assert.match(layer, /emailAuthExpanded/);
-  assert.match(layer, /data-account-action="toggle-email"/);
-  assert.match(layer, /aria-controls="account-email-auth"/);
-  assert.match(layer, /class="account-email-auth"/);
+  assert.match(collapsedView, /data-account-action="toggle-email"/);
+  assert.match(collapsedView, /aria-expanded="false"[\s\S]*?aria-controls="account-email-auth"/);
+  assert.match(collapsedView, /id="account-email-auth" class="account-email-auth" hidden/);
+  assert.match(expandedView, /aria-expanded="true"[\s\S]*?aria-controls="account-email-auth"/);
+  assert.doesNotMatch(expandedView, /id="account-email-auth"[^>]*hidden/);
+  assert.match(layer, /renderAccountEntryView\(\{[\s\S]*?providerAvailable, showEmailAuth,/);
   assert.match(layer, /providerAvailable/);
   assert.match(layer, /emailAuthExpanded = !googleEnabled && !appleEnabled/);
   assert.match(layer, /googleAuthConfiguredForCurrentPlatform\(\)/);
@@ -808,9 +846,14 @@ test("email delivery gate hides signup and recovery actions until SMTP is ready"
     layer,
     /runtimeConfig\?\.launch\?\.authEmailDeliveryReady === true/
   );
-  assert.match(layer, /emailDeliveryReady \? `<button type="button" data-account-mode="signup"/);
-  assert.match(layer, /mode === "login" && emailDeliveryReady[\s\S]*?forgot-password/);
-  assert.match(layer, /showVerificationResend && emailDeliveryReady/);
+  assert.match(layer, /if \(mode === "signup" && !emailDeliveryReady\) mode = "login"/);
+  assert.match(layer, /renderAccountEntryView\(\{[\s\S]*?mode, emailDeliveryReady,/);
+  const unavailable = renderAccountEntryView({emailDeliveryReady: false, showVerificationResend: true});
+  const available = renderAccountEntryView({emailDeliveryReady: true, showVerificationResend: true});
+  for (const action of ['data-account-mode="signup"', 'data-account-action="forgot-password"', 'data-account-action="resend-verification"']) {
+    assert.ok(!unavailable.includes(action), `${action} must remain unavailable before SMTP readiness`);
+    assert.ok(available.includes(action), `${action} must be offered after SMTP readiness`);
+  }
 });
 
 test("sign-out removes reusable local credentials before awaiting the network", async () => {
@@ -832,8 +875,10 @@ test("password fields can reveal and hide their value accessibly", async () => {
   const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
   const icons = await readFile("src/uiIcons.mjs", "utf8");
 
-  assert.match(layer, /class="account-password-toggle"/);
-  assert.match(layer, /data-account-action="toggle-password"/);
+  for (const view of [renderAccountEntryView(), renderAccountPasswordResetView()]) {
+    assert.match(view, /class="account-password-toggle"/);
+    assert.match(view, /type="button" data-account-action="toggle-password" aria-label="הצג סיסמה" aria-pressed="false"/);
+  }
   assert.match(layer, /input\.type = reveal \? "text" : "password"/);
   assert.match(layer, /reveal \? "הסתר סיסמה" : "הצג סיסמה"/);
   assert.match(layer, /\.account-password-toggle:active[\s\S]*?scale\(0\.96\)/);

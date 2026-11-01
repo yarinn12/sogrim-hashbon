@@ -1,3 +1,6 @@
+import { renderAccountEntryView } from "./ui/accountEntryPresentation.mjs";
+import { renderAccountCompletionView } from "./ui/accountCompletionPresentation.mjs";
+import { renderAccountPasswordResetView } from "./ui/accountPasswordResetPresentation.mjs";
 import { renderAccountDeletionConfirmationView } from "./ui/accountDeletionPresentation.mjs";
 import { renderFeedbackFormView, renderFeedbackSuccessView } from "./ui/feedbackPagePresentation.mjs";
 import { createFeedbackDraft, feedbackRequestIsCurrent } from "./domain/feedbackDraft.mjs";
@@ -1050,16 +1053,6 @@ function renderAccountGate({
 
   const inviteContext = accountInviteContext();
   const inviteMarkup = accountInviteMarkup(inviteContext);
-  const heading = inviteContext
-    ? `מצטרפים ל־${escapeHtml(inviteContext.eventName)}`
-    : mode === "signup"
-      ? "יוצרים חשבון"
-      : "טוב שחזרת";
-  const headingDescription = inviteContext
-    ? "נכנסים או נרשמים, ומיד ממשיכים לאירוע שקיבלת."
-    : mode === "signup"
-      ? "שם מלא, שם משתמש ומייל שומרים את ההיסטוריה שלך ומאפשרים לחברים למצוא אותך."
-      : "נכנסים וממשיכים בדיוק מהמקום שבו עצרת.";
   const providerAvailable = googleEnabled || appleEnabled;
   const showEmailAuth =
     emailAuthExpanded ||
@@ -1067,119 +1060,15 @@ function renderAccountGate({
     mode === "signup" ||
     Boolean(message) ||
     Boolean(error);
-  const safeErrorFieldName = /^[a-zA-Z][\w-]*$/.test(errorFieldName)
-    ? errorFieldName
-    : "";
-  const fieldErrorAttributes = (fieldName) =>
-    safeErrorFieldName === fieldName
-      ? 'aria-invalid="true" aria-describedby="account-auth-feedback"'
-      : 'aria-invalid="false"';
   const gate = document.createElement("section");
   gate.id = GATE_ID;
-  gate.className = "account-auth-gate font-hebrew";
+  gate.className = "account-auth-gate font-hebrew account-entry-screen";
   gate.setAttribute("role", "main");
-  gate.innerHTML = `
-    <div class="account-auth-shell">
-      <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
-        <div>
-          <p class="eyebrow">סוגרים חשבון</p>
-          <h1>החשבון נשאר איתך</h1>
-          <p>האירועים, ההוצאות והחברים נשמרים בענן ומחכים לך בכל מכשיר.</p>
-        </div>
-        <ul>
-          <li>היסטוריה אישית שנשמרת בענן</li>
-          <li>כניסה מאובטחת ושמירת מידע בענן</li>
-          <li>קישורי הצטרפות ממשיכים לעבוד כרגיל</li>
-        </ul>
-      </section>
-
-      <section class="account-auth-form-panel">
-        ${inviteMarkup}
-        <div class="account-auth-heading">
-          <h2>${heading}</h2>
-          <p>${headingDescription}</p>
-        </div>
-
-        ${providerFeedback && error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
-
-        <div class="account-google-slot" data-google-auth-slot>
-          ${providerOptionsMarkup()}
-        </div>
-
-        ${
-          providerAvailable && mode === "login"
-            ? `<button
-                class="account-email-toggle"
-                type="button"
-                data-account-action="toggle-email"
-                aria-expanded="${showEmailAuth}"
-                aria-controls="account-email-auth"
-              >${showEmailAuth ? "חזרה לאפשרויות הכניסה" : "כניסה עם אימייל"}</button>`
-            : ""
-        }
-
-        <div id="account-email-auth" class="account-email-auth" ${showEmailAuth ? "" : "hidden"}>
-          <div class="account-auth-tabs" role="group" aria-label="כניסה או הרשמה">
-            <button type="button" data-account-mode="login" aria-pressed="${mode === "login"}" class="${mode === "login" ? "is-active" : ""}">התחברות</button>
-            ${emailDeliveryReady ? `<button type="button" data-account-mode="signup" aria-pressed="${mode === "signup"}" class="${mode === "signup" ? "is-active" : ""}">הרשמה</button>` : ""}
-          </div>
-
-          <form class="account-auth-form" data-account-form data-mode="${mode}" novalidate>
-            ${
-              mode === "signup"
-                ? `<label>
-                    <span>שם פרטי ושם משפחה</span>
-                    <input name="displayName" autocomplete="name" value="${escapeAttribute(values.displayName ?? "")}" ${fieldErrorAttributes("displayName")} required />
-                  </label>
-                  <label>
-                    <span>שם משתמש</span>
-                    <input name="username" dir="ltr" autocomplete="username" autocapitalize="none" spellcheck="false" value="${escapeAttribute(values.username ?? "")}" ${fieldErrorAttributes("username")} required />
-                  </label>`
-                : ""
-            }
-            <label>
-              <span>אימייל</span>
-              <input name="email" type="email" inputmode="email" autocomplete="email" spellcheck="false" value="${escapeAttribute(values.email ?? "")}" ${fieldErrorAttributes("email")} required />
-              ${mode === "signup" ? '<small class="account-auth-field-hint">נשלח קישור אימות לכתובת הזו. החשבון יופעל רק אחרי פתיחת הקישור.</small>' : ""}
-            </label>
-            <label>
-              <span>סיסמה</span>
-              <span class="account-password-input">
-                <input name="password" type="password" autocomplete="${mode === "signup" ? "new-password" : "current-password"}" minlength="8" ${fieldErrorAttributes("password")} required />
-                <button class="account-password-toggle" type="button" data-account-action="toggle-password" aria-label="הצג סיסמה" aria-pressed="false">${iconSvg("eye")}</button>
-              </span>
-            </label>
-            ${
-              mode === "login" && emailDeliveryReady
-                ? `<button class="account-forgot-button" type="button" data-account-action="forgot-password">שכחתי סיסמה</button>`
-                : ""
-            }
-            ${message ? `<p id="account-auth-feedback" class="account-auth-message" role="status">${escapeHtml(message)}</p>` : ""}
-            ${error && !providerFeedback ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
-            ${
-              showVerificationResend && emailDeliveryReady
-                ? `<button class="account-forgot-button" type="button" data-account-action="resend-verification">שלח שוב קישור אימות</button>`
-                : ""
-            }
-            <button class="primary-button account-auth-submit" type="submit">
-              ${
-                inviteContext
-                  ? mode === "signup"
-                    ? "צור חשבון והצטרף"
-                    : "התחבר והצטרף"
-                  : mode === "signup"
-                    ? "צור חשבון"
-                    : "התחבר"
-              }
-            </button>
-          </form>
-        </div>
-        <p class="account-auth-legal">בהמשך השימוש אתה מאשר את <a href="./terms.html">תנאי השימוש</a> ואת <a href="./privacy.html">מדיניות הפרטיות</a>.</p>
-        <p class="visually-hidden" data-account-auth-status role="status" aria-live="polite"></p>
-      </section>
-    </div>
-  `;
+  gate.innerHTML = renderAccountEntryView({
+    mode, emailDeliveryReady, hasInvite: Boolean(inviteContext),
+    inviteEventName: inviteContext?.eventName, providerAvailable, showEmailAuth,
+    message, error, providerFeedback, errorFieldName, showVerificationResend, values
+  }, {inviteMarkup, providerMarkup: providerOptionsMarkup()});
   document.body.append(gate);
   gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
   markAccountAuthReady();
@@ -1275,42 +1164,12 @@ function renderAccountNameCompletionGate({
 
   const gate = document.createElement("section");
   gate.id = GATE_ID;
-  gate.className = "account-auth-gate font-hebrew";
+  gate.className = "account-auth-gate font-hebrew account-entry-screen";
   gate.setAttribute("role", "main");
-  gate.innerHTML = `
-    <div class="account-auth-shell account-auth-shell-compact">
-      <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
-        <div>
-          <p class="eyebrow">סוגרים חשבון</p>
-          <h1>${inviteContext ? "עוד רגע מצטרפים לאירוע" : "משלימים את החשבון"}</h1>
-          <p>${hasSavedFullName ? "נשאר לבחור שם משתמש חד־פעמי כדי שחברים יוכלו לזהות אותך." : "שם מלא ושם משתמש עוזרים לחברים לזהות ולמצוא אותך."}</p>
-        </div>
-      </section>
-      <section class="account-auth-form-panel">
-        <div class="account-auth-heading">
-          <h2>${hasSavedFullName ? "בחירת שם משתמש" : "איך לקרוא לך?"}</h2>
-          <p>${inviteContext ? "אחרי השמירה נמשיך אוטומטית לאירוע מהקישור." : "זהו שלב חד־פעמי, ואחריו ממשיכים לחשבון."}</p>
-        </div>
-        <form class="account-auth-form" data-account-form data-mode="complete-profile" novalidate>
-          ${hasSavedFullName
-            ? `<input name="displayName" type="hidden" value="${escapeAttribute(displayName)}" />`
-            : `<label>
-                <span>שם פרטי ושם משפחה</span>
-                <input name="displayName" autocomplete="name" value="${escapeAttribute(displayName)}" />
-              </label>`}
-          <label>
-            <span>שם משתמש</span>
-            <input name="username" dir="ltr" autocomplete="username" autocapitalize="none" spellcheck="false" value="${escapeAttribute(username)}" ${errorFieldName === "username" ? 'aria-invalid="true" aria-describedby="account-auth-feedback"' : ""} required />
-          </label>
-          ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
-          <button class="primary-button account-auth-submit" type="submit">שמור והמשך</button>
-        </form>
-        <button class="account-forgot-button" type="button" data-account-action="signout">כניסה עם חשבון אחר</button>
-        <p class="visually-hidden" data-account-auth-status role="status" aria-live="polite"></p>
-      </section>
-    </div>
-  `;
+  gate.innerHTML = renderAccountCompletionView({
+    displayName, username, error, errorFieldName, hasSavedFullName,
+    hasInvite: Boolean(inviteContext)
+  });
   document.body.append(gate);
   gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
   markAccountAuthReady();
@@ -2546,45 +2405,9 @@ function renderPasswordResetGate(error = "") {
 
   const gate = document.createElement("section");
   gate.id = GATE_ID;
-  gate.className = "account-auth-gate";
+  gate.className = "account-auth-gate account-entry-screen";
   gate.setAttribute("role", "main");
-  gate.innerHTML = `
-    <div class="account-auth-shell account-auth-shell-compact">
-      <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
-        <div>
-          <p class="eyebrow">סוגרים חשבון</p>
-          <h1>בוחרים סיסמה חדשה</h1>
-          <p>אחרי השמירה נחזיר אותך ישר לחשבון שלך.</p>
-        </div>
-      </section>
-      <section class="account-auth-form-panel">
-        <div class="account-auth-heading">
-          <h2>איפוס סיסמה</h2>
-          <p>הסיסמה החדשה צריכה להכיל לפחות 8 תווים.</p>
-        </div>
-        <form class="account-auth-form" data-account-form data-mode="reset-password" novalidate>
-          <label>
-            <span>סיסמה חדשה</span>
-            <span class="account-password-input">
-              <input name="password" type="password" autocomplete="new-password" minlength="8" required />
-              <button class="account-password-toggle" type="button" data-account-action="toggle-password" aria-label="הצג סיסמה" aria-pressed="false">${iconSvg("eye")}</button>
-            </span>
-          </label>
-          <label>
-            <span>אימות סיסמה</span>
-            <span class="account-password-input">
-              <input name="passwordConfirmation" type="password" autocomplete="new-password" minlength="8" required />
-              <button class="account-password-toggle" type="button" data-account-action="toggle-password" aria-label="הצג סיסמה" aria-pressed="false">${iconSvg("eye")}</button>
-            </span>
-          </label>
-          ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
-          <button class="primary-button account-auth-submit" type="submit">שמור סיסמה</button>
-        </form>
-        <p class="visually-hidden" data-account-auth-status role="status" aria-live="polite"></p>
-      </section>
-    </div>
-  `;
+  gate.innerHTML = renderAccountPasswordResetView({error});
   document.body.append(gate);
   gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
   markAccountAuthReady();
@@ -4236,6 +4059,78 @@ function injectStyle() {
         width: min(calc(100% - 32px), 760px);
       }
     }
+
+/* Approved shared account-entry presentation. Recovery, identity and provider logic stay above. */
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen {
+ display:block!important;inset:0!important;overflow:auto!important;padding:0 max(18px,env(safe-area-inset-right)) max(28px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))!important;background:#f7f9fa!important;scroll-padding-block:20px!important;box-sizing:border-box!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-shell {
+ display:flex!important;flex-direction:column!important;gap:20px!important;width:min(100%,500px)!important;min-height:0!important;max-height:none!important;overflow:visible!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;margin:0 auto!important;padding:0!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-brand {
+ position:relative!important;display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:12px!important;min-height:76px!important;padding:12px 0 12px 56px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;isolation:auto!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-brand::before,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-brand::after {display:none!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-mark {
+ position:static!important;flex:0 0 44px!important;width:44px!important;height:44px!important;padding:0!important;border:0!important;border-radius:12px!important;box-shadow:none!important;background:transparent!important;transform:none!important;margin:0!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-mark img {width:44px!important;height:44px!important;display:block!important;object-fit:contain!important;border-radius:12px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-brand h1 {
+ display:block!important;max-width:none!important;margin:0!important;color:#162523!important;font-size:1.05rem!important;line-height:1.35!important;font-weight:800!important;letter-spacing:0!important;overflow-wrap:normal!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form-panel {
+ display:flex!important;flex-direction:column!important;align-content:initial!important;gap:20px!important;min-width:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-heading {
+ display:grid!important;gap:8px!important;margin:0 0 4px!important;padding:20px 22px!important;border:1px solid rgba(5,80,62,.1)!important;border-radius:24px!important;color:white!important;background:linear-gradient(112deg,#083e32,#126f56)!important;box-shadow:0 8px 24px rgba(14,95,74,.08)!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-heading h2 {
+ margin:0!important;color:#fff!important;font-size:1.5rem!important;line-height:1.3!important;font-weight:800!important;overflow-wrap:normal!important;word-break:normal!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-heading p {
+ margin:0!important;color:#e1f0e9!important;font-size:.9rem!important;line-height:1.55!important;overflow-wrap:normal!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-google-slot {display:grid!important;gap:12px!important;margin:0!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-google-button,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-email-toggle,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit {
+ width:100%!important;min-height:52px!important;height:auto!important;min-width:0!important;padding:13px 16px!important;font-size:1rem!important;line-height:1.45!important;border-radius:14px!important;box-shadow:none!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important;gap:10px!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit {background:#075846!important;color:#fff!important;border:1px solid #075846!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-apple-button {padding:0!important;background:#000!important;border-radius:14px!important;min-height:56px!important;overflow:visible!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-apple-button-art {display:block!important;width:100%!important;max-width:375px!important;height:auto!important;max-height:none!important;object-fit:contain!important;border-radius:14px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-email-auth {display:grid!important;gap:20px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-email-auth[hidden] {display:none!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-tabs {display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:4px!important;padding:4px!important;border-radius:14px!important;margin:0!important;background:#eaf1ef!important;border:1px solid #dce5e2!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-tabs button {min-height:44px!important;min-width:0!important;height:auto!important;padding:10px 8px!important;line-height:1.4!important;font-size:1rem!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important;border-radius:10px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form {display:grid!important;gap:18px!important;margin:0!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form label {display:grid!important;gap:8px!important;min-width:0!important;margin:0!important;line-height:1.45!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form label>span:first-child {font-size:.95rem!important;line-height:1.45!important;font-weight:700!important;overflow-wrap:normal!important;word-break:normal!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form input:not([type="hidden"]) {
+ box-sizing:border-box!important;min-width:0!important;width:100%!important;height:auto!important;min-height:52px!important;padding:12px 14px!important;border-radius:12px!important;border:1px solid #cedbd5!important;background:#fff!important;color:#172a24!important;font-size:1rem!important;line-height:1.45!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-password-input {position:relative!important;display:block!important;min-width:0!important;width:100%!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-password-input input {padding-left:58px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-password-toggle {position:absolute!important;inset-block:0!important;inset-inline-start:auto!important;left:5px!important;right:auto!important;display:grid!important;place-items:center!important;width:44px!important;min-height:44px!important;height:100%!important;padding:0!important;transform:none!important;background:transparent!important;color:#526b60!important;border-radius:8px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-password-toggle svg {width:21px!important;height:21px!important;flex:none!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-field-hint {display:block!important;font-size:.8rem!important;line-height:1.55!important;color:#53675e!important;overflow-wrap:normal!important;word-break:normal!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-forgot-button {align-self:flex-start!important;justify-self:start!important;min-height:44px!important;padding:8px 0!important;color:#195c49!important;font-size:.9rem!important;line-height:1.5!important;text-align:start!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-entry-alternative {display:flex!important;align-items:center!important;gap:14px!important;color:#66776e!important;margin:2px 0!important;font-size:.85rem!important;line-height:1.4!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-entry-alternative::before,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-entry-alternative::after {content:''!important;height:1px!important;flex:1!important;background:#dce5df!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-legal {margin:0!important;padding:4px 0 0!important;font-size:.8rem!important;line-height:1.75!important;color:#53675e!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-legal a {display:inline-block!important;line-height:1.75!important;color:#195c49!important;font-size:inherit!important;text-underline-offset:3px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-error,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-message {margin:0!important;padding:12px 14px!important;border-radius:12px!important;font-size:.95rem!important;line-height:1.6!important;white-space:normal!important;overflow-wrap:anywhere!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen input:focus-visible,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen button:focus-visible {outline:2px solid #14775c!important;outline-offset:3px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form input::placeholder {font-size:inherit!important;line-height:inherit!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen input[name="displayName"]::placeholder {opacity:0!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit::before,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit::after {display:none!important;background:none!important;box-shadow:none!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-legal a {min-height:44px!important;box-sizing:border-box!important;padding-block:10px!important}
+
   `;
   document.head.append(style);
 }

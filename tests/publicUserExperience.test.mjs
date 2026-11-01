@@ -2,6 +2,7 @@ import {renderEventShareLinkView} from "../src/ui/eventSharePresentation.mjs";
 import {renderExistingEventManualParticipantEditorView} from "../src/ui/eventManualParticipantEditor.mjs";
 import {renderProfileIdentitySummaryView} from "../src/ui/profileIdentityPresentation.mjs";
 import {renderExpenseDateFieldView} from "../src/ui/expenseFormPresentation.mjs";
+import {renderAccountEntryView} from "../src/ui/accountEntryPresentation.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -171,10 +172,19 @@ test("account entry keeps an event invitation visible through authentication", a
   );
 
   assert.match(accountGate, /const inviteContext = accountInviteContext\(\)/);
-  assert.match(accountGate, /מצטרפים ל־\$\{escapeHtml\(inviteContext\.eventName\)\}/);
-  assert.match(accountGate, /נכנסים או נרשמים, ומיד ממשיכים לאירוע שקיבלת/);
-  assert.match(accountGate, /צור חשבון והצטרף/);
-  assert.match(accountGate, /התחבר והצטרף/);
+  assert.match(accountGate, /const inviteMarkup = accountInviteMarkup\(inviteContext\)/);
+  assert.match(accountGate, /renderAccountEntryView\(\{[\s\S]*?hasInvite: Boolean\(inviteContext\),[\s\S]*?inviteEventName: inviteContext\?\.eventName/);
+  assert.match(accountGate, /\}, \{inviteMarkup, providerMarkup: providerOptionsMarkup\(\)\}\)/);
+  for (const mode of ["login", "signup"]) {
+    const markup = renderAccountEntryView({
+      mode, emailDeliveryReady: true, hasInvite: true,
+      inviteEventName: 'טיול <חברים> & "משפחה"'
+    });
+    assert.match(markup, /<h2>מצטרפים ל־טיול &lt;חברים&gt; &amp; &quot;משפחה&quot;<\/h2>/);
+    assert.doesNotMatch(markup, /<חברים>/);
+    assert.match(markup, /נכנסים או נרשמים, ומיד ממשיכים לאירוע שקיבלת/);
+    assert.match(markup, mode === "signup" ? /צור חשבון והצטרף/ : /התחבר והצטרף/);
+  }
   assert.match(inviteContext, /pendingInviteUrl\(window\.location\.href\)/);
   assert.match(inviteContext, /eventName: event\?\.name\?\.trim\(\) \|\| "האירוע שקיבלת"/);
   assert.match(inviteContext, /function accountInviteMarkup\(context = accountInviteContext\(\)\)/);

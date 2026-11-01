@@ -133,9 +133,9 @@ test("password recovery form survives a reload for the same authenticated accoun
   });
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "איפוס סיסמה" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "סיסמה חדשה" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "איפוס סיסמה" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "סיסמה חדשה" })).toBeVisible();
   await expect(page.locator('input[name="password"]')).toBeVisible();
 });
 
@@ -207,7 +207,7 @@ test("login and signup errors remain visible next to the relevant fields", async
 
   await gate.getByRole("button", { name: "הרשמה", exact: true }).click();
   await expect(gate.locator(".account-auth-field-hint")).toContainText(
-    "החשבון יופעל רק אחרי פתיחת הקישור"
+    "אחרי ההרשמה נשלח קישור להפעלת החשבון"
   );
   await gate.getByRole("button", { name: "צור חשבון", exact: true }).click();
   const signupError = gate.locator("#account-auth-feedback");
