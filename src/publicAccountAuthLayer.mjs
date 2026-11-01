@@ -1073,7 +1073,19 @@ function renderAccountGate({
   gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
   markAccountAuthReady();
   renderWebGoogleButton().catch(() => {});
-  if (showEmailAuth) focusAccountInput(gate);
+  if (message) focusAccountFeedback(gate);
+  else if (showEmailAuth) focusAccountInput(gate);
+}
+
+function focusAccountFeedback(gate) {
+  const feedback = gate?.querySelector("#account-auth-feedback");
+  if (!feedback) return;
+  feedback.setAttribute("tabindex", "-1");
+  window.requestAnimationFrame(() => {
+    if (!feedback.isConnected || document.getElementById(GATE_ID) !== gate) return;
+    feedback.focus({ preventScroll: true });
+    feedback.scrollIntoView({ block: "nearest" });
+  });
 }
 
 function renderAccountRecoveryGate({ connecting = false } = {}) {
@@ -1296,7 +1308,7 @@ async function handleAccountSubmit(event) {
       renderAccountRecoveryGate();
       return;
     }
-    if (accountSession?.user && accountProfileNeedsCompletion(error)) {
+    if (mode !== "complete-profile" && accountSession?.user && accountProfileNeedsCompletion(error)) {
       const accountProfile = accountProfileFromUser(accountSession.user);
       renderAccountNameCompletionGate({
         displayName: accountProfile?.displayName ?? "",
@@ -4062,7 +4074,7 @@ function injectStyle() {
 
 /* Approved shared account-entry presentation. Recovery, identity and provider logic stay above. */
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen {
- display:block!important;inset:0!important;overflow:auto!important;padding:0 max(18px,env(safe-area-inset-right)) max(28px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))!important;background:#f7f9fa!important;scroll-padding-block:20px!important;box-sizing:border-box!important;
+ display:block!important;inset:0!important;overflow:auto!important;padding:env(safe-area-inset-top) max(18px,env(safe-area-inset-right)) calc(36px + env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))!important;background:#f7f9fa!important;scroll-padding-block:20px!important;scroll-padding-block-end:calc(120px + env(safe-area-inset-bottom))!important;box-sizing:border-box!important;
 }
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-shell {
  display:flex!important;flex-direction:column!important;gap:20px!important;width:min(100%,500px)!important;min-height:0!important;max-height:none!important;overflow:visible!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;margin:0 auto!important;padding:0!important;
@@ -4091,7 +4103,7 @@ html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entr
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-heading p {
  margin:0!important;color:#e1f0e9!important;font-size:.9rem!important;line-height:1.55!important;overflow-wrap:normal!important;
 }
-html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-google-slot {display:grid!important;gap:12px!important;margin:0!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-google-slot {display:grid!important;grid-auto-rows:1fr!important;gap:12px!important;margin:0!important}
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-google-button,
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-email-toggle,
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit {
@@ -4130,6 +4142,8 @@ html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entr
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit::before,
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit::after {display:none!important;background:none!important;box-shadow:none!important}
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-legal a {min-height:44px!important;box-sizing:border-box!important;padding-block:10px!important}
+
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-google-button {min-height:56px!important}
 
   `;
   document.head.append(style);

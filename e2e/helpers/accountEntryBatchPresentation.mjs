@@ -26,7 +26,7 @@ export async function prepareAccountEntry(page, baseURL, options = {}) {
   const runtimeConfig = {
     publicUrl: baseURL,
     storage: { mode: 'supabase', url: accountEntryAuthOrigin, anonKey: 'synthetic-public-key', table: 'app_snapshots' },
-    auth: { googleClientId: 'fixture-web.apps.googleusercontent.com', googleIosClientId: 'fixture-ios.apps.googleusercontent.com' },
+    auth: options.nativeProviders ? { googleClientId: 'fixture-web.apps.googleusercontent.com', googleIosClientId: 'fixture-ios.apps.googleusercontent.com' } : {},
     launch: { googleAuthReady: Boolean(options.nativeProviders), googleIosAuthReady: Boolean(options.nativeProviders), authEmailDeliveryReady: true }
   };
   const record = { passwords: [], signup: [], recover: [], resend: [], userUpdates: [], username: [], snapshotWrites: [], external: [], pageErrors: [], methods: [] };
