@@ -16252,7 +16252,7 @@ async function saveParticipantAlias(eventId, participantId) {
   if (result?.ok) {
     const drafts = participantAliasAcknowledgedDrafts(
       eventDialog, submittedDialog, eventId, participantId, submittedValue,
-      event.participantAliasUpdatedAtByParticipant?.[participantId] === submittedAliasClock
+      getEvent(eventId)?.participantAliasUpdatedAtByParticipant?.[participantId] === submittedAliasClock
     );
     if (drafts) eventDialog.aliasDrafts = drafts;
   }
