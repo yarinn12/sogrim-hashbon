@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
-import {openIdentity,separateIdentities,identityGeometry,identityState,identityMoney,saveIdentityAlias,identityAccount,identityOffline} from './helpers/participantIdentityPresentation.mjs';
+import {openIdentity,separateIdentities,identityPaint,identityGeometry,identityState,identityMoney,saveIdentityAlias,identityAccount,identityOffline} from './helpers/participantIdentityPresentation.mjs';
 import {pointClick,paint} from './helpers/eventNotesBatchPresentation.mjs';
 const fixture=readFileSync(new URL('./fixtures/eventNotesBatchBootstrap.js',import.meta.url),'utf8'),evidence=new WeakMap();
 test.use({serviceWorkers:'block'});
@@ -89,4 +89,15 @@ test('a pending alias acknowledgement does not restore a closed dialog lock',asy
  await paint(page);await expect(page.locator('body')).not.toHaveClass(/app-dialog-open/);
  expect(identityMoney(await identityState(page))).toEqual(before);
  await pointClick(page.locator('[data-action="open-event-participants"]'));await expect(page.locator('.event-participant-roster-modal')).toBeVisible();
+});
+
+
+test('identity geometry waits for visible animation while closed alias inputs stay hidden',async({page})=>{
+ const d=await openIdentity(page,'separate');await expect(d.locator('.participant-aliases')).not.toHaveAttribute('open');await expect(d.locator('input').first()).not.toBeVisible();
+ await page.evaluate(()=>{globalThis.__identityVisibleAnimation=document.querySelector('.identity-review-return').animate([{opacity:1},{opacity:.99}],{duration:60000});});
+ let settled=false;const pending=identityPaint(page).then(()=>settled=true);
+ await expect.poll(()=>page.evaluate(()=>globalThis.__identityVisibleAnimation.currentTime)).toBeGreaterThan(100);
+ expect(settled,'visible animation must finish before geometry is considered settled').toBe(false);
+ await page.evaluate(()=>globalThis.__identityVisibleAnimation.finish());await pending;
+ await identityGeometry(page,d);
 });
