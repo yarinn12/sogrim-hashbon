@@ -43,7 +43,8 @@ async function geometry(x,scope,specs){
  expect(m.bad).toEqual([]);expect(m.lines).toBeGreaterThan(0);expect(m.overflow).toBe(0);expect(m.localOverflow).toBe(0);
  for(const f of m.fonts)expect(f.size,f.s).toBe(x.root*f.ratio);
  for(const button of await scope.locator('button').all())if(await button.isVisible()){const b=await button.boundingBox();expect(b.width).toBeGreaterThanOrEqual(44);expect(b.height).toBeGreaterThanOrEqual(44)}
- const last=scope.locator('button').last();await last.evaluate(e=>e.scrollIntoView({block:'center',behavior:'instant'}));
+ // Closed privacy details retain hidden actions; measure the last visible control.
+ const last=scope.locator('button:visible').last();await last.evaluate(e=>e.scrollIntoView({block:'center',behavior:'instant'}));
  expect(await last.evaluate(e=>{const r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return!!hit&&e.contains(hit)})).toBe(true);
  await paint(x.page);
 }
