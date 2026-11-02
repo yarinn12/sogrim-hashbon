@@ -64,7 +64,17 @@ test('invitation choices preserve destinations, return focus and private draft e
   await page.locator('[data-action="open-event-participant-add"][data-event-id="friend-weekend"]').click();
   await modal.locator('[data-action="open-event-share"] strong').click();
   await expect(page.locator('[data-event-share-view="link"]')).toBeVisible();
-  await expect(page.locator('.event-share-link-status.is-error')).toBeVisible();
+  const shareScreen=page.locator('.event-share-modal');
+  // Preparation failures use the shared notice instead of a second inline error.
+  const failure=shareScreen.locator('.app-inline-notice');
+  await expect(failure).toHaveCount(1);
+  await expect(failure).toBeVisible();
+  await expect(failure).toHaveAttribute('role','status');
+  await expect(failure).toContainText('לא הצלחנו להכין קישור בטוח כרגע');
+  await expect(shareScreen.locator('.event-share-link-status.is-error')).toHaveCount(0);
+  await expect(shareScreen.locator('[data-action="share-invite-whatsapp"]')).toBeDisabled();
+  await expect(shareScreen.locator('[data-action="copy-invite"]')).toBeDisabled();
+  await expect(shareScreen.locator('[data-action="retry-event-share"]')).toBeEnabled();
 });
 test('invitation choices respect enlarged system text and app preference restoration',async({page})=>{
   await page.setViewportSize({width:320,height:390});await page.addInitScript(installSyntheticSystemText);await open(page);await geometry(page,32);
