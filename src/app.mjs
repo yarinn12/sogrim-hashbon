@@ -5417,10 +5417,22 @@ function renderEventParticipantAddDialog(event) {
 }
 
 function renderEventOfflineParticipantRenameDialog(event) {
-  const participant=state.participants.find(item=>item.id===eventDialog?.participantId);
-  if(!participant||participantHasConnectedAccount(participant))return renderEventParticipantsDialog(event);
-  const canEdit=canCurrentParticipantEdit(event),nameDraft=eventDialog?.offlineNameDraft??participant.displayName,error=eventDialog?.error??'';
-  return renderEventDialogShell({eventId:event.id,title:'עריכת שם',description:event.name,backAction:'event-participant-rename-back',backLabel:'חזרה לפרטי המשתתף',routeMode:true,showClose:false,modalClass:'event-task-modal event-participant-route-modal event-participant-presentation-screen event-participant-edit-screen',body:renderParticipantRenameBodyView({eventId:event.id,participantId:participant.id,nameDraft,error,canEdit})});
+  const participant = state.participants.find(item => item.id === eventDialog?.participantId);
+  if (!participant || participantHasConnectedAccount(participant)) return renderEventParticipantsDialog(event);
+  const canEdit = canCurrentParticipantEdit(event);
+  const nameDraft = eventDialog?.offlineNameDraft ?? participant.displayName;
+  const error = eventDialog?.error ?? '';
+  return renderEventDialogShell({
+    eventId: event.id,
+    title: 'עריכת שם',
+    description: event.name,
+    backAction: 'event-participant-rename-back',
+    backLabel: 'חזרה לפרטי המשתתף',
+    routeMode: true,
+    showClose: false,
+    modalClass: 'event-task-modal event-participant-route-modal event-participant-presentation-screen event-participant-edit-screen',
+    body: renderParticipantRenameBodyView({eventId:event.id,participantId:participant.id,nameDraft,error,canEdit})
+  });
 }
 
 function renderEventParticipantProfileDialog(event) {

@@ -179,8 +179,11 @@ test("an offline name links to its connected account without losing money", asyn
     .click();
   const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
   await expect(confirmation).toBeVisible();
-  await expect(confirmation).toContainText("אישור קישור");
-  await expect(confirmation).toContainText("1");
+  await expect(confirmation.getByRole('heading', {name:'לקשר לחשבון?',exact:true})).toBeVisible();
+  await expect(confirmation.locator('.important-action-label')).toHaveCount(0);
+  await expect(confirmation.locator('.participant-confirm-identities .participant-confirm-person')).toHaveCount(2);
+  await expect(confirmation.locator('#important-action-description')).toContainText('למשתתף אחד');
+  await expect(confirmation.locator('#important-action-description')).toContainText('באירוע הזה בלבד');
   await confirmation.locator('[data-action="confirm-important-action"]').click();
 
   // The local fixture has no cloud acknowledgement. Its recovery remains
