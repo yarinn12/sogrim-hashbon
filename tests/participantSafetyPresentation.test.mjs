@@ -27,3 +27,15 @@ test('connected event profile renders the real safety entry inside its body',()=
  assert.match(h,/data-visible-safety-entry/);assert.deepEqual(calls,[['event','account-target']]);
 });
 test('blocking context avatar cannot open statistics',()=>{const participant={id:'account-target'},calls=[];const result=runInNewContext('('+fn('renderImportantActionDialog')+')',{importantActionDialog:{kind:'block-connected-user',payload:{participantId:participant.id}},state:{participants:[participant]},renderAvatar:(id,event,options)=>{calls.push(options);return 'avatar'},renderParticipantUsername:()=>'',renderParticipantBlockConfirmationView:x=>x})();assert.equal(result.participant,participant);assert.equal(calls[0].suppressParticipantAction,true);});
+
+for(const[eventId,stale]of[['event',false],['another-event',false],['event',true]])test('an earlier report acknowledgement respects reopened draft and account scope in '+eventId+' stale='+stale,async()=>{
+ const a=source.indexOf('async function sendParticipantReport()'),b=source.indexOf('\nfunction ',a+10),code=source.slice(a,b);assert.ok(a>=0);
+ let resolveReport,started,current=true;const ready=new Promise(r=>started=r),gate=new Promise(r=>resolveReport=r),renders=[],requests=[],request={isCurrent:()=>current};
+ const participant={id:'account-target'},ctx={eventDialog:{kind:'participant-report',eventId:'event',participantId:participant.id,reportCategory:'other',reportDetails:'הדיווח הראשון'},screen:{name:'event',eventId:'event'},state:{participants:[participant]},getEvent:()=>({id:'event',sharedSpaceId:'shared'}),accountUserIdFromParticipantId:()=> 'target-user',EVENT_SPACE_ID_FIELD:'sharedSpaceId',friendNetworkBusyAction:'',friendNetworkActionRequest:null,loadFriendActionConfig:async()=>({}),reactivateDialogAfterRender:()=>{},app:{querySelector:()=>({})}};
+ ctx.beginFriendNetworkAction=()=>{ctx.friendNetworkActionRequest=request;ctx.friendNetworkBusyAction='report:'+participant.id;return request};
+ ctx.finishFriendNetworkAction=r=>{if(ctx.friendNetworkActionRequest===r){ctx.friendNetworkActionRequest=null;ctx.friendNetworkBusyAction=''}};
+ ctx.render=()=>renders.push(ctx.eventDialog?.reportDetails);ctx.submitUserReport=async(config,body)=>{requests.push(body);started();await gate};
+ const pending=runInNewContext('('+code+')',ctx)();await ready;
+ const reopened={kind:'participant-report',eventId,participantId:participant.id,reportCategory:'spam',reportDetails:'טיוטה חדשה'};ctx.eventDialog=reopened;ctx.screen={name:'event',eventId};current=!stale;resolveReport();await pending;
+ assert.equal(ctx.eventDialog,reopened);assert.equal(reopened.reportDetails,'טיוטה חדשה');assert.equal(reopened.reportCategory,'spam');assert.equal(ctx.friendNetworkBusyAction,'');assert.equal(requests.length,1);assert.equal(requests[0].details,'הדיווח הראשון');assert.equal(renders.at(-1),stale?'הדיווח הראשון':'טיוטה חדשה');
+});

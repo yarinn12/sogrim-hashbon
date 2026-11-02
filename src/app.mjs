@@ -15184,7 +15184,17 @@ async function sendParticipantReport() {
     render();
     reactivateDialogAfterRender(".event-modal");
   } finally {
+    // A reopened report owns its own draft; only release its stale busy view.
+    const refreshReopenedReport = friendNetworkActionRequest === request &&
+      request.isCurrent() && eventDialog?.kind === "participant-report" &&
+      eventDialog !== activeDialog && eventDialog.participantId === participant.id;
     finishFriendNetworkAction(request);
+    if (refreshReopenedReport) {
+      render();
+      if (app.querySelector(".event-participant-report-modal")) {
+        reactivateDialogAfterRender(".event-modal");
+      }
+    }
   }
 }
 
