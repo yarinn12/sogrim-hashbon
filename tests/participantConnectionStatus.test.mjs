@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { participantHasConnectedAccount } from "../src/domain/participantIdentity.mjs";
+import { participantOfflineLabel } from "../src/ui/eventParticipantIdentityPresentation.mjs";
 
 const app = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 const start = app.indexOf("function participantConnectionStatus(participant)");
@@ -14,6 +15,7 @@ test("the account owner is not shown as an offline name when metadata is missing
     state: { currentParticipantId: accountId },
     localProfile: { participantId: accountId },
     participantHasConnectedAccount,
+    participantOfflineLabel,
     isEventParticipantInactive: () => false
   });
   vm.runInContext(app.slice(start, end), context);

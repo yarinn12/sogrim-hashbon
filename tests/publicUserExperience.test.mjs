@@ -1,4 +1,5 @@
 import {renderParticipantRenameBodyView} from '../src/ui/eventParticipantActionsPresentation.mjs';
+import {renderParticipantAliasEditorView} from '../src/ui/eventParticipantIdentityPresentation.mjs';
 import {renderEventShareLinkView} from "../src/ui/eventSharePresentation.mjs";
 import {renderExistingEventManualParticipantEditorView} from "../src/ui/eventManualParticipantEditor.mjs";
 import {renderProfileIdentitySummaryView} from "../src/ui/profileIdentityPresentation.mjs";
@@ -120,7 +121,7 @@ test("interactive form controls expose stable browser field names", async () => 
     "expenseDate",
     "participantSelection"
   ]) {
-    const markup = name === "offlineParticipantName" ? renderParticipantRenameBodyView({canEdit:true}) : name === "expenseDate" ? renderExpenseDateFieldView({value:"2026-10-20"}) : name === "eventGuestName" ? renderExistingEventManualParticipantEditorView({canEdit:true}) : name === "eventInviteUrl" ? renderEventShareLinkView() : name === "eventCurrency" ? currencyView : app;
+    const markup = name === "participantAlias" ? renderParticipantAliasEditorView({eventId:"qa",participantId:"qa-person",name:"QA"}) : name === "offlineParticipantName" ? renderParticipantRenameBodyView({canEdit:true}) : name === "expenseDate" ? renderExpenseDateFieldView({value:"2026-10-20"}) : name === "eventGuestName" ? renderExistingEventManualParticipantEditorView({canEdit:true}) : name === "eventInviteUrl" ? renderEventShareLinkView() : name === "eventCurrency" ? currencyView : app;
     assert.match(markup, new RegExp(`name="${name}"`));
   }
   assert.match(deletionView, /name="deleteAccountConfirmation"/);
