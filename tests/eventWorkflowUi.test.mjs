@@ -515,7 +515,7 @@ test("participant manager distinguishes connected accounts from manually added n
   assert.match(app, /function participantConnectionStatus\(participant\)/);
   assert.match(app, /participantHasConnectedAccount\(participant\)/);
   assert.match(app, /label: isCurrentParticipant \? "אתה" : "חבר באפליקציה"/);
-  assert.match(app, /label: "שם אופליין"/);
+  assert.match(app, /label: participantOfflineLabel/);
   assert.match(app, /class="participant-connection-badge/);
   assert.match(app, /data-participant-identity="\$\{identity\.connected \? "account" : "offline"\}"/);
   assert.match(app, /participantConnectionStatus\(participant\)\.label/);
@@ -1190,6 +1190,8 @@ test("duplicate names require an explicit manager decision and support event ali
     readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8")
   ]);
 
+  const presentation = await readFile("src/ui/eventParticipantIdentityPresentation.mjs", "utf8");
+  assert.match(app, /renderParticipantIdentityReviewView/);
   assert.match(identity, /unresolvedDuplicateParticipantPairs/);
   assert.match(identity, /participantEventDisplayName/);
   assert.match(identity, /participantEventActivityScore/);
@@ -1197,13 +1199,13 @@ test("duplicate names require an explicit manager decision and support event ali
   assert.match(app, /function renderEventParticipantIdentityDialog\(event\)/);
   assert.match(app, /data-action="review-duplicate-participants"/);
   assert.match(app, /kind: "participant-identities"/);
-  assert.match(app, /data-action="connect-duplicate-participant"/);
-  assert.match(app, /data-action="keep-duplicate-participants"/);
-  assert.match(app, /data-action="defer-duplicate-participant"/);
-  assert.match(app, /data-action="save-participant-alias"/);
-  assert.match(app, /כן, אותו אדם/);
-  assert.match(app, /לא, אנשים שונים/);
-  assert.match(app, /לא בטוח, אחר כך/);
+  assert.match(presentation, /data-action="connect-duplicate-participant"/);
+  assert.match(presentation, /data-action="keep-duplicate-participants"/);
+  assert.match(presentation, /data-action="defer-duplicate-participant"/);
+  assert.match(presentation, /data-action="save-participant-alias"/);
+  assert.match(presentation, /כן, אותו אדם/);
+  assert.match(presentation, /לא, אנשים שונים/);
+  assert.match(presentation, /אבדוק אחר כך/);
   assert.match(
     app,
     /\[data-action="participant-alias"\]\[data-participant-id="\$\{unresolvedPair\.left\.id\}"\]/

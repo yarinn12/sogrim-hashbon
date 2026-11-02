@@ -54,7 +54,7 @@ if(params.has('notes-locked')){notesEvent.locked=true;notesEvent.closedAt='2026-
 if(params.has('notes-readonly')){notesEvent.adminIds=[friendId];notesEvent.createdByParticipantId=friendId;notesEvent.adminsCanEditOnly=true;}
 qa.noteBatchSeed=structuredClone(notesEvent.notes);
 // Opt-in participant batch scenarios share the same synthetic HTTP/ACK model.
-if(params.has('participants-batch')||params.has('participant-actions-batch')){
+if(params.has('participants-batch')||params.has('participant-actions-batch')||params.has('participant-identity-batch')){
  notesEvent.participantIds.push('account-'+itay.user_id,'saved-manual-yael');
  if(params.has('participants-many'))for(let i=0;i<8;i++){const id='participant-many-'+i;state.participants.push({id,kind:'guest',displayName:'משתתף נוסף '+i});notesEvent.participantIds.push(id);}
  qa.participantWriteMode='ready';qa.participantAttempts=[];
@@ -67,6 +67,21 @@ if(params.has('participant-actions-batch')){
  if(params.has('actions-long')){state.participants.find(p=>p.id==='saved-manual-yael').displayName='יעל אלכסנדרה ישראלי כהן עם שם משפחה ארוך ABCDEFGHIJKLMNOPQRSTUVWXYZ';notesEvent.name='סוף השבוע הארוך עם המשפחה והחברים בצפון ובגליל ABCDEFGHIJKLMNOPQRSTUVWXYZ';}
  if(params.has('actions-readonly')){notesEvent.adminIds=[friendId];notesEvent.createdByParticipantId=friendId;notesEvent.adminsCanEditOnly=true;}
 }
+// Opt-in identity review uses the existing shared/personal acknowledgement model.
+if(params.has('participant-identity-batch')){
+ const view=params.get('identity-view')||'identity';
+ const otherId=view==='accounts'?'account-'+itay.user_id:'saved-manual-yael';
+ if(view==='accounts')itay.display_name=person.display_name;
+ state.participants.find(p=>p.id===otherId).displayName=person.display_name;
+ if(params.has('identity-long')){
+  person.display_name='דנה אלכסנדרה לוי כהן עם שם משפחה ארוך ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  for(const p of state.participants)if([friendId,otherId].includes(p.id))p.displayName=person.display_name;
+  if(view==='accounts')itay.display_name=person.display_name;
+ }
+ for(const e of notesEvent.expenses)if(!e.sharedByParticipantIds.includes('saved-manual-yael'))e.sharedByParticipantIds.push('saved-manual-yael');
+ qa.identityWriteMode='ready';qa.identityAttempts=[];
+}
+
 // Opt-in report/block transport; existing scenarios retain their original endpoints.
 if(params.has('participant-safety-batch')){
  notesEvent.participantIds.push('saved-manual-yael');
@@ -79,6 +94,7 @@ if(params.has('notes-partial'))Object.assign(state.events[1],{sharedSpaceId:'syn
 qa.canonicalWrites=[];const canonicalRow={id:'synthetic-share-event-space',state:{...structuredClone(state),events:[structuredClone(state.events[0])]},updated_at:'2026-10-10T10:00:00.000Z'};
 
 qa.snapshotWrites=[];qa.seedFinancialEvents=structuredClone(state.events);
+const identityProjection=s=>JSON.stringify((s.events||[]).map(e=>({id:e.id,pairs:e.distinctParticipantPairs||[],aliases:e.participantAliases||{},clocks:e.participantAliasUpdatedAtByParticipant||{}})));
 // Synthetic server controls. Real app code owns the write, ACK and recovery.
 qa.noteWriteMode='ready';qa.noteDeniedAttempts=[];qa.noteConflictAttempts=[];qa.canonicalRequests=[];qa.offlineRequests=[];
 Object.defineProperty(qa,'canonicalSnapshot',{get:()=>structuredClone(canonicalRow)});
@@ -181,6 +197,11 @@ return response({eventId:body.eventId,token:'synthetic_event_share_token_2026102
         if(qa.actionWriteMode==='hold')await new Promise(done=>qa.releaseActionWrite=()=>{qa.actionWriteMode='ready';done()});
         if(qa.actionWriteMode==='reject')return response({code:'SHARED_EVENT_MEMBERSHIP_REVOKED',message:'Synthetic participant action denied'},403);
       }
+      if(params.has('participant-identity-batch')&&identityProjection(body.p_state)!==identityProjection(canonicalRow.state)){
+        qa.identityAttempts.push({kind:'canonical',body:structuredClone(body)});
+        if(qa.identityWriteMode==='hold')await new Promise(done=>qa.releaseIdentityWrite=()=>{qa.identityWriteMode='ready';done()});
+        if(qa.identityWriteMode==='reject')return response({code:'42501',message:'Synthetic identity save rejected'},403);
+      }
       const mutation=notesChanged(body.p_state,canonicalRow.state);
       if(mutation&&qa.noteWriteMode==='unacknowledged-shared'){
         qa.noteUnacknowledgedAttempts.push(structuredClone(body));
@@ -247,6 +268,10 @@ return response({eventId:body.eventId,token:'synthetic_event_share_token_2026102
       if(method==='GET')return response(url.searchParams.has('snapshot_kind')?[]:[saved]);
       if(params.get('sync-scenario')==='permission'&&!qa.allowPendingAcknowledgement){qa.failedPendingAttempts.push({kind:'personal',body:structuredClone(body)});return response({code:'42501',message:'Synthetic permission rejection'},403)}
       const personalNext=Array.isArray(body)?body[0]:body;
+      if(params.has('participant-identity-batch')&&personalNext.state&&identityProjection(personalNext.state)!==identityProjection(saved.state)){
+        qa.identityAttempts.push({kind:'personal',body:structuredClone(body)});
+        if(qa.identityWriteMode==='reject')return response({code:'42501',message:'Synthetic personal identity save rejected'},403);
+      }
       if(personalNext.state&&notesChanged(personalNext.state,saved.state)&&qa.noteWriteMode==='permission-all'){
         qa.noteDeniedAttempts.push({kind:'personal',body:structuredClone(body)});
         return response({code:'42501',message:'Synthetic personal note save rejected'},403);

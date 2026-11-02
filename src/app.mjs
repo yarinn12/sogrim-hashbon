@@ -1,3 +1,4 @@
+import {participantAliasDraftUpdate,participantAliasDraftValue,participantAliasAcknowledgedDrafts,participantOfflineLabel,renderParticipantIdentityReviewView,renderParticipantIdentityPairView,renderParticipantAliasEditorView} from "./ui/eventParticipantIdentityPresentation.mjs";
 import {renderParticipantSafetyPanelView,renderParticipantReportBodyView,renderParticipantBlockConfirmationView} from "./ui/participantSafetyPresentation.mjs";
 import {renderParticipantActionConfirmationView,renderParticipantRenameBodyView} from './ui/eventParticipantActionsPresentation.mjs';
 import {participantDetailTitle,renderOfflineParticipantExplanationView,renderParticipantFriendshipHintView,renderParticipantAccountLinkIntroView,renderParticipantAccountListLabelView,renderParticipantCountView} from "./ui/eventParticipantManagementPresentation.mjs";
@@ -6943,189 +6944,56 @@ function renderEventSettingsDialog(event) {
 function renderEventParticipantIdentityDialog(event) {
   return renderEventDialogShell({
     eventId: event.id,
-    eyebrow: "בדיקת שמות",
+    eyebrow: "",
     title: "שמות דומים",
-    description: "בודקים רק כשנוח. שום דבר לא משתנה בלי אישור מפורש.",
+    description: event.name,
     backAction: "participant-identities-back",
     backLabel: "חזרה למשתתפים",
+    backdropClass: "event-participant-route-backdrop",
+    modalClass: "event-participant-presentation-screen event-participant-route-modal event-participant-identity-screen",
+    routeMode: true,
+    showClose: false,
     body: renderDuplicateParticipantReview(event)
   });
 }
 
 function renderDuplicateParticipantReview(event) {
-  const duplicateGroups = eventDuplicateParticipantGroups(
-    state.participants,
-    event
-  );
-  const unresolvedPairs = unresolvedDuplicateParticipantPairs(
-    state.participants,
-    event
-  );
+  const duplicateGroups = eventDuplicateParticipantGroups(state.participants, event);
+  const unresolvedPairs = unresolvedDuplicateParticipantPairs(state.participants, event);
   const canManage = canCurrentParticipantManage(event);
-  const duplicateParticipants = duplicateGroups.flat();
-  const resolvedPairIds = new Set(
-    eventDialog?.kind === "participant-identities"
-      ? eventDialog.resolvedPairIds ?? []
-      : []
-  );
-  const aliasParticipants = duplicateParticipants.filter((participant) =>
-    resolvedPairIds.has(participant.id)
-  );
-  const reviewMessage =
-    eventDialog?.kind === "participant-identities"
-      ? eventDialog.message ?? ""
-      : "";
-
-  if (!duplicateGroups.length) {
-    return `
-      <section class="participant-identity-success" role="status">
-        <span class="participant-identity-success-mark" aria-hidden="true">✓</span>
-        <span>
-          <h3>${reviewMessage ? escapeHtml(reviewMessage) : "אין שמות שדורשים בדיקה"}</h3>
-          <p>אפשר לחזור לרשימת המשתתפים.</p>
-        </span>
-      </section>
-    `;
-  }
-
-  return `
-    <section class="participant-identity-review" aria-labelledby="participant-identity-title">
-      <div class="participant-identity-heading">
-        <span class="participant-identity-mark" aria-hidden="true">i</span>
-        <span>
-          <h3 id="participant-identity-title">בדיקה קצרה לפני שמאחדים</h3>
-          <p>שמות דומים לא מתאחדים אוטומטית. בוחרים רק כשבטוחים.</p>
-        </span>
-      </div>
-      ${reviewMessage ? `<p class="participant-identity-resolved" role="status">${escapeHtml(reviewMessage)}</p>` : ""}
-      ${
-        unresolvedPairs.length
-          ? `<div class="participant-identity-pairs">
-              ${unresolvedPairs
-                .map((pair) =>
-                  renderDuplicateParticipantPair(event, pair, canManage)
-                )
-                .join("")}
-            </div>`
-          : `<p class="participant-identity-resolved" role="status">הבדיקה הושלמה.</p>`
-      }
-      ${
-        canManage && aliasParticipants.length
-          ? `<details class="participant-aliases">
-              <summary>רוצה להבדיל ביניהם בקלות?</summary>
-              <p>אפשר להוסיף כינוי קצר שיופיע רק באירוע הזה, כמו "מהעבודה" או "בן דוד".</p>
-              <div class="participant-alias-list">
-                ${aliasParticipants
-                  .map((participant) =>
-                    renderParticipantAliasEditor(event, participant)
-                  )
-                  .join("")}
-              </div>
-            </details>`
-          : ""
-      }
-    </section>
-  `;
+  const resolvedPairIds = new Set(eventDialog?.kind === "participant-identities" ? eventDialog.resolvedPairIds ?? [] : []);
+  const aliasParticipants = duplicateGroups.flat().filter(participant => resolvedPairIds.has(participant.id));
+  const message = eventDialog?.kind === "participant-identities" ? eventDialog.message ?? "" : "";
+  return renderParticipantIdentityReviewView({
+    message, canManage, hasUnresolvedPairs: unresolvedPairs.length > 0,
+    pairsHtml: unresolvedPairs.map(pair => renderDuplicateParticipantPair(event, pair, canManage)).join(""),
+    aliasEditorsHtml: canManage ? aliasParticipants.map(participant => renderParticipantAliasEditor(event, participant)).join("") : ""
+  });
 }
 
 function renderDuplicateParticipantPair(event, pair, canManage) {
   const canConnect = Boolean(pair.mergeSourceId && pair.mergeTargetId);
-  const source = canConnect
-    ? state.participants.find((participant) => participant.id === pair.mergeSourceId)
-    : null;
-  const target = canConnect
-    ? state.participants.find((participant) => participant.id === pair.mergeTargetId)
-    : null;
-  const leftName = participantName(pair.left.id, event);
-  const rightName = participantName(pair.right.id, event);
-
-  return `
-    <article class="participant-identity-pair">
-      <div class="participant-identity-question">
-        <h3>${escapeHtml(leftName)} ו-${escapeHtml(rightName)} — אותו אדם?</h3>
-        <p>אם זה אותו אדם, אפשר לאחד לחשבון אחד. כל ההוצאות וההעברות יישמרו.</p>
-      </div>
-      <div class="participant-identity-people">
-        ${[pair.left, pair.right]
-          .map(
-            (participant) => `
-              <span class="participant-identity-person">
-                ${renderAvatar(participant.id, event)}
-                <span>
-                  <strong>${escapeHtml(participantName(participant.id, event))}</strong>
-                  ${renderParticipantConnectionBadge(participant)}
-                </span>
-              </span>
-            `
-          )
-          .join("")}
-      </div>
-      ${
-        canManage
-          ? `<div class="participant-identity-actions">
-              ${
-                canConnect
-                  ? `<button
-                      class="primary-button"
-                      type="button"
-                      data-action="connect-duplicate-participant"
-                      data-event-id="${escapeAttribute(event.id)}"
-                      data-source-participant-id="${escapeAttribute(source.id)}"
-                      data-target-participant-id="${escapeAttribute(target.id)}"
-                    >כן, אותו אדם</button>`
-                  : `<p class="participant-identity-connected-note">
-                      שני השמות שייכים למשתמשים מחוברים. הם יישארו חשבונות נפרדים.
-                    </p>`
-              }
-              <button
-                class="secondary-button"
-                type="button"
-                data-action="keep-duplicate-participants"
-                data-event-id="${escapeAttribute(event.id)}"
-                data-participant-pair="${escapeAttribute(pair.key)}"
-              >לא, אנשים שונים</button>
-              <button
-                class="participant-identity-defer"
-                type="button"
-                data-action="defer-duplicate-participant"
-                data-event-id="${escapeAttribute(event.id)}"
-              >לא בטוח, אחר כך</button>
-            </div>`
-          : `<p class="participant-identity-manager-note">מנהל האירוע יכול לאשר את הזהויות.</p>`
-      }
-    </article>
-  `;
+  return renderParticipantIdentityPairView({
+    eventId: event.id, pairKey: pair.key,
+    sourceId: pair.mergeSourceId ?? "", targetId: pair.mergeTargetId ?? "",
+    canConnect, canManage,
+    people: [pair.left, pair.right].map(participant => ({
+      name: participant.displayName,
+      avatarHtml: renderAvatar(participant.id, event, { suppressParticipantAction: true }),
+      usernameHtml: renderParticipantUsername(participant),
+      connectionHtml: renderParticipantConnectionBadge(participant, event)
+    }))
+  });
 }
 
 function renderParticipantAliasEditor(event, participant) {
-  const alias = event.participantAliases?.[participant.id] ?? "";
-  return `
-    <label class="participant-alias-row">
-      <span>${escapeHtml(participant.displayName)}</span>
-      <span class="participant-alias-control">
-        <input
-          type="text"
-          name="participantAlias"
-          maxlength="32"
-          autocomplete="off"
-          enterkeyhint="done"
-          data-action="participant-alias"
-          data-event-id="${escapeAttribute(event.id)}"
-          data-participant-id="${escapeAttribute(participant.id)}"
-          value="${escapeAttribute(alias)}"
-          placeholder="כינוי קצר"
-          aria-label="כינוי עבור ${escapeAttribute(participant.displayName)}"
-        />
-        <button
-          class="secondary-button"
-          type="button"
-          data-action="save-participant-alias"
-          data-event-id="${escapeAttribute(event.id)}"
-          data-participant-id="${escapeAttribute(participant.id)}"
-        >שמור</button>
-      </span>
-    </label>
-  `;
+  return renderParticipantAliasEditorView({
+    eventId: event.id, participantId: participant.id, name: participant.displayName,
+    alias: participantAliasDraftValue(eventDialog, event.id, participant.id, event.participantAliases?.[participant.id] ?? ""),
+    avatarHtml: renderAvatar(participant.id, event, { suppressParticipantAction: true }),
+    usernameHtml: renderParticipantUsername(participant),
+    connectionHtml: renderParticipantConnectionBadge(participant, event)
+  });
 }
 
 function renderEventSettingsManagementDialog(event) {
@@ -10941,7 +10809,7 @@ function participantConnectionStatusForEvent(participant, event) {
 
   return {
     connected: false,
-    label: "שם אופליין",
+    label: participantOfflineLabel,
     className: "is-offline",
     description: isHistoricalOffline
       ? `${participant.displayName} אינו משתתף פעיל באירוע והשם נשמר עבור ההיסטוריה`
@@ -14047,6 +13915,14 @@ function closeDialogWithHistory(rewindSteps = 1) {
 function handleInput(event) {
   const target = event.target;
   const action = target.dataset.action;
+  if (action === "participant-alias") {
+    const drafts = participantAliasDraftUpdate(eventDialog, target.dataset.eventId, target.dataset.participantId, target.value);
+    if (drafts) {
+      eventDialog.aliasDrafts = drafts;
+      scheduleBrowserHistoryReplacement();
+    }
+    return;
+  }
   if (action === "new-event-currency-search") {
     const menu = target.closest(".new-event-inline-picker-menu");
     const query = target.value.trim().toLocaleLowerCase("he");
@@ -16347,11 +16223,14 @@ async function saveParticipantAlias(eventId, participantId) {
   );
   if (!(input instanceof HTMLInputElement)) return;
 
-  const alias = sanitizeParticipantAlias(input.value);
+  const submittedDialog = eventDialog;
+  const submittedValue = input.value;
+  const alias = sanitizeParticipantAlias(submittedValue);
   const dialogScrollTop = app.querySelector(".event-modal")?.scrollTop ?? 0;
   const previousAliases = { ...(event.participantAliases ?? {}) };
   const previousAliasClocks = { ...(event.participantAliasUpdatedAtByParticipant ?? {}) };
   const aliasUpdate = participantAliasUpdate(event, participantId, alias);
+  const submittedAliasClock = aliasUpdate.participantAliasUpdatedAtByParticipant[participantId];
   Object.assign(event, aliasUpdate);
   const result = await persistState({
     awaitCloud: true,
@@ -16370,7 +16249,15 @@ async function saveParticipantAlias(eventId, participantId) {
     }
     notice = "לא הצלחנו לשמור את הכינוי. לא בוצע שינוי ואפשר לנסות שוב.";
   }
+  if (result?.ok) {
+    const drafts = participantAliasAcknowledgedDrafts(
+      eventDialog, submittedDialog, eventId, participantId, submittedValue,
+      event.participantAliasUpdatedAtByParticipant?.[participantId] === submittedAliasClock
+    );
+    if (drafts) eventDialog.aliasDrafts = drafts;
+  }
   render();
+  if (eventDialog !== submittedDialog) return;
   reactivateDialogAfterRender(
     ".event-modal",
     `[data-action="participant-alias"][data-event-id="${eventId}"][data-participant-id="${participantId}"]`,

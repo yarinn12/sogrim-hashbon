@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import * as identity from '../src/domain/participantIdentity.mjs';
+import {participantAliasAcknowledgedDrafts} from '../src/ui/eventParticipantIdentityPresentation.mjs';
 import {mergeSharedStates} from '../src/domain/sharedStateMerge.mjs';
 import {buildSharedEventState, saveSharedEventState, mergeSharedEventIntoState} from '../src/data/sharedEventStore.mjs';
 
@@ -34,7 +35,7 @@ function harness() {
   const clients=members.map(actor=>{
     class Input {constructor(){this.value='';}}
     const input=new Input();
-    const ctx=vm.createContext({...identity,HTMLInputElement:Input,state:{...structuredClone(initial),currentParticipantId:actor},notice:'',
+    const ctx=vm.createContext({...identity,HTMLInputElement:Input,eventDialog:null,participantAliasAcknowledgedDrafts,state:{...structuredClone(initial),currentParticipantId:actor},notice:'',
       getEvent:id=>ctx.state.events.find(e=>e.id===id),canCurrentParticipantManage:()=>true,
       app:{querySelector:selector=>selector.includes('participant-alias')?input:null},render(){},reactivateDialogAfterRender(){},
       persistState:async()=>{ctx.state=await save(ctx.state,actor);return{ok:true};}});

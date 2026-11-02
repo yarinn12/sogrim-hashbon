@@ -1098,3 +1098,15 @@ test('native participant safety retains enlarged fields and navigation-aware scr
  for(const text of ['.participant-report-review textarea{','.participant-report-review .app-choice-trigger-copy{','.participant-safety-panel>summary{','.participant-safety-confirmation .participant-username{','scroll-margin-block-end:calc(var(--dynamic-type-bottom-nav-block,82px) + 20px)!important','@media(max-height:500px)'])assert.ok(css.includes(text),'Missing ordered Native safety style: '+text);
  const a=css.lastIndexOf('.participant-report-review textarea{');assert.ok(css.slice(a,css.indexOf('}',a)).includes('height:3.5rem!important'));
 });
+
+test('native identity review retains scalable aliases and the narrow action stack',async()=>{
+ const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs'),{extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:ledger}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css'));
+ const prefix='html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen';
+ for(const [selector,size]of [[' .participant-identity-person strong','1rem'],[' .participant-alias-label','.875rem'],[' .participant-alias-control input','1rem']]){
+  const start=css.indexOf(prefix+selector+'{');assert.ok(start>=0,'Missing Native identity selector '+selector);assert.ok(css.slice(start,css.indexOf('}',start)).includes('font-size:'+size+'!important'));
+ }
+ const rule=selector=>{const start=css.indexOf(prefix+selector+'{');assert.ok(start>=0,selector);return css.slice(start,css.indexOf('}',start))};
+ assert.ok(rule(' .participant-alias-control').includes('flex-wrap:wrap!important'));
+ assert.ok(rule(' .participant-alias-control input').includes('min-width:min(100%,10rem)!important'));
+ assert.ok(rule(' .participant-alias-control button').includes('width:auto!important'));
+});
