@@ -71,7 +71,7 @@ for (const [name,root,width,height,query] of [
   const safety = screen.locator('.relationship-safety-management');
   await safety.locator('summary').press('Enter');
   await expect(safety).toHaveAttribute('open','');
-  await expect(safety.locator('p')).toHaveText('חסימה מונעת בקשות חברות חדשות. האירועים וההוצאות המשותפים נשארים בהיסטוריה.');
+  await expect(safety.locator('p')).toHaveText('חסימה מונעת בקשות חברות ביניכם. האירועים והחובות המשותפים נשארים ללא שינוי.');
   await expect(safety.locator('[data-action="block-connected-user"]')).toBeVisible();
   await geometry(page,root);
   await page.getByRole('button',{name:'חזרה למסך הקודם',exact:true}).press('Enter');

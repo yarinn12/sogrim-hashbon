@@ -67,6 +67,12 @@ if(params.has('participant-actions-batch')){
  if(params.has('actions-long')){state.participants.find(p=>p.id==='saved-manual-yael').displayName='יעל אלכסנדרה ישראלי כהן עם שם משפחה ארוך ABCDEFGHIJKLMNOPQRSTUVWXYZ';notesEvent.name='סוף השבוע הארוך עם המשפחה והחברים בצפון ובגליל ABCDEFGHIJKLMNOPQRSTUVWXYZ';}
  if(params.has('actions-readonly')){notesEvent.adminIds=[friendId];notesEvent.createdByParticipantId=friendId;notesEvent.adminsCanEditOnly=true;}
 }
+// Opt-in report/block transport; existing scenarios retain their original endpoints.
+if(params.has('participant-safety-batch')){
+ notesEvent.participantIds.push('saved-manual-yael');
+ if(params.has('safety-unshared')){delete notesEvent.sharedSpaceId;delete notesEvent.sharedSpaceKey;delete notesEvent.openInviteToken;}
+ qa.safetyRequests=[];qa.reportMode='ready';qa.blockMode='ready';qa.blockedRows=[];
+}
 // A prior accepted outbox can contain more than the note currently edited.
 // Only this scenario adds a second canonical scope; it must ACK unchanged.
 if(params.has('notes-partial'))Object.assign(state.events[1],{sharedSpaceId:'synthetic-share-friday-space',sharedSpaceKey:'synthetic-share-friday-key-abcdefghijklmnopqrstuvwxyz'});
@@ -137,6 +143,23 @@ return response({eventId:body.eventId,token:'synthetic_event_share_token_2026102
     if(url.pathname.endsWith('/auth/v1/user'))return response(user);
     if(url.pathname.endsWith('/auth/v1/token'))return response({...session,expires_in:3600});
     const rpc=url.pathname.split('/rpc/')[1];
+    if(params.has('participant-safety-batch')){
+      if(rpc==='submit_user_report'){
+        qa.safetyRequests.push({rpc,body:structuredClone(body)});
+        if(qa.reportMode==='hold')await new Promise(resolve=>qa.releaseSafety=()=>{qa.reportMode='ready';resolve()});
+        if(qa.reportMode==='reject-once'){qa.reportMode='ready';return response({message:'Synthetic report unavailable'},503)}
+        return response({id:'synthetic-report',status:'submitted'},201);
+      }
+      if(rpc==='block_user'){
+        qa.safetyRequests.push({rpc,body:structuredClone(body)});
+        if(qa.blockMode==='reject')return response({message:'Synthetic block unavailable'},503);
+        qa.blockedRows=[{blocked_user_id:target,blocked_display_name:person.display_name,blocked_username:person.username,created_at:new Date().toISOString()}];
+        requestRows.splice(0,requestRows.length,...requestRows.filter(r=>r.requester_id!==target&&r.addressee_id!==target));return response({status:'blocked'});
+      }
+      if(rpc==='unblock_user'){qa.safetyRequests.push({rpc,body:structuredClone(body)});qa.blockedRows=[];return response({status:'unblocked'})}
+      if(url.pathname.endsWith('/user_blocks'))return response(qa.blockedRows);
+    }
+
     if(rpc==='update_shared_event_snapshot'){
       if(siblingRow&&body.p_snapshot_id===siblingRow.id){
         qa.siblingRequests.push(structuredClone(body));

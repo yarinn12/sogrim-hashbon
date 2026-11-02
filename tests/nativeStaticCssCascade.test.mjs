@@ -1091,3 +1091,10 @@ test('native participant editor preserves actual field and action font growth',a
  const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs'),{extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.EVENT_PARTICIPANT_ACTION_TEST_LEDGER?process.env.EVENT_PARTICIPANT_ACTION_TEST_LEDGER:file,...args));await extractNativeStaticCss([{path:ledger}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css')),p='html.design-coherence-v1.ledger-workspace-v1 body #app ';
  for(const[s,size]of[['.event-participant-edit-screen input','1rem'],['.event-participant-edit-screen #event-participant-rename-note','.875rem'],['.event-participant-edit-screen .event-participant-rename-actions>button','.9375rem']]){const a=css.indexOf(p+s+'{');assert.ok(a>=0,'Missing Native editor selector '+s);assert.ok(css.slice(a,css.indexOf('}',a)).includes('font-size:'+size+'!important'));}
 });
+
+
+test('native participant safety retains enlarged fields and navigation-aware scroll margins',async()=>{
+ const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs'),{extractNativeStaticCss,files}=await harness();await extractNativeStaticCss([{path:ledger}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css'));
+ for(const text of ['.participant-report-review textarea{','.participant-report-review .app-choice-trigger-copy{','.participant-safety-panel>summary{','.participant-safety-confirmation .participant-username{','scroll-margin-block-end:calc(var(--dynamic-type-bottom-nav-block,82px) + 20px)!important','@media(max-height:500px)'])assert.ok(css.includes(text),'Missing ordered Native safety style: '+text);
+ const a=css.lastIndexOf('.participant-report-review textarea{');assert.ok(css.slice(a,css.indexOf('}',a)).includes('height:3.5rem!important'));
+});

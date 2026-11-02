@@ -1,3 +1,4 @@
+import {renderParticipantSafetyPanelView,renderParticipantReportBodyView,renderParticipantBlockConfirmationView} from "./ui/participantSafetyPresentation.mjs";
 import {renderParticipantActionConfirmationView,renderParticipantRenameBodyView} from './ui/eventParticipantActionsPresentation.mjs';
 import {participantDetailTitle,renderOfflineParticipantExplanationView,renderParticipantFriendshipHintView,renderParticipantAccountLinkIntroView,renderParticipantAccountListLabelView,renderParticipantCountView} from "./ui/eventParticipantManagementPresentation.mjs";
 import {renderEventNotesView,renderEventNoteRowView} from "./ui/eventNotesPresentation.mjs";
@@ -5113,6 +5114,10 @@ function renderEventStatusMenu() {
 
 function renderImportantActionDialog() {
   if (!importantActionDialog) return "";
+  if (importantActionDialog.kind === "block-connected-user") {
+    const participant=state.participants.find(p=>p.id===importantActionDialog.payload?.participantId);
+    return renderParticipantBlockConfirmationView({participant,avatarHtml:participant?renderAvatar(participant.id,null,{suppressParticipantAction:true}):'',usernameHtml:participant?renderParticipantUsername(participant):''});
+  }
   if(importantActionDialog.kind==='remove-event-participant'||importantActionDialog.kind==='merge-participants'&&importantActionDialog.payload?.mergeKind==='account-link') {
     const d=importantActionDialog,p=d.payload,event=getEvent(p.eventId),source=state.participants.find(x=>x.id===(p.sourceId||p.participantId)),target=state.participants.find(x=>x.id===p.targetId);
     return renderParticipantActionConfirmationView({dialog:d,source,target,eventName:event?.name,connected:source&&participantHasConnectedAccount(source),sourceAvatar:source?renderAvatar(source.id,event,{suppressParticipantAction:true}):'',targetAvatar:target?renderAvatar(target.id,event,{suppressParticipantAction:true}):''});
@@ -5531,6 +5536,7 @@ function renderConnectedEventParticipantProfile(event, participant) {
               : ""
           }
         </div>
+        ${renderParticipantSafetyPanel(event, participant)}
       </section>
     `
   });
@@ -5590,57 +5596,9 @@ function renderEventParticipantRemovalRow(event, participant) {
 }
 
 function renderParticipantSafetyPanel(event, participant) {
-  const targetUserId = accountUserIdFromParticipantId(participant?.id);
-  if (!targetUserId) return "";
-  const blocked = isConnectedUserBlocked(targetUserId);
-  const busy = friendNetworkBusyAction === `user-safety:${targetUserId}`;
-  const canReport = Boolean(event?.[EVENT_SPACE_ID_FIELD]);
-
-  return `
-    <details class="relationship-event-management relationship-safety-management">
-      <summary>בטיחות ופרטיות</summary>
-      <div class="relationship-safety-copy">
-        <p>${
-          blocked
-            ? "המשתמש חסום. האירועים וההוצאות המשותפים נשארו בהיסטוריה."
-            : "דיווח נשמר באופן פרטי. חסימה מונעת בקשות חברות חדשות ולא משנה חישובים קיימים."
-        }</p>
-        <div class="relationship-safety-actions">
-          ${
-            !blocked && canReport
-              ? `<button
-                  class="secondary-button"
-                  type="button"
-                  data-action="open-participant-report"
-                  data-event-id="${escapeAttribute(event.id)}"
-                  data-participant-id="${escapeAttribute(participant.id)}"
-                >דווח על המשתמש</button>`
-              : ""
-          }
-          ${
-            blocked
-              ? `<button
-                  class="secondary-button"
-                  type="button"
-                  data-action="unblock-connected-user"
-                  data-target-user-id="${escapeAttribute(targetUserId)}"
-                  data-event-id="${escapeAttribute(event?.id ?? "")}"
-                  ${busy ? "disabled" : ""}
-                >${busy ? "מעדכן…" : "בטל חסימה"}</button>`
-              : `<button
-                  class="event-participant-detail-remove"
-                  type="button"
-                  data-action="block-connected-user"
-                  data-target-user-id="${escapeAttribute(targetUserId)}"
-                  data-participant-id="${escapeAttribute(participant.id)}"
-                  data-event-id="${escapeAttribute(event?.id ?? "")}"
-                  ${busy ? "disabled" : ""}
-                >חסום משתמש</button>`
-          }
-        </div>
-      </div>
-    </details>
-  `;
+  const targetUserId=accountUserIdFromParticipantId(participant?.id);
+  if(!targetUserId||participant.id===state.currentParticipantId)return "";
+  return renderParticipantSafetyPanelView({targetUserId,participantId:participant.id,eventId:event?.id??'',blocked:isConnectedUserBlocked(targetUserId),busy:friendNetworkBusyAction===`user-safety:${targetUserId}`,canReport:Boolean(event?.[EVENT_SPACE_ID_FIELD])});
 }
 
 function renderEventParticipantReportDialog(event) {
@@ -5665,41 +5623,15 @@ function renderEventParticipantReportDialog(event) {
 
   return renderEventDialogShell({
     eventId: event.id,
-    eyebrow: "בטיחות",
-    title: `דיווח על ${participantName(participant.id, event)}`,
-    description: "הדיווח פרטי ואינו נשלח למשתמש שעליו דיווחת.",
+    eyebrow: "",
+    title: "דיווח על משתמש",
+    description: event.name,
     backAction: "back-to-participant-profile",
     backLabel: "חזרה לפרטי המשתתף",
     showClose: false,
-    modalClass: "event-participant-report-modal",
-    body: `
-      <div class="participant-report-form">
-        <label class="field">
-          <span>מה קרה?</span>
-          <select data-action="participant-report-category" required>
-            <option value="" ${category ? "" : "selected"} disabled>בחירת סיבה</option>
-            <option value="harassment" ${category === "harassment" ? "selected" : ""}>הטרדה או התנהגות פוגענית</option>
-            <option value="impersonation" ${category === "impersonation" ? "selected" : ""}>התחזות או זהות שגויה</option>
-            <option value="offensive_content" ${category === "offensive_content" ? "selected" : ""}>תוכן לא ראוי</option>
-            <option value="spam" ${category === "spam" ? "selected" : ""}>ספאם או הזמנות חוזרות</option>
-            <option value="other" ${category === "other" ? "selected" : ""}>סיבה אחרת</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>פרטים נוספים <small>(לא חובה)</small></span>
-          <textarea
-            data-action="participant-report-details"
-            maxlength="1000"
-            rows="4"
-            placeholder="אפשר לכתוב בקצרה מה קרה"
-          >${escapeHtml(details)}</textarea>
-        </label>
-        ${error ? `<p class="field-error" role="alert">${escapeHtml(error)}</p>` : ""}
-        <button class="primary-button" type="button" data-action="submit-participant-report" ${!category || busy ? "disabled" : ""}>
-          ${busy ? "שולח…" : "שלח דיווח"}
-        </button>
-      </div>
-    `
+    modalClass: "event-participant-report-modal event-participant-route-modal event-participant-presentation-screen participant-report-review",
+    routeMode: true,
+    body: renderParticipantReportBodyView({name:participant.displayName,avatarHtml:renderAvatar(participant.id,event,{suppressParticipantAction:true}),usernameHtml:renderParticipantUsername(participant),category,details,error,busy})
   });
 }
 

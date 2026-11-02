@@ -55,7 +55,7 @@ test("connected participants expose private reporting and reversible blocking wi
   const profile = sourceBetween(
     app,
     "function renderConnectedEventParticipantProfile(event, participant)",
-    "function renderRelationshipFriendshipControl("
+    "function renderEventParticipantAdminControl("
   );
   const safety = sourceBetween(
     app,
@@ -69,15 +69,18 @@ test("connected participants expose private reporting and reversible blocking wi
   );
 
   assert.match(profile, /renderParticipantSafetyPanel\(event, participant\)/);
-  assert.match(safety, /בטיחות ופרטיות/);
-  assert.match(safety, /data-action="open-participant-report"/);
-  assert.match(safety, /data-action="block-connected-user"/);
-  assert.match(safety, /data-action="unblock-connected-user"/);
-  assert.match(safety, /לא משנה חישובים קיימים/);
-  assert.match(report, /הדיווח פרטי/);
-  assert.match(report, /data-action="participant-report-category"/);
-  assert.match(report, /data-action="participant-report-details"/);
-  assert.match(report, /data-action="submit-participant-report"/);
+  const views = await readFile("src/ui/participantSafetyPresentation.mjs", "utf8");
+  assert.match(safety, /renderParticipantSafetyPanelView/);
+  assert.match(views, /פרטיות/);
+  assert.match(views, /data-action="open-participant-report"/);
+  assert.match(views, /data-action="block-connected-user"/);
+  assert.match(views, /data-action="unblock-connected-user"/);
+  assert.match(views, /החובות המשותפים נשארים ללא שינוי/);
+  assert.match(report, /renderParticipantReportBodyView/);
+  assert.match(views, /הדיווח לא נשלח למשתמש/);
+  assert.match(views, /data-action="participant-report-category"/);
+  assert.match(views, /data-action="participant-report-details"/);
+  assert.match(views, /data-action="submit-participant-report"/);
   assert.match(app, /await submitUserReport\(config/);
   assert.match(app, /await blockConnectedUser\(config, targetUserId\)/);
   assert.match(app, /const config = await loadFriendActionConfig\(request\)/);
