@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import * as ui from '../src/ui/eventParticipantManagementPresentation.mjs';
+import {renderParticipantSafetyPanelView} from '../src/ui/participantSafetyPresentation.mjs';
 const source=await readFile('src/app.mjs','utf8');
 const escape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-const functions=['renderEventParticipantsDialog','renderConnectedEventParticipantProfile','renderOfflineEventParticipantProfile','renderEventParticipantLinkDialog','renderEventParticipantRemovalRow','renderEventParticipantAdminControl'];
+const functions=['renderEventParticipantsDialog','renderConnectedEventParticipantProfile','renderOfflineEventParticipantProfile','renderEventParticipantLinkDialog','renderEventParticipantRemovalRow','renderEventParticipantAdminControl','renderParticipantSafetyPanel'];
 function harness({canEdit=true,canManage=true,kind='accepted',candidates=true,lastAdmin=false}={}){
  const owner={id:'owner',displayName:'Owner'},account={id:'account',displayName:'Dana <script>'},offline={id:'offline',displayName:'Yael <img>'};
  const state={currentParticipantId:'owner',participants:[owner,account,offline]};const before=JSON.stringify(state);
- const context={...ui,state,eventDialog:{participantId:'offline'},EVENT_SPACE_ID_FIELD:'sharedSpaceId',friendNetworkBusyAction:'',
+ const context={...ui,renderParticipantSafetyPanelView,isConnectedUserBlocked:()=>kind==='blocked',state,eventDialog:{participantId:'offline'},EVENT_SPACE_ID_FIELD:'sharedSpaceId',friendNetworkBusyAction:'',
   canCurrentParticipantEdit:()=>canEdit,canCurrentParticipantManage:()=>canManage,canCurrentParticipantChangeEventMembership:()=>canManage,
   activeEventParticipants:()=>state.participants,eventParticipants:()=>state.participants,isEventParticipantInactive:()=>false,isEventClosed:()=>false,
   eventAdminIds:()=>lastAdmin?['account']:['owner'],compareEventParticipantRoster:()=>0,
