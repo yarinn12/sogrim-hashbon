@@ -381,8 +381,9 @@ test("an offline name can invite an account outside the friends list with the st
   await expect(shareDialog).toBeVisible();
   await expect(shareDialog.locator('[data-action="share-invite-whatsapp"]')).toBeVisible();
   await expect(shareDialog.locator('[data-action="copy-invite"]')).toBeVisible();
-  await expect(shareDialog.getByRole('heading', { name: 'שיתוף האירוע', exact: true })).toBeVisible();
-  await expect(shareDialog.locator('#event-modal-description')).toHaveText(seededState.events[0].name);
+  const shareScreen = page.locator('.event-share-modal');
+  await expect(shareScreen.getByRole('heading', { name: 'שיתוף האירוע', exact: true })).toBeVisible();
+  await expect(shareScreen.locator('#event-modal-description')).toHaveText(seededState.events[0].name);
   // Local transport exposes the standard tools but cannot prepare a verified cloud link.
   await expect(shareDialog.locator('[data-action="share-invite-whatsapp"]')).toBeDisabled();
   await expect(shareDialog.locator('[data-action="copy-invite"]')).toBeDisabled();
