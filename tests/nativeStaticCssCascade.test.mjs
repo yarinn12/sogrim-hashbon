@@ -1070,3 +1070,12 @@ test('native reopen confirmation scales real context and action text with one bo
  for(const[s,size]of[[' #important-action-title','1.25rem'],[' #event-reopen-confirmation-name','.875rem'],[' #important-action-description','.875rem'],[' .important-action-dialog-actions button','.9375rem'],[' .reopen-payment-options legend','.875rem'],[' .reopen-payment-copy strong','.9375rem'],[' .reopen-payment-copy small','.875rem']])assert.ok(rule(s).includes('font-size:'+size+'!important'),s);
  assert.ok(rule('').includes('overflow:hidden auto!important'));assert.ok(rule('').includes('max-height:calc(100dvh - 32px)!important'));assert.ok(rule(' .important-action-dialog-actions').includes('repeat(auto-fit,minmax(min(100%,9rem),1fr))'));assert.ok(rule(' .important-action-dialog-actions button').includes('min-height:52px!important'));assert.ok(rule(' .important-action-dialog-actions button').includes('justify-content:center!important'));assert.ok(rule(' .important-action-dialog-actions [data-action="confirm-important-action"]').includes('border-color:var(--app-brand)!important'));
 });
+
+test('native participant detail styles retain scalable real text and route scrolling',async()=>{
+ const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs'),{extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.EVENT_PARTICIPANT_TEST_LEDGER?process.env.EVENT_PARTICIPANT_TEST_LEDGER:file,...args));
+ await extractNativeStaticCss([{path:ledger}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css')),prefix='html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen';
+ for(const [selector,size]of[[' .event-modal-header h2','1.5rem'],[' .event-participant-count','.875rem'],[' .event-participant-person-copy>strong','1rem'],[' .event-participant-management-copy strong','1rem'],[' .event-participant-management-copy small','.8125rem'],[' .event-participant-link-candidate strong','1rem']]){
+  const start=css.indexOf(prefix+selector+'{');assert.ok(start>=0,'missing Native participant selector '+selector);assert.ok(css.slice(start,css.indexOf('}',start)).includes('font-size:'+size+'!important'),selector);
+ }
+ const start=css.indexOf(prefix+'{');assert.ok(css.slice(start,css.indexOf('}',start)).includes('overflow:hidden auto!important'));
+});

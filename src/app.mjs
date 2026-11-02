@@ -1,3 +1,4 @@
+import {participantDetailTitle,renderOfflineParticipantExplanationView,renderParticipantFriendshipHintView,renderParticipantAccountLinkIntroView,renderParticipantAccountListLabelView,renderParticipantCountView} from "./ui/eventParticipantManagementPresentation.mjs";
 import {renderEventNotesView,renderEventNoteRowView} from "./ui/eventNotesPresentation.mjs";
 import {renderEventNoteEditorView} from "./ui/eventNoteEditorPresentation.mjs";
 import {renderEventNoteDeleteConfirmationView} from "./ui/eventNoteDeleteConfirmationPresentation.mjs";
@@ -5322,7 +5323,7 @@ function renderEventParticipantsDialog(event) {
     title: "מי באירוע",
     description: event.name,
     backdropClass: "event-participant-route-backdrop",
-    modalClass: "event-participant-route-modal event-participant-roster-modal",
+    modalClass: "event-participant-presentation-screen event-participant-route-modal event-participant-roster-modal",
     routeMode: true,
     backAction: "event-participants-back",
     backLabel: "חזרה לאירוע",
@@ -5512,11 +5513,11 @@ function renderConnectedEventParticipantProfile(event, participant) {
 
   return renderEventDialogShell({
     eventId: event.id,
-    eyebrow: "משתתף באירוע",
-    title: "ניהול משתתף",
+    eyebrow: "",
+    title: participantDetailTitle,
     description: event.name,
     backdropClass: "event-participant-route-backdrop",
-    modalClass: "event-participant-route-modal event-participant-detail-modal event-participant-management-modal",
+    modalClass: "event-participant-presentation-screen event-participant-route-modal event-participant-detail-modal event-participant-management-modal",
     routeMode: true,
     backAction: "event-participants-back",
     backLabel: "חזרה למשתתפים",
@@ -5548,7 +5549,7 @@ function renderConnectedEventParticipantProfile(event, participant) {
                   <span class="event-participant-management-icon" aria-hidden="true">${commandIconSvgs.participants}</span>
                   <span class="event-participant-management-copy">
                     <strong>חברות</strong>
-                    <small>${canRequest && !sharedEventReady ? "אפשר להציע חברות אחרי שהאירוע יסיים להסתנכרן" : "הישארו בקשר גם אחרי האירוע"}</small>
+                    ${renderParticipantFriendshipHintView({kind:friendship.kind,awaitingSharedEvent:canRequest && !sharedEventReady})}
                   </span>
                   ${renderRelationshipFriendshipControl({
                     friendship,
@@ -6035,11 +6036,11 @@ function renderOfflineEventParticipantProfile(event, participant) {
 
   return renderEventDialogShell({
     eventId: event.id,
-    eyebrow: "משתתף באירוע",
-    title: "ניהול משתתף",
+    eyebrow: "",
+    title: participantDetailTitle,
     description: event.name,
     backdropClass: "event-participant-route-backdrop",
-    modalClass: "event-participant-route-modal event-participant-detail-modal event-participant-management-modal",
+    modalClass: "event-participant-presentation-screen event-participant-route-modal event-participant-detail-modal event-participant-management-modal",
     routeMode: true,
     backAction: "event-participants-back",
     backLabel: "חזרה למשתתפים",
@@ -6062,6 +6063,7 @@ function renderOfflineEventParticipantProfile(event, participant) {
             ? `<p class="event-participant-notice" role="status">${escapeHtml(message)}</p>`
             : ""
         }
+        ${renderOfflineParticipantExplanationView()}
         <div class="event-participant-management-list">
           <button
             class="event-participant-management-row"
@@ -6134,17 +6136,14 @@ function renderEventParticipantLinkDialog(event) {
     title: "קישור לחשבון",
     description: participantName(participant.id, event),
     backdropClass: "event-participant-route-backdrop",
-    modalClass: "event-participant-route-modal event-participant-link-modal",
+    modalClass: "event-participant-presentation-screen event-participant-route-modal event-participant-link-modal",
     routeMode: true,
     backAction: "event-participants-back",
     backLabel: "חזרה לניהול המשתתף",
     showClose: false,
     body: `
       <section class="event-participant-link-screen">
-        <div class="event-participant-link-intro">
-          <strong>איזה חשבון שייך לאדם הזה?</strong>
-          <p>${candidates.length ? "בחרו חשבון שכבר באירוע, או הזמינו את האדם להתחבר." : "הזמינו את האדם להתחבר, ולאחר שיצטרף תוכלו לקשר את החשבון."}</p>
-        </div>
+        ${renderParticipantAccountLinkIntroView()}
         <section class="event-share-choice event-share-route-list event-participant-link-invite" aria-label="הזמנת חשבון חדש">
           <button
             class="event-share-route-choice"
@@ -6164,7 +6163,7 @@ function renderEventParticipantLinkDialog(event) {
         </section>
         ${
           candidates.length
-            ? `<div class="event-participant-link-list" role="list" aria-label="חשבונות שכבר באירוע">
+            ? `${renderParticipantAccountListLabelView()}<div class="event-participant-link-list" role="list" aria-label="חשבונות שכבר באירוע">
                 ${candidates
                   .map(
                     (candidate) => `
@@ -6182,7 +6181,6 @@ function renderEventParticipantLinkDialog(event) {
                         <span>
                           <strong>${escapeHtml(participantName(candidate.id, event))}</strong>
                           ${renderParticipantUsername(candidate)}
-                          <small>משתמש בסוגרים חשבון</small>
                         </span>
                         <span class="event-participant-link-arrow" aria-hidden="true">${iconSvg("chevron-left")}</span>
                       </button>
@@ -6231,7 +6229,7 @@ function renderCurrentEventParticipants(event, participants, canEdit) {
     >
       <header class="event-participant-section-header is-compact">
         <span id="event-participant-roster-title" class="event-participant-count">
-          ${countLabel} · לחצו על שם לניהול
+          ${renderParticipantCountView(countLabel)}
         </span>
       </header>
       ${
@@ -17320,6 +17318,8 @@ function createActionFocusDescriptor(element) {
     expenseId: element.dataset.expenseId ?? "",
     noteId: element.dataset.noteId ?? "",
     groupId: element.dataset.groupId ?? "",
+    sourceParticipantId: element.dataset.sourceParticipantId ?? "",
+    targetParticipantId: element.dataset.targetParticipantId ?? "",
     participantId: element.dataset.participantId ?? ""
   };
 }
@@ -17347,6 +17347,8 @@ function findActionReturnTarget(returnTarget) {
     (!returnTarget.expenseId || element.dataset.expenseId === returnTarget.expenseId) &&
     (!returnTarget.noteId || element.dataset.noteId === returnTarget.noteId) &&
     (!returnTarget.groupId || element.dataset.groupId === returnTarget.groupId) &&
+    (!returnTarget.sourceParticipantId || element.dataset.sourceParticipantId === returnTarget.sourceParticipantId) &&
+    (!returnTarget.targetParticipantId || element.dataset.targetParticipantId === returnTarget.targetParticipantId) &&
     (!returnTarget.participantId || element.dataset.participantId === returnTarget.participantId)
   );
 }

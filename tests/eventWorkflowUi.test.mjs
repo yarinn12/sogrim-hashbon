@@ -746,7 +746,7 @@ test("participant manager separates the current roster from saved names", async 
   assert.match(app, /data-action="remove-event-participant"/);
   assert.match(app, /data-action="restore-event-participant"/);
   assert.match(app, /data-participant-search-for="event-participant-roster"/);
-  assert.match(app, /\$\{countLabel\} · לחצו על שם לניהול/);
+  assert.match(app, /\$\{renderParticipantCountView\(countLabel\)\}/);
   assert.doesNotMatch(participantRow, /באירוע עכשיו/);
   assert.doesNotMatch(participantRow, /אורחים ללא חשבון/);
   assert.match(participantRow, /class="event-participant-roster-row/);
@@ -972,7 +972,8 @@ test("connected participant profile stays focused on participant management", as
     "function renderRelationshipFriendshipControl"
   );
 
-  assert.match(profile, /title: "ניהול משתתף"/);
+  assert.match(profile, /title: participantDetailTitle/);
+  assert.match(await readFile("src/ui/eventParticipantManagementPresentation.mjs", "utf8"), /participantDetailTitle='פרטי משתתף'/);
   assert.match(profile, /event-participant-management-modal/);
   assert.match(profile, /backAction: "event-participants-back"/);
   assert.match(profile, /backLabel: "חזרה למשתתפים"/);

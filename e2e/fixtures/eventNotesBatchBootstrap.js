@@ -53,6 +53,12 @@ if(params.has('notes-long')&&notesEvent.notes[0]){notesEvent.notes[0].title='פ�
 if(params.has('notes-locked')){notesEvent.locked=true;notesEvent.closedAt='2026-10-29T10:00:00.000Z';}
 if(params.has('notes-readonly')){notesEvent.adminIds=[friendId];notesEvent.createdByParticipantId=friendId;notesEvent.adminsCanEditOnly=true;}
 qa.noteBatchSeed=structuredClone(notesEvent.notes);
+// Opt-in participant batch scenarios share the same synthetic HTTP/ACK model.
+if(params.has('participants-batch')){
+ notesEvent.participantIds.push('account-'+itay.user_id,'saved-manual-yael');
+ if(params.has('participants-many'))for(let i=0;i<8;i++){const id='participant-many-'+i;state.participants.push({id,kind:'guest',displayName:'משתתף נוסף '+i});notesEvent.participantIds.push(id);}
+ qa.participantWriteMode='ready';qa.participantAttempts=[];
+}
 // A prior accepted outbox can contain more than the note currently edited.
 // Only this scenario adds a second canonical scope; it must ACK unchanged.
 if(params.has('notes-partial'))Object.assign(state.events[1],{sharedSpaceId:'synthetic-share-friday-space',sharedSpaceKey:'synthetic-share-friday-key-abcdefghijklmnopqrstuvwxyz'});
@@ -133,6 +139,11 @@ return response({eventId:body.eventId,token:'synthetic_event_share_token_2026102
       }
       qa.canonicalRequests.push(structuredClone(body));
       if(body.p_snapshot_id!==canonicalRow.id)return response({message:'Wrong synthetic shared scope'},403);
+      if(params.has('participants-batch')&&JSON.stringify(body.p_state?.events?.[0]?.adminIds)!==JSON.stringify(canonicalRow.state.events[0].adminIds)){
+        qa.participantAttempts.push(structuredClone(body));
+        if(qa.participantWriteMode==='hold')await new Promise(done=>qa.releaseParticipantWrite=()=>{qa.participantWriteMode='ready';done()});
+        if(qa.participantWriteMode==='reject')return response({code:'SHARED_EVENT_MEMBERSHIP_REVOKED',message:'Synthetic admin save permission rejected'},403);
+      }
       const mutation=notesChanged(body.p_state,canonicalRow.state);
       if(mutation&&qa.noteWriteMode==='unacknowledged-shared'){
         qa.noteUnacknowledgedAttempts.push(structuredClone(body));
