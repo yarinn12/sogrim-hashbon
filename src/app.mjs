@@ -1,3 +1,4 @@
+import {renderParticipantActionConfirmationView,renderParticipantRenameBodyView} from './ui/eventParticipantActionsPresentation.mjs';
 import {participantDetailTitle,renderOfflineParticipantExplanationView,renderParticipantFriendshipHintView,renderParticipantAccountLinkIntroView,renderParticipantAccountListLabelView,renderParticipantCountView} from "./ui/eventParticipantManagementPresentation.mjs";
 import {renderEventNotesView,renderEventNoteRowView} from "./ui/eventNotesPresentation.mjs";
 import {renderEventNoteEditorView} from "./ui/eventNoteEditorPresentation.mjs";
@@ -5112,6 +5113,11 @@ function renderEventStatusMenu() {
 
 function renderImportantActionDialog() {
   if (!importantActionDialog) return "";
+  if(importantActionDialog.kind==='remove-event-participant'||importantActionDialog.kind==='merge-participants'&&importantActionDialog.payload?.mergeKind==='account-link') {
+    const d=importantActionDialog,p=d.payload,event=getEvent(p.eventId),source=state.participants.find(x=>x.id===(p.sourceId||p.participantId)),target=state.participants.find(x=>x.id===p.targetId);
+    return renderParticipantActionConfirmationView({dialog:d,source,target,eventName:event?.name,connected:source&&participantHasConnectedAccount(source),sourceAvatar:source?renderAvatar(source.id,event,{suppressParticipantAction:true}):'',targetAvatar:target?renderAvatar(target.id,event,{suppressParticipantAction:true}):''});
+  }
+
   if (importantActionDialog.kind === "delete-event-note") return renderEventNoteDeleteConfirmationView(importantActionDialog);
   if (importantActionDialog.kind === "reopen-event") return renderEventReopenConfirmationView({...importantActionDialog,paymentMode:importantActionDialog.payload?.paymentMode});
   if (importantActionDialog.kind === "change-event-currency") return renderEventCurrencyConfirmationView(importantActionDialog);
@@ -5411,65 +5417,10 @@ function renderEventParticipantAddDialog(event) {
 }
 
 function renderEventOfflineParticipantRenameDialog(event) {
-  const participant = state.participants.find(
-    (item) => item.id === eventDialog?.participantId
-  );
-  if (!participant || participantHasConnectedAccount(participant)) {
-    return renderEventParticipantsDialog(event);
-  }
-
-  const canEdit = canCurrentParticipantEdit(event);
-  const nameDraft = eventDialog?.offlineNameDraft ?? participant.displayName;
-  const error = eventDialog?.error ?? "";
-
-  return renderEventDialogShell({
-    eventId: event.id,
-    eyebrow: "משתתפים",
-    title: "עריכת שם אופליין",
-    description: "השם יתעדכן בכל מקום שבו האדם הזה מופיע. ההוצאות שלו יישארו ללא שינוי.",
-    backAction: "event-participant-rename-back",
-    backLabel: "חזרה למשתתפים",
-    body: `
-      <section class="event-participant-rename-card">
-        <div class="event-participant-rename-person">
-          ${renderAvatar(participant.id, event)}
-          <div>
-            <strong>${escapeHtml(participant.displayName)}</strong>
-            <small>שם אופליין</small>
-          </div>
-        </div>
-        <label class="field event-participant-rename-field">
-          <span>שם חדש</span>
-          <input
-            type="text"
-            name="offlineParticipantName"
-            maxlength="48"
-            autocomplete="off"
-            enterkeyhint="done"
-            data-action="event-offline-participant-rename"
-            data-event-id="${escapeAttribute(event.id)}"
-            data-participant-id="${escapeAttribute(participant.id)}"
-            value="${escapeAttribute(nameDraft)}"
-            aria-describedby="event-participant-rename-note"
-            ${canEdit ? "" : "disabled"}
-          />
-          <small id="event-participant-rename-note">אותו אדם, אותו חישוב - רק השם משתנה.</small>
-        </label>
-        ${error ? `<p class="form-error" role="alert">${escapeHtml(error)}</p>` : ""}
-        <div class="event-modal-actions event-participant-rename-actions">
-          <button class="secondary-button" type="button" data-action="event-participant-rename-back">ביטול</button>
-          <button
-            class="primary-button"
-            type="button"
-            data-action="save-offline-participant-name"
-            data-event-id="${escapeAttribute(event.id)}"
-            data-participant-id="${escapeAttribute(participant.id)}"
-            ${canEdit ? "" : "disabled"}
-          >שמור שם</button>
-        </div>
-      </section>
-    `
-  });
+  const participant=state.participants.find(item=>item.id===eventDialog?.participantId);
+  if(!participant||participantHasConnectedAccount(participant))return renderEventParticipantsDialog(event);
+  const canEdit=canCurrentParticipantEdit(event),nameDraft=eventDialog?.offlineNameDraft??participant.displayName,error=eventDialog?.error??'';
+  return renderEventDialogShell({eventId:event.id,title:'עריכת שם',description:event.name,backAction:'event-participant-rename-back',backLabel:'חזרה לפרטי המשתתף',routeMode:true,showClose:false,modalClass:'event-task-modal event-participant-route-modal event-participant-presentation-screen event-participant-edit-screen',body:renderParticipantRenameBodyView({eventId:event.id,participantId:participant.id,nameDraft,error,canEdit})});
 }
 
 function renderEventParticipantProfileDialog(event) {
@@ -23352,7 +23303,7 @@ function handleDialogKeydown(event) {
     return;
   }
 
-  const dialog = event.target.closest?.('.event-leave-confirmation[role="alertdialog"], .event-delete-confirmation[role="alertdialog"], .event-currency-confirmation[role="alertdialog"], .event-note-delete-confirmation[role="alertdialog"]') ?? app.querySelector(
+  const dialog = event.target.closest?.('.event-leave-confirmation[role="alertdialog"], .event-delete-confirmation[role="alertdialog"], .event-currency-confirmation[role="alertdialog"], .event-note-delete-confirmation[role="alertdialog"], .event-participant-action-confirmation[role="alertdialog"]') ?? app.querySelector(
     '.settlement-close-confirmation[role="alertdialog"], .important-action-dialog[role="alertdialog"], .settlement-celebration-dialog[role="dialog"], .event-status-menu[role="dialog"], .expense-modal[role="dialog"], .event-modal[role="dialog"], .event-modal[role="region"]'
   );
   if (!dialog) return;

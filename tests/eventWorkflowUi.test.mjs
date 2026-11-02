@@ -825,9 +825,11 @@ test("offline names can be renamed from the event without changing participant i
     /<div class="event-participant-management-row">[\s\S]*?data-action="open-event-participant-link"/
   );
   assert.match(app, /eventDialog\.kind === "participant-rename"/);
-  assert.match(renameDialog, /data-action="event-offline-participant-rename"/);
-  assert.match(renameDialog, /data-action="save-offline-participant-name"/);
-  assert.match(renameDialog, /אותו אדם, אותו חישוב - רק השם משתנה/);
+  const renameView = await readFile("src/ui/eventParticipantActionsPresentation.mjs", "utf8");
+  assert.match(renameDialog, /renderParticipantRenameBodyView/);
+  assert.match(renameView, /data-action="event-offline-participant-rename"/);
+  assert.match(renameView, /data-action="save-offline-participant-name"/);
+  assert.match(renameView, /ההוצאות וההעברות יישארו כפי שהן/);
   assert.match(app, /renameOfflineParticipant\(state, participantId, displayName\)/);
   assert.match(app, /normalizeParticipantDisplayName\(item\.displayName\)/);
   assert.match(app, /action === "event-participant-rename-back"/);

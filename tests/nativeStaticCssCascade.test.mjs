@@ -1079,3 +1079,15 @@ test('native participant detail styles retain scalable real text and route scrol
  }
  const start=css.indexOf(prefix+'{');assert.ok(css.slice(start,css.indexOf('}',start)).includes('overflow:hidden auto!important'));
 });
+
+
+test('native participant action confirmations keep real text growth and one bounded scroll owner',async()=>{
+ const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs'),{extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.EVENT_PARTICIPANT_ACTION_TEST_LEDGER?process.env.EVENT_PARTICIPANT_ACTION_TEST_LEDGER:file,...args));await extractNativeStaticCss([{path:ledger}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css')),p='html.design-coherence-v1.ledger-workspace-v1 body #app ';
+ const rule=s=>{const a=css.indexOf(p+s+'{');assert.ok(a>=0,'Missing Native participant action selector: '+s);return css.slice(a,css.indexOf('}',a))};
+ for(const[s,size]of[['.event-participant-action-confirmation h2','1.25rem'],['.event-participant-action-confirmation .participant-confirm-person strong','1rem'],['.event-participant-action-confirmation #important-action-description','.875rem'],['.event-participant-action-confirmation .important-action-dialog-actions>button','.9375rem']])assert.ok(rule(s).includes('font-size:'+size+'!important'));
+ const box=rule('.important-action-dialog.event-participant-action-confirmation');assert.ok(box.includes('overflow-y:auto!important'));assert.ok(box.includes('max-height:calc(100dvh - 32px)!important'));assert.ok(box.includes('width:min(440px,100%)!important'));assert.ok(rule('.event-participant-action-confirmation .important-action-dialog-actions').includes('repeat(auto-fit,minmax(min(100%,9rem),1fr))'));
+});
+test('native participant editor preserves actual field and action font growth',async()=>{
+ const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs'),{extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.EVENT_PARTICIPANT_ACTION_TEST_LEDGER?process.env.EVENT_PARTICIPANT_ACTION_TEST_LEDGER:file,...args));await extractNativeStaticCss([{path:ledger}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css')),p='html.design-coherence-v1.ledger-workspace-v1 body #app ';
+ for(const[s,size]of[['.event-participant-edit-screen input','1rem'],['.event-participant-edit-screen #event-participant-rename-note','.875rem'],['.event-participant-edit-screen .event-participant-rename-actions>button','.9375rem']]){const a=css.indexOf(p+s+'{');assert.ok(a>=0,'Missing Native editor selector '+s);assert.ok(css.slice(a,css.indexOf('}',a)).includes('font-size:'+size+'!important'));}
+});

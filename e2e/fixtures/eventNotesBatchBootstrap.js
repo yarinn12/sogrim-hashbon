@@ -54,10 +54,18 @@ if(params.has('notes-locked')){notesEvent.locked=true;notesEvent.closedAt='2026-
 if(params.has('notes-readonly')){notesEvent.adminIds=[friendId];notesEvent.createdByParticipantId=friendId;notesEvent.adminsCanEditOnly=true;}
 qa.noteBatchSeed=structuredClone(notesEvent.notes);
 // Opt-in participant batch scenarios share the same synthetic HTTP/ACK model.
-if(params.has('participants-batch')){
+if(params.has('participants-batch')||params.has('participant-actions-batch')){
  notesEvent.participantIds.push('account-'+itay.user_id,'saved-manual-yael');
  if(params.has('participants-many'))for(let i=0;i<8;i++){const id='participant-many-'+i;state.participants.push({id,kind:'guest',displayName:'משתתף נוסף '+i});notesEvent.participantIds.push(id);}
  qa.participantWriteMode='ready';qa.participantAttempts=[];
+}
+// Isolated participant editor/confirmation scenarios; all other fixtures keep their seed.
+if(params.has('participant-actions-batch')){
+ qa.actionWriteMode='ready';qa.actionAttempts=[];state.participants.push({id:'action-existing-name',kind:'guest',displayName:'שם קיים'});
+ for(const expense of notesEvent.expenses)if(!expense.sharedByParticipantIds.includes('saved-manual-yael'))expense.sharedByParticipantIds.push('saved-manual-yael');
+ if(params.has('actions-no-history')){notesEvent.expenses=[];notesEvent.transfers=[];}
+ if(params.has('actions-long')){state.participants.find(p=>p.id==='saved-manual-yael').displayName='יעל אלכסנדרה ישראלי כהן עם שם משפחה ארוך ABCDEFGHIJKLMNOPQRSTUVWXYZ';notesEvent.name='סוף השבוע הארוך עם המשפחה והחברים בצפון ובגליל ABCDEFGHIJKLMNOPQRSTUVWXYZ';}
+ if(params.has('actions-readonly')){notesEvent.adminIds=[friendId];notesEvent.createdByParticipantId=friendId;notesEvent.adminsCanEditOnly=true;}
 }
 // A prior accepted outbox can contain more than the note currently edited.
 // Only this scenario adds a second canonical scope; it must ACK unchanged.
@@ -143,6 +151,12 @@ return response({eventId:body.eventId,token:'synthetic_event_share_token_2026102
         qa.participantAttempts.push(structuredClone(body));
         if(qa.participantWriteMode==='hold')await new Promise(done=>qa.releaseParticipantWrite=()=>{qa.participantWriteMode='ready';done()});
         if(qa.participantWriteMode==='reject')return response({code:'SHARED_EVENT_MEMBERSHIP_REVOKED',message:'Synthetic admin save permission rejected'},403);
+      }
+      const participantActionProjection=s=>{const e=s.events?.find(e=>e.id==='friend-weekend');return JSON.stringify({name:s.participants?.find(p=>p.id==='saved-manual-yael')?.displayName,ids:e?.participantIds,inactive:e?.inactiveParticipantIds||[],links:e?.participantAccountLinks||[],admins:e?.adminIds});};
+      if(params.has('participant-actions-batch')&&participantActionProjection(body.p_state)!==participantActionProjection(canonicalRow.state)){
+        qa.actionAttempts.push(structuredClone(body));
+        if(qa.actionWriteMode==='hold')await new Promise(done=>qa.releaseActionWrite=()=>{qa.actionWriteMode='ready';done()});
+        if(qa.actionWriteMode==='reject')return response({code:'SHARED_EVENT_MEMBERSHIP_REVOKED',message:'Synthetic participant action denied'},403);
       }
       const mutation=notesChanged(body.p_state,canonicalRow.state);
       if(mutation&&qa.noteWriteMode==='unacknowledged-shared'){
