@@ -258,7 +258,9 @@ test("the explicit account-link confirmation works on the first tap", async ({ p
   const confirmButton = confirmation.locator(
     '[data-action="confirm-important-action"]'
   );
-  await expect(confirmation).toContainText("לקשר את אריאל ניזרי לחשבון של אריאל ניזרי?");
+  await expect(confirmation.getByRole('heading', {name:'לקשר לחשבון?',exact:true})).toBeVisible();
+  await expect(confirmation.locator('.participant-confirm-person').nth(0).locator('strong')).toHaveText('אריאל ניזרי');
+  await expect(confirmation.locator('.participant-confirm-person').nth(1).locator('strong')).toHaveText('אריאל ניזרי');
   await expect(confirmButton).toBeEnabled();
   await expect
     .poll(() =>
@@ -319,7 +321,9 @@ test("HGG can link only to Yarin when Nizri is not in the event", async ({ page 
   await candidates.click();
 
   const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
-  await expect(confirmation).toContainText("לקשר את HGG לחשבון של ירין יצחק?");
+  await expect(confirmation.getByRole('heading', {name:'לקשר לחשבון?',exact:true})).toBeVisible();
+  await expect(confirmation.locator('.participant-confirm-person').nth(0).locator('strong')).toHaveText('HGG');
+  await expect(confirmation.locator('.participant-confirm-person').nth(1).locator('strong')).toHaveText('ירין יצחק');
   await expect(confirmation).not.toContainText("ניזרי");
   await confirmation.locator('[data-action="confirm-important-action"]').click();
 

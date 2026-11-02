@@ -32,3 +32,8 @@ test('participant confirmation context avatars cannot navigate to statistics',()
  const result=runInNewContext('('+adapter+')',{importantActionDialog:dialog,state,getEvent:()=>({name:'event'}),participantHasConnectedAccount:p=>p.kind==='member',renderAvatar:(id,event,options)=>{calls.push({id,options});return '<span></span>'},renderParticipantActionConfirmationView:model=>model})();
  assert.equal(result.dialog,dialog);assert.equal(calls.length,2);for(const call of calls)assert.equal(call.options?.suppressParticipantAction,true);
 });
+
+
+test('link accessible label includes the visible event and both identity names',()=>{const h=confirm(make('merge-participants'));assert.match(h,/aria-labelledby="important-action-title participant-confirm-event-name participant-confirm-source-name participant-confirm-target-name"/);assert.match(h,/id="participant-confirm-event-name"[^>]*>סוף השבוע בצפון</);assert.match(h,/id="participant-confirm-source-name">יעל ישראלי</);assert.match(h,/id="participant-confirm-target-name">דנה לוי</);});
+test('removal accessible label includes its event and exact person without a missing target',()=>{const h=confirm(make());assert.match(h,/aria-labelledby="important-action-title participant-confirm-event-name participant-confirm-source-name"/);assert.doesNotMatch(h,/id="participant-confirm-target-name"/);});
+test('processing accessible label never references identities hidden during the save',()=>{const h=confirm(make('merge-participants',{processing:true}));assert.match(h,/aria-labelledby="important-action-title participant-confirm-event-name"/);assert.doesNotMatch(h,/id="participant-confirm-source-name"|id="participant-confirm-target-name"/);});
