@@ -61,6 +61,14 @@ for(const view of ['friends','manual'])test('adding '+view+' selects the partici
  await expect(page.locator('[data-action="expense-shared"][data-participant-id="'+id+'"]')).toBeChecked();
  expect((await expenseAddState(page)).events[0].participantIds).toContain(id);expect(expenseAddMoney(await expenseAddState(page))).toEqual(before);
 });
+test('tapping the friend avatar selects that friend instead of leaving the expense',async({page})=>{
+ const d=await openExpenseAdd(page,'friends'),row=d.locator('[data-action="expense-add-friend-participant"]').first();
+ const id=await row.getAttribute('data-participant-id'),before=expenseAddMoney(await expenseAddState(page));
+ await pointClick(row.locator('.avatar'));
+ await expect(page.locator('.expense-participant-add-route')).toHaveCount(0);
+ await expect(page.locator('[data-action="expense-shared"][data-participant-id="'+id+'"]')).toBeChecked();
+ expect(expenseAddMoney(await expenseAddState(page))).toEqual(before);
+});
 test('back and progress retain the expense draft',async({page})=>{
  const d=await openExpenseAdd(page),before=expenseAddMoney(await expenseAddState(page));
  await pointClick(d.locator('[data-view="offline"]'));await pointClick(d.locator('[data-action="expense-participant-add-back"]'));

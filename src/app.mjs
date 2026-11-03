@@ -7539,7 +7539,7 @@ function renderExpenseParticipantFriendList(event, friends, canEdit) {
   return renderExpenseParticipantFriendListView({ eventId: event.id, canEdit,
     friendDescription: expenseParticipantFriendChoiceDescription(friends),
     friends: friends.map(participant => ({ id: participant.id,
-      name: participantName(participant.id, event), avatarHtml: renderAvatar(participant.id, event),
+      name: participantName(participant.id, event), avatarHtml: renderAvatar(participant.id, event, { suppressParticipantAction: true }),
       usernameHtml: renderParticipantUsername(participant) })) });
 }
 
