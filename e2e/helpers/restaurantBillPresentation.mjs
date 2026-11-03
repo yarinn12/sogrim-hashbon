@@ -14,7 +14,12 @@ export async function openRestaurantBill(page,view='method',{width=393,height=85
  await d.locator('[data-action="quick-item-amount"]').fill(equal?'120':'90');
  if(!equal){
   await restaurantClick(page,d.locator('.quick-item-description-details summary'));await d.locator('[data-action="quick-item-name"]').fill('פסטה');
-  await restaurantClick(page,d.locator('[data-action="quick-item-add"]'));await d.locator('[data-action="quick-item-amount"][data-index="1"]').fill('30');
+  await restaurantClick(page,d.locator('[data-action="quick-item-add"]'));
+  // The app focuses a newly added row in requestAnimationFrame. Wait for that
+  // user-visible readiness before filling; otherwise its late focus can undo
+  // the test's next scroll in mobile WebKit.
+  const nextAmount=d.locator('[data-action="quick-item-amount"][data-index="1"]');
+  await expect(nextAmount).toBeFocused();await nextAmount.fill('30');
   await restaurantClick(page,d.locator('.quick-item-description-details summary').nth(1));await d.locator('[data-action="quick-item-name"][data-index="1"]').fill('שתייה משותפת');
   await restaurantClick(page,d.locator('.quick-item-owner-field .app-choice-trigger').nth(1));await page.getByRole('option',{name:'משותף לכולם',exact:true}).click();
  }
