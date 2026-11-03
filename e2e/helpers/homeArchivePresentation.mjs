@@ -29,7 +29,13 @@ export async function homeArchiveReach(page,locator){
   expect(center-Math.max(0,r.y)).toBeGreaterThanOrEqual(22);expect(Math.min(bottom,r.y+r.height)-center).toBeGreaterThanOrEqual(22);
  }else{expect(r.y).toBeGreaterThanOrEqual(-1);expect(r.y+r.height).toBeLessThanOrEqual(bottom+1)}
 }
-export async function homeArchiveClick(page,locator){await homeArchiveReach(page,locator);await locator.click()}
+export async function homeArchiveClick(page,locator){
+ await expect(locator).toBeEnabled();await homeArchiveReach(page,locator);
+ // Locator.click performs another automatic scroll in Chromium, which can
+ // put a short landscape target back under the floating accessibility button.
+ // Use real pointer input at the already hit-tested visible center instead.
+ const r=await locator.boundingBox();await page.mouse.click(r.x+r.width/2,r.y+r.height/2);
+}
 export async function openHomeArchive(page,view='menu',{width=393,height=852,root=16,system=false,long=false,member=false}={}){
  await page.setViewportSize({width,height});if(system)await page.addInitScript(installSyntheticSystemText);
  await page.goto('/?review=1&requests=empty&preview='+view+(root>16&&!system?'&dynamic-type-preview='+root:'')+(long?'&long-event-name=1':'')+(member?'&menu-member=1':''));
