@@ -6,7 +6,18 @@ export async function homeArchiveReach(page,locator){
  // Firefox commits scrollIntoView before the next paint. Read fresh geometry
  // afterwards; measuring in the same task can undo a valid scroll.
  await locator.evaluate(e=>{e.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))});
- await locator.evaluate(e=>{if(!e.closest('.event-status-menu')){const nav=document.querySelector('[aria-label="ניווט ראשי"]'),r=e.getBoundingClientRect();if(nav&&r.bottom>nav.getBoundingClientRect().top-8)document.scrollingElement.scrollTop+=r.bottom-nav.getBoundingClientRect().top+8}return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))});
+ await locator.evaluate(e=>{
+  if(!e.closest('.event-status-menu')){
+   const nav=document.querySelector('[aria-label="ניווט ראשי"]');
+   const controls=[...document.querySelectorAll('.product-route-controls button')].map(x=>x.getBoundingClientRect()).filter(r=>r.height>0&&r.top>=0&&r.top<80);
+   const top=Math.max(0,...controls.map(r=>r.bottom))+8,bottom=nav?nav.getBoundingClientRect().top-8:innerHeight;
+   const box=e.getBoundingClientRect(),glyph=e.dataset.action==='event-status-select'?e.querySelector('.event-row-options-chevron')?.getBoundingClientRect():null;
+   const r=glyph?{top:glyph.y+glyph.height/2-22,bottom:glyph.y+glyph.height/2+22}:box;
+   if(r.top<top)document.scrollingElement.scrollTop+=r.top-top;
+   else if(r.bottom>bottom)document.scrollingElement.scrollTop+=r.bottom-bottom;
+  }
+  return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))
+ });
  await expect.poll(()=>locator.evaluate(e=>{const r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return e===hit||e.contains(hit)})).toBe(true);
  const r=await locator.boundingBox();expect(r.x).toBeGreaterThanOrEqual(-1);expect(Math.round(r.width*100)/100).toBeGreaterThanOrEqual(44);expect(Math.round(r.height*100)/100).toBeGreaterThanOrEqual(44);
  const bottom=await locator.evaluate(e=>{const d=e.closest('.event-status-menu');return d?Math.min(innerHeight,d.getBoundingClientRect().bottom):document.querySelector('[aria-label="ניווט ראשי"]').getBoundingClientRect().top});
