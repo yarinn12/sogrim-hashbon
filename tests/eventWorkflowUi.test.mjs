@@ -1591,25 +1591,27 @@ test("home event rows prioritize selection details, participants, and one quiet 
 
 test("home event options expose the shared invitation flow and guarded removal", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const menu = await readFile("src/ui/homeEventOptionsPresentation.mjs", "utf8");
   const choices = await readFile("src/ui/eventInvitationChoices.mjs", "utf8");
 
   assert.match(app, /action === "event-status-select"/);
   assert.match(app, /function renderEventStatusMenu\(\)/);
-  assert.match(app, /data-action="share-event-from-list"/);
+  assert.match(app, /return renderHomeEventOptionsView\(\{event,canShare,canRemove,removesForEveryone/);
+  assert.match(menu, /data-action="share-event-from-list"/);
   assert.match(app, /function openEventParticipantAddFromHomeMenu\(eventId\)/);
   assert.match(app, /kind: "participants-add",\s*returnKind: "home"/);
   assert.match(app, /renderEventParticipantAddRoutes/);
   assert.match(choices, /שתף קישור או QR/);
   assert.match(choices, /בחר מחברים/);
   assert.match(choices, /הוספה לפי שם/);
-  assert.match(app, /data-action="remove-event-from-list"/);
-  assert.match(app, /data-action="toggle-personal-event-archive"/);
-  assert.match(app, /האירוע יעבור לארכיון רק אצלך/);
-  assert.match(app, /class="event-status-danger-zone"/);
+  assert.match(menu, /data-action="remove-event-from-list"/);
+  assert.match(menu, /data-action="toggle-personal-event-archive"/);
+  assert.match(menu, /מסתיר מהרשימה שלך במכשיר הזה/);
+  assert.match(menu, /class="event-status-danger-zone"/);
   assert.match(app, /function openEventStatusMenu\(eventId, trigger\)/);
   assert.match(app, /if \(canCurrentParticipantManage\(selectedEvent\)\)/);
   assert.doesNotMatch(
-    sourceBetween(app, "function renderEventStatusMenu()", "function renderImportantActionDialog"),
+    sourceBetween(app, "function renderEventStatusMenu()", "function renderImportantActionDialog") + menu,
     /choose-event-status|renderOption\("open"|renderOption\("closed"/
   );
 });
@@ -1705,7 +1707,7 @@ test("home screen keeps creation primary followed by the event list", async () =
     "function renderRecentEventShortcut"
   );
 
-  assert.match(home, /class="screen font-hebrew product-home-screen\$\{sortedEvents\.length \? "" : " product-empty-home"\}"/);
+  assert.match(home, /class="screen font-hebrew product-home-screen home-list-review\$\{sortedEvents\.length \? "" : " product-empty-home"\}"/);
   assert.match(home, /data-product-screen="home"/);
   assert.equal([...home.matchAll(/class="home-events-heading"/g)].length, 2);
   assert.equal([...home.matchAll(/renderHomeCreateEventAction\(\)/g)].length, 2); // One call and its declaration.

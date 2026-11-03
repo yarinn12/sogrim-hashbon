@@ -415,7 +415,8 @@ function syncEmptyEventIllustration(eventSection, shouldShow) {
 
   if (!emptyState) return;
 
-  if (!shouldShow) {
+  // The approved first-event view owns its existing library icon and copy.
+  if (!shouldShow || emptyState.classList?.contains("home-first-event-empty")) {
     existing?.remove();
     return;
   }

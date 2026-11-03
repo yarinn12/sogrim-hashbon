@@ -1,3 +1,5 @@
+import {renderHomeEventOptionsView} from "./ui/homeEventOptionsPresentation.mjs";
+import {renderHomeEmptyStateView} from "./ui/homeEmptyStatePresentation.mjs";
 import {renderRestaurantBillView,renderRestaurantProgressView,renderRestaurantMethodView,renderRestaurantDishView} from "./ui/restaurantBillPresentation.mjs";
 import { renderExpenseParticipantAddRouteView, renderExpenseParticipantAddMenuView, renderExpenseParticipantFriendListView, renderExpenseParticipantOfflineFormView } from "./ui/expenseParticipantAddPresentation.mjs";
 import {participantAliasDraftUpdate,participantAliasDraftValue,participantAliasAcknowledgedDrafts,participantOfflineLabel,renderParticipantIdentityReviewView,renderParticipantIdentityPairView,renderParticipantAliasEditorView} from "./ui/eventParticipantIdentityPresentation.mjs";
@@ -2535,7 +2537,7 @@ function renderHome() {
     !canRenderConfirmedEmptyAccount(accountEventsHydrationStatus);
 
   return `
-    <section class="screen font-hebrew product-home-screen${sortedEvents.length ? "" : " product-empty-home"}" data-screen-kind="home" data-product-screen="home" data-profile-avatar-src="${escapeAttribute(homeAvatarSource)}">
+    <section class="screen font-hebrew product-home-screen home-list-review${sortedEvents.length ? "" : " product-empty-home"}" data-screen-kind="home" data-product-screen="home" data-profile-avatar-src="${escapeAttribute(homeAvatarSource)}">
       <header class="top">
         ${renderAppBackButton()}
         <div class="brand">
@@ -2557,7 +2559,7 @@ function renderHome() {
             <section class="section">
               <div class="section-title-row">
                 <div class="home-events-heading">
-                  <h2>אירועים</h2>
+                  <h2>${eventStatusFilter === "archive" ? "ארכיון" : "אירועים"}</h2>
                 </div>
                 ${renderEventStatusFilter(sortedEvents)}
               </div>
@@ -2567,7 +2569,7 @@ function renderHome() {
                     ? `${events.some(event => pinnedEventIds.has(event.id))
                       ? `<div class="event-notes-section-label"><span aria-hidden="true">${iconSvg("pin")}</span><strong>מוצמד</strong></div>`
                       : ""}${events.map(event => renderEventRow(event, pinnedEventIds.has(event.id))).join("")}`
-                    : `<div class="empty-state">${eventStatusFilter === "archive" ? "אין אירועים בארכיון" : "אין אירועים להצגה"}</div>`
+                    : renderHomeEmptyStateView({view:eventStatusFilter === "archive" ? "archive" : "events"})
                 }
               </div>
             </section>
@@ -2580,12 +2582,9 @@ function renderHome() {
                 <div class="home-events-heading">
                   <h2>אירועים</h2>
                 </div>
-                <p class="muted">פתח אירוע חדש. הזמנה שקיבלת נפתחת ישירות מהקישור.</p>
+
               </div>
-              <div class="empty-state home-empty-visual">
-                <img src="./sogrim-home-hero.png" alt="חברים סוגרים יחד חשבון במסעדה" width="1672" height="941" fetchpriority="high" decoding="async" />
-                <strong>אין אירועים שלך עדיין</strong>
-              </div>
+              ${renderHomeEmptyStateView({view:"first"})}
             </section>
             `
       }
@@ -5042,80 +5041,7 @@ function renderEventStatusMenu() {
   const isPersonallyArchived = isEventPersonallyArchived(event.id);
   const isPersonallyPinned = pinnedEventIdsForState(state).has(event.id);
 
-  return `
-    <section class="event-status-menu-backdrop" aria-label="אפשרויות לאירוע ${escapeAttribute(event.name)}">
-      <section
-        class="event-status-menu"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="event-status-menu-title"
-        aria-describedby="event-status-menu-description"
-        data-event-id="${escapeAttribute(event.id)}"
-        tabindex="-1"
-      >
-        <span class="event-status-menu-handle" aria-hidden="true"></span>
-        <div class="event-status-menu-copy">
-          <span class="event-status-menu-label">אפשרויות אירוע</span>
-          <h2 id="event-status-menu-title">${escapeHtml(event.name)}</h2>
-          <p id="event-status-menu-description">בחרו פעולה לאירוע.</p>
-        </div>
-        <div class="event-home-menu-actions" aria-label="פעולות לאירוע">
-          <button class="event-note-pin-toggle${isPersonallyPinned ? " is-active" : ""}"
-            type="button" data-action="toggle-personal-event-pin" data-event-id="${escapeAttribute(event.id)}"
-            aria-pressed="${isPersonallyPinned}" aria-describedby="event-pin-description">
-            ${iconSvg("pin")}
-            <span>${isPersonallyPinned ? "האירוע מוצמד" : "הצמד לראש הרשימה"}</span>
-          </button>
-          <small id="event-pin-description" class="muted">${isPersonallyPinned ? "לחיצה נוספת מבטלת את ההצמדה. " : ""}ברשימה שלך במכשיר הזה בלבד.</small>
-          ${eventStatusMenu.pinError ? `<p class="field-error" role="alert">${escapeHtml(eventStatusMenu.pinError)}</p>` : ""}
-          <button
-            class="event-share-option"
-            type="button"
-            data-action="share-event-from-list"
-            data-event-id="${escapeAttribute(event.id)}"
-            ${canShare ? "" : 'disabled aria-disabled="true"'}
-          >
-            ${renderCommandIcon("share")}
-            <span>
-              <strong>שיתוף</strong>
-              <small>${escapeHtml(shareDescription)}</small>
-            </span>
-            <span class="event-share-route-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-          </button>
-          <button
-            class="event-share-option"
-            type="button"
-            data-action="toggle-personal-event-archive"
-            data-event-id="${escapeAttribute(event.id)}"
-          >
-            ${renderCommandIcon("archive")}
-            <span>
-              <strong>${isPersonallyArchived ? "החזר לאירועים" : "העבר לארכיון"}</strong>
-              <small>${isPersonallyArchived ? "האירוע יחזור לרשימה שלך בלבד" : "האירוע יעבור לארכיון רק אצלך"}</small>
-            </span>
-            <span class="event-share-route-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-          </button>
-        </div>
-        <div class="event-status-danger-zone">
-          <button
-            class="event-removal-option"
-            type="button"
-            data-action="remove-event-from-list"
-            data-event-id="${escapeAttribute(event.id)}"
-            ${canRemove ? "" : "disabled"}
-          >
-            ${renderCommandIcon("danger")}
-            <span>
-              <strong>הסר אירוע</strong>
-              <small>${escapeHtml(removalDescription)}</small>
-            </span>
-            <span class="event-share-route-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-          </button>
-        </div>
-        <button class="secondary-button event-status-menu-cancel" type="button" data-action="cancel-event-status-menu">ביטול</button>
-      </section>
-    </section>
-  `;
+  return renderHomeEventOptionsView({event,canShare,canRemove,removesForEveryone,removalDescription,shareDescription,isPersonallyArchived,isPersonallyPinned,pinError:eventStatusMenu.pinError,commandIcons:{share:renderCommandIcon("share"),archive:renderCommandIcon("archive"),danger:renderCommandIcon("danger")}});
 }
 
 function renderImportantActionDialog() {
