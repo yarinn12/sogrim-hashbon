@@ -24226,6 +24226,14 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design
     max-height: var(--app-keyboard-viewport-height) !important;
   }
 
+  /* Match the approved short-height header when keyboard space is constrained. */
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header {grid-template-columns:44px minmax(0,1fr) 44px!important;padding:8px 16px!important;gap:8px!important;align-items:center!important;position:static!important;}
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header h2 {grid-column:2!important;grid-row:1!important;min-width:0!important;margin:0!important;font-size:1.5rem!important;line-height:1.3!important;white-space:normal!important;overflow-wrap:anywhere!important;direction:rtl!important;text-align:right!important;}
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header .eyebrow {display:none!important;}
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .modal-section-back-button {grid-column:1!important;grid-row:1!important;}
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-accessibility-button {grid-column:3!important;grid-row:1!important;}
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress {padding:8px 16px!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

@@ -544,7 +544,7 @@ function setupKeyboardViewport() {
 
   const markUserScroll = event => {
     const modal = event.target instanceof Element
-      ? event.target.closest(".expense-step-modal")
+      ? event.target.closest(".expense-step-modal") ?? event.target.closest(".restaurant-review-design")
       : null;
     if (!modal || !root.classList.contains("app-software-keyboard-open")) return;
     userScrollModal = modal;
@@ -565,8 +565,12 @@ function setupKeyboardViewport() {
 
   const revealFocusedExpenseField = (visibleHeight, offsetTop) => {
     const field = document.activeElement;
-    if (!field?.matches?.('[data-action="expense-total"], [data-action="expense-name"]')) return;
-    const modal = field.closest(".expense-step-modal");
+    const restaurant = field?.closest?.(".restaurant-review-design");
+    const restaurantField = restaurant && field.matches(
+      '[data-action="quick-item-amount"], [data-action="quick-item-name"], [data-action="event-guest-name"], [data-action="quick-item-new-guest-name"]'
+    );
+    if (!field?.matches?.('[data-action="expense-total"], [data-action="expense-name"]') && !restaurantField) return;
+    const modal = field.closest(".expense-step-modal") ?? restaurant;
     if (!modal) return;
     const header = modal.querySelector(".expense-modal-step-header");
     const headerStyle = header ? getComputedStyle(header) : null;
@@ -613,7 +617,9 @@ function setupKeyboardViewport() {
       unzoomed && visibleHeight > 0 && obscured > 150 && (editing || keyboardOpen)
     );
     root.classList.toggle("app-software-keyboard-open", keyboardOpen);
-    const modal = keyboardOpen ? active?.closest?.(".expense-step-modal") : null;
+    const modal = keyboardOpen
+      ? active?.closest?.(".expense-step-modal") ?? active?.closest?.(".restaurant-review-design")
+      : null;
     if (modal !== observedModal) {
       focusedLayoutObserver?.disconnect();
       observedModal = modal;
@@ -655,7 +661,8 @@ function setupKeyboardViewport() {
     }
   };
   const schedule = (reason = "layout") => {
-    const modal = document.activeElement?.closest?.(".expense-step-modal");
+    const modal = document.activeElement?.closest?.(".expense-step-modal") ??
+      document.activeElement?.closest?.(".restaurant-review-design");
     // Preserve the first layout snapshot while its frame is pending. A later
     // user scroll must not be hidden by another ResizeObserver notification.
     if (!frame || reason !== "layout") {
