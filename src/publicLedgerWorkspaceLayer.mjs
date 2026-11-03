@@ -22377,6 +22377,8 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress li {overflow:visible!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress .expense-progress-step-button {position:absolute!important;inset-inline:0!important;top:-19px!important;display:block!important;width:100%!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;margin:0!important;border:0!important;border-radius:6px!important;background:transparent!important;box-shadow:none!important;opacity:1!important;transform:none!important;cursor:pointer!important;touch-action:manipulation;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress .expense-progress-step-button:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;}
+/* Keep visually hidden step captions from extending the scrollable area. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress .expense-progress-step-button > span {overflow:hidden!important;}
 
 /* The bulk toggle reflects the same selected/empty state as participant marks. */
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact:not([aria-pressed="true"])>span[aria-hidden="true"] {border-color:#aab6b2!important;color:transparent!important;}

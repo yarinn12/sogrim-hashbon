@@ -41,6 +41,18 @@ test('natural wheel scrolling reaches the last action in a short enlarged viewpo
  expect(reached,JSON.stringify({positions,parents:await last.evaluate(e=>{const parents=[];for(let p=e;p&&parents.length<7;p=p.parentElement)parents.push({cls:p.className,rect:p.getBoundingClientRect(),scroll:p.scrollTop,height:p.scrollHeight,client:p.clientHeight});return parents})})).toBe(true);
  await pointClick(last);await expect(d).toHaveAttribute('data-expense-participant-add-view','offline');
 });
+test('scrolling to the real end never leaves an empty tail after the last action',async({page})=>{
+ for(const view of ['menu','friends','manual','empty']){
+  const d=await openExpenseAdd(page,view,{width:568,height:360,root:32});
+  await d.evaluate(e=>{e.scrollTop=e.scrollHeight;return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))});
+  const last=d.locator(view==='friends'?'.expense-participant-friend-option':view==='manual'?'[data-action="event-add-guest"]':'.expense-participant-choice').last();
+  const r=await last.boundingBox(),box=await d.boundingBox(),nav=await page.getByRole('navigation',{name:'ניווט ראשי',exact:true}).boundingBox();
+  expect(r.y,'last action must remain visible at the scroll end: '+view).toBeGreaterThanOrEqual(box.y-1);
+  expect(r.y+r.height).toBeLessThanOrEqual(nav.y+1);
+  expect(await last.evaluate(e=>{const r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return hit===e||e.contains(hit)})).toBe(true);
+  for(const button of await d.locator('.expense-progress-step-button').all())expect(await button.getAttribute('aria-label')).toMatch(/שלב \d מתוך 5/);
+ }
+});
 for(const view of ['friends','manual'])test('adding '+view+' selects the participant without saving an expense',async({page})=>{
  const d=await openExpenseAdd(page,view,{width:320,root:32}),before=expenseAddMoney(await expenseAddState(page));let id;
  if(view==='friends'){const button=d.locator('[data-action="expense-add-friend-participant"]').first();id=await button.getAttribute('data-participant-id');await pointClick(button)}

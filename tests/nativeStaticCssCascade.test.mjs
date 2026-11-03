@@ -1118,6 +1118,8 @@ test('native expense participant add keeps scalable names, placeholders and one 
  const {extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.EXPENSE_ADD_TEST_LEDGER?process.env.EXPENSE_ADD_TEST_LEDGER:file,...args));
  await extractNativeStaticCss([{path:ledger}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css'));
  const prefix='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"]';
+ const caption='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress .expense-progress-step-button > span';
+ const captionStart=css.indexOf(caption+' {');assert.ok(captionStart>=0);assert.ok(css.slice(captionStart,css.indexOf('}',captionStart)).includes('overflow:hidden!important'));
  const rules=selector=>[...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(m=>m[1].split(',').some(s=>s.trim()===prefix+selector)).map(m=>m[2]);
  const final=selector=>{const list=rules(selector);assert.ok(list.length,'Native rule '+selector);return list.at(-1)};
  for(const [selector,size]of [[' .expense-participant-friend-option strong','1rem'],[' input[name="expenseGuestName"]::placeholder','1rem'],[' #expense-participant-add-title','1.5rem']])assert.ok(final(selector).includes('font-size:'+size+'!important'));
