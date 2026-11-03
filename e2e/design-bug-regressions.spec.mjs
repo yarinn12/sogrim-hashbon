@@ -334,7 +334,14 @@ test("restaurant total updates and can be read while the visual keyboard is open
   const summary = page.locator('.quick-split-summary');
   await expect(summary).toContainText('120.00');
   await expect(amount).toBeFocused();
-  await summary.evaluate(element => element.scrollIntoView({ block: 'center' }));
+  // Model the user's touch-scroll intent as well as its resulting scroll.
+  // The keyboard controller intentionally keeps an edited field visible until
+  // a user scrolls; a bare DOM scroll does not carry that input boundary.
+  await summary.dispatchEvent('touchmove');
+  await summary.evaluate(element => {
+    element.scrollIntoView({ block: 'center' });
+    return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
   await expect.poll(() => summary.evaluate(element => {
     const rect = element.getBoundingClientRect();
     return rect.top >= -1 && rect.bottom <= window.visualViewport.height + 1;
