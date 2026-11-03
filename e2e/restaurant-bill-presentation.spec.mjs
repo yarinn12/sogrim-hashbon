@@ -47,7 +47,23 @@ test('copy and finish copies the real summary without saving',async({page})=>{
  const copied=await page.evaluate(()=>window.__friendInviteQa.copied);expect(copied).toHaveLength(1);expect(copied[0]).toContain('נועם לוי: ₪100.00');expect(copied[0]).toContain('סה״כ: ₪120.00');expect(restaurantMoney(await restaurantState(page))).toEqual(before);
 });
 test('payer survives back navigation and cancel leaves records alone',async({page})=>{
- const d=await openRestaurantBill(page,'payer',{width:320,root:32}),before=restaurantMoney(await restaurantState(page));await restaurantClick(page,d.locator('.restaurant-payer-field .app-choice-trigger'));await page.getByRole('option',{name:/דנה לוי/}).click();await restaurantClick(page,d.locator('[data-action="expense-step-back"]'));await expect(d).toHaveAttribute('data-quick-stage','review');await restaurantClick(page,d.locator('.expense-modal-actions [data-stage="payer"]'));await expect(d.locator('.restaurant-payer-field .app-choice-trigger')).toContainText('דנה לוי');await restaurantClick(page,d.locator('[data-action="expense-step-back"]'));await restaurantClick(page,d.locator('[data-action="finish-restaurant-calculation"]'));await expect(d).toHaveCount(0);expect(restaurantMoney(await restaurantState(page))).toEqual(before);
+ const d=await openRestaurantBill(page,'payer',{width:320,root:32}),before=restaurantMoney(await restaurantState(page));
+ const backToReview=async()=>{
+  await restaurantClick(page,d.locator('[data-action="expense-step-back"]'));
+  // Back paints the target before WebKit finishes popstate and opening focus.
+  // Scroll only after that navigation completes; keep all real hit/size checks.
+  await expect.poll(()=>page.evaluate(()=>history.state?.view?.expenseDraft?.quickStage)).toBe('review');
+  await expect(d).toHaveAttribute('data-quick-stage','review');
+  await expect(d).toBeFocused();
+ };
+ await restaurantClick(page,d.locator('.restaurant-payer-field .app-choice-trigger'));
+ await page.getByRole('option',{name:/דנה לוי/}).click();
+ await backToReview();
+ await restaurantClick(page,d.locator('.expense-modal-actions [data-stage="payer"]'));
+ await expect(d.locator('.restaurant-payer-field .app-choice-trigger')).toContainText('דנה לוי');
+ await backToReview();
+ await restaurantClick(page,d.locator('[data-action="finish-restaurant-calculation"]'));
+ await expect(d).toHaveCount(0);expect(restaurantMoney(await restaurantState(page))).toEqual(before);
 });
 test('save records the original two dishes and total after acknowledgement',async({page})=>{
  const d=await openRestaurantBill(page,'payer');await restaurantClick(page,d.locator('[data-action="save-quick-expenses"]'));await expect(d).toHaveCount(0);
