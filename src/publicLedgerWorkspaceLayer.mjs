@@ -24036,6 +24036,188 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expen
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"]{display:block!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-flow-fields,html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-add-route-body{display:block!important;overflow:visible!important;height:auto!important;max-height:none!important;min-height:0!important;flex:none!important;}
 
+/* Approved restaurant bill presentation. Reuse the existing brand and icons. */
+@media (min-height: 451px) {
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header {
+      grid-template-columns: 48px minmax(0, 1fr) 48px !important;
+      gap: 10px !important;
+      padding: 12px 16px 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header > div:first-child {
+      display: contents !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header .eyebrow {
+      display: block !important;
+      grid-column: 2 !important;
+      grid-row: 1 !important;
+      align-self: center !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      color: var(--ledger-muted) !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      font-size: .8125rem !important;
+      font-weight: 400 !important;
+      line-height: 1.4 !important;
+      white-space: normal !important;
+      direction: rtl !important;
+      text-align: center !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header h2 {
+      grid-column: 1 / -1 !important;
+      grid-row: 2 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      min-height: 64px !important;
+      margin: 0 !important;
+      padding: 16px 18px !important;
+      border: 0 !important;
+      border-radius: 24px !important;
+      color: #fff !important;
+      background: linear-gradient(136deg, #071f18 0%, #0b4a38 58%, #0f6b50 100%) !important;
+      box-shadow:
+        0 30px 58px -27px rgba(5, 54, 40, .82),
+        0 20px 38px -16px rgba(18, 184, 139, .48),
+        0 0 28px -13px rgba(61, 223, 185, .58),
+        inset 0 1px 0 rgba(255, 255, 255, .14) !important;
+      font-size: 1.5rem !important;
+      font-weight: 600 !important;
+      line-height: 1.15 !important;
+      direction: rtl !important;
+      text-align: right !important;
+      overflow-wrap: normal !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header .modal-section-back-button {
+      grid-column: 1 !important;
+      grid-row: 1 !important;
+      justify-self: start !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header .expense-accessibility-button {
+      grid-column: 3 !important;
+      grid-row: 1 !important;
+      justify-self: end !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-flow-progress {
+      padding: 17px 16px 0 !important;
+    }
+  }
+
+  
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design {
+ display:block!important; width:100%!important; max-width:640px!important;
+ height:calc(100dvh - var(--event-route-nav-safe-height,96px) - env(safe-area-inset-bottom))!important;
+ max-height:calc(100dvh - var(--event-route-nav-safe-height,96px) - env(safe-area-inset-bottom))!important;
+ min-height:0!important; min-width:0!important; overflow:hidden auto!important;
+ padding:0!important; margin:0 auto!important; border:0!important; border-radius:0!important;
+ background:#fff!important; box-shadow:none!important; scroll-padding-block:16px!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design *, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design *::before, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design *::after {box-sizing:border-box!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header {display:grid!important;direction:ltr!important;flex:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-header-actions {display:contents!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header > div:first-child {display:contents!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header .draft-restored-note {grid-column:1/-1!important;direction:rtl!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress {height:auto!important;min-height:44px!important;margin:0!important;display:flex!important;gap:8px!important;align-items:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress li {position:relative!important;flex:1!important;height:5px!important;min-width:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress button {position:absolute!important;inset:-19px 0!important;width:100%!important;min-width:0!important;min-height:44px!important;height:44px!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress button span {position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress button:focus-visible {outline:2px solid #195345!important;outline-offset:2px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-quick-fields {display:block!important;flex:none!important;overflow:visible!important;max-height:none!important;height:auto!important;min-height:0!important;min-width:0!important;padding:16px!important;margin:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-step-intro {font-size:1rem!important;line-height:1.6!important;color:#55675f!important;margin:0 0 20px!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-step {display:grid!important;gap:0!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-option {display:grid!important;grid-template-columns:28px minmax(0,1fr) 20px!important;gap:12px!important;align-items:center!important;min-height:96px!important;padding:18px 0!important;margin:0!important;border:0!important;border-bottom:1px solid #e1e7e3!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;text-align:right!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-option > span:nth-child(2) {min-width:0!important;display:grid!important;gap:6px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-option strong {font-size:1.125rem!important;line-height:1.4!important;font-weight:600!important;color:#172d24!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-option small {font-size:.9375rem!important;line-height:1.5!important;color:#637169!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-icon {width:28px!important;height:28px!important;min-width:28px!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;color:#195345!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-icon svg {width:24px!important;height:24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-arrow {display:flex!important;align-items:center!important;color:#718078!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-arrow svg {width:18px!important;height:18px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-quick-fields > [data-action="expense-mode"] {width:100%!important;min-height:48px!important;margin:18px 0 0!important;padding:8px 0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;color:#195345!important;font-size:.9375rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-list {display:block!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-row {display:block!important;position:relative!important;padding:0 0 20px!important;margin:0 0 20px!important;border:0!important;border-bottom:1px solid #dfe6e1!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-number {display:flex!important;align-items:center!important;min-height:44px!important;width:auto!important;height:auto!important;margin:0 0 10px!important;padding:0 0 0 52px!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;color:#172d24!important;font-size:1rem!important;font-weight:500!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .field {display:grid!important;gap:8px!important;margin:0 0 16px!important;min-width:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .field > span {font-size:.875rem!important;line-height:1.5!important;color:#53675e!important;font-weight:400!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design input:not([type="checkbox"]):not([type="date"]),html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design select {width:100%!important;min-width:0!important;min-height:56px!important;height:auto!important;font-size:1rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design input::placeholder {font-size:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-amount-field input, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-equal-amount input {font-size:1.25rem!important;text-align:right!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .app-choice-trigger {width:100%!important;min-width:0!important;min-height:56px!important;height:auto!important;padding-block:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .app-choice-trigger-copy, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .app-choice-trigger-label,html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .app-choice-trigger-copy * {font-size:1rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details {margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details > summary {min-height:44px!important;display:flex!important;align-items:center!important;font-size:.9375rem!important;line-height:1.5!important;font-weight:400!important;color:#52655b!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details[open] > summary {margin-bottom:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-remove {position:absolute!important;left:0!important;right:auto!important;top:0!important;min-width:44px!important;width:44px!important;min-height:44px!important;height:44px!important;padding:10px!important;border:0!important;border-radius:10px!important;background:transparent!important;box-shadow:none!important;color:#66756d!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-remove svg {width:22px!important;height:22px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-add-item {width:100%!important;min-height:48px!important;font-size:1rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box {margin:16px 0!important;padding:8px 0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary {min-height:44px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary strong {font-size:.9375rem!important;font-weight:500!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary small {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-guest-actions, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-inline-guest {display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:12px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-custom-share {grid-template-columns:minmax(0,1fr)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-custom-share label {min-width:0!important;min-height:52px!important;height:auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-person-option-copy > span:first-child {font-size:1rem!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary {display:block!important;margin:20px 0 0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:#172d24!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary > .section-title-row {display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:12px!important;align-items:center!important;margin:0!important;padding:16px 0!important;border:0!important;border-bottom:1px solid #dfe6e1!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary .eyebrow, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list-title {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary h3 {font-size:1rem!important;line-height:1.5!important;font-weight:400!important;color:#53675e!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary > .section-title-row > .amount, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary > .section-title-row > .amount .font-num {font-size:1.5rem!important;line-height:1.3!important;color:#195345!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list {display:block!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list > div {display:flex!important;justify-content:space-between!important;align-items:center!important;gap:16px!important;min-width:0!important;margin:0!important;padding:16px 0!important;border:0!important;border-bottom:1px solid #e8ece9!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list > div > span {font-size:1rem!important;line-height:1.5!important;min-width:0!important;overflow-wrap:anywhere!important;color:#172d24!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list > div > .amount, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list > div > .amount .font-num {font-size:1.125rem!important;line-height:1.4!important;font-weight:500!important;color:#172d24!important;white-space:nowrap!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-review-count {font-size:.875rem!important;line-height:1.5!important;font-weight:400!important;color:#637169!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;margin:12px 0 0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-review-step .quick-split-summary,html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-payer-step .quick-split-summary {margin-top:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-payer-step .quick-split-summary {margin-bottom:24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-payer-step .quick-split-list {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-date-field {display:block!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-actions {position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px!important;margin:0!important;padding:8px 16px 20px!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-actions > button {width:100%!important;min-width:0!important;min-height:52px!important;height:auto!important;padding:12px 16px!important;font-size:1rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-actions > .restaurant-dismiss-action {min-height:44px!important;background:transparent!important;border:0!important;color:#637169!important;font-size:.875rem!important;}
+@media(max-height:450px) {
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header {grid-template-columns:44px minmax(0,1fr) 44px!important;padding:8px 16px!important;gap:8px!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header h2 {grid-column:2!important;grid-row:1!important;font-size:1.5rem!important;line-height:1.3!important;white-space:normal!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header .eyebrow {display:none!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .modal-section-back-button {grid-column:1!important;grid-row:1!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-accessibility-button {grid-column:3!important;grid-row:1!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress {padding:8px 16px!important;}
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header .eyebrow {justify-self:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-items-step, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-list, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-equal-step, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-equal-participants {padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details > summary::after {content:'⌄';font-size:1rem!important;line-height:1!important;margin-inline-start:8px!important;}
+
+@media(max-width:360px) {
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary > .section-title-row {grid-template-columns:minmax(0,1fr)!important;gap:8px!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary > .section-title-row > .amount {justify-self:start!important;}
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress li {overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress button {transform:none!important;z-index:1!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details summary {display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;list-style:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary::marker, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details summary::marker {content:''!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design summary::-webkit-details-marker {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details > summary::after, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary::after {content:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-inline-chevron {display:flex!important;align-items:center!important;justify-content:center!important;flex:0 0 20px!important;width:20px!important;height:20px!important;color:#718078!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-inline-chevron svg {width:18px!important;height:18px!important;transform:rotate(-90deg)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design details[open]>summary .restaurant-inline-chevron {transform:rotate(180deg)!important;}
+@media(max-height:450px) {html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-option {padding-block:12px!important;}}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

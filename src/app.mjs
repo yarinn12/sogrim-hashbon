@@ -1,3 +1,4 @@
+import {renderRestaurantBillView,renderRestaurantProgressView,renderRestaurantMethodView,renderRestaurantDishView} from "./ui/restaurantBillPresentation.mjs";
 import { renderExpenseParticipantAddRouteView, renderExpenseParticipantAddMenuView, renderExpenseParticipantFriendListView, renderExpenseParticipantOfflineFormView } from "./ui/expenseParticipantAddPresentation.mjs";
 import {participantAliasDraftUpdate,participantAliasDraftValue,participantAliasAcknowledgedDrafts,participantOfflineLabel,renderParticipantIdentityReviewView,renderParticipantIdentityPairView,renderParticipantAliasEditorView} from "./ui/eventParticipantIdentityPresentation.mjs";
 import {renderParticipantSafetyPanelView,renderParticipantReportBodyView,renderParticipantBlockConfirmationView} from "./ui/participantSafetyPresentation.mjs";
@@ -8192,98 +8193,19 @@ function normalizeRestaurantQuickStage(stage) {
 function renderRestaurantQuickExpenseForm(event, participants, canEdit) {
   const stage = normalizeRestaurantQuickStage(expenseDraft.quickStage);
   expenseDraft.quickStage = stage;
-  const summary = summarizeQuickItemShares(
-    expenseDraft.quickItems,
-    participants.map((participant) => participant.id)
-  );
+  const summary = summarizeQuickItemShares(expenseDraft.quickItems, participants.map(participant => participant.id));
   const ready = summary.billTotal > 0 && !summary.error;
-  const copy = {
-    method: {
-      eyebrow: "חשבון מסעדה",
-      title: "איך תרצו לחלק?",
-      description: "בוחרים דרך אחת וממשיכים. אפשר לחזור ולשנות."
-    },
-    items: {
-      eyebrow: expenseDraft.restaurantEqualSplit ? "חלוקה שווה" : "חלוקה לפי מנות",
-      title: expenseDraft.restaurantEqualSplit
-        ? "מה הסכום ומי היה בארוחה?"
-        : "מחיר ומי חלק במנה",
-      description: expenseDraft.restaurantEqualSplit
-        ? "מקלידים סכום ומורידים רק את מי שלא השתתף."
-        : "מקלידים מחיר ובוחרים למי הוא שייך. התיאור נשאר אופציונלי."
-    },
-    review: {
-      eyebrow: "החלוקה מוכנה",
-      title: "זה הסכום של כל אחד",
-      description: "אפשר להעתיק ולסיים, או לשמור באירוע כדי לעקוב אחרי התשלום."
-    },
-    payer: {
-      eyebrow: "שמירה באירוע · לא חובה",
-      title: "מי שילם?",
-      description: "נשמור את המנות באירוע ונחשב את ההעברות."
-    }
-  }[stage];
-
-  return `
-    <section class="expense-modal-backdrop expense-route-backdrop" aria-label="חלון חשבון מסעדה">
-      <section
-        class="panel expense-modal quick-expense-modal restaurant-quick-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="quick-expense-title"
-        aria-describedby="quick-expense-description"
-        data-event-id="${event.id}"
-        data-currency="${eventCurrency(event)}"
-        data-quick-stage="${stage}"
-        tabindex="-1"
-      >
-        <div class="expense-modal-header expense-modal-step-header">
-          <div>
-            <p class="eyebrow">${copy.eyebrow}</p>
-            <h2 id="quick-expense-title">${copy.title}</h2>
-            <p class="muted" id="quick-expense-description">${copy.description}</p>
-            ${renderRestoredDraftNote()}
-          </div>
-          <div class="expense-modal-header-actions">
-            <button class="accessibility-entry-button accessibility-entry-header expense-accessibility-button" data-open-accessibility type="button" aria-label="פתיחת הגדרות נגישות" title="נגישות"><span aria-hidden="true">${iconSvg("accessibility")}</span></button>
-            ${
-              stage !== "method"
-                ? `<button class="icon-button modal-section-back-button" data-action="expense-step-back" aria-label="חזרה לשלב הקודם" title="חזרה לשלב הקודם"><span class="modal-control-icon" aria-hidden="true">${iconSvg("chevron-left")}</span></button>`
-                : `<button class="icon-button modal-section-back-button" data-action="cancel-expense" aria-label="חזרה לאירוע" title="חזרה לאירוע"><span class="modal-control-icon" aria-hidden="true">${iconSvg("chevron-left")}</span></button>`
-            }
-          </div>
-        </div>
-
-        ${renderRestaurantQuickProgress(stage)}
-        ${!canEdit ? `<p class="notice" role="status">${escapeHtml(editBlockedMessage(event))}</p>` : ""}
-        <fieldset class="expense-flow-fields restaurant-quick-fields" ${!canEdit ? "disabled" : ""}>
-          ${renderRestaurantQuickStage(event, participants, stage, summary)}
-          ${stage === "method" ? `<button class="secondary-button" type="button" data-action="expense-mode" data-mode="single">הוצאה אחת או תשלום במטבע זר</button>` : ""}
-          ${expenseDraft.error ? `<p class="error" id="expense-form-error" role="alert" tabindex="-1">${escapeHtml(expenseDraft.error)}</p>` : ""}
-        </fieldset>
-        ${renderRestaurantQuickActions(event, stage, ready, canEdit)}
-      </section>
-      ${renderEventRoutePrimaryNav()}
-    </section>
-  `;
+  return renderRestaurantBillView({
+    eventId: event.id, currency: eventCurrency(event), stage, equalSplit: expenseDraft.restaurantEqualSplit,
+    canEdit, blockedMessage: editBlockedMessage(event), restoredDraftHtml: renderRestoredDraftNote(),
+    progressHtml: renderRestaurantQuickProgress(stage),
+    bodyHtml: renderRestaurantQuickStage(event, participants, stage, summary),
+    actionsHtml: renderRestaurantQuickActions(event, stage, ready, canEdit), navHtml: renderEventRoutePrimaryNav(), error: expenseDraft.error
+  });
 }
 
 function renderRestaurantQuickProgress(stage) {
-  const currentIndex =
-    stage === "payer"
-      ? RESTAURANT_CORE_STAGES.length
-      : RESTAURANT_CORE_STAGES.indexOf(stage);
-  return `
-    <ol class="expense-flow-progress restaurant-quick-progress" aria-label="התקדמות בחלוקת חשבון מסעדה">
-      ${RESTAURANT_CORE_STAGES.map(
-        (item, index) => `
-          <li class="${index < currentIndex ? "is-complete" : index === currentIndex ? "is-current" : ""}" ${index === currentIndex ? 'aria-current="step"' : ""}>
-            <span>${index === 0 ? "בחירת חלוקה" : index === 1 ? "הזנת החשבון" : "תוצאה"}</span>
-          </li>
-        `
-      ).join("")}
-    </ol>
-  `;
+  return renderRestaurantProgressView({stage, stages: RESTAURANT_CORE_STAGES});
 }
 
 function renderRestaurantEqualSplitStep(event, participants) {
@@ -8351,26 +8273,7 @@ function renderRestaurantEqualSplitStep(event, participants) {
 
 function renderRestaurantQuickStage(event, participants, stage, summary) {
   if (stage === "method") {
-    return `
-      <section class="restaurant-method-step">
-        <button class="restaurant-method-option is-equal" type="button" data-action="restaurant-split-mode" data-mode="equal">
-          <span class="restaurant-method-icon">${renderCommandIcon("settle")}</span>
-          <span>
-            <strong>חלוקה שווה</strong>
-            <small>סכום אחד שמתחלק בין מי שהיה בארוחה</small>
-          </span>
-          <span class="restaurant-method-arrow" aria-hidden="true">${iconSvg("chevron-left")}</span>
-        </button>
-        <button class="restaurant-method-option is-items" type="button" data-action="restaurant-split-mode" data-mode="items">
-          <span class="restaurant-method-icon">${renderCommandIcon("expense")}</span>
-          <span>
-            <strong>לפי מנות</strong>
-            <small>כל אחד משלם רק על מה שאכל או שתה</small>
-          </span>
-          <span class="restaurant-method-arrow" aria-hidden="true">${iconSvg("chevron-left")}</span>
-        </button>
-      </section>
-    `;
+    return renderRestaurantMethodView({equalIconHtml: renderCommandIcon("settle"), itemsIconHtml: renderCommandIcon("expense")});
   }
 
   if (stage === "items") {
@@ -8392,6 +8295,7 @@ function renderRestaurantQuickStage(event, participants, stage, summary) {
             <strong>חסר סועד ברשימה?</strong>
             <small>אפשר להוסיף שם אופליין בלי לצאת מהחשבון</small>
           </span>
+          <span class="restaurant-inline-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
         </summary>
         <div class="inline-actions expense-guest-actions">
           <input class="guest-input" data-action="event-guest-name" name="restaurantGuestName" aria-label="שם אופליין לחשבון" placeholder="שם הסועד" autocomplete="off" enterkeyhint="done" />
@@ -8697,6 +8601,13 @@ function renderQuickItemRow(item, index, participants) {
   const isRestaurantItem =
     eventTypeConfig(getEvent(expenseDraft.eventId)?.eventType).id ===
     EVENT_TYPE_RESTAURANT;
+  if (isRestaurantItem) return renderRestaurantDishView({
+    item, index, currencyLabel: currencyCompactLabel(getEvent(expenseDraft.eventId)),
+    participants: participants.map(participant => ({...participant, connectionLabel: participantConnectionStatus(participant).label, connectionBadgeHtml: renderParticipantConnectionBadge(participant)})),
+    showInlineGuest: expenseDraft.quickInlineGuestIndex === index, inlineGuestName: expenseDraft.quickInlineGuestName,
+    eventId: expenseDraft.eventId, canRemove: expenseDraft.quickItems.length > 1,
+    guestOptionValue: ADD_QUICK_ITEM_GUEST_VALUE, allValue: QUICK_ITEM_ALL_PARTICIPANTS, customValue: QUICK_ITEM_CUSTOM_PARTICIPANTS
+  });
   return `
     <div class="quick-item-row">
       <span class="quick-item-number">${index + 1}</span>
@@ -8731,26 +8642,7 @@ function renderQuickItemRow(item, index, participants) {
           <option value="${QUICK_ITEM_CUSTOM_PARTICIPANTS}" ${item.sharedBy === QUICK_ITEM_CUSTOM_PARTICIPANTS ? "selected" : ""}>כמה אנשים…</option>
         </select>
       </label>
-      ${
-        isRestaurantItem
-          ? `
-            <details class="quick-item-description-details" ${String(item.name ?? "").trim() ? "open" : ""}>
-              <summary>${String(item.name ?? "").trim() ? "תיאור המנה" : "הוסף תיאור (לא חובה)"}</summary>
-              <label class="field quick-item-name-field">
-                <span>תיאור המנה</span>
-                <input
-                  data-action="quick-item-name"
-                  data-index="${index}"
-                  name="quickItemName-${index}"
-                  autocomplete="off"
-                  enterkeyhint="next"
-                  value="${escapeAttribute(item.name)}"
-                  placeholder="לדוגמה: פסטה או שתייה"
-                />
-              </label>
-            </details>
-          `
-          : `
+
             <label class="field quick-item-name-field">
               <span>תיאור <small>(לא חובה)</small></span>
               <input
@@ -8763,8 +8655,6 @@ function renderQuickItemRow(item, index, participants) {
                 placeholder="לדוגמה: פסטה או שתייה"
               />
             </label>
-          `
-      }
       ${
         expenseDraft.quickInlineGuestIndex === index
           ? `
