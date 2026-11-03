@@ -27,16 +27,22 @@ for(const [name,options]of[['normal',{}],['large',{width:320,root:32}],['medium'
   expect(expenseAddMoney(await expenseAddState(page))).toEqual(before);
  }
 });
-test('natural wheel scrolling reaches the last action in a short enlarged viewport',async({page})=>{
+test('supported user scrolling reaches the last action in a short enlarged viewport',async({page,browserName,isMobile})=>{
  const d=await openExpenseAdd(page,'menu',{width:568,height:360,root:32}),last=d.locator('[data-view="offline"]');
  const positions=[await d.evaluate(e=>({phase:'before hover',scroll:e.scrollTop,rect:e.getBoundingClientRect(),padding:getComputedStyle(e).padding}))];
  expect(positions[0].scroll,'the new view must not inherit the parent scroll offset').toBe(0);
- await expect(d).toHaveCSS('overflow-y','auto');await d.hover();positions.push(await d.evaluate(e=>({phase:'after hover',scroll:e.scrollTop})));let reached=false;
+ const keyboardScroll=isMobile&&browserName==='webkit';
+ await expect(d).toHaveCSS('overflow-y','auto');
+ // Playwright does not implement mouse.wheel in mobile WebKit. Keep that
+ // profile and exercise its supported external-keyboard scrolling instead.
+ if(keyboardScroll)await d.focus();else await d.hover();
+ positions.push(await d.evaluate(e=>({phase:'after input targeting',scroll:e.scrollTop})));let reached=false;
  for(let i=0;i<50;i++){
   const r=await last.boundingBox(),nav=await page.getByRole('navigation',{name:'ניווט ראשי',exact:true}).boundingBox();
   if(i<3)positions.push({iteration:i,last:r,nav});
   if(r.y>=0&&r.y+r.height<=nav.y+1){reached=true;break}
-  await page.mouse.wheel(0,40);await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  if(keyboardScroll)await page.keyboard.press('ArrowDown');else await page.mouse.wheel(0,40);
+  await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  }
  expect(reached,JSON.stringify({positions,parents:await last.evaluate(e=>{const parents=[];for(let p=e;p&&parents.length<7;p=p.parentElement)parents.push({cls:p.className,rect:p.getBoundingClientRect(),scroll:p.scrollTop,height:p.scrollHeight,client:p.clientHeight});return parents})})).toBe(true);
  await pointClick(last);await expect(d).toHaveAttribute('data-expense-participant-add-view','offline');
