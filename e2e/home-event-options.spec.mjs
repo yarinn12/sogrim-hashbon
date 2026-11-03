@@ -76,7 +76,7 @@ test("home event chevron opens the standard share/remove flow without a lifecycl
   await expect(participantAdd).toBeVisible();
   await expect(participantAdd).toContainText("שתף קישור או QR");
   await expect(participantAdd).toContainText("בחר מחברים");
-  await expect(participantAdd).toContainText("הוסף שם ידנית");
+  await expect(participantAdd).toContainText("הוספה לפי שם");
 });
 
 test("participant pictures on a home card open the event instead of participant statistics", async ({ page }) => {
