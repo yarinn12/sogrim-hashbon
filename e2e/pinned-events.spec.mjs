@@ -175,21 +175,21 @@ test("pinning respects Events and Archive and restores the pin when unarchived",
   await page.locator('[data-action="toggle-personal-event-archive"]').click();
   await expect(row(page, OLD)).toHaveCount(0);
   await expect(page.locator(".event-list .event-notes-section-label")).toHaveCount(0);
-  await page.locator('[data-action="event-status-filter"][data-filter="archive"]').click();
+  await page.locator('.event-primary-filter [data-action="event-status-filter"][data-filter="archive"]').click();
   await order(page, [OLD]);
   await expect(row(page, OLD).locator(".event-note-pin")).toBeVisible();
   await menu(page, OLD);
   await page.locator('[data-action="toggle-personal-event-archive"]').click();
   await expect(row(page, OLD)).toHaveCount(0);
-  await page.locator('[data-action="event-status-filter"][data-filter="events"]').click();
+  await page.locator('.event-primary-filter [data-action="event-status-filter"][data-filter="events"]').click();
   await order(page, [OLD, NEW, CLOSED]);
   // Lifecycle strip was removed in the approved home design. The surviving
   // filters must retain the restored personal pin over repeated navigation.
   await expect(row(page, OLD).locator(".event-note-pin")).toBeVisible();
-  await page.locator('[data-action="event-status-filter"][data-filter="archive"]').click();
+  await page.locator('.event-primary-filter [data-action="event-status-filter"][data-filter="archive"]').click();
   await expect(row(page, OLD)).toHaveCount(0);
   await expect(page.locator(".event-list .event-notes-section-label")).toHaveCount(0);
-  await page.locator('[data-action="event-status-filter"][data-filter="events"]').click();
+  await page.locator('.event-primary-filter [data-action="event-status-filter"][data-filter="events"]').click();
   await order(page, [OLD, NEW, CLOSED]);
   await expect(row(page, OLD).locator(".event-note-pin")).toBeVisible();
 });
