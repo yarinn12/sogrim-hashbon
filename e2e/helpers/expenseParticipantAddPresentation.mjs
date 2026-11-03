@@ -1,11 +1,12 @@
 import {expect} from '@playwright/test';
 import {installSyntheticSystemText} from './accessibilityPresentation.mjs';
 import {pointClick,paint} from './eventNotesBatchPresentation.mjs';
+import {openRenderedHome} from './typographyReadiness.mjs';
 
 export async function openExpenseAdd(page,view='menu',{width=393,height=852,root=16,system=false,query=''}={}){
  await page.setViewportSize({width,height});
  if(system)await page.addInitScript(installSyntheticSystemText);
- await page.goto('/?review=1&requests=accepted&reward=inactive'+(system?'':'&dynamic-type-preview='+root)+(view==='empty'?'&picker=none':'')+query);
+ await openRenderedHome(page,{path:'/?review=1&requests=accepted&reward=inactive'+(!system&&root>16?'&dynamic-type-preview='+root:'')+(view==='empty'?'&picker=none':'')+query,bootTimeoutMs:30000,readyTimeoutMs:8000});
  await pointClick(page.locator('.event-list [data-action="open-event"][data-event-id="friend-weekend"]'));
  await pointClick(page.locator('[data-action="show-expense-form"][data-event-id="friend-weekend"]'));
  let d=page.locator('.expense-step-modal');
