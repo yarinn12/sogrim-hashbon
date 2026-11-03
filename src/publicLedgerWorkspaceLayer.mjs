@@ -24218,6 +24218,14 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design
 html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design details[open]>summary .restaurant-inline-chevron {transform:rotate(180deg)!important;}
 @media(max-height:450px) {html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-option {padding-block:12px!important;}}
 
+  /* The software keyboard can shrink visualViewport without changing 100dvh.
+     Keep this one scrollport inside the same visible bounds as its backdrop. */
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app
+    .restaurant-review-design.restaurant-review-design.restaurant-review-design {
+    height: var(--app-keyboard-viewport-height) !important;
+    max-height: var(--app-keyboard-viewport-height) !important;
+  }
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

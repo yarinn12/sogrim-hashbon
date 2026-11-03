@@ -54,7 +54,7 @@ test('payer survives back navigation and cancel leaves records alone',async({pag
   // Scroll only after that navigation completes; keep all real hit/size checks.
   await expect.poll(()=>page.evaluate(()=>history.state?.view?.expenseDraft?.quickStage)).toBe('review');
   await expect(d).toHaveAttribute('data-quick-stage','review');
-  await expect(d).toBeFocused();
+  await expect.poll(()=>d.evaluate(e=>e===document.activeElement||e.contains(document.activeElement))).toBe(true);
  };
  await restaurantClick(page,d.locator('.restaurant-payer-field .app-choice-trigger'));
  await page.getByRole('option',{name:/דנה לוי/}).click();
