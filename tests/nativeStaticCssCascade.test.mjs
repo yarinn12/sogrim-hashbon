@@ -6,6 +6,8 @@ import { runInNewContext } from "node:vm";
 import { nativeStaticCssTemplatePattern } from "../scripts/nativeStaticCssTemplates.mjs";
 
 const root = process.cwd();
+
+
 const script = await readFile("scripts/build-native-web.mjs", "utf8");
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 // Exercise the actual builder functions without running its destructive output
@@ -1109,4 +1111,19 @@ test('native identity review retains scalable aliases and the narrow action stac
  assert.ok(rule(' .participant-alias-control').includes('flex-wrap:wrap!important'));
  assert.ok(rule(' .participant-alias-control input').includes('min-width:min(100%,10rem)!important'));
  assert.ok(rule(' .participant-alias-control button').includes('width:auto!important'));
+});
+
+test('native expense participant add keeps scalable names, placeholders and one scroll owner',async()=>{
+ const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs');
+ const {extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.EXPENSE_ADD_TEST_LEDGER?process.env.EXPENSE_ADD_TEST_LEDGER:file,...args));
+ await extractNativeStaticCss([{path:ledger}],'fixture-assets');const css=files.get(join('fixture-assets','native-layers.css'));
+ const prefix='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"]';
+ const rules=selector=>[...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(m=>m[1].split(',').some(s=>s.trim()===prefix+selector)).map(m=>m[2]);
+ const final=selector=>{const list=rules(selector);assert.ok(list.length,'Native rule '+selector);return list.at(-1)};
+ for(const [selector,size]of [[' .expense-participant-friend-option strong','1rem'],[' input[name="expenseGuestName"]::placeholder','1rem'],[' #expense-participant-add-title','1.5rem']])assert.ok(final(selector).includes('font-size:'+size+'!important'));
+ assert.ok(rules('').some(s=>s.includes('overflow-y:auto!important')));
+ assert.ok(final('').includes('display:block!important'));
+ for(const selector of [' .expense-flow-fields',' .expense-participant-add-route-body']){
+  assert.ok(final(selector).includes('overflow:visible!important'));assert.ok(final(selector).includes('height:auto!important'));
+ }
 });

@@ -24006,6 +24006,34 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identi
 html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-alias-control button{flex:0 1 auto!important;width:auto!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen button.identity-review-return{margin:24px 0 0!important;}
 
+/* Approved expense participant-add screens: scalable leaves and one scroll owner. */
+@media(max-height:480px){
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"]:not(.expense-participant-add-route){display:block!important;overflow-y:auto!important;scroll-padding-block:16px!important;overscroll-behavior-y:contain!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"]:not(.expense-participant-add-route) .expense-flow-fields,html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"]:not(.expense-participant-add-route) .expense-flow-body{display:block!important;overflow:visible!important;min-height:0!important;height:auto!important;max-height:none!important;flex:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"]:not(.expense-participant-add-route) .expense-modal-actions{position:static!important;}
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-context{font-size:.875rem!important;line-height:1.55!important;color:#5d6e68!important;margin:0 0 16px!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice strong{font-size:1rem!important;line-height:1.45!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice small{font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice:disabled{opacity:1!important;color:#5d6e68!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice:disabled strong,html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice:disabled small{color:#5d6e68!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice:disabled .expense-participant-choice-chevron{visibility:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-friend-option{min-height:64px!important;gap:12px!important;padding-block:16px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-friend-option > span:not(.avatar){min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-friend-option strong{font-size:1rem!important;line-height:1.45!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-friend-option .participant-username{font-size:.875rem!important;line-height:1.45!important;font-weight:400!important;color:#5d6e68!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-friend-option > b{font-size:.875rem!important;line-height:1.45!important;font-weight:500!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-offline-form .field{gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-offline-form .primary-button{margin-top:16px!important;min-height:52px!important;white-space:normal!important;line-height:1.45!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] #expense-participant-add-title{font-size:1.5rem!important;line-height:1.2!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] input[name="expenseGuestName"]::placeholder{font-size:1rem!important;line-height:inherit!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"]{overflow-y:auto!important;scroll-padding-block:16px!important;overscroll-behavior-y:contain!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"]{display:block!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-flow-fields,html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-add-route-body{display:block!important;overflow:visible!important;height:auto!important;max-height:none!important;min-height:0!important;flex:none!important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

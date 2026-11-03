@@ -254,9 +254,11 @@ test("expense dialog can add a missing guest without leaving the expense", async
 
   assert.ok(expenseForm);
   assert.match(expenseForm[0], /expense-participant-add-launch/);
-  assert.match(expenseForm[0], /expense-participant-add-route/);
-  assert.match(expenseForm[0], /data-action="event-guest-name"/);
-  assert.match(expenseForm[0], /data-action="event-add-guest"/);
+  const addPresentation = await readFile("src/ui/expenseParticipantAddPresentation.mjs", "utf8");
+  assert.match(expenseForm[0], /renderExpenseParticipantAddRouteView/);
+  assert.match(addPresentation, /expense-participant-add-route/);
+  assert.match(addPresentation, /data-action="event-guest-name"/);
+  assert.match(addPresentation, /data-action="event-add-guest"/);
   assert.match(app, /expenseDraft\?\.eventId === event\.id/);
   assert.match(app, /expenseDraft\.sharedByParticipantIds\.push\(guest\.id\)/);
 });
@@ -403,14 +405,16 @@ test("expense participant step keeps additions in a focused sub-screen", async (
   );
   assert.match(expenseForm, /renderExpenseParticipantAddRoute\(event, canEdit\)/);
   assert.match(app, /function renderExpenseParticipantAddRoute\(event, canEdit\)/);
-  assert.match(app, /data-expense-participant-add-view="\$\{view\}"/);
-  assert.match(app, /data-action="expense-participant-add-view"/);
-  assert.match(app, /data-action="expense-participant-add-back"/);
-  assert.match(app, /data-action="expense-add-friend-participant"/);
-  assert.match(app, /data-action="expense-share-invite"/);
-  assert.match(app, /מהחברים שלי/);
-  assert.match(app, /הזמן בקישור/);
-  assert.match(app, /שם אופליין/);
+  const participantAddView = await readFile("src/ui/expenseParticipantAddPresentation.mjs", "utf8");
+  assert.match(app, /return renderExpenseParticipantAddRouteView\(/);
+  assert.match(participantAddView, /data-expense-participant-add-view="\$\{view\}"/);
+  assert.match(participantAddView, /data-action="expense-participant-add-view"/);
+  assert.match(participantAddView, /data-action="expense-participant-add-back"/);
+  assert.match(participantAddView, /data-action="expense-add-friend-participant"/);
+  assert.match(participantAddView, /data-action="expense-share-invite"/);
+  assert.match(participantAddView, /מהחברים שלי/);
+  assert.match(participantAddView, /שלח קישור לאירוע/);
+  assert.match(participantAddView, /הוספה לפי שם/);
   assert.match(
     app,
     /async function addFriendParticipantToExpense[\s\S]*?activateParticipantForEvent[\s\S]*?sharedByParticipantIds\.push[\s\S]*?publishEventInvitation/
@@ -941,7 +945,7 @@ test("participant manager keeps the roster calm and moves adding into one focuse
   const participantRoute = await readFile("src/ui/eventParticipantRoute.mjs", "utf8");
   assert.match(participantRoute, /new-event-participant-route-action/);
   assert.match(participantRoute, /escapeHtml\(className\)/);
-  assert.match(app, /הזמן בקישור/);
+  assert.match(await readFile("src/ui/eventInvitationChoices.mjs", "utf8"), /title:"שתף קישור או QR"/);
   assert.match(app, /manualParticipantCopy\.title/);
   const manualEditor = await readFile("src/ui/eventManualParticipantEditor.mjs", "utf8");
   assert.match(manualEditor, /event-manual-explanation/);
@@ -1148,7 +1152,7 @@ test("participant manager offers a clear group link without leaving the event", 
   );
 
   assert.match(app, /event-participant-add-routes/);
-  assert.match(app, /הזמן בקישור/);
+  assert.match(await readFile("src/ui/eventInvitationChoices.mjs", "utf8"), /title:"שתף קישור או QR"/);
   assert.match(app, /data-action="open-event-share"/);
   assert.match(app, /set-event-participant-add-view/);
   const manualEditor = await readFile("src/ui/eventManualParticipantEditor.mjs", "utf8");

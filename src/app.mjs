@@ -1,3 +1,4 @@
+import { renderExpenseParticipantAddRouteView, renderExpenseParticipantAddMenuView, renderExpenseParticipantFriendListView, renderExpenseParticipantOfflineFormView } from "./ui/expenseParticipantAddPresentation.mjs";
 import {participantAliasDraftUpdate,participantAliasDraftValue,participantAliasAcknowledgedDrafts,participantOfflineLabel,renderParticipantIdentityReviewView,renderParticipantIdentityPairView,renderParticipantAliasEditorView} from "./ui/eventParticipantIdentityPresentation.mjs";
 import {renderParticipantSafetyPanelView,renderParticipantReportBodyView,renderParticipantBlockConfirmationView} from "./ui/participantSafetyPresentation.mjs";
 import {renderParticipantActionConfirmationView,renderParticipantRenameBodyView} from './ui/eventParticipantActionsPresentation.mjs';
@@ -1731,6 +1732,7 @@ function captureRenderInteractionState() {
     dialogSelector: dialog ? dialogRenderSelector(dialog) : "",
     dialogScrollTop: dialog?.scrollTop ?? 0,
     expenseStep: dialog?.dataset?.expenseStep ?? "",
+    expenseParticipantAddView: dialog?.dataset?.expenseParticipantAddView ?? "",
     openExpenseParticipantIds: [
       ...app.querySelectorAll(".expense-participants-details[open]")
     ]
@@ -1783,8 +1785,10 @@ function restoreRenderInteractionState(snapshot, expectedRenderGeneration) {
       ? app.querySelector(snapshot.dialogSelector)
       : null;
     if (snapshot.dialogSelector && !currentDialog) return;
-    // A new expense stage owns its initial scroll. Do not replay the previous stage's offset.
-    if (currentDialog && (!snapshot.expenseStep || currentDialog.dataset.expenseStep === snapshot.expenseStep)) {
+    // Each expense stage and participant-add view owns its initial scroll.
+    // A scrolled parent must not restore its offset into a newly opened view.
+    if (currentDialog && (!snapshot.expenseStep || currentDialog.dataset.expenseStep === snapshot.expenseStep) &&
+      (currentDialog.dataset?.expenseParticipantAddView ?? "") === (snapshot.expenseParticipantAddView ?? "")) {
       currentDialog.scrollTop = Math.max(0, snapshot.dialogScrollTop);
     }
 
@@ -7499,61 +7503,17 @@ function expenseAvailableFriendParticipants(event) {
 
 function renderExpenseParticipantAddRoute(event, canEdit) {
   const view = ["friends", "offline"].includes(expenseDraft.participantAddView)
-    ? expenseDraft.participantAddView
-    : "menu";
+    ? expenseDraft.participantAddView : "menu";
   const friends = expenseAvailableFriendParticipants(event);
-  const invitationMessage = String(expenseDraft?.participantInviteMessage ?? "").trim();
-  const title = view === "friends"
-    ? "בחר חבר"
-    : view === "offline"
-      ? "שם אופליין"
-      : "איך להוסיף?";
-  const description = view === "friends"
-    ? "בחירה תוסיף את החבר לאירוע ולהוצאה."
-    : view === "offline"
-      ? "למי שלא יתחבר לאפליקציה."
-      : "בוחרים דרך אחת וממשיכים.";
-
-  return `
-    <section class="expense-modal-backdrop expense-route-backdrop expense-step-route-backdrop" aria-label="הוספת משתתף להוצאה">
-      <section
-        class="panel expense-modal expense-step-modal expense-participant-add-route"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="expense-participant-add-title"
-        aria-describedby="expense-participant-add-description"
-        data-event-id="${escapeAttribute(event.id)}"
-        data-expense-step="participants"
-        data-expense-participant-add-view="${view}"
-        tabindex="-1"
-      >
-        <div class="expense-modal-header expense-modal-step-header">
-          <div>
-            <p class="eyebrow">הוספת הוצאה · משתתפים</p>
-            <h2 id="expense-participant-add-title">${escapeHtml(title)}</h2>
-            <p class="muted" id="expense-participant-add-description">${escapeHtml(description)}</p>
-          </div>
-          <div class="expense-modal-header-actions">
-            <button class="accessibility-entry-button accessibility-entry-header expense-accessibility-button" data-open-accessibility type="button" aria-label="פתיחת הגדרות נגישות" title="נגישות"><span aria-hidden="true">${iconSvg("accessibility")}</span></button>
-            <button class="icon-button modal-section-back-button" data-action="expense-participant-add-back" aria-label="חזרה" title="חזרה"><span class="modal-control-icon" aria-hidden="true">${iconSvg("chevron-left")}</span></button>
-          </div>
-        </div>
-        ${renderExpenseFlowProgress("participants")}
-        <p class="expense-loop-status" role="status" aria-live="polite" hidden></p>
-        <p class="expense-sync-status" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>
-        ${!canEdit ? `<p class="notice" role="status">${escapeHtml(editBlockedMessage(event))}</p>` : ""}
-        <fieldset class="expense-flow-fields" ${!canEdit ? "disabled" : ""}>
-          <div class="expense-flow-body expense-participant-add-route-body">
-            ${view === "menu" ? renderExpenseParticipantAddMenu(event, friends, canEdit) : ""}
-            ${view === "friends" ? renderExpenseParticipantFriendList(event, friends, canEdit) : ""}
-            ${view === "offline" ? renderExpenseParticipantOfflineForm(event, canEdit) : ""}
-            ${invitationMessage ? `<p class="expense-participant-invite-message" role="status">${escapeHtml(invitationMessage)}</p>` : ""}
-          </div>
-        </fieldset>
-      </section>
-      ${renderEventRoutePrimaryNav()}
-    </section>
-  `;
+  const bodyHtml = view === "friends" ? renderExpenseParticipantFriendList(event, friends, canEdit)
+    : view === "offline" ? renderExpenseParticipantOfflineForm(event, canEdit)
+    : renderExpenseParticipantAddMenu(event, friends, canEdit);
+  return renderExpenseParticipantAddRouteView({
+    eventId: event.id, view, canEdit, blockedMessage: !canEdit ? editBlockedMessage(event) : "",
+    invitationMessage: String(expenseDraft?.participantInviteMessage ?? "").trim(),
+    progressHtml: renderExpenseFlowProgress("participants"), bodyHtml,
+    navHtml: renderEventRoutePrimaryNav()
+  });
 }
 
 function expenseParticipantFriendChoiceDescription(friends) {
@@ -7571,87 +7531,20 @@ function expenseParticipantFriendChoiceDescription(friends) {
 }
 
 function renderExpenseParticipantAddMenu(event, friends, canEdit) {
-  return `
-    <div class="expense-participant-add-menu" aria-label="דרכים להוספת משתתף">
-      <button
-        class="expense-participant-choice"
-        type="button"
-        data-action="expense-participant-add-view"
-        data-view="friends"
-        ${friends.length && canEdit ? "" : "disabled"}
-      >
-        <span class="expense-participant-choice-icon" aria-hidden="true">${iconSvg("users")}</span>
-        <span><strong>מהחברים שלי</strong><small>${escapeHtml(expenseParticipantFriendChoiceDescription(friends))}</small></span>
-        <span class="expense-participant-choice-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-      </button>
-      <button
-        class="expense-participant-choice"
-        type="button"
-        data-action="expense-share-invite"
-        data-event-id="${escapeAttribute(event.id)}"
-        ${canEdit ? "" : "disabled"}
-      >
-        <span class="expense-participant-choice-icon" aria-hidden="true">${iconSvg("share")}</span>
-        <span><strong>הזמן בקישור</strong><small>שלח קישור הצטרפות לאירוע</small></span>
-        <span class="expense-participant-choice-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-      </button>
-      <button
-        class="expense-participant-choice"
-        type="button"
-        data-action="expense-participant-add-view"
-        data-view="offline"
-        ${canEdit ? "" : "disabled"}
-      >
-        <span class="expense-participant-choice-icon" aria-hidden="true">${iconSvg("edit")}</span>
-        <span><strong>שם אופליין</strong><small>למי שלא יתחבר לאפליקציה</small></span>
-        <span class="expense-participant-choice-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-      </button>
-    </div>
-  `;
+  return renderExpenseParticipantAddMenuView({ eventId: event.id, hasFriends: friends.length > 0,
+    friendDescription: expenseParticipantFriendChoiceDescription(friends), canEdit });
 }
 
 function renderExpenseParticipantFriendList(event, friends, canEdit) {
-  if (!friends.length) {
-    return `<p class="expense-participant-add-empty">${escapeHtml(expenseParticipantFriendChoiceDescription(friends))}</p>`;
-  }
-
-  return `
-    <div class="expense-participant-friend-list">
-      ${friends
-        .map(
-          (participant) => `
-            <button
-              class="expense-participant-friend-option"
-              type="button"
-              data-action="expense-add-friend-participant"
-              data-event-id="${escapeAttribute(event.id)}"
-              data-participant-id="${escapeAttribute(participant.id)}"
-              ${canEdit ? "" : "disabled"}
-            >
-              ${renderAvatar(participant.id, event)}
-              <span>
-                <strong>${escapeHtml(participantName(participant.id, event))}</strong>
-                ${renderParticipantUsername(participant)}
-              </span>
-              <b>הוסף</b>
-            </button>
-          `
-        )
-        .join("")}
-    </div>
-  `;
+  return renderExpenseParticipantFriendListView({ eventId: event.id, canEdit,
+    friendDescription: expenseParticipantFriendChoiceDescription(friends),
+    friends: friends.map(participant => ({ id: participant.id,
+      name: participantName(participant.id, event), avatarHtml: renderAvatar(participant.id, event),
+      usernameHtml: renderParticipantUsername(participant) })) });
 }
 
 function renderExpenseParticipantOfflineForm(event, canEdit) {
-  return `
-    <div class="expense-participant-offline-form">
-      <label class="field">
-        <span>שם פרטי ומשפחה</span>
-        <input class="guest-input" data-action="event-guest-name" name="expenseGuestName" autocomplete="off" enterkeyhint="done" placeholder="שם פרטי ושם משפחה" ${canEdit ? "" : "disabled"} />
-      </label>
-      <button class="primary-button" data-action="event-add-guest" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>הוסף להוצאה</button>
-    </div>
-  `;
+  return renderExpenseParticipantOfflineFormView({ eventId: event.id, canEdit });
 }
 
 function applyExpenseParticipantPreset(mode, trigger) {
