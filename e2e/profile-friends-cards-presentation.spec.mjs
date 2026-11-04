@@ -6,9 +6,18 @@ import {presentationReach as reach,presentationClick as click} from './helpers/p
 
 const logs=new WeakMap();
 test.use({serviceWorkers:'block'});
-test.beforeEach(async({page})=>{
+test.beforeEach(async({page,baseURL})=>{
  const errors=[],external=[];logs.set(page,{errors,external});page.on('pageerror',e=>errors.push(e.message));
- await page.route('**/*',q=>new URL(q.request().url()).hostname==='127.0.0.1'?q.continue():(external.push(q.request().url()),q.abort()));
+ const localOrigin=new URL(baseURL).origin;
+ // WebKit routes locally-created Blob image loads as well as HTTP. They carry
+ // the QA page origin and make no external request. Inline image bytes are local too.
+ await page.route('**/*',q=>{
+  const url=new URL(q.request().url());
+  const ownOrigin=url.origin===localOrigin&&['http:','blob:'].includes(url.protocol);
+  const inlineImage=url.protocol==='data:'&&q.request().resourceType()==='image'&&url.href.startsWith('data:image/');
+  if(ownOrigin||inlineImage)return q.continue();
+  external.push(q.request().url());return q.abort();
+ });
  if(process.env.PROFILE_FRIENDS_CARDS_BASELINE)for(const[url,file]of [['**/src/app.mjs*','baseline-app.mjs'],['**/src/publicLedgerWorkspaceLayer.mjs*','baseline-ledger.mjs'],['**/src/publicBrandLayer.mjs*','baseline-brand.mjs']])await page.route(url,q=>q.fulfill({contentType:'text/javascript',body:readFileSync(process.env.PROFILE_FRIENDS_CARDS_BASELINE+'/'+file,'utf8')}));
  await page.addInitScript({content:'localStorage.clear();\n'+profileFriendsCardsBootstrap});
 });

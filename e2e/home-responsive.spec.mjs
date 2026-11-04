@@ -119,8 +119,8 @@ test("home centers new-event across the hero edge in narrow and tablet layouts",
       const hero = screen?.querySelector(":scope > .top");
       const copy = hero?.querySelector(".brand");
       const action = screen?.querySelector('[data-action="new-event"]');
-      const promo = screen?.querySelector(".home-empty-visual");
-      const promoImage = promo?.querySelector("img");
+      const promo = screen?.querySelector(".home-first-event-empty");
+      const emptyIcon = promo?.querySelector(".home-list-empty-icon svg");
       const brandImage = screen?.querySelector(".product-brand-image");
       const rect = (element) => {
         const bounds = element?.getBoundingClientRect();
@@ -147,7 +147,8 @@ test("home centers new-event across the hero edge in narrow and tablet layouts",
         wrapperPosition: action ? getComputedStyle(action.parentElement).position : "",
         actionContentFits: action ? action.scrollWidth <= action.clientWidth : false,
         promo: rect(promo),
-        promoImageFit: promoImage ? getComputedStyle(promoImage).objectFit : "",
+        emptyIcon: rect(emptyIcon),
+        emptyImageCount: promo?.querySelectorAll("img").length ?? 0,
         brandImageFit: brandImage ? getComputedStyle(brandImage).objectFit : "",
         brandImageTransform: brandImage ? getComputedStyle(brandImage).transform : ""
       };
@@ -167,8 +168,18 @@ test("home centers new-event across the hero edge in narrow and tablet layouts",
       expect(layout.action.width).toBeGreaterThanOrEqual(44);
       expect(layout.action.width).toBeLessThanOrEqual(190);
     }
-    expect(layout.promo.width / layout.promo.height).toBeCloseTo(1672 / 941, 2);
-    expect(layout.promoImageFit).toBe("contain");
+    // The approved first-empty view uses a real calendar icon and one explanation.
+    // Its former decorative landscape image was removed in the prior home batch.
+    expect(layout.promo).not.toBeNull();
+    expect(layout.promo.left).toBeGreaterThanOrEqual(layout.screen.left);
+    expect(layout.promo.right).toBeLessThanOrEqual(layout.screen.right);
+    expect(layout.emptyImageCount).toBe(0);
+    expect(layout.emptyIcon).not.toBeNull();
+    expect(layout.emptyIcon.width).toBeGreaterThan(0);
+    expect(layout.emptyIcon.height).toBeGreaterThan(0);
+    expect(layout.emptyIcon.width).toBeCloseTo(layout.emptyIcon.height, 1);
+    expect(layout.emptyIcon.left).toBeGreaterThanOrEqual(layout.promo.left);
+    expect(layout.emptyIcon.right).toBeLessThanOrEqual(layout.promo.right);
     expect(layout.brandImageFit).toBe("contain");
     expect(layout.brandImageTransform).toBe("none");
 
