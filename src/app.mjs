@@ -143,8 +143,10 @@ import { validateExpense } from "./domain/validation.mjs";
 import {
   buildEventInviteSnapshot,
   buildEventInviteUrl,
-  parseInviteEventId
+  parseInviteEventId,
+  parseInviteToken
 } from "./domain/inviteLinks.mjs";
+import { pendingInviteUrl } from "./data/pendingInvite.mjs";
 import {
   archiveGroup,
   canLeaveEvent,
@@ -22308,7 +22310,11 @@ function openInvitedEventFromUrl() {
     screen = { name: "event", eventId: invitedEventId };
     notice = "פתחת אירוע מקישור הזמנה.";
   } else {
-    notice = "קישור ההזמנה לא נמצא.";
+    const pendingInvite = pendingInviteUrl(window.location.href);
+    notice = parseInviteEventId(pendingInvite) === invitedEventId &&
+      parseInviteToken(pendingInvite)
+      ? ""
+      : "קישור ההזמנה לא נמצא.";
   }
 
   if (!openedFromInvite && getEvent(invitedEventId)) notice = "";
@@ -23189,6 +23195,7 @@ function hydrateAppAfterAccountReady() {
   if (appBootHydrated) {
     refreshFriendNetwork().catch(() => {});
     refreshNotificationInbox({ force: true }).catch(() => {});
+    document.dispatchEvent(new Event("settle-friends:app-content-ready"));
     return Promise.resolve();
   }
   if (appBootHydrationPromise) return appBootHydrationPromise;
@@ -23263,6 +23270,7 @@ async function hydrateAppForActiveAccount() {
   };
   appBootHydrated = true;
   render();
+  document.dispatchEvent(new Event("settle-friends:app-content-ready"));
   // A cached account snapshot can still contain membership credentials that the
   // cloud refresh is about to replace. Never write that stale snapshot during
   // startup: wait for the refresh, then publish the profile against the current

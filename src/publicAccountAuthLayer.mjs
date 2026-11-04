@@ -109,6 +109,8 @@ const ACCOUNT_DELETED_MARKER = "settle-friends-account-deleted";
 const ACCOUNT_NOTICE_MARKER = "settle-friends-account-notice";
 const SKIP_NEXT_SPLASH_MARKER = "settle-friends-skip-next-splash";
 const APP_NOTICE_EVENT = "settle-friends:notice";
+const APP_CONTENT_READY_EVENT = "settle-friends:app-content-ready";
+const ACCOUNT_NOTICE_REQUEST_EVENT = "settle-friends:account-notice-request";
 const ACCOUNT_SETUP_TIMEOUT_MS = 12_000;
 const STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS = 2_500;
 const ACCOUNT_DELETE_HISTORY_KEY = "settleFriendsAccountDelete";
@@ -148,6 +150,8 @@ let accountConfigRetryPromise = null;
 // than taking the cold-start cache shortcut and revealing the previous screen.
 let accountSignInPending = false;
 let accountSyncReloadScheduled = false;
+let appContentReady = false;
+let pendingAccountNoticeDeliveryTimer = null;
 let nativeGoogleLoginPromise = null;
 let webGoogleScriptPromise = null;
 let webGoogleInitializationPromise = null;
@@ -177,6 +181,14 @@ setupAccountAuth()
   .finally(() => window.clearTimeout(accountSetupTimeoutId));
 document.addEventListener("click", handleAccountClick);
 document.addEventListener("settle-friends:screen-rendered", enhanceAccountFeedbackPage);
+document.addEventListener(APP_CONTENT_READY_EVENT, () => {
+  appContentReady = true;
+  deliverPendingAccountNotice();
+});
+document.addEventListener(ACCOUNT_NOTICE_REQUEST_EVENT, (event) => {
+  rememberAccountNotice(event.detail?.message);
+  if (appContentReady) deliverPendingAccountNotice();
+});
 document.addEventListener("change", handleAccountChange);
 document.addEventListener("keydown", handleAccountGateKeydown);
 document.addEventListener("keydown", handleAccountDeletionKeydown);
@@ -743,7 +755,6 @@ async function connectAccountToApp(
   document.querySelector("#app")?.removeAttribute("inert");
   markAccountAuthReady();
   publishAccountSessionSync(accountSession);
-  deliverPendingAccountNotice();
   saveRequest.catch(() => {});
 }
 
@@ -769,12 +780,26 @@ function rememberAccountNotice(message) {
 }
 
 function deliverPendingAccountNotice() {
+  if (!appContentReady || accountSyncReloadScheduled ||
+      document.documentElement.classList.contains("account-auth-locked") ||
+      pendingAccountNoticeDeliveryTimer !== null) return;
   const message = String(sessionValue(ACCOUNT_NOTICE_MARKER) ?? "").trim();
   if (!message) return;
-  removeSessionValue(ACCOUNT_NOTICE_MARKER);
-  window.setTimeout(() => {
+  const ownerUserId = accountSession?.user?.id ?? "";
+  pendingAccountNoticeDeliveryTimer = window.setTimeout(() => {
+    pendingAccountNoticeDeliveryTimer = null;
+    if (accountSession?.user?.id !== ownerUserId ||
+        loadStoredAccountSession()?.user?.id !== ownerUserId) {
+      removeSessionValue(ACCOUNT_NOTICE_MARKER);
+      return;
+    }
+    if (accountSyncReloadScheduled ||
+        document.documentElement.classList.contains("account-auth-locked")) return;
+    const latestMessage = String(sessionValue(ACCOUNT_NOTICE_MARKER) ?? "").trim();
+    if (!latestMessage) return;
+    removeSessionValue(ACCOUNT_NOTICE_MARKER);
     document.dispatchEvent(
-      new CustomEvent(APP_NOTICE_EVENT, { detail: { message } })
+      new CustomEvent(APP_NOTICE_EVENT, { detail: { message: latestMessage } })
     );
   }, 0);
 }
@@ -940,6 +965,12 @@ async function reconcileResumedAccountSession(resumedSession) {
 
 function lockForAccountSessionChange() {
   if (accountSyncReloadScheduled) return;
+  appContentReady = false;
+  if (pendingAccountNoticeDeliveryTimer !== null) {
+    window.clearTimeout(pendingAccountNoticeDeliveryTimer);
+    pendingAccountNoticeDeliveryTimer = null;
+  }
+  removeSessionValue(ACCOUNT_NOTICE_MARKER);
   clearPendingInviteUrl();
   clearAccountReturnUrl();
   clearAccountOAuthFlows();

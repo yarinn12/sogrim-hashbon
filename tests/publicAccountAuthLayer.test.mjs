@@ -169,6 +169,7 @@ test("signup requires a username and keeps it through validation and account com
 test("account gate offers email registration, Google, Apple, sign out and deletion", async () => {
   const accountView = await readFile("src/ui/profileAccountPresentation.mjs", "utf8");
   const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const app = await readFile("src/app.mjs", "utf8");
   const signupView = renderAccountEntryView({mode: "signup", emailDeliveryReady: true, showVerificationResend: true});
   const completionView = renderAccountCompletionView({
     displayName: "נועם לוי", hasSavedFullName: true, hasInvite: true,
@@ -379,8 +380,11 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   );
   assert.match(
     layer,
-    /markAccountAuthReady\(\);\s*publishAccountSessionSync\(accountSession\);\s*deliverPendingAccountNotice\(\);\s*saveRequest\.catch\(\(\) => \{\}\)/
+    /markAccountAuthReady\(\);\s*publishAccountSessionSync\(accountSession\);\s*saveRequest\.catch\(\(\) => \{\}\)/
   );
+  // The account notice is consumed only after the account's first app paint.
+  assert.match(layer, /addEventListener\(APP_CONTENT_READY_EVENT, \(\) => \{\s*appContentReady = true;\s*deliverPendingAccountNotice\(\)/);
+  assert.match(app, /appBootHydrated = true;\s*render\(\);\s*document\.dispatchEvent\(new Event\("settle-friends:app-content-ready"\)\)/);
   assert.match(layer, /renderAccountRecoveryGate/);
   assert.match(layer, /data-account-retry/);
   assert.match(layer, /ACCOUNT_CONFIG_RETRY_MS = 5_000/);
