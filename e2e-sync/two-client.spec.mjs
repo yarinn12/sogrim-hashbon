@@ -131,8 +131,14 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     for(const hold of expenseReceiptHolds.values()) hold.release();
     for(const hold of transferReceiptHolds.values()) hold.release();
     for(const hold of inviteHolds.values()) hold.release();
-    // Playwright Test already traces these contexts through the shared config.
-    await Promise.all(browsers.map(browser => browser.close()));
+    // These contexts were created explicitly. Dispose their pages and tracing
+    // before terminating WebKit/Chromium; closing only the browser can leave
+    // WebKit shutdown waiting after every application assertion has passed.
+    // https://playwright.dev/docs/api/class-browser#browser-close
+    const cleanup = await Promise.allSettled(contexts.map(context => context.close()));
+    cleanup.push(...await Promise.allSettled(browsers.map(browser => browser.close())));
+    const failures = cleanup.filter(result => result.status === 'rejected').map(result => result.reason);
+    if (failures.length) throw new AggregateError(failures, 'Two-client browser cleanup failed');
     if(networkDiagnostics.length) console.log(JSON.stringify({kind:'expected-fixture-network-diagnostics',diagnostics:networkDiagnostics}));
   };
   try {
@@ -1099,7 +1105,9 @@ test('offline payment confirmation survives peer reopening and preserves the sam
     await f.offline(1,true); await paymentAction(b,'mark-paid').click();
     await expect(paymentAction(b,'mark-pending')).toHaveCount(1);
     await a.locator('[data-action="open-event-notes"]').click();
-    await expect(a.getByRole('button',{name:'האירוע סגור',exact:true})).toBeDisabled();
+    const closedNotes = a.locator('[data-screen-kind="event-notes"]');
+    await expect(closedNotes.locator('.event-notes-heading-copy')).toContainText('האירוע סגור. הפתקים זמינים לקריאה.');
+    await expect(closedNotes.locator('[data-action="new-event-note"]')).toBeDisabled();
     await a.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
     await a.locator('[data-action="reopen-event"]').first().click();
     await a.locator('[data-action="confirm-important-action"]').click();
