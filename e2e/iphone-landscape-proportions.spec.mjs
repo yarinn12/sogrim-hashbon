@@ -179,6 +179,25 @@ for (const viewport of [{ width: 844, height: 390 }, { width: 667, height: 375 }
     expect(geometry.receivesTap).toBe(true);
     await total.fill('120');
     await expect(total).toHaveValue('120');
+    const glyph = await total.evaluate(node => {
+      const style = getComputedStyle(node), bounds = node.getBoundingClientRect();
+      const context = document.createElement('canvas').getContext('2d');
+      context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const ink = context.measureText(node.value);
+      return { fontSize: parseFloat(style.fontSize), value: node.value,
+        contentHeight: bounds.height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom) - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth),
+        inkHeight: ink.actualBoundingBoxAscent + ink.actualBoundingBoxDescent,
+        contentWidth: bounds.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth),
+        inkWidth: ink.width };
+    });
+    await testInfo.attach(`amount-${viewport.width}-glyph-fit`, { body: JSON.stringify(glyph), contentType: 'application/json' });
+    expect(glyph.inkHeight, 'the complete amount digits fit vertically inside the input').toBeLessThanOrEqual(glyph.contentHeight + 1);
+    expect(glyph.inkWidth, 'the complete amount digits fit horizontally inside the input').toBeLessThanOrEqual(glyph.contentWidth + 1);
+    if (requestedTextSize(testInfo)) expect(glyph.fontSize, 'the amount keeps its requested numeral size').toBeCloseTo(2.375 * requestedTextSize(testInfo), 2);
+    if (viewport.width === 667 && requestedTextSize(testInfo) > 32) {
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: testInfo.outputPath('amount-filled-667-ax.png') });
+    }
   });
 }
 

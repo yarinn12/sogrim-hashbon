@@ -618,6 +618,22 @@ function injectDynamicTypeStyles(document) {
         width: 100% !important;
       }
 
+      /* The AX amount uses an 89px numeral at this scale. Its inherited
+         3.25rem minimum exceeds the short modal body; the 400px card also
+         leaves too little width to show all digits at that requested size. */
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field {
+        width: min(100%, 500px) !important;
+        padding-block: 2px !important;
+      }
+
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field input[data-action="expense-total"] {
+        height: max(72px, 2.75rem) !important;
+        min-height: max(72px, 2.75rem) !important;
+        line-height: 1 !important;
+      }
+
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
         body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-actions {
         gap: 0 !important;
@@ -1356,6 +1372,15 @@ function injectDynamicTypeStyles(document) {
     html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
       body #app .product-home-screen .home-quick-actions {
       --home-create-overlap: var(--dynamic-home-action-half, calc(0.6rem + 11px));
+    }
+
+    @media (min-width: 600px) and (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
+      /* Keep a real pixel between the enlarged hero copy and its edge action
+         after WebKit rounds the measured half-height to device pixels. */
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .product-home-screen .home-quick-actions {
+        --home-create-overlap: calc(var(--dynamic-home-action-half, calc(0.6rem + 11px)) - 1px);
+      }
     }
 
     html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
