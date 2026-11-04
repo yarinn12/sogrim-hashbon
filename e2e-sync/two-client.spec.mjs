@@ -450,7 +450,12 @@ for (const leavingClient of [0, 1]) {
         await expect(member.locator('[data-action="delete-event"]')).toBeDisabled();
         await member.locator('[data-action="leave-event"]').click();
         const confirmation = member.locator('.important-action-dialog');
-        await expect(confirmation).toContainText('יישארו בהיסטוריה');
+        await expect(confirmation).toHaveAttribute('data-important-action-kind', 'leave-event');
+        await expect(confirmation.locator('#event-leave-name')).toHaveText('בדיקה מבודדת בשני מכשירים');
+        await expect(confirmation.locator('#important-action-description')).toHaveText(
+          'הגישה שלך לאירוע תוסר. השם שלך וההוצאות וההעברות הרשומות עליו יישארו באירוע. לחזרה תידרש הזמנה חדשה.'
+        );
+        await expect(confirmation.locator('[data-action="confirm-important-action"]')).toHaveText('עזוב את האירוע');
         await confirmation.locator('[data-action="cancel-important-action"]').click();
         expect(active(f.canonical.state.events[0])).toBe(true);
         if (offline) f.cloudUnavailable(leavingClient, true);
