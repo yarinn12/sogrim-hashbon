@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {runInNewContext} from 'node:vm';
 import {stackedAndroidStylesheetFault,applyStylesheetFontFaultExpression,restoreStylesheetFontFaultExpression} from '../scripts/qa/android-native-isolated/font-fault.mjs';
+import {refreshDynamicTypeControls} from '../src/publicDynamicTypeLayer.mjs';
 
 const android=`html.dynamic-type-active.dynamic-type-android {
   /* Android WebView text zoom already applies the OS font scale. */
@@ -30,8 +31,13 @@ test('font control refuses absent, ambiguous, overridden and already-faulted And
 
 // These are CSSOM adapter boundary tests, not a renderer or Native font model.
 function fixture(){
-  const style=text=>{let value='',priority='';const result={getPropertyValue:()=>value,getPropertyPriority:()=>priority,setProperty:(_name,next,nextPriority)=>{value=next;priority=nextPriority;}};Object.defineProperty(result,'cssText',{get:()=>value?`font-size: ${value}${priority?' !'+priority:''};`:'',set:next=>{const match=/^font-size:\s*(.*?)\s*(?:!(important))?;$/.exec(next);if(next&&!match)throw new Error('Unexpected fixture declaration');value=match?.[1]||'';priority=match?.[2]||'';}});result.cssText=text;return result;};
-  const rootStyle=style(''),root={style:rootStyle,getAttribute:()=>`--android-font-scale: 1.5;${rootStyle.cssText}`};
+  const style=text=>{
+    const values=new Map(),priorities=new Map();
+    const result={getPropertyValue:name=>values.get(name)||'',getPropertyPriority:name=>priorities.get(name)||'',setProperty(name,value,priority=''){values.set(name,value);priorities.set(name,priority);},removeProperty(name){values.delete(name);priorities.delete(name);}};
+    Object.defineProperty(result,'cssText',{get:()=>[...values].map(([name,value])=>`${name}: ${value}${priorities.get(name)?' !'+priorities.get(name):''};`).join(' '),set:next=>{values.clear();priorities.clear();for(const declaration of next.split(';')){const separator=declaration.indexOf(':');if(separator<0)continue;const name=declaration.slice(0,separator).trim(),value=declaration.slice(separator+1).trim();result.setProperty(name,value.replace(/\s*!important$/,''),/!important$/.test(value)?'important':'');}}});
+    result.cssText=text;return result;
+  };
+  const rootStyle=style('--android-font-scale: 1.5;'),root={style:rootStyle,getAttribute:()=>rootStyle.cssText};
   const rule={selectorText:'html.dynamic-type-active.dynamic-type-android',style:style('font-size: 16px !important;')};
   Object.defineProperty(rule,'cssText',{get:()=>`${rule.selectorText} { ${rule.style.cssText} }`});
   const other={cssText:'.product-brand-copy strong { font-size: 1.0625rem !important; }'};
@@ -64,5 +70,62 @@ test('font fault restoration refuses concurrent source, CSSOM or root inline cha
     const before={source:f.element.textContent,rules:f.element.sheet.cssRules.map(rule=>rule.cssText),inline:f.root.getAttribute('style')};
     assert.throws(()=>runInNewContext(restoreStylesheetFontFaultExpression(saved),f.context),/changed/);
     assert.deepEqual({source:f.element.textContent,rules:f.element.sheet.cssRules.map(rule=>rule.cssText),inline:f.root.getAttribute('style')},before);
+  }
+});
+
+// Exercise the real product layout writer against the unmodified font-control
+// adapter. These are synthetic CSSOM boundaries, not Native rendering evidence.
+function measuredLayout(f){
+  const classes=new Set(['dynamic-type-active']),metrics={navHeight:82,actionHeight:56};
+  const labels=[20,20,20,20].map(width=>({width}));
+  const nav={clientWidth:800,getBoundingClientRect:()=>({width:800,height:metrics.navHeight}),querySelectorAll:()=>labels};
+  f.root.classList={contains:name=>classes.has(name),remove:name=>classes.delete(name),toggle(name,on){on?classes.add(name):classes.delete(name);}};
+  f.root.ownerDocument={defaultView:{getComputedStyle:()=>({paddingLeft:'6px',paddingRight:'6px',columnGap:'2px'})},querySelectorAll:()=>[nav],querySelector:()=>({getBoundingClientRect:()=>({height:metrics.actionHeight})}),createRange(){let element;return{selectNodeContents:value=>{element=value;},getBoundingClientRect:()=>({width:element.width})};}};
+  refreshDynamicTypeControls(f.root);
+  return metrics;
+}
+
+test('font restoration preserves independently updated product layout measurements',async t=>{
+  for(const [name,navHeight,actionHeight] of [['navigation block only',160,56],['home action half only',82,84],['both measured properties',160,84]])await t.test(name,()=>{
+    const f=fixture(),metrics=measuredLayout(f),beforeRules=f.element.sheet.cssRules.map(rule=>rule.cssText);
+    const saved=runInNewContext(applyStylesheetFontFaultExpression,f.context);
+    metrics.navHeight=navHeight;metrics.actionHeight=actionHeight;refreshDynamicTypeControls(f.root);
+    const liveInline=f.root.getAttribute('style');
+    assert.notEqual(liveInline,saved.rootInlineStyle,'the real layout writer must change root style');
+    const restored=runInNewContext(restoreStylesheetFontFaultExpression(saved),f.context);
+    assert.equal(restored.exactRulesRestored,true);assert.equal(restored.rootFontStateUnchanged,true);assert.equal(restored.rootInlineUnchanged,false);
+    assert.equal(f.root.getAttribute('style'),liveInline,'restore must preserve current measured layout');
+    assert.equal(f.root.style.getPropertyValue('--dynamic-type-measured-nav-block'),`${navHeight}px`);
+    assert.equal(f.root.style.getPropertyValue('--dynamic-home-action-half'),`${actionHeight/2}px`);
+    assert.equal(f.root.style.getPropertyValue('--android-font-scale'),'1.5');assert.equal(f.root.style.getPropertyValue('font-size'),'');
+    assert.deepEqual(f.element.sheet.cssRules.map(rule=>rule.cssText),beforeRules,'only the injected CSSOM font fault is removed');
+  });
+});
+
+test('restoring the controlled font preserves unrelated live inline declarations and priorities',()=>{
+  const f=fixture(),saved=runInNewContext(applyStylesheetFontFaultExpression,f.context);
+  f.root.style.setProperty('color','green','important');f.root.style.setProperty('--another-layout-offset','23px');
+  const live=f.root.getAttribute('style'),restored=runInNewContext(restoreStylesheetFontFaultExpression(saved),f.context);
+  assert.equal(restored.rootFontStateUnchanged,true);assert.equal(f.root.getAttribute('style'),live);
+  assert.equal(f.root.style.getPropertyPriority('color'),'important');assert.equal(f.rule.style.getPropertyValue('font-size'),'16px');
+});
+
+test('concurrent changes to the controlled font value or priority fail without a blind restore',()=>{
+  for(const [value,priority] of [['18px','important'],['calc(16px * var(--android-font-scale, 1))',''],['','']]){
+    const f=fixture(),saved=runInNewContext(applyStylesheetFontFaultExpression,f.context);
+    if(value)f.rule.style.setProperty('font-size',value,priority);else f.rule.style.removeProperty('font-size');
+    const before=f.rule.style.cssText;
+    assert.throws(()=>runInNewContext(restoreStylesheetFontFaultExpression(saved),f.context),/changed/);
+    assert.equal(f.rule.style.cssText,before,'a real concurrent font change must remain visible');
+  }
+});
+
+test('live root font and scale changes remain failures even when layout variables also change',()=>{
+  for(const [name,value,priority] of [['font-size','18px','important'],['font','18px serif','important'],['--android-font-scale','2',''],['--dynamic-text-16','2rem',''],['--dynamic-text-17','2rem',''],['text-size-adjust','120%',''],['-webkit-text-size-adjust','120%',''],['--android-font-scale','1.5','important']]){
+    const f=fixture(),saved=runInNewContext(applyStylesheetFontFaultExpression,f.context);
+    f.root.style.setProperty('--dynamic-type-measured-nav-block','160px');f.root.style.setProperty(name,value,priority);
+    const before={root:f.root.getAttribute('style'),rule:f.rule.style.cssText};
+    assert.throws(()=>runInNewContext(restoreStylesheetFontFaultExpression(saved),f.context),/changed/);
+    assert.deepEqual({root:f.root.getAttribute('style'),rule:f.rule.style.cssText},before);
   }
 });

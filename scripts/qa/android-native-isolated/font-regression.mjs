@@ -22,7 +22,7 @@ try{
   report.baselineFontRules=await actualFontRuleDiagnostic(page);
   screenshot(resolve(out,'controlled-baseline.png'));
   saved=await page.evaluate(applyStylesheetFontFaultExpression);
-  report.fontFault={selector:saved.selector,ruleIndex:saved.ruleIndex,beforeRule:saved.beforeRule,afterRule:saved.afterRule,originalDeclaration:saved.originalDeclaration,mutatedDeclaration:saved.mutatedDeclaration,kind:'Actual Android CSSOM root rule restored to the original stacked-scale defect; no inline font override'};
+  report.fontFault={selector:saved.selector,ruleIndex:saved.ruleIndex,beforeRule:saved.beforeRule,afterRule:saved.afterRule,originalDeclaration:saved.originalDeclaration,mutatedDeclaration:saved.mutatedDeclaration,rootInlineBefore:saved.rootInlineStyle,rootFontStateBefore:saved.rootFontState,controlledFontBefore:saved.controlledFontBefore,controlledFontAfter:saved.controlledFontAfter,kind:'Actual Android CSSOM root rule restored to the original stacked-scale defect; no inline font override'};
   report.mutated=await measure();
   report.mutatedCapabilities=await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()');assert.equal(report.mutatedCapabilities.fontScale,1.5,'CSS fault must not change the actual Native OS scale');
   report.actualGuardResults={root:scaledFontSizeMatches(parseFloat(report.mutated.state.rootFontSize),16,1.5),rem:scaledFontSizeMatches(report.mutated.probes[1].computed,16,1.5),brand:scaledFontSizeMatches(report.mutated.brand,17,1.5)};
