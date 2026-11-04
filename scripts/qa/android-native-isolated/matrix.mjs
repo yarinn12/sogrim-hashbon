@@ -6,14 +6,14 @@ import {scaledFontSizeMatches} from './font-ratio.mjs';
 import {textMeasurementExpression,glyphsFitContainer} from './text-measurement.mjs';
 import {fontProbeExpression} from './font-probes.mjs';
 import {acceptanceRunProvenance} from './run-provenance.mjs';
-import {readCurrentFontContract,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
+import {readCurrentFontContract,hasAuthoredFontContract,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
 import {launchForOwnedOrientation} from './orientation.mjs';
 import {captureHoldFailure} from './hold-failure-evidence.mjs';
 import {beginColdMatrix,launchColdFontCase,restoreColdMatrix} from './cold-configuration.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/matrix');mkdirSync(out,{recursive:true});
 const provenance=acceptanceRunProvenance(),results=[];
 const original=Object.fromEntries(['font_scale','accelerometer_rotation','user_rotation'].map(key=>[key,adb(['shell','settings','get','system',key]).trim()]));
-const required={'.settlement-hero-title-row .muted':{size:12,count:1},'.product-brand-copy strong':{size:17,count:1},'.event-header-action-label':{size:11.5,count:3},'.transfer-participant-copy strong':{size:14,count:4},'.transfer-amount > .amount':{size:20,count:2},'.personal-transfer-badge':{size:11,count:2},'.transfer-debt-summary':{size:14,count:1},'.transfer-equation-item > span':{size:10,count:3}};
+const required={'.settlement-hero-title-row .muted':{count:1},'.product-brand-copy strong':{size:17,count:1},'.event-header-action-label':{count:3},'.transfer-participant-copy strong':{size:14,count:4},'.transfer-amount > .amount':{size:20,count:2},'.personal-transfer-badge':{size:11,count:2},'.transfer-debt-summary':{size:14,count:1},'.transfer-equation-item > span':{size:10,count:3}};
 let page,coldSetup;
 try{
   coldSetup=await beginColdMatrix({adb,adbStatus,sleep});
@@ -42,9 +42,9 @@ try{
       row.settlementFontContract=await readCurrentFontContract(page,scale);
       row.text=await page.evaluate(textMeasurementExpression(Object.keys(required)));
       row.fontProbes=await page.evaluate(fontProbeExpression);row.state=await page.evaluate(inspectExpression);
-      row.fontContractRules=await actualAuthoredFontRules(page,['.event-header-action-label']);
+      row.fontContractRules=await actualAuthoredFontRules(page,['.event-header-action-label','.settlement-hero-title-row .muted']);
       for(const [selector,{size,count}] of Object.entries(required)){
-        const baseline=selector==='.event-header-action-label'?authoredNativeFontBase(selector,row.settlementFontContract):size;
+        const baseline=hasAuthoredFontContract(selector)?authoredNativeFontBase(selector,row.settlementFontContract):size;
         const targets=row.text.filter(target=>target.selector===selector);
         check(selector+': required visible count',targets.length>=count,{minimumCount:count,actualCount:targets.length});
         check(selector+': exact OS ratio',targets.length>=count&&targets.every(target=>scaledFontSizeMatches(target.fontSize,baseline,scale)),{baselinePx:baseline,expectedRatio:scale,tolerancePx:.2});

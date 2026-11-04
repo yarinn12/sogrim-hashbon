@@ -4,7 +4,7 @@ export const fontContractContextExpression=`(() => ({width:innerWidth,height:inn
 
 const headings=new Set(['.product-home-screen .top .brand h1','.event-overview-header h1','[data-screen-kind="event-notes"] h1','[data-screen-kind="profile"] h1']);
 export async function readCurrentFontContract(page,scale){return{...(await page.evaluate(fontContractContextExpression)),scale};}
-export function hasAuthoredFontContract(selector){return headings.has(selector)||['.event-header-action-label','.event-workspace-tab strong'].includes(selector);}
+export function hasAuthoredFontContract(selector){return headings.has(selector)||['.event-header-action-label','.event-workspace-tab strong','.settlement-hero-title-row .muted'].includes(selector);}
 
 // Reference sizes come from the accepted compact layout at CSS root16, not
 // the measured Native font. Native reports the real viewport and pointer media;
@@ -18,12 +18,13 @@ export function authoredNativeFontBase(selector,context){
   const compactPortrait=orientation==='portrait'&&width<=720;
   const compactLandscape=orientation==='landscape'&&width<=1024&&height<=450;
   if(selector==='.event-workspace-tab strong')return compactPortrait||compactLandscape?14:13.5;
-  // The user restored the shared card contract. Its authored header rule is
-  // --dynamic-text-11 at every OS ratio; detached utility bars are invalid.
+  // The accepted coherence rules author .875rem labels and summary copy.
+  // These are CSS-root16 references, never inferred from Native measurements.
   if(selector==='.event-header-action-label'){
     if(context.headerUtilitiesContained!==true)throw new Error('Utilities must be contained in the shared event header');
-    return 11;
+    return 14;
   }
+  if(selector==='.settlement-hero-title-row .muted')return 14;
   // The accepted compact phone layout uses 1.5rem/1.25rem headings at every
   // pointer media value. Root font scaling applies the requested OS ratio.
   if(compactPortrait)return 24;
@@ -43,14 +44,14 @@ export async function actualAuthoredFontRules(page,selectors){
   await page.command('DOM.enable');await page.command('CSS.enable');
   const {root}=await page.command('DOM.getDocument',{depth:0});
   const rows=[];
-  const fonts=style=>(style?.cssProperties||[]).filter(p=>['font','font-size','--dynamic-text-11','--dynamic-text-16','--dynamic-text-28','--dynamic-text-32'].includes(p.name)&&!p.disabled);
+  const fonts=style=>(style?.cssProperties||[]).filter(p=>['font','font-size','--dynamic-text-11','--dynamic-text-14','--dynamic-text-16','--dynamic-text-28','--dynamic-text-32'].includes(p.name)&&!p.disabled);
   for(const selector of selectors){
     const {nodeId}=await page.command('DOM.querySelector',{nodeId:root.nodeId,selector});
     if(!nodeId)throw new Error('Actual font contract target missing: '+selector);
     const matched=await page.command('CSS.getMatchedStylesForNode',{nodeId});
     const computed=await page.command('CSS.getComputedStyleForNode',{nodeId});
     const rules=list=>(list||[]).flatMap(m=>{const properties=fonts(m.rule.style);return properties.length?[{selector:m.rule.selectorList.text,origin:m.rule.origin,styleSheetId:m.rule.styleSheetId,media:m.rule.media,properties}]:[];});
-    rows.push({selector,nodeId,computed:computed.computedStyle.filter(p=>['font-size','font-family','--dynamic-text-11','--dynamic-text-16','--dynamic-text-28','--dynamic-text-32'].includes(p.name)),matched:rules(matched.matchedCSSRules),inherited:(matched.inherited||[]).map(entry=>({inline:fonts(entry.inlineStyle),matched:rules(entry.matchedCSSRules)}))});
+    rows.push({selector,nodeId,computed:computed.computedStyle.filter(p=>['font-size','font-family','--dynamic-text-11','--dynamic-text-14','--dynamic-text-16','--dynamic-text-28','--dynamic-text-32'].includes(p.name)),matched:rules(matched.matchedCSSRules),inherited:(matched.inherited||[]).map(entry=>({inline:fonts(entry.inlineStyle),matched:rules(entry.matchedCSSRules)}))});
   }
   return {kind:'Read-only actual target CSSOM font rules; never used to derive the expected size',rows};
 }

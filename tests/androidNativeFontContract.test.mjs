@@ -2,8 +2,47 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules,hasAuthoredFontContract,readCurrentFontContract} from '../scripts/qa/android-native-isolated/font-contract.mjs';
 import {runInNewContext} from 'node:vm';
+import {readFileSync} from 'node:fs';
 const context=(scale=1,pointerCoarse=false,orientation='portrait')=>({scale,pointerCoarse,pointerFine:!pointerCoarse,orientation,width:orientation==='portrait'?411:914,height:orientation==='portrait'?866:366,active:scale>1,dynamicType:scale===1?'normal':'extra-large',headerUtilitiesContained:true});
 const home='.product-home-screen .top .brand h1',event='.event-overview-header h1',notes='[data-screen-kind="event-notes"] h1',profile='[data-screen-kind="profile"] h1',tabs='.event-workspace-tab strong',action='.event-header-action-label';
+const summary='.settlement-hero-title-row .muted';
+
+test('Native header and summary reference the approved authored rem rules',()=>{
+ const source=readFileSync(new URL('../src/publicLedgerWorkspaceLayer.mjs',import.meta.url),'utf8');
+ const selectors=[
+  [action,'html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-utility-button .event-header-action-label'],
+  [summary,'html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-hero-title-row p'],
+  [summary,'html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-title-row p']
+ ];
+ for(const [target,selector] of selectors){
+  const escaped=selector.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const rule=[...source.matchAll(new RegExp(escaped+'\\s*\\{([^}]+)\\}','g'))].at(-1);
+  assert.ok(rule,'Published rule must exist: '+selector);
+  assert.match(rule[1],/font-size:\s*\.875rem\s*!important/,'Approved size comes from authored CSS, never measured Native output');
+  assert.equal(authoredNativeFontBase(target,context()),14,target);
+ }
+});
+
+test('failed dab14db Native matrix measurements match authored text sizes at every OS ratio',()=>{
+ const fixture=JSON.parse(readFileSync(new URL('./fixtures/android-native-dab14db-font-reference.json',import.meta.url),'utf8'));
+ assert.equal(fixture.sourceCommit,'dab14db12ce950cc53b6055486ead5341fdf1fac');
+ assert.equal(fixture.rows.length,6);
+ assert.deepEqual(fixture.rows.map(row=>[row.scale,row.orientation]),[1,1.5,2].flatMap(scale=>['portrait','landscape'].map(orientation=>[scale,orientation])));
+ for(const row of fixture.rows){
+  assert.equal(row.measurements.length,4);
+  assert.equal(row.measurements.filter(measurement=>measurement.selector===summary).length,1);
+  assert.equal(row.measurements.filter(measurement=>measurement.selector===action).length,3);
+  for(const measurement of row.measurements){
+   assert.equal(authoredNativeFontBase(measurement.selector,row.fontContract),14);
+   assert.equal(authoredNativeFontMatches(measurement.fontSize,measurement.selector,row.fontContract),true);
+   assert.equal(authoredNativeFontMatches(14*row.scale+.21,measurement.selector,row.fontContract),false,'Strict tolerance stays .2px');
+   if(row.scale>1){
+    assert.equal(authoredNativeFontMatches(14,measurement.selector,row.fontContract),false,'Frozen text must fail');
+    assert.equal(authoredNativeFontMatches(14*row.scale*row.scale,measurement.selector,row.fontContract),false,'Stacked OS scaling must fail');
+   }
+  }
+ }
+});
 
 test('compact Native typography follows the actual viewport with no primary pointer',()=>{
  for(const scale of [1,1.5,2])for(const orientation of ['portrait','landscape']){
@@ -30,7 +69,7 @@ test('route changes require fresh DOM provenance rather than the home snapshot',
  labels=Array.from({length:3},()=>({closest:()=>header}));
  const eventSnapshot=await readCurrentFontContract(page,1);
  assert.throws(()=>authoredNativeFontBase(action,homeSnapshot),/contained/,'The old home snapshot must fail despite the current event header');
- assert.equal(authoredNativeFontMatches(11,action,eventSnapshot),true);
+ assert.equal(authoredNativeFontMatches(14,action,eventSnapshot),true);
  labels=[...labels.slice(0,2),{closest:()=>null}];
  const detachedSummary=await readCurrentFontContract(page,1);
  assert.throws(()=>authoredNativeFontBase(action,detachedSummary),/contained/,'Fresh summary provenance must still reject a detached utility');
@@ -39,11 +78,11 @@ test('route changes require fresh DOM provenance rather than the home snapshot',
 
 test('shared header sizes reject detached bars while tabs retain their authored contract',()=>{
  assert.equal(authoredNativeFontBase(tabs,context()),14);
- assert.equal(authoredNativeFontBase(action,context()),11);
+ assert.equal(authoredNativeFontBase(action,context()),14);
  assert.equal(authoredNativeFontMatches(14,tabs,context()),true);
  assert.equal(authoredNativeFontMatches(13.5,tabs,context()),false);
  assert.equal(authoredNativeFontMatches(11.5,action,context()),false);
- assert.equal(authoredNativeFontMatches(11,action,context()),true);
+ assert.equal(authoredNativeFontMatches(14,action,context()),true);
  assert.equal(authoredNativeFontBase(home,context()),24);
  assert.equal(authoredNativeFontBase(home,context(1,false,'landscape')),20);
  for(const selector of [event,notes,profile])assert.equal(authoredNativeFontBase(selector,context()),24);
@@ -55,7 +94,7 @@ test('AX root scaling preserves the compact authored heading and rejects frozen 
   assert.equal(authoredNativeFontBase(event,context(scale)),24);
   assert.equal(authoredNativeFontBase(home,context(scale,false,'landscape')),20);
   for(const selector of [notes,profile])assert.equal(authoredNativeFontBase(selector,context(scale)),24);
-  assert.equal(authoredNativeFontBase(action,context(scale)),11);
+  assert.equal(authoredNativeFontBase(action,context(scale)),14);
   assert.equal(authoredNativeFontMatches(24*scale,notes,context(scale)),true);
   assert.equal(authoredNativeFontMatches(24,notes,context(scale)),false);
  }
@@ -82,7 +121,7 @@ test('short desktop height does not compact a wide viewport with any pointer',()
 });
 
 test('all authored branches retain the original tolerance and reject frozen and stacked OS zoom',()=>{
- for(const scale of [1.5,2])for(const pointerCoarse of [false,true])for(const orientation of ['portrait','landscape'])for(const selector of [home,event,notes,profile,tabs,action]){
+ for(const scale of [1.5,2])for(const pointerCoarse of [false,true])for(const orientation of ['portrait','landscape'])for(const selector of [home,event,notes,profile,tabs,action,summary]){
   const c=context(scale,pointerCoarse,orientation),base=authoredNativeFontBase(selector,c),expected=base*scale;
   assert.equal(authoredNativeFontMatches(expected,selector,c),true);
   assert.equal(authoredNativeFontMatches(base,selector,c),false,'Frozen font must fail');
@@ -114,7 +153,7 @@ test('missing or detached header provenance cannot authorize label measurements'
   assert.throws(()=>authoredNativeFontBase(action,{...context(),headerUtilitiesContained}),/contained/);
  }
  for(const scale of [1,1.5,2]){
-  assert.equal(authoredNativeFontMatches(11*scale,action,context(scale)),true);
+  assert.equal(authoredNativeFontMatches(14*scale,action,context(scale)),true);
   assert.equal(authoredNativeFontMatches((scale===1?11.5:16)*scale,action,context(scale)),false);
  }
 });
