@@ -304,19 +304,20 @@ test("participant pictures never cover the event title or participant count", as
 
   const geometry = await eventRow.evaluate((element) => {
     const stackRect = element.querySelector(".avatar-stack")?.getBoundingClientRect();
-    const mainRect = element.querySelector(".event-row-main")?.getBoundingClientRect();
+    const titleRect = element.querySelector(".event-row-title strong")?.getBoundingClientRect();
     const countRect = element.querySelector(".event-row-details > span:last-child")?.getBoundingClientRect();
     const overlap = (first, second) => first && second
       ? Math.max(0, Math.min(first.right, second.right) - Math.max(first.left, second.left))
+        * Math.max(0, Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top))
       : -1;
     return {
-      stackMainOverlap: overlap(stackRect, mainRect),
+      stackTitleOverlap: overlap(stackRect, titleRect),
       stackCountOverlap: overlap(stackRect, countRect),
       stackWidth: stackRect?.width ?? 0,
       rowWidth: element.getBoundingClientRect().width
     };
   });
-  expect(geometry.stackMainOverlap).toBe(0);
+  expect(geometry.stackTitleOverlap).toBe(0);
   expect(geometry.stackCountOverlap).toBe(0);
   expect(geometry.stackWidth).toBeLessThan(geometry.rowWidth);
   await assertLayoutHealth(page, "large event participant count");

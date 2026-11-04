@@ -9,10 +9,12 @@ test("home event rows expose one accessible share/removal menu from a chevron an
     readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8")
   ]);
   const menu = await readFile("src/ui/homeEventOptionsPresentation.mjs", "utf8");
+  const row = await readFile("src/ui/homeEventCardPresentation.mjs", "utf8");
 
   assert.match(app, /const EVENT_LONG_PRESS_DELAY_MS = 560/);
-  assert.match(app, /data-long-press-event="true"/);
-  assert.match(app, /aria-haspopup="dialog"/);
+  assert.match(app, /return renderHomeEventCardView\(/);
+  assert.match(row, /data-long-press-event="true"/);
+  assert.match(row, /aria-haspopup="dialog"/);
   assert.match(app, /function handleEventLongPressStart\(event\)/);
   assert.match(app, /function handleEventLongPressMove\(event\)/);
   assert.match(app, /EVENT_LONG_PRESS_MOVE_TOLERANCE_PX/);
@@ -21,7 +23,7 @@ test("home event rows expose one accessible share/removal menu from a chevron an
   assert.match(menu, /class="event-status-menu home-options-review"/);
   assert.match(menu, /role="dialog"/);
   assert.match(menu, /aria-modal="true"/);
-  assert.match(app, /class="event-row-options-chevron"/);
+  assert.match(row, /class="event-row-options-chevron"/);
   assert.match(menu, /data-action="share-event-from-list"/);
   assert.match(app, /function openEventParticipantAddFromHomeMenu\(eventId\)/);
   assert.match(app, /kind: "participants-add",\s*returnKind: "home"/);
