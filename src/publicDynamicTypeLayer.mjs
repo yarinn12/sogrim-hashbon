@@ -1343,6 +1343,16 @@ function injectDynamicTypeStyles(document) {
       grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
 
+    /* A short landscape phone has enough horizontal room for four enlarged
+       labels. Give the measured nav that room before deciding to stack it;
+       two rows otherwise consume the space needed by event and expense forms. */
+    @media (min-width: 600px) and (max-width: 720px) and (orientation: landscape) and (max-height: 450px) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .product-app-nav {
+        width: min(520px, calc(100% - 24px)) !important;
+      }
+    }
+
     html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
       body #app .product-home-screen .home-quick-actions {
       --home-create-overlap: var(--dynamic-home-action-half, calc(0.6rem + 11px));
