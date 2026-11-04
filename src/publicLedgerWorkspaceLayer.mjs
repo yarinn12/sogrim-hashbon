@@ -1,6 +1,9 @@
 const STYLE_ID = "public-ledger-workspace-layer-style";
 
 const CSS = `
+/* Contextual image failures use the existing image picker surface. */
+.image-selection-feedback{margin:0 0 12px!important;padding:0!important;font-size:1rem!important;line-height:1.55!important;font-weight:500!important;color:#8b342d!important;white-space:normal!important;overflow-wrap:anywhere!important;background:transparent!important;border:0!important;box-shadow:none!important}
+.profile-avatar-picker-body .image-selection-feedback{margin-bottom:16px!important}
 /* Approved crop/invitation/blocked-list follow-up. */
 html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-card{border:0!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:24px 4px!important;max-width:none!important}
 html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-state-title{font-size:1.25rem!important;line-height:1.45!important;margin:0 0 10px!important;overflow-wrap:anywhere!important}

@@ -169,7 +169,7 @@ test("event cover upload previews the exact wide crop before saving", async ({ p
   const cropDialog = page.locator(".image-crop-dialog");
   const cropStage = cropDialog.locator(".image-crop-stage.is-rectangle");
   await expect(cropDialog).toBeVisible();
-  await expect(cropDialog).toContainText("בחר את תמונת האירוע");
+  await expect(cropDialog).toContainText("התאמת תמונת האירוע");
   const cropBounds = await cropStage.boundingBox();
   expect((cropBounds?.width ?? 0) / (cropBounds?.height ?? 1)).toBeCloseTo(16 / 7, 1);
   await cropDialog.locator('[data-crop-action="confirm"]').click();

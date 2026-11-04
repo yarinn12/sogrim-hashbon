@@ -9,7 +9,7 @@ const view=existsSync('src/ui/eventSettingsOverviewPresentation.mjs')?await impo
 function render(overrides={},manage=true){
  const event={id:'event-id',name:'אירוע בדיקה',currency:'ILS',adminsCanEditOnly:false,locked:false,...overrides},before=JSON.stringify(event),rows=[];
  const result=runInNewContext(app.slice(start,end)+'\nrenderEventSettingsDialog(event)',{
-  event,state:{currentParticipantId:'owner'},canCurrentParticipantManage:()=>manage,canLeaveEvent:()=>true,eventAdminIds:()=>['owner'],participantName:()=> 'מנהל',currencySelectLabel:()=> 'שקל ישראלי (₪)',usesDirectSettlementTransfers:e=>!!e.directSettlementTransfers,usesRoundedSettlementTransfers:e=>!!e.roundSettlementTransfers,
+  event,eventCoverFeedback:null,currentImageFeedbackMessage:()=>"",state:{currentParticipantId:'owner'},canCurrentParticipantManage:()=>manage,canLeaveEvent:()=>true,eventAdminIds:()=>['owner'],participantName:()=> 'מנהל',currencySelectLabel:()=> 'שקל ישראלי (₪)',usesDirectSettlementTransfers:e=>!!e.directSettlementTransfers,usesRoundedSettlementTransfers:e=>!!e.roundSettlementTransfers,
   renderEventSettingsOverviewView:view.renderEventSettingsOverviewView,renderEventDialogShell:model=>model,
   renderEventSettingsMenuItem:row=>{rows.push({...row});return `<button data-settings-section="${row.section}">${row.title} ${row.description}</button>`},escapeAttribute:s=>String(s),escapeHtml:s=>String(s)
  });

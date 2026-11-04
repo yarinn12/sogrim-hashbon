@@ -1,11 +1,12 @@
 import {iconSvg} from "../uiIcons.mjs";
+import {renderImageSelectionFeedback} from "./imageSelectionFeedback.mjs";
 
 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character =>
   ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;"}[character]));
 
 // The app owns normalization, image processing, persistence and acknowledgement.
 export function renderProfileAvatarPickerView({
-  presets = [], selectedPresetId = "", selectedSource = "", hasImage = false, editing = false
+  presets = [], selectedPresetId = "", selectedSource = "", hasImage = false, editing = false, imageFeedback = ""
 } = {}) {
   const picker = `
     <fieldset class="profile-avatar-picker">
@@ -25,7 +26,7 @@ export function renderProfileAvatarPickerView({
   if (!editing) return picker;
 
   return `
-    <details class="profile-avatar-picker-shell avatar-selection-review">
+    <details class="profile-avatar-picker-shell avatar-selection-review" ${imageFeedback ? "open" : ""}>
       <summary class="profile-avatar-picker-summary">
         <span class="profile-avatar-summary-preview" aria-hidden="true">
           <img src="${escapeHtml(selectedSource)}" alt="" width="256" height="256" loading="eager" decoding="async" />
@@ -37,6 +38,7 @@ export function renderProfileAvatarPickerView({
         <span class="profile-avatar-summary-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
       </summary>
       <div class="profile-avatar-picker-body">
+        ${renderImageSelectionFeedback(imageFeedback)}
         <div class="profile-avatar-source-grid">
           <button class="secondary-button profile-avatar-upload" type="button" data-action="choose-profile-avatar-image" data-image-source="gallery" aria-label="בחירת תמונת פרופיל מהגלריה">
             <span class="profile-avatar-source-icon" aria-hidden="true">${iconSvg("image")}</span>

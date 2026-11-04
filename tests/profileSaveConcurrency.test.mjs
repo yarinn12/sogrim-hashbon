@@ -29,6 +29,8 @@ function harness() {
     session: { user: { id: "a" } }, sessionGeneration: 0,
     profileNameDraft: "Saved Name", profileUsernameDraft: "original", profileAvatarDraft: "avatar-1", profileAvatarImageDraft: "image-a",
     profileAvatarPendingPreview: "", profileAvatarRequest: null, profileAvatarRevision: 0,
+    profileAvatarFeedback: null, imageFeedbackSurface: () => ({scope:"image-surface",screen:ctx.screen,dialog:null,eventId:""}),
+    IMAGE_OPEN_ERROR_MESSAGE: "התמונה לא נפתחה. אפשר לבחור תמונה אחרת או לצלם מחדש.",
     profileError: "", profileUsernameError: "", profileNameEditing: true, profileUsernameEditing: true,
     friendNetwork: { status: "ready" }, friendCodeDraft: "", friendInvitationIntent:false, screen: { name: "profile" }, notice: "", appHistoryDepth: 2, lastNavigationViewKey: "before",
     runtimeConfig: { storage: { account: { userId: "a" } } },

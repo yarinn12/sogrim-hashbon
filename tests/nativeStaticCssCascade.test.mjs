@@ -1174,3 +1174,13 @@ test("native CSS retains enlarged blocked identities and scoped invitation recov
   assert.ok(css.includes('.screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-card'));
   assert.match(css,/\.blocked-user-row :is\(strong,small,bdi\)\{[^}]*white-space:normal!important/);
 });
+
+test("native CSS retains contextual image failures at the accessible body size", async () => {
+  const {extractNativeStaticCss,files}=await harness();
+  await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'image-feedback-native');
+  const css=files.get(join('image-feedback-native','native-layers.css'));
+  assert.match(css,/\.image-selection-feedback\{[^}]*font-size:1rem!important/);
+  assert.match(css,/\.image-selection-feedback\{[^}]*white-space:normal!important/);
+  assert.match(css,/\.image-selection-feedback\{[^}]*background:transparent!important/);
+  assert.match(css,/\.profile-avatar-picker-body \.image-selection-feedback\{margin-bottom:16px!important\}/);
+});

@@ -58,7 +58,8 @@ import { iconSvg } from "./uiIcons.mjs";
 import { rollbackEventControlStateChange } from "./data/eventControlRollback.mjs";
 import { personalEventPinsKey, pinnedEventIdsForState, pendingLegacyAccountPins, acknowledgeLegacyAccountPins, migrateLegacyAccountPins, mergeAccountEventPins, updateAccountEventPin, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
 import { createAccountPinMigrationQueue } from "./data/accountPinMigrationQueue.mjs";
-import { noticePresentation, saveFailureMessage } from "./domain/userNoticePolicy.mjs";
+import { noticePresentation, saveFailureMessage, saveFailureKind } from "./domain/userNoticePolicy.mjs";
+import { imageFeedbackMessage, IMAGE_OPEN_ERROR_MESSAGE, IMAGE_COVER_PERMISSION_MESSAGE } from "./ui/imageSelectionFeedback.mjs";
 import { runGuardedInteraction } from "./interactionBoundary.mjs";
 import { resumeAfterAccountSessionRefresh } from "./accountSessionResume.mjs";
 import { versionedReadCacheSessionGeneration } from "./data/versionedReadCache.mjs";
@@ -538,6 +539,9 @@ let profileUsernameEditing = false;
 let profileSaveRequest = null;
 let profileSaveRequestOwnerScope = "";
 let profileAvatarRequest = null;
+let profileAvatarFeedback = null;
+let eventCoverFeedback = null;
+let eventCoverImageRequest = null;
 let profileAvatarRevision = 0;
 let state = syncLocalProfile(loadState());
 profileAvatarDraft =
@@ -2416,6 +2420,7 @@ function renderProfileAvatarPicker() {
     selectedPresetId: profileAvatarDraft,
     selectedSource,
     hasImage: Boolean(profileAvatarImageDraft),
+    imageFeedback: currentImageFeedbackMessage(profileAvatarFeedback),
     editing: Boolean(localProfile && screen.name === "profile")
   });
 }
@@ -6768,6 +6773,7 @@ function renderEventSettingsDialog(event) {
     eventId: event.id,
     eventName: event.name,
     coverImage: event.coverImage,
+    imageFeedback: currentImageFeedbackMessage(eventCoverFeedback, event.id),
     canManage: canCurrentParticipantManage(event),
     managementStatus: event.adminsCanEditOnly ? "ניהול מרוכז" : "ניהול משותף",
     currencyStatus: currencySelectLabel(event.currency),
@@ -8839,6 +8845,27 @@ function profileSaveOwnerScope() {
   ]);
 }
 
+function imageFeedbackSurface(eventId = "") {
+  return { scope: profileSaveOwnerScope(), screen, dialog: eventId ? eventDialog : null, eventId };
+}
+
+function currentImageFeedbackMessage(feedback, eventId = "") {
+  return imageFeedbackMessage(feedback, imageFeedbackSurface(eventId));
+}
+
+function showEventCoverImageFailure(eventId, message, surface, fallbackMessage = message) {
+  if (surface.scope !== profileSaveOwnerScope() || surface.screen !== screen ||
+      surface.dialog !== eventDialog) return;
+  eventCoverFeedback = null;
+  notice = fallbackMessage;
+  if (surface.scope === profileSaveOwnerScope() && surface.screen === screen &&
+      surface.dialog === eventDialog && eventDialog?.kind === "settings" &&
+      eventDialog.eventId === eventId) {
+    eventCoverFeedback = { ...surface, message };
+    notice = "";
+  }
+}
+
 function focusProfileIdentityInput(selector) {
   const target = app.querySelector(selector);
   if (!target) return;
@@ -8861,11 +8888,13 @@ async function saveProfileAvatarImage(file) {
   const avatarRevision = profileAvatarRevision;
   const request = {};
   profileAvatarRequest = request;
+  profileAvatarFeedback = null;
   const isCurrent = () => profileAvatarRequest === request &&
     ownerScope === profileSaveOwnerScope() && originScreen === screen &&
     avatarRevision === profileAvatarRevision;
   if (file.type && !file.type.startsWith("image/")) {
-    profileError = "אפשר לבחור קובץ תמונה בלבד.";
+    profileAvatarFeedback = { ...imageFeedbackSurface(), message: "אפשר לבחור קובץ תמונה בלבד." };
+    profileAvatarRequest = null;
     render();
     return;
   }
@@ -8881,7 +8910,7 @@ async function saveProfileAvatarImage(file) {
     if (!croppedCanvas) return;
     if (!isCurrent()) return;
     profileAvatarImageDraft = compressProfileAvatarImage(croppedCanvas);
-    profileError = "";
+    profileAvatarFeedback = null;
     render();
     await finishProfileAvatarSave();
   } catch (error) {
@@ -8892,7 +8921,7 @@ async function saveProfileAvatarImage(file) {
       size: Number(file?.size ?? 0),
       error: String(error?.message ?? error)
     });
-    profileError = "לא הצלחנו לפתוח את התמונה. נסה תמונה אחרת מהגלריה.";
+    profileAvatarFeedback = { ...imageFeedbackSurface(), message: IMAGE_OPEN_ERROR_MESSAGE };
     render();
   } finally {
     if (profileAvatarRequest === request) profileAvatarRequest = null;
@@ -9145,8 +9174,16 @@ function compressProfileAvatarImage(croppedCanvas) {
 async function saveEventCoverImage(eventId, file) {
   const event = getEvent(eventId);
   if (!event || !canCurrentParticipantManage(event)) return;
+  const surface = imageFeedbackSurface(eventId);
+  const request = {};
+  eventCoverImageRequest = request;
+  eventCoverFeedback = null;
+  const isCurrent = () => eventCoverImageRequest === request &&
+    surface.scope === profileSaveOwnerScope() && surface.screen === screen &&
+    surface.dialog === eventDialog;
   if (file.type && !file.type.startsWith("image/")) {
-    notice = "אפשר לבחור קובץ תמונה בלבד.";
+    showEventCoverImageFailure(eventId, "אפשר לבחור קובץ תמונה בלבד.", surface);
+    eventCoverImageRequest = null;
     render();
     return;
   }
@@ -9156,10 +9193,11 @@ async function saveEventCoverImage(eventId, file) {
       aspectRatio: 16 / 7,
       outputWidth: 1280,
       outputHeight: 560,
-      title: "בחר את תמונת האירוע",
-      description: "הזז והגדל עד שהאזור הרצוי נמצא בתוך המלבן."
+      title: "התאמת תמונת האירוע",
+      description: "הזז והגדל עד שהתמונה מתאימה למסגרת."
     });
     if (!croppedCanvas) return;
+    if (!isCurrent()) return;
     const coverImage = encodeCanvasJpegWithinLimit(croppedCanvas, {
       maxLength: 240_000,
       initialQuality: 0.76,
@@ -9168,14 +9206,18 @@ async function saveEventCoverImage(eventId, file) {
     });
     await updateEventCoverImage(eventId, coverImage);
   } catch (error) {
+    if (!isCurrent()) return;
     console.warn("[images] Event cover processing failed", {
       eventId,
       type: String(file?.type ?? ""),
       size: Number(file?.size ?? 0),
       error: String(error?.message ?? error)
     });
-    notice = "לא הצלחנו לעבד את התמונה שנבחרה. נסה תמונה אחרת מהגלריה או מהמצלמה.";
+    showEventCoverImageFailure(eventId, IMAGE_OPEN_ERROR_MESSAGE, surface,
+      "לא הצלחנו לעבד את התמונה שנבחרה. נסה תמונה אחרת מהגלריה או מהמצלמה.");
     render();
+  } finally {
+    if (eventCoverImageRequest === request) eventCoverImageRequest = null;
   }
 }
 
@@ -9274,6 +9316,8 @@ async function applyExpenseAttachmentImage(file) {
 async function updateEventCoverImage(eventId, coverImage) {
   const event = getEvent(eventId);
   if (!event || !canCurrentParticipantManage(event)) return false;
+  const surface = imageFeedbackSurface(eventId);
+  eventCoverFeedback = null;
   const previousEvent = cloneNavigationValue(event);
   state = setEventCoverImage(state, eventId, coverImage);
   const attemptedEvent = cloneNavigationValue(getEvent(eventId));
@@ -9296,7 +9340,11 @@ async function updateEventCoverImage(eventId, coverImage) {
       error: String(result?.error?.message ?? result?.error ?? "unknown")
     });
     state = rollbackEventSettingChange(state, eventId, previousEvent, attemptedEvent, "coverImage");
-    notice = saveFailureMessage(result, "תמונת האירוע לא נשמרה.");
+    const failureMessage = saveFailureMessage(result, "תמונת האירוע לא נשמרה.");
+    showEventCoverImageFailure(eventId,
+      (result.failureKind || saveFailureKind(result.error)) === "permission"
+        ? IMAGE_COVER_PERMISSION_MESSAGE : failureMessage,
+      surface, failureMessage);
     render();
     return false;
   }
@@ -12490,6 +12538,7 @@ async function handleClick(event) {
   }
 
   if (action === "remove-profile-avatar-image") {
+    profileAvatarFeedback = null;
     if (profileAvatarPendingPreview) URL.revokeObjectURL(profileAvatarPendingPreview);
     profileAvatarPendingPreview = "";
     profileAvatarImageDraft = "";
@@ -13779,6 +13828,7 @@ async function handleChange(event) {
   }
 
   if (action === "profile-avatar") {
+    profileAvatarFeedback = null;
     profileAvatarDraft =
       normalizeAvatarPreset(target.value) || AVATAR_PRESETS[0].id;
     profileAvatarImageDraft = "";
@@ -22737,6 +22787,8 @@ function handleInputKeyboardShortcut(event) {
 }
 
 function handleDialogKeydown(event) {
+  // The native top-layer crop dialog owns Escape, focus and keyboard navigation.
+  if (event.target.closest?.('.image-crop-dialog[open]')) return;
   if (expenseDatePickerOwnsEscape(event)) return;
   if (handleRadioGroupKeyboardNavigation(event)) return;
   if (handleFriendsHubTabKeyboardNavigation(event)) return;

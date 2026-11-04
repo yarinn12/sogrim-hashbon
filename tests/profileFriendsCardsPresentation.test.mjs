@@ -53,7 +53,7 @@ test("profile presentation escapes draft and asset attributes", () => {
 test("profile adapter retains pending preview priority and first-run scope", async () => {
   const app=await readFile("src/app.mjs","utf8"),source=app.slice(app.indexOf("function renderProfileAvatarPicker()"),app.indexOf("function renderInviteProfilePreview"));
   let model;
-  const context={AVATAR_PRESETS:presets,profileAvatarDraft:"avatar-2",profileAvatarPendingPreview:"blob:pending",profileAvatarImageDraft:"data:image/png;base64,saved",localProfile:{},screen:{name:"profile"},renderProfileAvatarPickerView:input=>(model=input,"picker")};
+  const context={AVATAR_PRESETS:presets,profileAvatarDraft:"avatar-2",profileAvatarPendingPreview:"blob:pending",profileAvatarImageDraft:"data:image/png;base64,saved",profileAvatarFeedback:null,currentImageFeedbackMessage:()=>"",localProfile:{},screen:{name:"profile"},renderProfileAvatarPickerView:input=>(model=input,"picker")};
   assert.equal(runInNewContext(source+";renderProfileAvatarPicker()",context),"picker");
   assert.equal(model.selectedSource,"blob:pending");assert.equal(model.selectedPresetId,"avatar-2");assert.equal(model.hasImage,true);assert.equal(model.editing,true);
   context.localProfile=null;context.profileAvatarPendingPreview="";context.profileAvatarImageDraft="";

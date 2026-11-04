@@ -1,8 +1,9 @@
+import {renderImageSelectionFeedback} from "./imageSelectionFeedback.mjs";
 // Presentation only. The app supplies existing permission and settlement labels.
 const escapeAttribute = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 export function renderEventSettingsOverviewView({
   eventId, eventName, coverImage, canManage, managementStatus, currencyStatus,
-  repaymentStatus, roundingStatus, lockStatus
+  repaymentStatus, roundingStatus, lockStatus, imageFeedback = ""
 }, { renderEventDialogShell, renderEventSettingsMenuItem }) {
   return renderEventDialogShell({
     eventId,
@@ -23,6 +24,7 @@ export function renderEventSettingsOverviewView({
           <small>${!canManage ? "שינוי תמונה דורש הרשאת ניהול." : coverImage ? "אפשר להחליף או להסיר." : "לא חובה"}</small>
         </div>
         ${coverImage ? `<img src="${escapeAttribute(coverImage)}" alt="" />` : ""}
+        ${renderImageSelectionFeedback(imageFeedback)}
         <div class="event-cover-settings-actions event-cover-source-grid">
           <label class="secondary-button event-cover-upload" role="button" tabindex="${canManage ? "0" : "-1"}" aria-disabled="${!canManage}">
             <span>מהגלריה</span>
