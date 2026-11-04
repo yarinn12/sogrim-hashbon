@@ -21,7 +21,7 @@ export async function click(page,locator){await expect(locator).toBeVisible();aw
 export async function open(page,view,{root=16,width=393,height=852}={}){
  await page.setViewportSize({width,height});
  const invite=view.startsWith('invite-'),block=['blocked','unblock-error'].includes(view);
- await page.goto('/?crop-invite-block-qa=1&requests=empty&reward=inactive'+(root>16?'&dynamic-type-preview='+root:'')+(invite?'&friend=abcdefabcdefabcdefab&invite-mode='+view.slice(7):'')+(block?'&participant-safety-batch=1':'')+(view==='unblock-error'?'&unblock-mode=error':''));
+ await page.goto('/?crop-invite-block-qa=1&requests=empty&reward=inactive'+(root>16?'&dynamic-type-preview='+root:'')+(invite?'&friend=abcdefabcdefabcdefab&invite-mode='+view.slice(7):'')+(block?'&participant-safety-batch=1':'')+(view==='unblock-error'?'&unblock-mode=error':'')+(process.env.CROP_INVITE_BLOCK_NATIVE?'&native=1':''));
  await page.evaluate(()=>document.fonts.ready);
  if(invite){await expect(page.locator('[data-invite-state="'+view.slice(7)+'"]')).toBeVisible();return page.locator('.friend-invitation-screen')}
  const nav=page.getByRole('navigation',{name:'ניווט ראשי',exact:true});await click(page,nav.getByRole('button',{name:view==='crop'?'פרופיל':'חברים',exact:true}));
