@@ -1142,3 +1142,19 @@ test('native expense participant add keeps scalable names, placeholders and one 
   assert.ok(final(selector).includes('overflow:visible!important'));assert.ok(final(selector).includes('height:auto!important'));
  }
 });
+
+test("native CSS keeps approved image/search labels scalable and event names unclamped", async () => {
+  const ledger=resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const {extractNativeStaticCss,files}=await harness();
+  await extractNativeStaticCss([{path:ledger}],"profile-friends-cards-native");
+  const css=files.get(join("profile-friends-cards-native","native-layers.css"));
+  const prefix="html.ledger-workspace-v1 #app#app ";
+  for(const [selector,size]of [[".avatar-selection-review .profile-avatar-source-copy strong","1rem"],[".friends-people-panel .friends-search-field input","1rem"],[".long-event-card-review .event-row-title strong","1.0625rem"]]){
+    const start=css.lastIndexOf(prefix+selector+" {");assert.ok(start>=0,"Missing approved Native selector "+selector);
+    assert.ok(css.slice(start,css.indexOf("}",start)).includes("font-size:"+size+"!important"));
+  }
+  const title=css.slice(css.lastIndexOf(prefix+".long-event-card-review .event-row-title strong {"));
+  assert.ok(title.includes("-webkit-line-clamp:unset!important"));
+  assert.ok(css.includes("min-width:min(100%,12rem)!important"));
+  assert.ok(css.includes('.screen:is([data-screen-kind="home"],.profile-edit-screen,.friends-hub-screen)>.product-app-identity {position:static!important}'));
+});

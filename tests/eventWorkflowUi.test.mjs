@@ -1562,7 +1562,8 @@ test("event screen uses one focused start action instead of a repeated command g
 
 test("home event rows prioritize selection details, participants, and one quiet options chevron", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const row = sourceBetween(app, "function renderEventRow(event, pinned = false)", "function ensureNewEventDraft");
+  const adapter = sourceBetween(app, "function renderEventRow(event, pinned = false)", "function ensureNewEventDraft");
+  const row = adapter + await readFile("src/ui/homeEventCardPresentation.mjs", "utf8");
   const home = sourceBetween(app, "function renderHome()", "function renderRecentEventShortcut");
 
   assert.doesNotMatch(row, /event-row-attention|attentionLabel/);

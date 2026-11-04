@@ -60,16 +60,18 @@ test("Hebrew font loading uses local licensed assets without remote requests", a
 
 test("event rows render participants, a uniform text status, and a quiet options chevron", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const rowView = await readFile("src/ui/homeEventCardPresentation.mjs", "utf8");
   const ledgerCss = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
-  assert.match(app, /class="event-row-main"/);
+  assert.match(app, /return renderHomeEventCardView\(/);
+  assert.match(rowView, /class="event-row-context"/);
   assert.doesNotMatch(app, /event-row-attention/);
   assert.match(
     app,
     /renderAvatarStack\(participants\.map\(\(participant\) => participant\.id\), event, \{[\s\S]*?suppressParticipantAction: true[\s\S]*?\}\)/
   );
   assert.doesNotMatch(app, /event-row-balance amount/);
-  assert.match(app, /class="event-row-options-chevron"/);
+  assert.match(rowView, /class="event-row-options-chevron"/);
   assert.match(app, /function eventHomeStatusLabel\(event\)/);
   assert.match(app, /class="event-row-state \$\{statusClass\}"/);
   assert.match(app, /class="event-row-state \$\{statusClass\}">סטטוס: \$\{escapeHtml\(statusLabel\)\}/);

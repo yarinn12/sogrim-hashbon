@@ -24269,6 +24269,73 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-li
 html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .event-primary-filter button {min-width:0!important;width:100%!important;height:auto!important;}
 html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .event-primary-filter button > span {white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;}
 
+
+/* Approved profile image, friends search and full-name event cards. */
+html.ledger-workspace-v1 #app#app .avatar-selection-review.avatar-selection-review {
+ padding:0!important;overflow:visible!important;box-shadow:none!important;border-radius:12px!important;background:#fff!important;
+}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-picker-summary {
+ padding:14px!important;min-height:72px!important;gap:12px!important;align-items:center!important;
+}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-summary-preview {width:48px!important;height:48px!important;flex:none!important;box-shadow:none!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-summary-copy {min-width:0!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-summary-copy strong {font-size:1rem!important;line-height:1.45!important;white-space:normal!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review[open] .profile-avatar-summary-copy small {display:none!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-picker-body {padding:0 14px 18px!important;display:grid!important;gap:18px!important;overflow:visible!important;max-height:none!important;background:transparent!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-grid {display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-upload {
+ display:grid!important;grid-template-columns:1.5rem minmax(0,1fr) 1.25rem!important;align-items:center!important;gap:12px!important;min-height:56px!important;width:100%!important;padding:12px 0!important;
+ border:0!important;border-bottom:1px solid #dce6e2!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;text-align:start!important;
+}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-copy {display:block!important;min-width:0!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-copy strong {font-size:1rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-icon {width:1.5rem!important;height:1.5rem!important;background:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;color:#174e40!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-icon svg {width:100%!important;height:100%!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-chevron {display:grid!important;place-items:center!important;width:1.25rem!important;height:1.25rem!important;color:#65756e!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-chevron svg {width:1rem!important;height:1rem!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-picker {padding:0!important;margin:0!important;border:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-picker legend {padding:0!important;margin:0 0 12px!important;font-size:.9375rem!important;line-height:1.5!important;color:#52685d!important;font-weight:600!important;max-width:100%!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-options {display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:12px!important;margin:0!important;padding:0!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-option {display:grid!important;place-items:center!important;padding:4px!important;min-width:44px!important;min-height:44px!important;width:auto!important;border:0!important;background:transparent!important;box-shadow:none!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-preview {width:64px!important;height:64px!important;max-width:100%!important;box-shadow:none!important;border:2px solid transparent!important;outline:0!important;background:transparent!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-option input:checked+.profile-avatar-preview {border-color:#174e40!important;box-shadow:none!important;background:transparent!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-option input:focus-visible+.profile-avatar-preview {outline:2px solid #174e40!important;outline-offset:3px!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review [data-action="remove-profile-avatar-image"] {font-size:.9375rem!important;line-height:1.5!important;min-height:44px!important;padding:12px 0!important;background:none!important;border:0!important;box-shadow:none!important;text-align:start!important;color:#a73328!important;white-space:normal!important}
+
+html.ledger-workspace-v1 #app#app .friends-search-review.friends-search-review {
+ display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:12px!important;padding:28px 12px!important;min-height:180px!important;
+ border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;text-align:center!important;max-width:100%!important;
+}
+html.ledger-workspace-v1 #app#app .friends-search-review[hidden] {display:none!important}
+html.ledger-workspace-v1 #app#app .friends-search-review strong {font-size:1.0625rem!important;line-height:1.5!important;color:#13292b!important;font-weight:700!important}
+html.ledger-workspace-v1 #app#app .friends-search-review>span {font-size:.9375rem!important;line-height:1.65!important;color:#65756e!important;max-width:24ch!important}
+html.ledger-workspace-v1 #app#app .friends-search-review button {width:auto!important;max-width:100%!important;min-height:44px!important;padding:10px 18px!important;margin:4px 0 0!important;font-size:1rem!important;line-height:1.5!important;border:1px solid #cddbd5!important;border-radius:10px!important;background:#fff!important;box-shadow:none!important;color:#174e40!important;white-space:normal!important}
+html.ledger-workspace-v1 #app#app .friends-people-panel .friends-search-field input {font-size:1rem!important;line-height:1.5!important;min-width:0!important;width:100%!important}
+html.ledger-workspace-v1 #app#app .friends-people-panel .friends-toolbar.has-search {display:flex!important;flex-wrap:wrap!important;align-items:flex-end!important;gap:10px!important}
+html.ledger-workspace-v1 #app#app .friends-people-panel .friends-search-field {flex:1 1 12rem!important;min-width:min(100%,12rem)!important;max-width:100%!important}
+html.ledger-workspace-v1 #app#app .friends-people-panel .friends-search-field>span {font-size:.875rem!important;line-height:1.5!important}
+html.ledger-workspace-v1 #app#app .friends-people-panel .friends-add-trigger {flex:0 1 auto!important;max-width:100%!important;min-height:44px!important;font-size:1rem!important;line-height:1.5!important;white-space:normal!important}
+
+html.ledger-workspace-v1 #app#app .long-event-card-review.long-event-card-review {display:grid!important;grid-template-columns:minmax(0,1fr) 44px!important;gap:0!important;min-width:0!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-open {display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:12px!important;min-width:0!important;width:100%!important;padding:16px 10px 16px 16px!important;text-align:start!important;overflow:visible!important;max-height:none!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-main {display:flex!important;flex-direction:column!important;align-items:stretch!important;justify-content:flex-start!important;gap:12px!important;min-width:0!important;width:100%!important;max-width:none!important;height:auto!important;min-height:0!important;padding:0!important;margin:0!important;overflow:visible!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-title {display:flex!important;align-items:flex-start!important;justify-content:flex-start!important;gap:8px!important;width:100%!important;min-width:0!important;overflow:visible!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-title strong {display:block!important;flex:1!important;min-width:0!important;width:auto!important;max-width:none!important;font-size:1.0625rem!important;line-height:1.45!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;word-break:normal!important;overflow-wrap:anywhere!important;-webkit-line-clamp:unset!important;line-clamp:unset!important;max-height:none!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-context {display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:12px!important;width:100%!important;min-width:0!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .avatar-stack {flex:0 0 auto!important;align-self:center!important;margin:0!important;max-width:100%!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-meta {display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:6px!important;flex:1 1 9.5rem!important;min-width:min(100%,9.5rem)!important;max-width:100%!important;white-space:normal!important;overflow:visible!important;font-size:.875rem!important;line-height:1.5!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-state {font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;max-width:100%!important;word-break:normal!important;overflow-wrap:normal!important;text-align:start!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details {display:flex!important;flex-direction:column!important;gap:3px!important;align-items:flex-start!important;max-width:100%!important;white-space:normal!important;font-size:.875rem!important;line-height:1.5!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details span,html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details time {font-size:inherit!important;line-height:inherit!important;white-space:normal!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details time {white-space:nowrap!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details .event-row-date-time {display:inline-flex!important;flex-wrap:wrap!important;gap:0 6px!important;align-items:center!important;max-width:100%!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-note-pin {flex:none!important;margin:3px 0 0!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-status-toggle {width:44px!important;min-width:44px!important;min-height:44px!important;padding:0!important;align-self:stretch!important;display:grid!important;place-items:center!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-options-chevron {display:grid!important;place-items:center!important;width:24px!important;height:24px!important;margin:0!important}
+@media (max-height:450px) and (orientation:landscape) {
+ html.ledger-workspace-v1 #app#app .screen:is([data-screen-kind="home"],.profile-edit-screen,.friends-hub-screen)>.product-app-identity {position:static!important}
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

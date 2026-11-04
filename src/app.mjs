@@ -1,3 +1,6 @@
+import {renderProfileAvatarPickerView} from "./ui/profileAvatarPresentation.mjs";
+import {renderFriendsSearchEmptyView} from "./ui/friendsSearchEmptyPresentation.mjs";
+import {renderHomeEventCardView} from "./ui/homeEventCardPresentation.mjs";
 import {renderHomeEventOptionsView} from "./ui/homeEventOptionsPresentation.mjs";
 import {renderHomeEmptyStateView} from "./ui/homeEmptyStatePresentation.mjs";
 import {renderRestaurantBillView,renderRestaurantProgressView,renderRestaurantMethodView,renderRestaurantDishView} from "./ui/restaurantBillPresentation.mjs";
@@ -2402,65 +2405,13 @@ function renderProfileAvatarPicker() {
     AVATAR_PRESETS.find((preset) => preset.id === profileAvatarDraft) ??
     AVATAR_PRESETS[0];
   const selectedSource = profileAvatarPendingPreview || profileAvatarImageDraft || selectedPreset.src;
-  const picker = `
-    <fieldset class="profile-avatar-picker">
-      <legend>${profileAvatarImageDraft ? "או בחר תמונה מוכנה" : "בחר תמונת פרופיל"}</legend>
-      <div class="profile-avatar-options">
-        ${AVATAR_PRESETS.map(
-          (preset) => `
-            <label class="profile-avatar-option" title="${escapeAttribute(preset.label)}">
-              <input
-                type="radio"
-                name="avatarPreset"
-                value="${preset.id}"
-                data-action="profile-avatar"
-                ${!profileAvatarImageDraft && profileAvatarDraft === preset.id ? "checked" : ""}
-              />
-              <span class="profile-avatar-preview" aria-hidden="true">
-                <img src="${preset.src}" alt="" width="256" height="256" loading="eager" decoding="async" />
-              </span>
-              <span class="visually-hidden">${escapeHtml(preset.label)}</span>
-            </label>
-          `
-        ).join("")}
-      </div>
-    </fieldset>
-  `;
-
-  if (!localProfile || screen.name !== "profile") return picker;
-
-  return `
-    <details class="profile-avatar-picker-shell">
-      <summary class="profile-avatar-picker-summary">
-        <span class="profile-avatar-summary-preview" aria-hidden="true">
-          <img src="${escapeAttribute(selectedSource)}" alt="" width="256" height="256" loading="eager" decoding="async" />
-        </span>
-        <span class="profile-avatar-summary-copy">
-          <strong>תמונת פרופיל</strong>
-          <small>${profileAvatarImageDraft ? "החלפה או הסרה" : "בחירת תמונה"}</small>
-        </span>
-        <span class="profile-avatar-summary-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-      </summary>
-      <div class="profile-avatar-picker-body">
-        <div class="profile-avatar-source-grid">
-          <button class="secondary-button profile-avatar-upload" type="button" data-action="choose-profile-avatar-image" data-image-source="gallery" aria-label="בחירת תמונת פרופיל מהגלריה">
-            <span class="profile-avatar-source-icon" aria-hidden="true">${iconSvg("image")}</span>
-            <span class="profile-avatar-source-copy"><strong>מהגלריה</strong><small>תמונה מהמכשיר</small></span>
-            <span class="profile-avatar-source-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-          </button>
-          <input data-action="profile-avatar-image" data-image-source="gallery" type="file" accept="image/*" hidden />
-          <button class="secondary-button profile-avatar-upload" type="button" data-action="choose-profile-avatar-image" data-image-source="camera" aria-label="צילום תמונת פרופיל במצלמה">
-            <span class="profile-avatar-source-icon" aria-hidden="true">${iconSvg("camera")}</span>
-            <span class="profile-avatar-source-copy"><strong>מצלמה</strong><small>צילום תמונה חדשה</small></span>
-            <span class="profile-avatar-source-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-          </button>
-          <input data-action="profile-avatar-image" data-image-source="camera" type="file" accept="image/*" capture="environment" hidden />
-          ${profileAvatarImageDraft ? '<button class="secondary-button" type="button" data-action="remove-profile-avatar-image">הסר</button>' : ""}
-        </div>
-        ${picker}
-      </div>
-    </details>
-  `;
+  return renderProfileAvatarPickerView({
+    presets: AVATAR_PRESETS,
+    selectedPresetId: profileAvatarDraft,
+    selectedSource,
+    hasImage: Boolean(profileAvatarImageDraft),
+    editing: Boolean(localProfile && screen.name === "profile")
+  });
 }
 
 function renderInviteProfilePreview(invitedEvent) {
@@ -3154,7 +3105,7 @@ function renderFriendsPeopleTab({
                         type="search"
                         autocomplete="off"
                         enterkeyhint="search"
-                        placeholder="שם או username"
+                        placeholder="שם או שם משתמש"
                         aria-label="חיפוש ברשימת החברים"
                       />
                     </label>`
@@ -3186,9 +3137,7 @@ function renderFriendsPeopleTab({
                 <button class="primary-button" data-action="open-friend-add" type="button">הוסף חבר</button>
               </section>`
         }
-        <p class="empty-state friends-search-empty" data-friends-search-empty role="status" hidden>
-          לא נמצא חבר שמתאים לחיפוש.
-        </p>
+        ${renderFriendsSearchEmptyView()}
       </div>
 
       ${renderBlockedUsersPanel()}
@@ -4214,10 +4163,11 @@ function renderEventRowMeta(event, participants) {
     <span class="event-row-meta">
       <span class="event-row-state ${statusClass}">סטטוס: ${escapeHtml(statusLabel)}</span>
       <span class="event-row-details">
+        <span class="event-row-date-time">
         <time datetime="${escapeAttribute(date.toISOString())}">${renderedDate}</time>
         <span class="event-row-meta-separator" aria-hidden="true">·</span>
         <time class="event-row-meta-time" datetime="${escapeAttribute(date.toISOString())}" dir="ltr"><span class="font-num">${escapeHtml(formatClockTime(date))}</span></time>
-        <span class="event-row-meta-separator" aria-hidden="true">·</span>
+        </span>
         <span>${escapeHtml(participantLabel)}</span>
       </span>
     </span>
@@ -4227,46 +4177,17 @@ function renderEventRowMeta(event, participants) {
 function renderEventRow(event, pinned = false) {
   const participants = activeEventParticipants(event);
   const optionsLabel = `אפשרויות לאירוע ${event.name}: הצמדה, שיתוף או הסרה`;
-
-  return `
-    <article
-      class="event-row${pinned ? " is-pinned" : ""}"
-      data-event-id="${event.id}"
-      data-long-press-event="true"
-      aria-haspopup="dialog"
-    >
-      <button
-        class="event-row-open"
-        type="button"
-        data-action="open-event"
-        data-event-id="${event.id}"
-      >
-        ${renderAvatarStack(participants.map((participant) => participant.id), event, {
-          suppressParticipantAction: true
-        })}
-        <span class="event-row-main">
-          <span class="event-row-title">
-            <strong>${escapeHtml(eventRowDisplayName(event))}</strong>
-            ${pinned ? `<span class="event-note-pin" aria-label="אירוע מוצמד">${iconSvg("pin")}</span>` : ""}
-          </span>
-          ${renderEventRowMeta(event, participants)}
-        </span>
-      </button>
-      <button
-        type="button"
-        class="event-status-toggle"
-        data-action="event-status-select"
-        data-event-id="${event.id}"
-        aria-haspopup="dialog"
-        aria-expanded="${eventStatusMenu?.eventId === event.id ? "true" : "false"}"
-        aria-label="${escapeAttribute(optionsLabel)}"
-        title="${escapeAttribute(optionsLabel)}"
-      >
-        <span class="event-row-options-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-      </button>
-      <span class="visually-hidden">לחיצה ארוכה פותחת את אפשרויות האירוע: הצמדה, שיתוף או הסרה.</span>
-    </article>
-  `;
+  return renderHomeEventCardView({
+    id: event.id,
+    name: eventRowDisplayName(event),
+    optionsLabel,
+    pinned,
+    expanded: eventStatusMenu?.eventId === event.id,
+    avatarsHtml: renderAvatarStack(participants.map((participant) => participant.id), event, {
+      suppressParticipantAction: true
+    }),
+    metaHtml: renderEventRowMeta(event, participants)
+  });
 }
 
 function ensureNewEventDraft() {
@@ -11711,6 +11632,16 @@ async function handleClick(event) {
         app.querySelector(selector)?.focus({ preventScroll: true });
       });
     }
+  }
+
+  if (action === "clear-friends-search") {
+    const input = app.querySelector('.friends-hub-panel [data-action="friends-search"]');
+    if (input) {
+      input.value = "";
+      filterFriendRows(input);
+      input.focus();
+    }
+    return;
   }
 
   if (action === "friends-hub-tab") {
