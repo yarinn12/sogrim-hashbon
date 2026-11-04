@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.58"
+        default: "4.59"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "194"
+        default: "195"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שופרה התאמת המסכים לאייפון ולטקסט מוגדל. נוספו שיפורים לניהול אירועים ונעיצות אישיות, הזנת הוצאות במטבע זר ושמירה על טיוטות בזמן עדכון. תוקנו תקלות סנכרון והזמנת חברים."
+        default: "עודכנו מסכי האירועים, ההוצאות, הפתקים, החברים והפרופיל בעיצוב אחיד ובהתאמה לטקסט מוגדל. שופרו בחירת תמונות וחיתוך, שיתוף והזמנות, וההסברים במצבי שגיאה. גרסת בדיקה של אותו עדכון ב־iPhone וב־Android."
 
 permissions:
   contents: read
