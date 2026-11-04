@@ -24363,7 +24363,9 @@ html.ledger-workspace-v1 #app#app .long-event-card-review .event-note-pin {flex:
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-status-toggle {width:44px!important;min-width:44px!important;min-height:44px!important;padding:0!important;align-self:stretch!important;display:grid!important;place-items:center!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-options-chevron {display:grid!important;place-items:center!important;width:24px!important;height:24px!important;margin:0!important}
 @media (max-height:450px) and (orientation:landscape) {
- html.ledger-workspace-v1 #app#app .screen:is([data-screen-kind="home"],.profile-edit-screen,.friends-hub-screen)>.product-app-identity {position:static!important}
+ /* Remain in document flow while keeping the header z-index effective.
+    A static isolated header traps fixed navigation below later profile rows. */
+ html.ledger-workspace-v1 #app#app .screen:is([data-screen-kind="home"],.profile-edit-screen,.friends-hub-screen)>.product-app-identity {position:relative!important}
 }
 
 `;

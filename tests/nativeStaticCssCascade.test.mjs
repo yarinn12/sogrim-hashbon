@@ -1144,7 +1144,8 @@ test("native CSS keeps approved image/search labels scalable and event names unc
   const title=css.slice(css.lastIndexOf(prefix+".long-event-card-review .event-row-title strong {"));
   assert.ok(title.includes("-webkit-line-clamp:unset!important"));
   assert.ok(css.includes("min-width:min(100%,12rem)!important"));
-  assert.ok(css.includes('.screen:is([data-screen-kind="home"],.profile-edit-screen,.friends-hub-screen)>.product-app-identity {position:static!important}'));
+  // Landscape header flow and navigation stacking have a dedicated regression
+  // below: static positioning hid the fixed navigation behind profile content.
 });
 
 test("native CSS retains approved home options and scalable filter row flow after legacy rules", async () => {
@@ -1183,4 +1184,15 @@ test("native CSS retains contextual image failures at the accessible body size",
   assert.match(css,/\.image-selection-feedback\{[^}]*white-space:normal!important/);
   assert.match(css,/\.image-selection-feedback\{[^}]*background:transparent!important/);
   assert.match(css,/\.profile-avatar-picker-body \.image-selection-feedback\{margin-bottom:16px!important\}/);
+});
+
+test("native landscape headers retain a positioned stacking context for fixed navigation", async () => {
+  const {extractNativeStaticCss,files}=await harness();
+  await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'landscape-navigation-native');
+  const css=files.get(join('landscape-navigation-native','native-layers.css'));
+  const selector='html.ledger-workspace-v1 #app#app .screen:is([data-screen-kind="home"],.profile-edit-screen,.friends-hub-screen)>.product-app-identity';
+  const start=css.lastIndexOf(selector+' {');
+  assert.ok(start>=0,'short landscape shell rule must reach packaged Native CSS');
+  const rule=css.slice(start,css.indexOf('}',start));
+  assert.match(rule,/position:relative!important/,'non-sticky header must retain its z-index above content');
 });

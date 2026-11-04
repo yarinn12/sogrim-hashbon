@@ -13,6 +13,49 @@ test.beforeEach(async({page})=>{
 test.afterEach(async({page})=>{const evidence=observed.get(page);expect(evidence.errors).toEqual([]);expect(evidence.external).toEqual([]);for(const[env,module]of [['PROFILE_IDENTITY_TEST_APP','app.mjs'],['PROFILE_IDENTITY_TEST_LEDGER','publicLedgerWorkspaceLayer.mjs']])if(process.env[env])expect(evidence.overrides).toContain(module)});
 const state=page=>page.evaluate(()=>({events:JSON.parse(localStorage.getItem('qa-invite-server-row')).state.events,writes:__friendInviteQa.writes,profileWrites:__friendInviteQa.profileWrites}));
 async function open(page,root,long){await page.goto('/?requests=empty'+(root>16?'&dynamic-type-preview='+root:'')+(long?'&long-profile=1':''));await expect(page.locator('.product-app-nav [data-nav-destination="profile"]')).toBeVisible();await page.locator('.product-app-nav [data-nav-destination="profile"]').click();await profileIdentityReady(page,long)}
+for (const [width, height, root] of [[852,393,16],[667,375,32],[844,390,37.64706]]) {
+ test(`landscape profile navigation receives taps above identity rows ${width} text${root}`, async ({page}, testInfo) => {
+  await page.setViewportSize({width,height});
+  await open(page,root>32?16:root,false);
+  if(root>32) {
+   // The ordinary local preview caps at32px. Match the native AX root used by
+   // the independent font/landscape suites and verify the effective size below.
+   await page.evaluate(()=>{
+    const element=document.documentElement;
+    element.classList.add('dynamic-type-active','dynamic-type-apple','dynamic-type-extra-large');
+    element.style.setProperty('--apple-font-scale',String(40/17));
+    element.style.setProperty('font-size','37.64706px','important');
+   });
+  }
+  expect(await page.evaluate(()=>parseFloat(getComputedStyle(document.documentElement).fontSize))).toBeCloseTo(root,3);
+  const before=await state(page);
+  const home=page.locator('.profile-edit-screen .product-app-nav [data-nav-destination="home"]');
+  const placement=await home.evaluate(element=>{
+   const b=element.getBoundingClientRect();
+   const hit=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);
+   return {top:b.top,bottom:b.bottom,height:innerHeight,receivesTap:hit===element||element.contains(hit),interceptor:hit?.outerHTML.slice(0,400)};
+  });
+  await testInfo.attach('profile-navigation-hit-target',{contentType:'application/json',body:JSON.stringify(placement)});
+  await testInfo.attach('profile-navigation-before-return',{contentType:'image/png',body:await page.screenshot()});
+  expect(placement.top).toBeGreaterThanOrEqual(0);
+  expect(placement.bottom).toBeLessThanOrEqual(placement.height);
+  expect(placement.receivesTap,'profile content must not intercept the primary home action').toBe(true);
+  const header=page.locator('.profile-edit-screen>.product-app-identity');
+  const headerTop=await header.evaluate(e=>e.getBoundingClientRect().top);
+  // Mobile WebKit has no mouse-wheel implementation; use the browser's normal
+  // scroll-into-view path, as the neighboring touch presentation tests do.
+  await page.locator('.profile-accessibility-entry').scrollIntoViewIfNeeded();
+  await expect.poll(()=>page.evaluate(()=>scrollY)).toBeGreaterThan(20);
+  expect(await header.evaluate(e=>e.getBoundingClientRect().top),
+   'short landscape header must scroll with content, preserving usable height').toBeLessThan(headerTop-20);
+  await home.click();
+  await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
+  const after=await state(page);
+  expect(after.events).toEqual(before.events);
+  expect(after.writes).toEqual([]);
+  expect(after.profileWrites).toEqual(before.profileWrites);
+ });
+}
 for(const[id,root,w,h,long]of [['normal',16,393,852,false],['text20',20,411,852,false],['text32',32,320,852,false],['short',32,320,390,false],['long',32,320,852,true]])test(`profile identity ${id} scales glyphs and cancels edits without saving`,async({page},testInfo)=>{
  await page.setViewportSize({width:w,height:h});await open(page,root,long);const before=await state(page);
  // Real glyph geometry is first so frozen-source regression proves actual typography failure.
