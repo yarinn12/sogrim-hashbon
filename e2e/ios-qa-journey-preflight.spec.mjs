@@ -11,7 +11,7 @@ const phases = ['home', 'expenses', 'summary', 'transfers', 'notes', 'note-opene
 const fields = {
   home: ['brand', 'heading', 'description'],
   expenses: ['heading', 'tab', 'tab2', 'tab3'],
-  summary: ['description', 'status', 'helper'],
+  summary: ['heading', 'description', 'helper'],
   transfers: ['longName', 'amount', 'badge', 'debt', 'equation'],
   notes: ['title', 'preview'],
   'note-opened': ['body'],
@@ -186,6 +186,13 @@ test('the isolated iOS QA journey reaches keyboard-ready through the real DOM co
     }
   }
   const home = records.find(record => record.phase === 'home');
+  const summary = records.find(record => record.phase === 'summary');
+  expect(summary.summaryPresentation).toEqual({
+    phase: 'interim', collapsed: true, statusChipText: 'אירוע פתוח',
+    statusChipDisplay: 'none', statusChipWidth: 0, statusChipHeight: 0,
+    heading: 'סיכום ביניים', actionText: 'סגור אירוע והתחל להתחשבן'
+  });
+  expect(summary.metrics.heading.text).toBe(summary.summaryPresentation.heading);
   const coarseProjects = new Set(['android-mobile', 'iphone-webkit', 'ipad-webkit', 'iphone-large-text']);
   const fineProjects = new Set(['reflow-200', 'desktop-chromium', 'desktop-firefox',
     'desktop-webkit', 'compact-firefox']);

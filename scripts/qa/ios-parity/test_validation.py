@@ -47,6 +47,9 @@ def report(enlarged=False):
             metrics["heading"].update({"text": "מה סוגרים היום?", "fontSize": 24 * factor,
                                        "textRows": 1 if not enlarged else 2})
         if phase == "expenses": metrics = {key: deepcopy(metric) for key in ["tab", "tab2", "tab3"]}
+        if phase == "summary":
+            metrics = {key: deepcopy(metric) for key in ["heading", "description", "helper"]}
+            metrics["heading"]["text"] = "סיכום ביניים"
         if phase == "notes": metrics = {key: deepcopy(metric) for key in ["title", "preview"]}
         if phase == "transfers":
             metrics = {"longName": deepcopy(metric)}
@@ -87,6 +90,11 @@ def report(enlarged=False):
                                   "errors": [], "documentWidth": 393, "rootFontSize": 16 * factor,
                                   "viewport": {"width": 393, "height": 852, "visualHeight": 476 if phase.startswith("keyboard-") else 852, "visualTop": 0},
                                   "metrics": metrics, "homeReference": home_reference,
+                                  "summaryPresentation": ({"phase": "interim", "collapsed": True,
+                                                           "statusChipText": "אירוע פתוח", "statusChipDisplay": "none",
+                                                           "statusChipWidth": 0, "statusChipHeight": 0,
+                                                           "heading": "סיכום ביניים",
+                                                           "actionText": "סגור אירוע והתחל להתחשבן"} if phase == "summary" else None),
                                   "writes": [{"ok": True}], "pendingOutbox": [],
                                   "keyboardLayout": {"header": {"top": 0, "bottom": 120},
                                                      "headerControls": {"back": {"top": 64, "bottom": 112, "left": 280, "right": 328},
@@ -253,6 +261,15 @@ class AcceptanceTests(unittest.TestCase):
         self.rejects()
     def test_missing_glyphs_fails(self):
         self.record("summary")["metrics"]["heading"]["words"][0]["rows"] = 0
+        self.rejects()
+    def test_interim_status_chip_must_stay_hidden(self):
+        self.record("summary")["summaryPresentation"]["statusChipDisplay"] = "inline-flex"
+        self.rejects()
+    def test_interim_summary_must_stay_collapsed(self):
+        self.record("summary")["summaryPresentation"]["collapsed"] = False
+        self.rejects()
+    def test_interim_summary_requires_visible_heading(self):
+        self.record("summary")["metrics"].pop("heading")
         self.rejects()
     def test_heading_beneath_status_bar_fails(self):
         m = self.record("home")["metrics"]["heading"]

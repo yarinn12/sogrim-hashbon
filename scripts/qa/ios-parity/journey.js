@@ -213,6 +213,31 @@
       textPreference: root.dataset.dynamicType,
       dynamicTypeActive: root.classList.contains('dynamic-type-active') };
   }
+  function summaryPresentation() {
+    const hero = first('#app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero');
+    const chip = hero?.querySelector('.status-chip');
+    const heading = [...(hero?.querySelectorAll('.settlement-hero-title-row h2') || [])].find(visible);
+    const action = [...(hero?.querySelectorAll('.settlement-close-primary') || [])].find(visible);
+    if (!hero || !chip || !heading || !action) throw new Error('Required interim summary presentation is missing');
+    const chipBounds = chip.getBoundingClientRect();
+    const result = {
+      phase: hero.dataset.settlementPhase,
+      collapsed: !hero.classList.contains('is-explained'),
+      statusChipText: chip.textContent.trim(),
+      statusChipDisplay: getComputedStyle(chip).display,
+      statusChipWidth: chipBounds.width,
+      statusChipHeight: chipBounds.height,
+      heading: heading.textContent.trim(),
+      actionText: action.textContent.trim()
+    };
+    if (result.phase !== 'interim' || !result.collapsed ||
+        result.statusChipText !== 'אירוע פתוח' || result.statusChipDisplay !== 'none' ||
+        result.statusChipWidth !== 0 || result.statusChipHeight !== 0 ||
+        result.heading !== 'סיכום ביניים' || result.actionText !== 'סגור אירוע והתחל להתחשבן') {
+      throw new Error('Collapsed interim summary status chip must remain hidden');
+    }
+    return result;
+  }
   let captureIndex = 0;
   const pending = new Map();
   globalThis.__iosParityCaptureAck = index => { pending.get(index)?.(); pending.delete(index); };
@@ -299,6 +324,7 @@
     const completed = new Promise(resolve => pending.set(index, resolve));
     webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics, visualCapture: visiblePhase,
       homeReference: name === 'home' ? homeReference() : null,
+      summaryPresentation: name === 'summary' ? summaryPresentation() : null,
       keyboardLayout: keyboardLayout(name, selectors),
       nativeShell: Capacitor.isNativePlatform(), platform: Capacitor.getPlatform(),
       appUrl: location.href,
@@ -357,7 +383,7 @@
       tab: '.event-workspace-tab:nth-child(1) strong',
       tab2: '.event-workspace-tab:nth-child(2) strong', tab3: '.event-workspace-tab:nth-child(3) strong' });
     await click(`[data-action="settle"][data-event-id="${EVENT}"]`);
-    await capture('summary', { description: '.settlement-hero-title-row .muted', status: '.settlement-hero .status-chip', helper: '.settlement-stage-heading > div > small' });
+    await capture('summary', { heading: '.settlement-hero-title-row h2', description: '.settlement-hero-title-row .muted', helper: '.settlement-stage-heading > div > small' });
     // The summary is intentionally hidden; the visible transfer card is the
     // production control that expands its explanation.
     await click('.transfer-row:has(.transfer-explanation)');

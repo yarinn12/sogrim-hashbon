@@ -221,6 +221,14 @@ def validate(out: Path, source_sha: str) -> None:
                     assert metric["clippedByAncestor"] is False
             screenshot = out / mode / f"native-parity-{phase}.png"
             assert screenshot.is_file() and screenshot.stat().st_size > 1000
+        summary = records["summary"]
+        assert set(summary["metrics"]) == {"heading", "description", "helper"}, (mode, "summary visible typography targets")
+        assert summary["summaryPresentation"] == {
+            "phase": "interim", "collapsed": True, "statusChipText": "אירוע פתוח",
+            "statusChipDisplay": "none", "statusChipWidth": 0, "statusChipHeight": 0,
+            "heading": "סיכום ביניים", "actionText": "סגור אירוע והתחל להתחשבן"
+        }, (mode, "collapsed interim summary contract")
+        assert summary["metrics"]["heading"]["text"] == summary["summaryPresentation"]["heading"]
         home = records["home"]
         reference = home["homeReference"]
         assert reference["title"] == "מה סוגרים היום?", (mode, "home reference title")
