@@ -7,20 +7,6 @@ import { nativeStaticCssTemplatePattern } from "../scripts/nativeStaticCssTempla
 
 const root = process.cwd();
 
-test("native CSS retains approved home options and scalable filter row flow after legacy rules", async () => {
-  const html = await readFile("index.html", "utf8");
-  const entries = [...html.matchAll(/<script type="module" src="\.\/src\/([^"?]+\.mjs)(?:\?pwa_release=\d+)?"><\/script>/g)].map(match=>({path:`./src/${match[1]}`}));
-  const {extractNativeStaticCss,files}=await harness();
-  await extractNativeStaticCss(entries,"home-archive-native");
-  const css=files.get(join("home-archive-native","native-layers.css"));
-  const legacy=css.indexOf('.event-primary-filter {');
-  const approved=css.indexOf('.home-list-review.home-list-review.home-list-review .event-primary-filter');
-  assert.ok(legacy>=0&&approved>legacy,"approved filter rules must follow legacy column sizing");
-  assert.match(css.slice(approved),/grid-auto-flow:row!important;grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,8rem\),1fr\)\)/);
-  assert.match(css,/\.home-options-review\.home-options-review\.home-options-review \.home-options-row small \{font-size:\.875rem/);
-});
-
-
 const script = await readFile("scripts/build-native-web.mjs", "utf8");
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 // Exercise the actual builder functions without running its destructive output
@@ -1157,4 +1143,17 @@ test("native CSS keeps approved image/search labels scalable and event names unc
   assert.ok(title.includes("-webkit-line-clamp:unset!important"));
   assert.ok(css.includes("min-width:min(100%,12rem)!important"));
   assert.ok(css.includes('.screen:is([data-screen-kind="home"],.profile-edit-screen,.friends-hub-screen)>.product-app-identity {position:static!important}'));
+});
+
+test("native CSS retains approved home options and scalable filter row flow after legacy rules", async () => {
+  const html = await readFile("index.html", "utf8");
+  const entries = [...html.matchAll(/<script type="module" src="\.\/src\/([^"?]+\.mjs)(?:\?pwa_release=\d+)?"><\/script>/g)].map(match=>({path:`./src/${match[1]}`}));
+  const {extractNativeStaticCss,files}=await harness();
+  await extractNativeStaticCss(entries,"home-archive-native");
+  const css=files.get(join("home-archive-native","native-layers.css"));
+  const legacy=css.indexOf('.event-primary-filter {');
+  const approved=css.indexOf('.home-list-review.home-list-review.home-list-review .event-primary-filter');
+  assert.ok(legacy>=0&&approved>legacy,"approved filter rules must follow legacy column sizing");
+  assert.match(css.slice(approved),/grid-auto-flow:row!important;grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,8rem\),1fr\)\)/);
+  assert.match(css,/\.home-options-review\.home-options-review\.home-options-review \.home-options-row small \{font-size:\.875rem/);
 });
