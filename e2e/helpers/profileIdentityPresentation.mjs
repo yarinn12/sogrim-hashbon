@@ -1,6 +1,6 @@
 import {expect} from "@playwright/test";
 const pw={expect};
-export async function profileIdentityReady(page,long){await pw.expect(page.locator('.profile-edit-screen')).toBeVisible();await pw.expect(page.locator('[data-profile-identity="username"] strong')).toHaveText(long?'noam_alexander_levi_1234':'noam_levi');await page.evaluate(()=>document.fonts.profileIdentityReady);await pw.expect(page.locator('#app-splash')).toHaveCount(0)}
+export async function profileIdentityReady(page,long){await pw.expect(page.locator('.profile-edit-screen')).toBeVisible();await pw.expect(page.locator('[data-profile-identity="username"] strong')).toHaveText(long?'noam_alexander_levi_1234':'noam_levi');await page.evaluate(()=>document.fonts.ready);await pw.expect(page.locator('#app-splash')).toHaveCount(0)}
 export async function profileIdentityReach(locator){
  const tall=await locator.evaluate(el=>{const nav=document.querySelector('.product-app-nav').getBoundingClientRect(),head=document.querySelector('[aria-label="ניווט מהיר"]').getBoundingClientRect();return el.getBoundingClientRect().height>nav.top-head.bottom});
  if(tall){
