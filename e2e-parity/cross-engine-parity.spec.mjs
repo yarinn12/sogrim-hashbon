@@ -486,8 +486,22 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
     }, cdp);
     await page.locator('[data-action="open-event-participant-add"]').first().click();
     await page.locator('[data-action="open-event-share"]').first().click();
-    await expect(page.locator(".event-share-link-status")).toHaveClass(/is-error/);
+    // This local-storage fixture has no cloud account. The approved share
+    // screen consolidates that prerequisite into its contextual status notice.
+    const shareScreen = page.locator('.event-link-share-screen');
+    await testInfo.attach(`${name}-share-boundary`, {contentType:'application/json',body:JSON.stringify(await page.evaluate(()=>({
+      dialogs:[...document.querySelectorAll('.event-modal')].filter(e=>e.getClientRects().length).map(e=>({className:e.className,text:e.innerText})),
+      notices:[...document.querySelectorAll('.app-inline-notice')].map(e=>({kind:e.dataset.noticeKind,text:e.textContent,visible:Boolean(e.getClientRects().length)}))
+    })),null,2)});
+    await expect(shareScreen.locator('.app-inline-notice[data-notice-kind="status"]'))
+      .toHaveText('נדרש חיבור לענן כדי להכין קישור מאובטח.');
+    await expect(shareScreen.locator('[data-action="share-invite-whatsapp"]')).toBeDisabled();
+    await expect(shareScreen.locator('[data-action="copy-invite"]')).toBeDisabled();
+    await expect(shareScreen.locator('[name="eventInviteUrl"]')).toHaveAttribute('data-share-ready', 'false');
+    await expect(shareScreen.locator('[name="eventInviteUrl"]')).toHaveValue('');
+    await expect(shareScreen.locator('.public-invite-qr')).toHaveCount(0);
     records.share = await capture(page, testInfo, `${name}-share`, {
+      feedback: '.app-inline-notice .app-toast-copy',
       unavailable: '[data-action="share-invite-whatsapp"]', copy: '[data-action="copy-invite"]'
     }, cdp);
     await openHome();
