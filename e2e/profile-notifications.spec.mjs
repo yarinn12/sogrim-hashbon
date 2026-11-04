@@ -740,7 +740,7 @@ test("a gallery profile image persists after reload without a false sync warning
   const cropDialog = page.locator(".image-crop-dialog");
   const cropStage = cropDialog.locator(".image-crop-stage.is-circle");
   await expect(cropDialog).toBeVisible();
-  await expect(cropDialog).toContainText("בחר את תמונת הפרופיל");
+  await expect(cropDialog).toContainText("התאמת התמונה");
   const cropBounds = await cropStage.boundingBox();
   expect(Math.abs((cropBounds?.width ?? 0) - (cropBounds?.height ?? 0))).toBeLessThanOrEqual(1);
   await cropDialog.locator('[data-crop-action="confirm"]').click();
