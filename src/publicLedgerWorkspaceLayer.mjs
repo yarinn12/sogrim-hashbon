@@ -1,6 +1,33 @@
 const STYLE_ID = "public-ledger-workspace-layer-style";
 
 const CSS = `
+/* Approved crop/invitation/blocked-list follow-up. */
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-card{border:0!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:24px 4px!important;max-width:none!important}
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-state-title{font-size:1.25rem!important;line-height:1.45!important;margin:0 0 10px!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-message{font-size:1rem!important;line-height:1.6!important;margin:0!important;color:#52645d!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-actions{margin-top:24px!important;gap:12px!important}
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-actions button{font-size:1rem!important;line-height:1.4!important;padding:12px 16px!important;min-height:48px!important;height:auto!important;white-space:normal!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-secondary{color:#174e40!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel{color:#183c30!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel>summary{font-size:1rem!important;line-height:1.5!important;min-height:48px!important;gap:12px!important;align-items:center!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel>summary .friend-privacy-summary-label{min-width:0!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-users-list{display:grid!important;gap:0!important;padding:0 14px!important;background:white!important;border:1px solid #dce5df!important;border-radius:14px!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-help{font-size:.9375rem!important;line-height:1.6!important;color:#52645d!important;padding:14px 0!important;margin:0!important;border-bottom:1px solid #e1e8e3!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;gap:8px 14px!important;padding:16px 0!important;border:0!important;border-bottom:1px solid #e1e8e3!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row:last-child{border-bottom:0!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row>span{display:grid!important;gap:4px!important;min-width:0!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row strong{font-size:1rem!important;line-height:1.45!important;color:#19372f!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row small{font-size:.875rem!important;line-height:1.5!important;color:#52645d!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row bdi{overflow-wrap:anywhere!important;white-space:normal!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row button{border:0!important;background:transparent!important;box-shadow:none!important;color:#174e40!important;font-size:1rem!important;line-height:1.4!important;min-height:44px!important;padding:8px 0!important;white-space:normal!important;text-align:start!important;border-radius:6px!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-error{grid-column:1/-1!important;font-size:1rem!important;line-height:1.5!important;color:#8c3329!important;margin:0!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1.dynamic-type-extra-large body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row{grid-template-columns:minmax(0,1fr)!important}
+@media(max-width:360px){
+ html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row{grid-template-columns:minmax(0,1fr)!important}
+}
+
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row :is(strong,small,bdi){overflow:visible!important;white-space:normal!important;text-overflow:clip!important}
+
   /* Approved requests panel: one surface and scalable text. */
 html.ledger-workspace-v1 body #app #friends-panel-requests .friends-roster{display:grid!important;gap:20px!important;}
 html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-section{min-width:0!important;overflow:visible!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}

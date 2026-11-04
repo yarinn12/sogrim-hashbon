@@ -13,11 +13,11 @@ export function renderFriendInvitationView({ status = "loading", relationship, p
     accepted: { message:`אתה ו${name} חברים באפליקציה.`, primary:"לרשימת החברים", action:"friend-invite-return" }
   };
   const other = {
-    loading: { title:"טוענים את פרטי החבר…", message:"בודקים את הקישור ואת מצב החברות.", primary:"בודקים…", action:"friend-invite-retry" },
+    loading: { title:"בודקים את קישור החברות…", message:"רק רגע, בודקים שהקישור עדיין פעיל.", primary:"בודקים…", action:"friend-invite-retry" },
     "signed-out": { title:"צריך להתחבר לחשבון", message:"אחרי ההתחברות יוצגו פרטי החבר ותוכל לשלוח או לאשר בקשת חברות.", primary:"להתחברות", action:"friend-invite-sign-in" },
     error: { title:"לא הצלחנו לבדוק את הקישור", message:"אפשר לנסות שוב כשהחיבור יחזור.", primary:"נסה שוב", action:"friend-invite-retry" },
     self: { title:"זה קישור החברות שלך", message:"אפשר לשלוח אותו לחבר כדי שיוכל להוסיף אותך.", primary:"לחברים", action:"friend-invite-return" },
-    unavailable: { title:"הקישור אינו זמין", message:"לא הצלחנו לפתוח את הקישור. בקש מהחבר לשלוח אותו שוב.", primary:"לחברים", action:"friend-invite-return" }
+    unavailable: { title:"הקישור הזה לא זמין", message:"בקש מהחבר לשלוח קישור חדש.", primary:"לחברים", action:"friend-invite-return" }
   };
   const view = (ready && choices[relationship]) || other[status] || other.unavailable;
   const canConfirm = ready && ["new", "incoming"].includes(relationship);
@@ -30,7 +30,7 @@ export function renderFriendInvitationView({ status = "loading", relationship, p
           <p class="friend-invite-message" role="status">${escapeHtml(view.message)}</p>
           ${actionError ? `<p class="friend-invite-message friend-invite-error" role="alert">${escapeHtml(actionError)}</p>` : ""}
           <div class="friend-invite-actions">
-            <button class="primary-button" type="button" data-action="${view.action}" ${busy || status === "loading" ? "disabled" : ""}>${busy ? "שומרים…" : view.primary}</button>
+            ${status === "loading" ? "" : `<button class="primary-button" type="button" data-action="${view.action}" ${busy || status === "loading" ? "disabled" : ""}>${busy ? "שומרים…" : view.primary}</button>`}
             ${canConfirm || ["loading", "error", "signed-out"].includes(status) ? '<button class="secondary-button friend-invite-secondary" type="button" data-action="friend-invite-dismiss">לא עכשיו</button>' : ""}
           </div>
         </section>

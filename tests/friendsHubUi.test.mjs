@@ -1,4 +1,5 @@
 import {renderPendingFriendRowView} from "../src/ui/friendRequestsPresentation.mjs";
+import {renderBlockedUsersView} from "../src/ui/blockedUsersPresentation.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -11,9 +12,13 @@ test("friends hub keeps blocked accounts in a collapsed reversible privacy secti
 
   assert.ok(start >= 0);
   assert.ok(end > start);
-  assert.match(panel, /<details class="friend-privacy-note blocked-users-panel">/);
-  assert.match(panel, /משתמשים חסומים/);
-  assert.match(panel, /data-action="unblock-connected-user"/);
+  assert.match(panel, /renderBlockedUsersView\(/);
+  const view=renderBlockedUsersView({users:[{targetUserId:'blocked-user',displayName:'דנה',username:'dana'}],ownerScope:'synthetic-owner'});
+  assert.match(view, /<details class="friend-privacy-note blocked-users-panel"/);
+  assert.doesNotMatch(view, /<details[^>]*\bopen(?:\s|>)/);
+  assert.match(view, /משתמשים חסומים/);
+  assert.match(view, /data-action="unblock-connected-user"/);
+  assert.match(view, /data-target-user-id="blocked-user"/);
   assert.match(panel, /friendNetwork\.blockedUsers/);
 });
 

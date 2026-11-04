@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 import { nativeStaticCssTemplatePattern } from "../scripts/nativeStaticCssTemplates.mjs";
 
+
+
 const root = process.cwd();
 
 const script = await readFile("scripts/build-native-web.mjs", "utf8");
@@ -1156,4 +1158,19 @@ test("native CSS retains approved home options and scalable filter row flow afte
   assert.ok(legacy>=0&&approved>legacy,"approved filter rules must follow legacy column sizing");
   assert.match(css.slice(approved),/grid-auto-flow:row!important;grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,8rem\),1fr\)\)/);
   assert.match(css,/\.home-options-review\.home-options-review\.home-options-review \.home-options-row small \{font-size:\.875rem/);
+});
+
+test("native CSS retains enlarged blocked identities and scoped invitation recovery surfaces", async () => {
+  const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs');
+  const {extractNativeStaticCss,files}=await harness();
+  const paths=await extractNativeStaticCss([{path:ledger}],'fixture-assets');
+  assert.ok(paths.has(ledger));
+  const css=files.get(join('fixture-assets','native-layers.css'));
+  const blocked='html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel';
+  const row=css.slice(css.indexOf(blocked+' .blocked-user-row strong'),css.indexOf(blocked+' .blocked-user-row small'));
+  assert.match(row,/font-size:1rem!important/);
+  assert.match(css,new RegExp('\\.blocked-user-error\\{[^}]*grid-column:1/-1!important'));
+  assert.match(css,/@media\(max-width:360px\)[\s\S]*?blocked-user-row\{grid-template-columns:minmax\(0,1fr\)!important/);
+  assert.ok(css.includes('.screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-card'));
+  assert.match(css,/\.blocked-user-row :is\(strong,small,bdi\)\{[^}]*white-space:normal!important/);
 });

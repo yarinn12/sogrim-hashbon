@@ -1,3 +1,4 @@
+import {renderBlockedUsersView, captureBlockedUsersDisclosure, restoreBlockedUsersDisclosure} from "./ui/blockedUsersPresentation.mjs";
 import {renderProfileAvatarPickerView} from "./ui/profileAvatarPresentation.mjs";
 import {renderFriendsSearchEmptyView} from "./ui/friendsSearchEmptyPresentation.mjs";
 import {renderHomeEventCardView} from "./ui/homeEventCardPresentation.mjs";
@@ -623,6 +624,7 @@ let friendInvitationState = { status:"idle" };
 let friendInvitationReadRequest = null;
 let friendNetwork = emptyFriendNetwork();
 let friendNetworkBusyAction = "";
+let blockedUsersFeedback = null;
 let friendNetworkPollRequest = null;
 let friendNetworkPollScope = "";
 let friendNetworkRefreshRevision = 0;
@@ -1734,6 +1736,7 @@ function captureRenderInteractionState() {
   );
 
   return {
+    blockedUsersDisclosure: captureBlockedUsersDisclosure(app, screen),
     pageScrollY: window.scrollY,
     dialogSelector: dialog ? dialogRenderSelector(dialog) : "",
     dialogScrollTop: dialog?.scrollTop ?? 0,
@@ -1775,6 +1778,9 @@ function restoreRenderInteractionState(snapshot, expectedRenderGeneration) {
   // Restore before the next paint: a second render must capture the same open state.
   if (expectedRenderGeneration === renderGeneration && snapshot.closedSettlementDisclosures) {
     restoreClosedSettlementDisclosureState(app, snapshot.closedSettlementDisclosures);
+  }
+  if (expectedRenderGeneration === renderGeneration && snapshot.blockedUsersDisclosure) {
+    restoreBlockedUsersDisclosure(app, snapshot.blockedUsersDisclosure, captureFriendAccountContext().scope, screen);
   }
   const dialog = snapshot.dialogSelector
     ? app.querySelector(snapshot.dialogSelector)
@@ -3168,42 +3174,20 @@ function renderFriendsPeopleTab({
 }
 
 function renderBlockedUsersPanel() {
-  const blockedUsers = friendNetwork.blockedUsers ?? [];
-  if (!blockedUsers.length) return "";
-
-  return `
-    <details class="friend-privacy-note blocked-users-panel">
-      <summary>
-        <span class="friend-privacy-summary-label">משתמשים חסומים (${blockedUsers.length})</span>
-        <span class="inline-chevron friend-privacy-chevron">${iconSvg("chevron-left")}</span>
-      </summary>
-      <div class="blocked-users-list">
-        ${blockedUsers
-          .map(
-            (blockedUser) => `
-              <div class="blocked-user-row">
-                <span>
-                  <strong>${escapeHtml(blockedUser.blocked_display_name)}</strong>
-                  ${
-                    blockedUser.blocked_username
-                      ? `<small><bdi dir="ltr">${escapeHtml(formatUsername(blockedUser.blocked_username))}</bdi></small>`
-                      : ""
-                  }
-                </span>
-                <button
-                  class="secondary-button"
-                  type="button"
-                  data-action="unblock-connected-user"
-                  data-target-user-id="${escapeAttribute(blockedUser.blocked_user_id)}"
-                  ${friendNetworkBusyAction ? "disabled" : ""}
-                >בטל חסימה</button>
-              </div>
-            `
-          )
-          .join("")}
-      </div>
-    </details>
-  `;
+  const context = captureFriendAccountContext();
+  const feedback = blockedUsersFeedback?.scope === context.scope &&
+    blockedUsersFeedback.screen === screen && blockedUsersFeedback.dialog === eventDialog
+    ? blockedUsersFeedback : null;
+  return renderBlockedUsersView({
+    users: (friendNetwork.blockedUsers ?? []).map(user => ({
+      targetUserId: user.blocked_user_id,
+      displayName: user.blocked_display_name,
+      username: user.blocked_username ? formatUsername(user.blocked_username) : ""
+    })),
+    ownerScope: context.scope,
+    busy: Boolean(friendNetworkBusyAction),
+    feedback
+  });
 }
 
 function renderFriendInvitation() {
@@ -8891,8 +8875,8 @@ async function saveProfileAvatarImage(file) {
       aspectRatio: 1,
       outputWidth: 480,
       outputHeight: 480,
-      title: "בחר את תמונת הפרופיל",
-      description: "הזז והגדל עד שהאזור הרצוי נמצא בתוך העיגול."
+      title: "התאמת התמונה",
+      description: "הזז והגדל עד שהתמונה מתאימה לעיגול."
     });
     if (!croppedCanvas) return;
     if (!isCurrent()) return;
@@ -14788,6 +14772,7 @@ async function performConnectedUserUnblock(targetUserId, eventId = "") {
   if (!targetUserId) return;
   const request = beginFriendNetworkAction("user-safety:" + targetUserId);
   if (!request) return;
+  blockedUsersFeedback = null;
   const originScreen = screen;
   const originDialog = eventDialog;
   const isCurrentSurface = () => request.isCurrent() &&
@@ -14809,7 +14794,16 @@ async function performConnectedUserUnblock(targetUserId, eventId = "") {
     }
   } catch (error) {
     if (!request.isCurrent()) return;
-    if (isCurrentSurface()) notice = userSafetyErrorMessage(error, "לא הצלחנו לבטל את החסימה כרגע.");
+    if (isCurrentSurface()) {
+      const message = userSafetyErrorMessage(error, "לא הצלחנו לבטל את החסימה כרגע.");
+      if (!eventId && (friendNetwork.blockedUsers ?? []).some(user => user.blocked_user_id === targetUserId)) {
+        // Feedback belongs to the attempted row and the same account/surface.
+        // Keep the existing server error text; a lost receipt cannot prove server state.
+        blockedUsersFeedback = {targetUserId, message, scope:request.scope, screen:originScreen, dialog:originDialog};
+      } else {
+        notice = message;
+      }
+    }
   } finally {
     finishFriendNetworkAction(request);
   }
