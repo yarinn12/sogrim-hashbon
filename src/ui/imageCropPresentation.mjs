@@ -138,7 +138,7 @@ export const imageCropPresentationStyles = `
     @media (prefers-reduced-motion: reduce) {
       .image-crop-close, .image-crop-actions button { transition: none; }
     }
-  
+
 .image-crop-dialog[data-crop-shape="circle"] {
  width:min(calc(100vw - 24px),480px)!important;max-height:calc(100dvh - 32px)!important;border-radius:20px!important;
  color:#162e29!important;background:#fff!important;overflow:auto!important;overscroll-behavior:contain!important;
