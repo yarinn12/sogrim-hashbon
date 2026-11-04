@@ -24,10 +24,18 @@ const state = {
 };
 
 test.beforeEach(async ({ page, request }, testInfo) => {
+  const caseState=structuredClone(state);
+  // This visibility journey requires a real note; other journeys keep their original empty fixture.
+  if(testInfo.title === "shared notes and bottom participant action remain visible")caseState.events[0].notes=[{
+      id: "upgrade-shared-note", title: "כתובת המפגש", body: "נפגשים ליד הכניסה הראשית.", pinned: false,
+      createdByParticipantId: owner, updatedByParticipantId: owner,
+      createdAt: "2026-10-01T08:00:00.000Z", updatedAt: "2026-10-01T08:00:00.000Z",
+      fieldUpdatedAt: { title: "2026-10-01T08:00:00.000Z", body: "2026-10-01T08:00:00.000Z", pinned: "2026-10-01T08:00:00.000Z" }
+    }];
   runtimeErrors = [];
   page.on("pageerror", (error) => runtimeErrors.push(error.message));
   await request.post("/api/reset");
-  await request.put("/api/state", { data: state });
+  await request.put("/api/state", { data: caseState });
   await page.addInitScript(({ state }) => {
     if (!localStorage.getItem("qa-upgrade-ui-seeded")) {
       localStorage.clear();
@@ -39,7 +47,7 @@ test.beforeEach(async ({ page, request }, testInfo) => {
       localStorage.setItem("qa-upgrade-ui-seeded", "1");
     }
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
-  }, { state });
+  }, { state:caseState });
   const fontSize = testInfo.project.metadata.dynamicTypePreview ||
     (testInfo.project.metadata.reflowScale ? 32 : 16);
   await page.goto(`/?dynamic-type-preview=${fontSize}`);
@@ -88,9 +96,12 @@ test("currency search and reordered friends remain usable in RTL layouts", async
 test("shared notes and bottom participant action remain visible", async ({ page }, testInfo) => {
   await page.locator('[data-action="open-event"][data-event-id="upgrade-existing-event"]').first().click();
   await page.locator('[data-action="open-event-notes"]').click();
-  await expect(page.locator('[data-screen-kind="event-notes"]')).toContainText("פתקים משותפים");
+  await expect(page.locator('#event-notes-title')).toHaveText("פתקים");
+  await expect(page.locator('.event-notes-heading-copy > p')).toHaveText("מידע משותף לכל משתתפי האירוע.");
   await expect(page.locator('[data-action="new-event-note"]')).toContainText("פתק חדש");
   await expect(page.locator(".event-notes-empty")).toHaveCount(0);
+  await expect(page.getByText("כתובת המפגש", { exact: true })).toBeVisible();
+  await expect(page.getByText("נפגשים ליד הכניסה הראשית.", { exact: true })).toBeVisible();
   await capture(page, testInfo, "notes-upgrade");
   await page.locator('[data-action="open-event-participants"]').click();
   const button = page.locator(".event-participant-add-launch");

@@ -31,13 +31,14 @@ test('absent blocked disclosure never creates new DOM or restores another panel'
 
 const app=await readFile('src/app.mjs','utf8');
 const unblockSource=app.slice(app.indexOf('async function performConnectedUserUnblock('),app.indexOf('function reportSubmissionErrorMessage('));
-function adapter({fails=true,eventId='',current=true,sameScreen=true}={}){
- const origin={},screen=sameScreen?origin:{},request={scope:'actor-generation',isCurrent:()=>current},log=[];
+function adapter({fails=true,eventId='',current=true,sameScreen=true,screenName='groups'}={}){
+ const origin={name:screenName},screen=sameScreen?origin:{name:screenName},request={scope:'actor-generation',isCurrent:()=>current},log=[];
  const context={target:'b',eventId,screen,eventDialog:null,blockedUsersFeedback:{old:true},friendNetwork:{blockedUsers:[{blocked_user_id:'a'},{blocked_user_id:'b'}]},notice:'',beginFriendNetworkAction:key=>(log.push(['begin',key]),request),loadFriendActionConfig:async()=>({synthetic:true}),unblockConnectedUser:async(config,target)=>{log.push(['unblock',config.synthetic,target]);if(fails)throw Error('rejected')},refreshFriendNetwork:async options=>log.push(['refresh',options.preserveNotice]),finishFriendNetworkAction:()=>log.push(['finish']),render:()=>log.push(['render']),reactivateDialogAfterRender:()=>{},userSafetyErrorMessage:(error,fallback)=>fallback};
  return{context,log,run:()=>runInNewContext(unblockSource+';performConnectedUserUnblock(target,eventId)',context)};
 }
 test('unblock feedback adapter preserves existing mutation and puts a failed receipt on only the attempted target',async()=>{const a=adapter();await a.run();assert.deepEqual(a.log.find(x=>x[0]==='unblock'),['unblock',true,'b']);assert.equal(a.context.blockedUsersFeedback.targetUserId,'b');assert.equal(a.context.blockedUsersFeedback.scope,'actor-generation');assert.equal(a.context.blockedUsersFeedback.screen,a.context.screen);assert.equal(a.context.notice,'');assert.match(a.context.blockedUsersFeedback.message,/לא הצלחנו לבטל/)});
 test('event participant unblock retains existing dialog/global error presentation',async()=>{const a=adapter({eventId:'event'});await a.run();assert.equal(a.context.blockedUsersFeedback,null);assert.match(a.context.notice,/לא הצלחנו לבטל/)});
+test('friend profile without an event retains visible global unblock failure feedback',async()=>{const a=adapter({screenName:'friend-profile'});await a.run();assert.equal(a.context.blockedUsersFeedback,null);assert.match(a.context.notice,/לא הצלחנו לבטל/)});
 test('unblock acknowledged success still refreshes friend state and clears old inline failure',async()=>{const a=adapter({fails:false});await a.run();assert.equal(a.context.blockedUsersFeedback,null);assert.ok(a.log.some(x=>x[0]==='refresh'&&x[1]));assert.match(a.context.notice,/החסימה בוטלה/)});
 test('late unblock failure after account generation change cannot publish feedback or notice',async()=>{const a=adapter({current:false});await a.run();assert.equal(a.context.blockedUsersFeedback,null);assert.equal(a.context.notice,'');assert.equal(a.log.filter(x=>x[0]==='render').length,1)});
 test('blocked-list adapter rejects previous account/surface feedback before rendering',()=>{

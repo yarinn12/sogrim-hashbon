@@ -14796,7 +14796,7 @@ async function performConnectedUserUnblock(targetUserId, eventId = "") {
     if (!request.isCurrent()) return;
     if (isCurrentSurface()) {
       const message = userSafetyErrorMessage(error, "לא הצלחנו לבטל את החסימה כרגע.");
-      if (!eventId && (friendNetwork.blockedUsers ?? []).some(user => user.blocked_user_id === targetUserId)) {
+      if (screen.name === "groups" && !eventId && (friendNetwork.blockedUsers ?? []).some(user => user.blocked_user_id === targetUserId)) {
         // Feedback belongs to the attempted row and the same account/surface.
         // Keep the existing server error text; a lost receipt cannot prove server state.
         blockedUsersFeedback = {targetUserId, message, scope:request.scope, screen:originScreen, dialog:originDialog};

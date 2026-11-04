@@ -6,11 +6,12 @@ export async function reach(page,locator){
   const delta=await locator.evaluate(e=>{const b=e.getBoundingClientRect(),dialog=e.closest('dialog'),d=dialog?.getBoundingClientRect(),routes=[...document.querySelectorAll('.product-route-controls button')].map(e=>e.getBoundingClientRect()).filter(r=>r.height&&r.top>=0&&r.top<80),top=dialog?d.top+4:Math.max(0,...routes.map(r=>r.bottom))+6,bottom=dialog?d.bottom-4:(document.querySelector('.product-app-nav')?.getBoundingClientRect().top??innerHeight)-6;return b.top<top?b.top-top:b.bottom>bottom?b.bottom-bottom:0});
   if(Math.abs(delta)<.5)break;
   const before=await page.evaluate(()=>scrollY),modal=await locator.evaluate(e=>Boolean(e.closest('dialog')));
-  await locator.evaluate((e,y)=>{const d=e.closest('dialog');(d||window).scrollBy({top:y,left:0,behavior:'instant'})},delta);await paint(page);
+  const adjustment=delta>0?Math.ceil(delta):Math.floor(delta);
+  await locator.evaluate((e,y)=>{const d=e.closest('dialog');(d||window).scrollBy({top:y,left:0,behavior:'instant'})},adjustment);await paint(page);
   // In short Firefox RTL pages a just-completed scrollIntoView can ignore the
   // following window scroll command. Use actual wheel input if it made no
   // progress. Keep the same bounds, target-size and real hit assertions.
-  if(!modal&&Math.abs((await page.evaluate(()=>scrollY))-before)<.5){
+  if(!modal&&page.context().browser()?.browserType().name()==='firefox'&&Math.abs((await page.evaluate(()=>scrollY))-before)<.5){
    const size=page.viewportSize();await page.mouse.move(size.width/2,Math.min(125,size.height/2));await page.mouse.wheel(0,delta);await paint(page);
   }
  }
