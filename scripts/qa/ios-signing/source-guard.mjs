@@ -6,12 +6,12 @@ import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {readAppleReadiness} from './apple-read-retry.mjs';
 
-export const RELEASE_SOURCE = '2cf78afc23c1d9330834de63ed5f81ba4da5b052';
-export const RELEASE_TREE = '52105dddf3b9a8edb61032c6149eac1b392c460a';
+export const RELEASE_SOURCE = '18dd055bc56df891edd29b438b83aa5f5699e863';
+export const RELEASE_TREE = '5054393ed48bd046467d7f0a696737b2835dc09e';
 export const SOURCE = process.env.SOURCE_SHA;
-export const ARTIFACT_NAME = 'sogrim-ios-4.58-194-encrypted';
+export const ARTIFACT_NAME = 'sogrim-ios-4.59-195-encrypted';
 export const APPLE_APP_ID = '6809952514';
-export const SOURCE_BRANCH = 'codex/platform-visual-candidate-20261014';
+export const SOURCE_BRANCH = 'codex/test-release-459-20261104';
 assert.match(SOURCE ?? '', /^[0-9a-f]{40}$/, 'source_sha must be a full commit');
 assert.equal(SOURCE, RELEASE_SOURCE, 'Only the coordinator frozen release source is authorized');
 
@@ -102,7 +102,7 @@ export async function requireUnusedArtifactSlot(fetchImpl, token) {
   const query = new URLSearchParams({name: ARTIFACT_NAME, per_page: '100'});
   const result = await githubRead(fetchImpl, token, '/actions/artifacts?' + query);
   assert.ok(Array.isArray(result.artifacts) && Number.isSafeInteger(result.total_count));
-  assert.equal(result.total_count, 0, 'Build194 already has a retained preparation; inspect it instead of rebuilding');
+  assert.equal(result.total_count, 0, 'Build195 already has a retained preparation; inspect it instead of rebuilding');
   assert.equal(result.artifacts.length, 0, 'Existing preparation blocks duplicate signing');
   return {name: ARTIFACT_NAME, existingPreparations: 0, reserved: false, checkedAt: new Date().toISOString()};
 }
@@ -132,17 +132,17 @@ export async function readUnusedBuild(request) {
     next = response.links?.next;
   }
   assert.ok(!next, 'Apple pagination incomplete');
-  assert.ok(maximum < 194, '194 is no longer unused; coordinator must select a new candidate');
-  return {appId: APPLE_APP_ID, maximumUploadedBuild: maximum, candidateBuild: 194,
+  assert.ok(maximum < 195, '195 is no longer unused; coordinator must select a new candidate');
+  return {appId: APPLE_APP_ID, maximumUploadedBuild: maximum, candidateBuild: 195,
     reserved: false, checkedAt: new Date().toISOString()};
 }
 
 export function verifyCheckout(runGit, readText, env) {
   assert.equal(env.GITHUB_REPOSITORY, 'yarinn12/sogrim-hashbon');
   if (env.GITHUB_EVENT_NAME === 'push') {
-    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios194-2cf-resilient-sign-only-20261016');
+    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios195-459-private-tools-20261104');
     assert.equal(env.GITHUB_WORKFLOW_REF,
-      'yarinn12/sogrim-hashbon/.github/workflows/ios194-2cf-resilient-sign-only.yml@refs/heads/codex/ios194-2cf-resilient-sign-only-20261016');
+      'yarinn12/sogrim-hashbon/.github/workflows/ios195-459-private-sign-only.yml@refs/heads/codex/ios195-459-private-tools-20261104');
     assert.equal(String(env.GITHUB_RUN_ATTEMPT), '1', 'No signing retry');
     assert.equal(String(env.GITHUB_RUN_NUMBER), '1', 'Only the first one-shot signing run may proceed');
   } else {
@@ -150,15 +150,15 @@ export function verifyCheckout(runGit, readText, env) {
   }
   assert.equal(env.APPLE_TEAM_ID, 'MA9S4L7WKS');
   assert.equal(env.SOURCE_SHA, SOURCE);
-  assert.equal(env.IOS_VERSION, '4.58');
-  assert.equal(env.IOS_BUILD, '194');
+  assert.equal(env.IOS_VERSION, '4.59');
+  assert.equal(env.IOS_BUILD, '195');
   assert.equal(runGit(['rev-parse', 'HEAD']), SOURCE);
   assert.equal(runGit(['rev-parse', 'HEAD^{tree}']), RELEASE_TREE);
   const pwa = readText('src/pwaBootstrap.mjs').match(/const PWA_RELEASE = "(\d+)"/)?.[1];
-  assert.equal(pwa, '516');
+  assert.equal(pwa, '532');
   const metadata = JSON.parse(readText('docs/store-submission/app-store-metadata-he.json'));
-  assert.equal(metadata.version?.number, '4.58');
-  assert.equal(String(metadata.version?.build), '194');
+  assert.equal(metadata.version?.number, '4.59');
+  assert.equal(String(metadata.version?.build), '195');
   return {sourceCommit: SOURCE, sourceTree: RELEASE_TREE, pwaRelease: pwa};
 }
 

@@ -12,8 +12,8 @@ import tempfile
 import zipfile
 
 SOURCE = os.environ.get('SOURCE_SHA', '')
-TREE = '52105dddf3b9a8edb61032c6149eac1b392c460a'
-if SOURCE != '2cf78afc23c1d9330834de63ed5f81ba4da5b052':
+TREE = '5054393ed48bd046467d7f0a696737b2835dc09e'
+if SOURCE != '18dd055bc56df891edd29b438b83aa5f5699e863':
     raise ValueError('Expected the coordinator frozen release source')
 TEAM = 'MA9S4L7WKS'
 BUNDLE = 'com.sogrimhashbon.app'
@@ -136,7 +136,7 @@ def snapshot(root, canonical=None):
         configs[name] = digest(data)
         if name == 'capacitor.config.json':
             validate_config(data)
-    result = {'sourceCommit': SOURCE, 'sourceTree': TREE, 'pwaRelease': '516', 'www': web, 'iosPublic': copied, 'nativeConfigs': configs, 'privacyManifest': plistlib.loads((root / 'ios/App/App/PrivacyInfo.xcprivacy').read_bytes())}
+    result = {'sourceCommit': SOURCE, 'sourceTree': TREE, 'pwaRelease': '532', 'www': web, 'iosPublic': copied, 'nativeConfigs': configs, 'privacyManifest': plistlib.loads((root / 'ios/App/App/PrivacyInfo.xcprivacy').read_bytes())}
     if canonical is not None:
         result['canonicalGit'] = canonical
     return result
@@ -153,7 +153,7 @@ def inspect_zip(archive, expected):
     app = info_paths[0][:-len('Info.plist')]
     info = plistlib.loads(archive.read(info_paths[0]))
     require(info.get('CFBundleIdentifier') == BUNDLE, 'Wrong IPA bundle')
-    require(info.get('CFBundleShortVersionString') == '4.58' and info.get('CFBundleVersion') == '194', 'Wrong IPA version/build')
+    require(info.get('CFBundleShortVersionString') == '4.59' and info.get('CFBundleVersion') == '195', 'Wrong IPA version/build')
     prefix = app + 'public/'
     public = {name[len(prefix):]: digest(archive.read(name)) for name in names if name.startswith(prefix) and not name.endswith('/')}
     require(public == expected['iosPublic'], 'IPA web assets do not exactly match the newly built source')
@@ -218,7 +218,7 @@ def verify(root, expected):
     require(before['sourceCommit'] == after['sourceCommit'] == SOURCE, 'Source proof mismatch')
     require(before['sourceTree'] == after['sourceTree'] == TREE, 'Source tree proof mismatch')
     require(before['packageSha256'] == after['packageSha256'] and before['packageLockSha256'] == after['packageLockSha256'], 'Package declarations changed during build')
-    proof = {'sourceCommit': SOURCE, 'sourceTree': before['sourceTree'], 'pwaRelease': '516', 'version': '4.58', 'build': '194', 'ipaSha256': sha, 'wwwFileCount': len(expected['www']), 'ipaWebFileCount': len(expected['iosPublic']), 'everyWwwAssetMatches': True, 'everyWwwAssetMatchesCanonicalGitBuild': True, 'canonicalGitInputCount': expected['canonicalGit']['gitInputCount'], 'noUnexpectedWebAssets': True, 'noRemoteServerUrl': True, 'signatureVerified': True, 'signingCertificateSha256': CERT_SHA256, 'privacyManifestSemanticallyMatches': True, 'profile': profile_proof, 'ci': after['ci'], 'appleBuildReadback': after['apple'], 'physicalDeviceAcceptance': False, 'appleUploadPerformed': False, 'verifiedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    proof = {'sourceCommit': SOURCE, 'sourceTree': before['sourceTree'], 'pwaRelease': '532', 'version': '4.59', 'build': '195', 'ipaSha256': sha, 'wwwFileCount': len(expected['www']), 'ipaWebFileCount': len(expected['iosPublic']), 'everyWwwAssetMatches': True, 'everyWwwAssetMatchesCanonicalGitBuild': True, 'canonicalGitInputCount': expected['canonicalGit']['gitInputCount'], 'noUnexpectedWebAssets': True, 'noRemoteServerUrl': True, 'signatureVerified': True, 'signingCertificateSha256': CERT_SHA256, 'privacyManifestSemanticallyMatches': True, 'profile': profile_proof, 'ci': after['ci'], 'appleBuildReadback': after['apple'], 'physicalDeviceAcceptance': False, 'appleUploadPerformed': False, 'verifiedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
     (root / 'build/ios/artifact-verification.json').write_text(json.dumps(proof, indent=2) + '\n')
     manifest.update(proof)
     (root / 'build/ios/release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')

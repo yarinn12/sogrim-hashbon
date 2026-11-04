@@ -24,7 +24,7 @@ class AssetTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
         config = {'appId': assets.BUNDLE, 'webDir': 'www', 'server': {'androidScheme': 'https'}, 'ios': {'contentInset': 'automatic', 'preferredContentMode': 'mobile'}}
-        for name, data in {'index.html': b'<html>synthetic 516</html>', 'assets/styles.css': b'button{min-height:44px}'}.items():
+        for name, data in {'index.html': b'<html>synthetic 532</html>', 'assets/styles.css': b'button{min-height:44px}'}.items():
             for directory in ('www', 'ios/App/App/public'):
                 target = self.root / directory / name
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -39,7 +39,7 @@ class AssetTests(unittest.TestCase):
     def archive(self, mutate=None):
         files = {str(path.relative_to(self.root / 'ios/App/App')).replace('\\', '/'): path.read_bytes()
                  for path in (self.root / 'ios/App/App').rglob('*') if path.is_file()}
-        files['Info.plist'] = plistlib.dumps({'CFBundleIdentifier': assets.BUNDLE, 'CFBundleShortVersionString': '4.58', 'CFBundleVersion': '194'})
+        files['Info.plist'] = plistlib.dumps({'CFBundleIdentifier': assets.BUNDLE, 'CFBundleShortVersionString': '4.59', 'CFBundleVersion': '195'})
         if mutate:
             mutate(files)
         data = io.BytesIO()
