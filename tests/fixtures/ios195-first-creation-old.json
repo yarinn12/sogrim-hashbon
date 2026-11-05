@@ -1,0 +1,8 @@
+{
+  "scope": "SYNTHETIC_OLD_CONDITION_REGRESSION_NOT_A_LIVE_IOS_RUN",
+  "workflowPath": ".github/workflows/ios195-459-private-sign-only-20261105.yml",
+  "branch": "codex/ios195-459-private-tools-20261105",
+  "runNumber": 3,
+  "runAttempt": 1,
+  "jobIf": "github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios195-459-private-tools-20261105' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1"
+}

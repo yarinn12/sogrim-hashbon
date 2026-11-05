@@ -1,3 +1,4 @@
+import {SOURCE_QA_JOBS} from './source-ci-required-jobs.mjs';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
@@ -5,8 +6,8 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-export const RELEASE_SOURCE = 'abcbac91e97230e4737e80c4ea3c2206360e855f';
-export const RELEASE_TREE = '76e2319de17a875db5f5b1e2b54c2b63659644b1';
+export const RELEASE_SOURCE = '551abc5f6f9670b8129efaca629ac98be2bd20bb';
+export const RELEASE_TREE = 'd3836a2a92bd6c08a9133ee0d047bf54a6fd7d1d';
 export const SOURCE = process.env.SOURCE_SHA;
 export const ARTIFACT_NAME = 'sogrim-ios-4.59-195-encrypted';
 export const APPLE_APP_ID = '6809952514';
@@ -77,12 +78,7 @@ export async function verifyRuns(fetchImpl, token, env) {
       assert.equal(job.conclusion, 'success', 'Failed, skipped or cancelled CI job');
     }
     if (path === '.github/workflows/qa.yml') {
-      const required = ['unit', 'cross-platform', 'cross-platform-shard-1', 'cross-platform-shard-2',
-        'two-client-sync', 'unit-and-mobile', 'backup-runtime',
-        ...['android-mobile', 'iphone-webkit', 'ipad-webkit', 'iphone-large-text', 'reflow-200'].map(p => 'mobile (' + p + ')'),
-        'ios-native / native-parity', 'android-native / native-parity',
-        'mobile-iphone-large-text-shard-1', 'mobile-iphone-large-text-shard-2',
-        'mobile-iphone-webkit-shard-1', 'mobile-iphone-webkit-shard-2'];
+      const required = SOURCE_QA_JOBS;
       for (const name of required) assert.equal(jobs.filter(job => job.name === name).length, 1, 'Missing QA lane: ' + name);
     } else {
       const requiredName = {'.github/workflows/qa-windows.yml':'windows-unit',

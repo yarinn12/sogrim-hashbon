@@ -16,7 +16,8 @@
       "codex/ios194-2cf-resilient-sign-only-20261016": false,
       "codex/ios195-459-private-tools-20261104": false,
       "codex/ios194-11b-intake-preparation-20261015": false,
-      "codex/ios194-11b-intake-only-20261015": false
+      "codex/ios194-11b-intake-only-20261015": false,
+      "codex/ios195-459-private-tools-20261105": false
     }
   },
   "builds": [

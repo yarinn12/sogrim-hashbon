@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build-export-verify-private:
-    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios195-459-private-tools-20261104' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
+    if: false # superseded local preparation; never sign from this path
     runs-on: macos-26
     timeout-minutes: 75
     defaults:

@@ -1,3 +1,5 @@
+import {CONTRACT as FIRST_CREATION_CONTRACT, verifyFirstCreationReceipt} from './first-creation-guard.mjs';
+import {SOURCE_QA_JOBS} from './source-ci-required-jobs.mjs';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
@@ -6,8 +8,8 @@ import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {readAppleReadiness} from './apple-read-retry.mjs';
 
-export const RELEASE_SOURCE = 'abcbac91e97230e4737e80c4ea3c2206360e855f';
-export const RELEASE_TREE = '76e2319de17a875db5f5b1e2b54c2b63659644b1';
+export const RELEASE_SOURCE = '551abc5f6f9670b8129efaca629ac98be2bd20bb';
+export const RELEASE_TREE = 'd3836a2a92bd6c08a9133ee0d047bf54a6fd7d1d';
 export const SOURCE = process.env.SOURCE_SHA;
 export const ARTIFACT_NAME = 'sogrim-ios-4.59-195-encrypted';
 export const APPLE_APP_ID = '6809952514';
@@ -78,12 +80,7 @@ export async function verifyRuns(fetchImpl, token, env) {
       assert.equal(job.conclusion, 'success', 'Failed, skipped or cancelled CI job');
     }
     if (path === '.github/workflows/qa.yml') {
-      const required = ['unit', 'cross-platform', 'cross-platform-shard-1', 'cross-platform-shard-2',
-        'two-client-sync', 'unit-and-mobile', 'backup-runtime',
-        ...['android-mobile', 'iphone-webkit', 'ipad-webkit', 'iphone-large-text', 'reflow-200'].map(p => 'mobile (' + p + ')'),
-        'ios-native / native-parity', 'android-native / native-parity',
-        'mobile-iphone-large-text-shard-1', 'mobile-iphone-large-text-shard-2',
-        'mobile-iphone-webkit-shard-1', 'mobile-iphone-webkit-shard-2'];
+      const required = SOURCE_QA_JOBS;
       for (const name of required) assert.equal(jobs.filter(job => job.name === name).length, 1, 'Missing QA lane: ' + name);
     } else {
       const requiredName = {'.github/workflows/qa-windows.yml':'windows-unit',
@@ -140,11 +137,12 @@ export async function readUnusedBuild(request) {
 export function verifyCheckout(runGit, readText, env) {
   assert.equal(env.GITHUB_REPOSITORY, 'yarinn12/sogrim-hashbon');
   if (env.GITHUB_EVENT_NAME === 'push') {
-    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios195-459-private-tools-20261104');
+    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios195-459-private-tools-20261105');
     assert.equal(env.GITHUB_WORKFLOW_REF,
-      'yarinn12/sogrim-hashbon/.github/workflows/ios195-459-private-sign-only.yml@refs/heads/codex/ios195-459-private-tools-20261104');
+      'yarinn12/sogrim-hashbon/.github/workflows/ios195-459-private-sign-only-20261105.yml@refs/heads/codex/ios195-459-private-tools-20261105');
     assert.equal(String(env.GITHUB_RUN_ATTEMPT), '1', 'No signing retry');
-    assert.equal(String(env.GITHUB_RUN_NUMBER), '1', 'Only the first one-shot signing run may proceed');
+    assert.match(String(env.GITHUB_RUN_NUMBER??''), /^[1-9][0-9]*$/, 'Invalid signing run counter');
+    assert.ok(Number.isSafeInteger(Number(env.GITHUB_RUN_NUMBER)), 'Invalid signing run counter');
   } else {
     assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
   }
@@ -162,10 +160,21 @@ export function verifyCheckout(runGit, readText, env) {
   return {sourceCommit: SOURCE, sourceTree: RELEASE_TREE, pwaRelease: pwa};
 }
 
+
+export function verifySigningFirstCreation(readText,env){
+  assert.equal(env.SOURCE_SHA,SOURCE);assert.equal(env.SOURCE_TREE,RELEASE_TREE);
+  assert.ok(env.RUNNER_TEMP&&env.GITHUB_EVENT_PATH,'Missing first-creation runtime paths');
+  const expected=resolve(env.RUNNER_TEMP,FIRST_CREATION_CONTRACT.outputDirectory,'first-creation-receipt.json');
+  assert.equal(env.IOS_FIRST_CREATION_RECEIPT,expected,'Missing or substituted first-creation receipt path');
+  const event=JSON.parse(readText(env.GITHUB_EVENT_PATH));
+  return verifyFirstCreationReceipt(Buffer.from(readText(expected)),env.IOS_FIRST_CREATION_SHA256,env,event);
+}
+
 async function main() {
   const phase = process.argv[2];
   assert.ok(['ci-only', 'before-build', 'after-export', 'before-upload'].includes(phase));
   const env = process.env;
+  const firstCreation=verifySigningFirstCreation(path=>readFileSync(path,'utf8'),env);
   const runGit = args => execFileSync('git', args, {encoding: 'utf8'}).trim();
   const source = verifyCheckout(runGit, path => readFileSync(path, 'utf8'), env);
   if (phase === 'ci-only') assert.equal(runGit(['status', '--porcelain']), '', 'App checkout must start clean');
@@ -192,7 +201,7 @@ async function main() {
   }
   mkdirSync('build/ios', {recursive: true});
   writeFileSync('build/ios/source-' + phase + '.json', JSON.stringify({
-    ...source, phase, ci, apple, artifactSlot, version: env.IOS_VERSION, build: env.IOS_BUILD,
+    ...source, firstCreation, phase, ci, apple, artifactSlot, version: env.IOS_VERSION, build: env.IOS_BUILD,
     packageSha256: sha256('package.json'), packageLockSha256: sha256('package-lock.json'), sourceInputs,
     workflowCommit: env.WORKFLOW_COMMIT, workflowRef: env.WORKFLOW_REF,
     buildRunId: env.GITHUB_RUN_ID, buildRunAttempt: env.GITHUB_RUN_ATTEMPT,

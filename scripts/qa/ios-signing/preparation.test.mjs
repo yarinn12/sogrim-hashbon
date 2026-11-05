@@ -1,3 +1,4 @@
+import {SOURCE_QA_JOBS} from './source-ci-required-jobs.mjs';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync, randomBytes} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -7,16 +8,16 @@ import {RELEASE_SOURCE, RELEASE_TREE, SOURCE, requiredRuns, verifyRuns, verifyCo
 import {protect, unprotect} from './protect-artifact.mjs';
 import {verifyRuns as verifyIntakeRuns, readUnusedBuild as readIntakeUnusedBuild} from './intake-source-guard.mjs';
 
-const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '41888169747', SOURCE_WINDOWS_QA_RUN: '41888169764',
-  SOURCE_FONT_QA_RUN: '41888169528', SOURCE_AUTH_QA_RUN: '41888169682',
+const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '42097460112', SOURCE_WINDOWS_QA_RUN: '42097460317',
+  SOURCE_FONT_QA_RUN: '42097460243', SOURCE_AUTH_QA_RUN: '42097460077',
   GITHUB_REPOSITORY: 'yarinn12/sogrim-hashbon', GITHUB_EVENT_NAME: 'workflow_dispatch',
   APPLE_TEAM_ID: 'MA9S4L7WKS', IOS_VERSION: '4.59', IOS_BUILD: '195'};
-const names = ['unit','cross-platform','cross-platform-shard-1','cross-platform-shard-2',
-  'two-client-sync','unit-and-mobile','backup-runtime',
+const names = ['unit','cross-platform','two-client-sync','unit-and-mobile','backup-runtime',
   ...['android-mobile','iphone-webkit','ipad-webkit','iphone-large-text','reflow-200'].map(p=>'mobile ('+p+')'),
-  'ios-native / native-parity','android-native / native-parity',
-  'mobile-iphone-large-text-shard-1','mobile-iphone-large-text-shard-2',
-  'mobile-iphone-webkit-shard-1','mobile-iphone-webkit-shard-2'];
+  ...Array.from({length:16},(_,i)=>`cross-platform-shard-${i<8?1:2} (${i+1})`),
+  ...['android-mobile','ipad-webkit','reflow-200'].flatMap(p=>Array.from({length:8},(_,i)=>`mobile (${p}, ${i+1})`)),
+  ...['iphone-webkit','iphone-large-text'].flatMap(p=>Array.from({length:8},(_,i)=>`mobile-${p}-shard-${i<4?1:2} (${i+1})`)),
+  'ios-native / native-parity','android-native / native-parity'];
 function ci(edit = () => {}) {
   return async (url, options) => {
     assert.equal(options.method, 'GET');
@@ -35,7 +36,7 @@ function ci(edit = () => {}) {
 test('four complete exact-source CI runs and all native lanes pass',async()=>{
   const proof=await verifyRuns(ci(),'synthetic-token',env); assert.equal(proof.length,4);
   const qa=proof.find(run=>run.path==='.github/workflows/qa.yml');
-  assert.equal(qa.jobs.length,18); assert.equal(new Set(qa.jobs.map(job=>job.name)).size,18);
+  assert.equal(qa.jobs.length,68); assert.equal(new Set(qa.jobs.map(job=>job.name)).size,68);
 });
 for(const workflow of ['qa-windows.yml','cross-engine-font-provenance-qa.yml','ios-auth-return-qa.yml'])
  test('private CI rejects a substitute passing job instead of '+workflow,async()=>assert.rejects(verifyRuns(ci((v,p,j)=>{
@@ -176,9 +177,7 @@ test('previous build193 and PWA514 cannot be signed as195',()=>{
  assert.throws(()=>protect(payload,key,{...identity,build:'193'}));
 });
 
-for (const name of ['cross-platform-shard-1', 'cross-platform-shard-2',
- 'mobile-iphone-large-text-shard-1', 'mobile-iphone-large-text-shard-2',
- 'mobile-iphone-webkit-shard-1', 'mobile-iphone-webkit-shard-2']) {
+for (const name of names) {
  test('private CI requires the exact source-bound '+name, async()=>{
   await assert.rejects(verifyRuns(ci((v,p,j)=>{
    if(j&&p.endsWith('/qa.yml')) { v.jobs=v.jobs.filter(job=>job.name!==name);v.total_count=v.jobs.length; }
@@ -191,23 +190,26 @@ for (const name of ['cross-platform-shard-1', 'cross-platform-shard-2',
 }
 
 const oneShotEnv={...env,GITHUB_EVENT_NAME:'push',
- GITHUB_REF:'refs/heads/codex/ios195-459-private-tools-20261104',
- GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios195-459-private-sign-only.yml@refs/heads/codex/ios195-459-private-tools-20261104',
- GITHUB_RUN_NUMBER:'1',GITHUB_RUN_ATTEMPT:'1'};
+ GITHUB_REF:'refs/heads/codex/ios195-459-private-tools-20261105',
+ GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios195-459-private-sign-only-20261105.yml@refs/heads/codex/ios195-459-private-tools-20261105',
+ GITHUB_RUN_NUMBER:'3',GITHUB_RUN_ATTEMPT:'1'};
 test('one-shot artifact preparation accepts only the explicitly frozen push scope',()=>{
  assert.equal(verifyCheckout(git,readText,oneShotEnv).sourceCommit,RELEASE_SOURCE);
 });
 for(const [name,change] of [['branch',{GITHUB_REF:'refs/heads/main'}],
  ['workflow',{GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios-testflight.yml@refs/heads/main'}],
- ['retry',{GITHUB_RUN_ATTEMPT:'2'}],['duplicate',{GITHUB_RUN_NUMBER:'2'}]])
+ ['retry',{GITHUB_RUN_ATTEMPT:'2'}],['invalid counter',{GITHUB_RUN_NUMBER:'0'}]])
  test('one-shot preparation rejects wrong '+name,()=>assert.throws(()=>verifyCheckout(git,readText,{...oneShotEnv,...change})));
 test('actual one-shot workflow keeps signing gates and creates encrypted artifact only',()=>{
- const original=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8');
- const actual=readFileSync(new URL('../../../.github/workflows/ios195-459-private-sign-only.yml',import.meta.url),'utf8');
- assert.ok(actual.includes('github.run_number == 1')&&actual.includes('github.run_attempt == 1'));
- assert.ok(actual.includes('branches: [codex/ios195-459-private-tools-20261104]'));
+ const original=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
+ const actual=readFileSync(new URL('../../../.github/workflows/ios195-459-private-sign-only-20261105.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
+ assert.ok(!actual.includes('github.run_number == 1')&&actual.includes('github.run_attempt == 1'));
+ assert.ok(actual.includes('github.event.created == true')&&actual.includes("github.event.before == '"+'0'.repeat(40)+"'"));
+ assert.ok(actual.includes('branches: [codex/ios195-459-private-tools-20261105]'));
  assert.ok(actual.indexOf('source-guard.mjs" ci-only')<actual.indexOf('secrets.APPSTORE'));
- assert.equal(actual.split('      - name: Set up Node.js')[1],original.split('      - name: Set up Node.js')[1]);
+ const normalized=actual.replaceAll("          IOS_FIRST_CREATION_RECEIPT: ${{ steps.first_creation.outputs.receipt_path }}\n          IOS_FIRST_CREATION_SHA256: ${{ steps.first_creation.outputs.receipt_sha256 }}\n","")
+  .replace(' ../../../tests/iosFirstCreationGuard.test.mjs','');
+ assert.equal(normalized.split('      - name: Set up Node.js')[1],original.split('      - name: Set up Node.js')[1]);
  assert.ok(!/upload-testflight-build|complete-ios-testflight|reviewSubmission|appStoreVersionReleaseRequest/.test(actual));
 });
 
@@ -235,12 +237,12 @@ test('manual preparation is disabled so input CI runs cannot replace the frozen 
 });
 
 
-test('intake source CI accepts all four exact-source runs with eighteen QA jobs',async()=>{
+test('intake source CI accepts all four exact-source runs with sixty-eight QA jobs',async()=>{
   const proofs=await verifyIntakeRuns(ci(),'synthetic-token',env);
   assert.equal(proofs.length,4);
-  assert.equal(proofs.find(run=>run.path==='.github/workflows/qa.yml').jobs.length,18);
+  assert.equal(proofs.find(run=>run.path==='.github/workflows/qa.yml').jobs.length,68);
 });
-for(const name of ['cross-platform-shard-1','cross-platform-shard-2'])
+for(const name of ['cross-platform-shard-1 (1)','cross-platform-shard-2 (9)'])
  test('intake source CI rejects missing '+name,async()=>{
   await assert.rejects(verifyIntakeRuns(ci((value,path,jobs)=>{
    if(jobs&&path==='.github/workflows/qa.yml'){
@@ -250,9 +252,9 @@ for(const name of ['cross-platform-shard-1','cross-platform-shard-2'])
  });
 
 test('4.59 one-shot binds the exact application tree and all four coordinator run IDs',()=>{
- const raw=readFileSync(new URL('../../../.github/workflows/ios195-459-private-sign-only.yml',import.meta.url),'utf8');
- assert.equal(RELEASE_SOURCE,'abcbac91e97230e4737e80c4ea3c2206360e855f');
- assert.equal(RELEASE_TREE,'76e2319de17a875db5f5b1e2b54c2b63659644b1');
+ const raw=readFileSync(new URL('../../../.github/workflows/ios195-459-private-sign-only-20261105.yml',import.meta.url),'utf8');
+ assert.equal(RELEASE_SOURCE,'551abc5f6f9670b8129efaca629ac98be2bd20bb');
+ assert.equal(RELEASE_TREE,'d3836a2a92bd6c08a9133ee0d047bf54a6fd7d1d');
  for(const [name,value]of [['SOURCE_SHA',RELEASE_SOURCE],['SOURCE_QA_RUN',env.SOURCE_QA_RUN],
   ['SOURCE_WINDOWS_QA_RUN',env.SOURCE_WINDOWS_QA_RUN],['SOURCE_FONT_QA_RUN',env.SOURCE_FONT_QA_RUN],
   ['SOURCE_AUTH_QA_RUN',env.SOURCE_AUTH_QA_RUN],['IOS_VERSION','4.59'],['IOS_BUILD','195']]){
@@ -292,3 +294,16 @@ for(const [label,readiness] of [['signing',readUnusedBuild],['intake',readIntake
   });
   assert.equal(pages.length,2);assert.equal(proof.maximumUploadedBuild,193);assert.equal(proof.reserved,false);
  });
+
+test('frozen source CI contract agrees with all actual browser matrix and aggregate names',()=>{
+ assert.deepEqual(SOURCE_QA_JOBS,names);assert.equal(new Set(names).size,68);
+});
+for(const [label,verify] of [['signing',verifyRuns],['intake',verifyIntakeRuns]])
+ for(const name of names)for(const outcome of ['missing','skipped'])
+  test(label+' rejects '+outcome+' required job '+name,async()=>{
+   await assert.rejects(verify(ci((value,path,isJobs)=>{
+    if(!isJobs||path!=='.github/workflows/qa.yml')return;
+    if(outcome==='missing'){value.jobs=value.jobs.filter(job=>job.name!==name);value.total_count=value.jobs.length;}
+    else value.jobs.find(job=>job.name===name).conclusion='skipped';
+   }),'synthetic-token',env));
+  });
