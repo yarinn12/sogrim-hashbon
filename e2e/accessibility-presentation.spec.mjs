@@ -15,6 +15,15 @@ test.afterEach(async ({ page }) => {
   expect(evidence.get(page).errors).toEqual([]);
   expect(evidence.get(page).external).toEqual([]);
 });
+test('accessibility readiness waits for JavaScript-driven dialog motion', async ({ page }) => {
+  await page.setContent('<section class="accessibility-center" role="dialog">הגדרות נגישות</section>');
+  await page.locator('.accessibility-center').evaluate(e => {
+    e.style.transform = 'translateY(12px) scale(0.99)';
+    setTimeout(() => { e.style.transform = 'none'; }, 400);
+  });
+  await stable(page);
+  await expect(page.locator('.accessibility-center')).toHaveCSS('transform', 'none', { timeout: 100 });
+});
 const prefs = (p) => p.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-accessibility-preferences-v1")));
 const identity = (p) => p.evaluate(() => {
   const s = JSON.parse(localStorage.getItem("settle-friends-account-session"));
