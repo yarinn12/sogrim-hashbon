@@ -25,6 +25,14 @@ async function open(page, root = 16, query = "") {
   await expect(page.locator(".account-delete-dialog")).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime) && animation.playState === "running").length)).toBe(0);
+  // Motion's JavaScript-driven translate/scale may not appear in getAnimations().
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect.poll(() => page.locator('.account-delete-dialog').evaluate(e => {
+    const transform = getComputedStyle(e).transform;
+    if (transform === 'none') return true;
+    const matrix = new DOMMatrixReadOnly(transform);
+    return Math.abs(matrix.m42) < .1 && Math.abs(matrix.a - 1) < .001 && Math.abs(matrix.d - 1) < .001;
+  }), { timeout: 1000 }).toBe(true);
 }
 async function hit(l, click = true) {
   await l.evaluate((e) => e.scrollIntoView({ block: "center", behavior: "instant" }));
