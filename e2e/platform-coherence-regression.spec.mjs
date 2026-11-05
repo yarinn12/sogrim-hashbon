@@ -353,8 +353,9 @@ test("account-pending notifications and empty friends return to the previous scr
   const friends = page.locator('[data-screen-kind="groups"]');
   await expect(friends.locator(".friends-empty-state")).toContainText("עוד אין חברים");
   await friends.locator('[data-action="friends-hub-tab"][data-tab="requests"]').click();
-  await expect(friends.locator(".friends-requests-empty"))
-    .toContainText("אין בקשות שממתינות עכשיו");
+  const emptyRequests = friends.locator(".friends-requests-empty");
+  await expect(emptyRequests.locator("strong")).toHaveText("אין בקשות חברות שממתינות");
+  await expect(emptyRequests.locator(":scope > span")).toHaveText("כשתקבל או תשלח בקשה, היא תופיע כאן.");
   await assertNoHorizontalOverflow(page, "empty friend requests");
   await friends.locator('[data-action="go-back"]').click();
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
