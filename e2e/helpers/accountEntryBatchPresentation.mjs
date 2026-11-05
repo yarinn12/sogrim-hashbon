@@ -5,7 +5,10 @@ export const accountEntryAuthOrigin = 'https://account-entry-e2e.supabase.co';
 export const accountEntryUserId = '11111111-1111-4111-8111-111111111111';
 export const accountEntryEmail = 'account-entry@example.com';
 const bootstrap = await readFile(new URL('../fixtures/accountEntryBatchBootstrap.js', import.meta.url), 'utf8');
-const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS' };
+// Authorization is a CORS non-wildcard request-header name, even with '*'.
+// https://fetch.spec.whatwg.org/#cors-non-wildcard-request-header-name
+export const accountEntryCorsHeaders = Object.freeze({ 'access-control-allow-origin': '*', 'access-control-allow-headers': '*, authorization', 'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS' });
+const cors = accountEntryCorsHeaders;
 
 export async function prepareAccountEntry(page, baseURL, options = {}) {
   let user = {

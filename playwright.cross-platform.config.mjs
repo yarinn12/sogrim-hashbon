@@ -20,6 +20,7 @@ const journeys = [
   "e2e/event-participant-management-presentation.spec.mjs",
   "e2e/account-recovery-batch-presentation.spec.mjs",
   "e2e/account-entry-batch-presentation.spec.mjs",
+  "e2e/account-entry-cors.spec.mjs",
   "e2e/event-notes-batch-presentation.spec.mjs",
   "e2e/event-reopen-confirmation-presentation.spec.mjs",
   "e2e/event-leave-confirmation-presentation.spec.mjs",
