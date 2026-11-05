@@ -141,6 +141,7 @@ let accountFeedbackRequestSequence = 0;
 const accountFeedbackMounts = new WeakMap();
 let accountRefreshTimer = null;
 let accountRefreshPromise = null;
+let accountRefreshOwner = null;
 let accountRefreshGeneration = 0;
 let accountProfileUpdateQueue = null;
 let accountConfigRetryTimer = null;
@@ -464,8 +465,14 @@ function isLocalDevelopmentOrigin() {
 
 async function restoreAccountSession(
   session,
-  { previousSession = null, expectedEmail = "" } = {}
+  { previousSession = null, expectedEmail = "", isCurrent = null } = {}
 ) {
+  const assertCurrent = () => {
+    if (isCurrent !== null && (typeof isCurrent !== "function" || isCurrent() !== true)) {
+      throw Object.assign(new Error("Account session changed during restoration"), { code: "STALE_ACCOUNT" });
+    }
+  };
+  assertCurrent();
   let nextSession = session;
   if (isExpiring(session)) {
     nextSession = await refreshAccountSession(
@@ -475,6 +482,7 @@ async function restoreAccountSession(
       { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
     );
   }
+  assertCurrent();
   // User metadata can be repaired server-side while an installed PWA still
   // holds an older session object. Always refresh the authenticated user so a
   // corrected workspace becomes active without requiring sign-out.
@@ -484,6 +492,10 @@ async function restoreAccountSession(
     globalThis.fetch,
     { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
   );
+  assertCurrent();
+  if (isCurrent !== null && session?.user?.id && user?.id !== session.user.id) {
+    throw Object.assign(new Error("Restored user differs from the owning account"), { code: "ACCOUNT_USER_MISMATCH" });
+  }
   nextSession = { ...nextSession, user };
   const normalizedExpectedEmail = String(expectedEmail).trim().toLowerCase();
   const normalizedSessionEmail = String(nextSession?.user?.email ?? "")
@@ -499,30 +511,42 @@ async function restoreAccountSession(
     error.status = 403;
     throw error;
   }
+  assertCurrent();
   const switchedAccount = clearPreviousAccountAfterSwitch(
     previousSession,
-    nextSession
+    nextSession,
+    isCurrent
   );
+  assertCurrent();
   nextSession = await ensureAccountWorkspace(runtimeConfig, nextSession, {
-    requestTimeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS
+    requestTimeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS, isCurrent
   });
+  assertCurrent();
   if (switchedAccount) {
     publishAccountSessionSync(nextSession, { reason: "switching" });
   }
+  assertCurrent();
   return saveAccountSession(nextSession);
 }
 
-function clearPreviousAccountAfterSwitch(previousSession, nextSession) {
+function clearPreviousAccountAfterSwitch(previousSession, nextSession, isCurrent = null) {
+  const assertCurrent = () => {
+    if (isCurrent !== null && (typeof isCurrent !== "function" || isCurrent() !== true)) {
+      throw Object.assign(new Error("Account session changed before clearing the previous account"), { code: "STALE_ACCOUNT" });
+    }
+  };
   const previousUserId = String(previousSession?.user?.id ?? "").trim();
   const nextUserId = String(nextSession?.user?.id ?? "").trim();
   if (!previousUserId || !nextUserId || previousUserId === nextUserId) {
     return false;
   }
 
+  assertCurrent();
   clearLocalAccountData(
     getActiveCloudSpaceId(runtimeConfig),
     previousUserId
   );
+  assertCurrent();
   clearAccountWorkspace(previousSession.user);
   return true;
 }
@@ -906,61 +930,104 @@ function canResumeStoredSessionImmediately(session) {
 }
 
 async function reconcileResumedAccountSession(resumedSession) {
-  const requestGeneration = accountRefreshGeneration;
-  try {
-    let restoredSession;
+  return runAccountSessionRefresh(resumedSession, async (isCurrent, adoptSession, resumedSession) => {
     try {
-      restoredSession = await restoreAccountSession(resumedSession);
+      let restoredSession;
+      try {
+        restoredSession = await restoreAccountSession(resumedSession, { isCurrent });
+      } catch (error) {
+        if (!isCurrent()) return null;
+        if (!isUnauthorizedAccountError(error) || !resumedSession.refresh_token) throw error;
+        const refreshedSession = await refreshAccountSession(
+          runtimeConfig, resumedSession, globalThis.fetch,
+          { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
+        );
+        if (!isCurrent()) return null;
+        if (!refreshedSession) throw error;
+        restoredSession = await restoreAccountSession(refreshedSession, { isCurrent });
+      }
+      if (!isCurrent()) return null;
+      const adopted = adoptSession(restoredSession);
+      if (!adopted || !isCurrent()) return null;
+      document.dispatchEvent(new Event("account-session-refreshed"));
+      if (!isCurrent()) return null;
+      scheduleAccountSessionRefresh();
+      if (!isCurrent()) return null;
+      publishAccountSessionSync(adopted);
+      return adopted;
     } catch (error) {
-      if (
-        requestGeneration !== accountRefreshGeneration ||
-        accountSession !== resumedSession
-      ) {
+      if (!isCurrent()) return null;
+      // Preserve locally resumed data on workspace/network failures. Only an
+      // explicit credential rejection may end the currently owned session.
+      if (isTransientAccountError(error) || !isUnauthorizedAccountError(error)) {
+        scheduleAccountSessionRefresh(ACCOUNT_REFRESH_RETRY_MS);
         return null;
       }
-      if (!isUnauthorizedAccountError(error) || !resumedSession.refresh_token) {
-        throw error;
-      }
-      const refreshedSession = await refreshAccountSession(
-        runtimeConfig,
-        resumedSession,
-        globalThis.fetch,
-        { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
-      );
-      if (!refreshedSession) throw error;
-      restoredSession = await restoreAccountSession(refreshedSession);
+      clearAccountSession();
+      if (!isCurrent()) return null;
+      clearAccountRecoverySession();
+      if (!isCurrent()) return null;
+      lockForAccountSessionChange();
+      return null;
     }
+  }, true);
+}
 
-    if (
-      requestGeneration !== accountRefreshGeneration ||
-      accountSession !== resumedSession
-    ) {
-      return null;
+function runAccountSessionRefresh(session, work, requiresRestore = false) {
+  if (!session || accountSession !== session) return Promise.resolve(null);
+  const generation = accountRefreshGeneration;
+  const backend = JSON.stringify([
+    runtimeConfig?.storage?.url ?? "", runtimeConfig?.storage?.anonKey ?? ""
+  ]);
+  if (accountRefreshPromise && accountRefreshOwner?.generation === generation &&
+      accountRefreshOwner.session === session && accountRefreshOwner.backend === backend) {
+    const pending = accountRefreshPromise;
+    if (requiresRestore && !accountRefreshOwner.requiresRestore) {
+      // An active token rotation may have started during the local-ready event.
+      // Validate its adopted session afterwards without rotating the old token.
+      return pending.then(adopted => {
+        if (!adopted || accountRefreshGeneration !== generation || accountSession !== adopted ||
+            JSON.stringify([runtimeConfig?.storage?.url ?? "", runtimeConfig?.storage?.anonKey ?? ""]) !== backend) return null;
+        return runAccountSessionRefresh(adopted, work, true);
+      });
     }
-    accountSession = saveAccountSession(restoredSession);
-    document.dispatchEvent(new Event("account-session-refreshed"));
-    scheduleAccountSessionRefresh();
-    publishAccountSessionSync(accountSession);
-    return accountSession;
-  } catch (error) {
-    if (
-      requestGeneration !== accountRefreshGeneration ||
-      accountSession !== resumedSession
-    ) {
-      return null;
-    }
-    // A background workspace/profile rejection is not proof that the saved
-    // credentials are invalid. Keep the locally resumed account and retry;
-    // only an explicit auth rejection may end this session.
-    if (isTransientAccountError(error) || !isUnauthorizedAccountError(error)) {
-      scheduleAccountSessionRefresh(ACCOUNT_REFRESH_RETRY_MS);
-      return null;
-    }
-    clearAccountSession();
-    clearAccountRecoverySession();
-    lockForAccountSessionChange();
-    return null;
+    return pending;
   }
+  const owner = { generation, session, backend, requiresRestore };
+  const isCurrent = () => accountRefreshOwner === owner && accountRefreshGeneration === generation &&
+    accountSession === owner.session && JSON.stringify([
+      runtimeConfig?.storage?.url ?? "", runtimeConfig?.storage?.anonKey ?? ""
+    ]) === backend;
+  const adoptSession = nextSession => {
+    if (!isCurrent()) return null;
+    if (owner.session?.user?.id && nextSession?.user?.id !== owner.session.user.id) {
+      throw Object.assign(new Error("Refreshed user differs from the owning account"), { code: "ACCOUNT_USER_MISMATCH" });
+    }
+    accountSession = saveAccountSession(nextSession);
+    owner.session = accountSession;
+    return accountSession;
+  };
+  // Register ownership before work can yield or publish a refreshed-session
+  // event. Both startup reconciliation and timer/cloud callers join this work.
+  let resolveRequest, rejectRequest;
+  const completion = new Promise((resolve, reject) => {
+    resolveRequest = resolve; rejectRequest = reject;
+  });
+  const request = completion.finally(() => {
+    if (accountRefreshOwner === owner && accountRefreshPromise === request) {
+      accountRefreshPromise = null;
+      accountRefreshOwner = null;
+    }
+  });
+  accountRefreshOwner = owner;
+  accountRefreshPromise = request;
+  try {
+    Promise.resolve(isCurrent() ? work(isCurrent, adoptSession, owner.session) : null)
+      .then(resolveRequest, rejectRequest);
+  } catch (error) {
+    rejectRequest(error);
+  }
+  return request;
 }
 
 function lockForAccountSessionChange() {
@@ -2868,44 +2935,28 @@ function refreshAccountSessionIfNeeded() {
 }
 
 function refreshActiveAccountSession() {
-  if (accountRefreshPromise) return accountRefreshPromise;
-  if (!accountSession?.refresh_token || !runtimeConfig) {
-    return Promise.resolve(null);
-  }
-
+  if (!accountSession?.refresh_token || !runtimeConfig) return Promise.resolve(null);
   const previousSession = accountSession;
-  const requestGeneration = accountRefreshGeneration;
-  accountRefreshPromise = refreshAccountSession(runtimeConfig, previousSession)
-    .then((refreshedSession) => {
+  return runAccountSessionRefresh(previousSession, async (isCurrent, adoptSession) => {
+    try {
+      const refreshedSession = await refreshAccountSession(runtimeConfig, previousSession);
+      if (!isCurrent()) return null;
       if (!refreshedSession) throw new Error("Account refresh failed");
-      if (
-        requestGeneration !== accountRefreshGeneration ||
-        accountSession !== previousSession
-      ) {
-        return null;
-      }
-      accountSession = saveAccountSession({
-        ...refreshedSession,
-        user: refreshedSession.user ?? previousSession.user
+      const adopted = adoptSession({
+        ...refreshedSession, user: refreshedSession.user ?? previousSession.user
       });
+      if (!adopted || !isCurrent()) return null;
       document.dispatchEvent(new Event("account-session-refreshed"));
-      publishAccountSessionSync(accountSession);
+      if (!isCurrent()) return null;
+      publishAccountSessionSync(adopted);
+      if (!isCurrent()) return null;
       scheduleAccountSessionRefresh();
-      return accountSession;
-    })
-    .catch(() => {
-      if (
-        requestGeneration === accountRefreshGeneration &&
-        accountSession === previousSession
-      ) {
-        scheduleAccountSessionRefresh(ACCOUNT_REFRESH_RETRY_MS);
-      }
+      return adopted;
+    } catch {
+      if (isCurrent()) scheduleAccountSessionRefresh(ACCOUNT_REFRESH_RETRY_MS);
       return null;
-    })
-    .finally(() => {
-      accountRefreshPromise = null;
-    });
-  return accountRefreshPromise;
+    }
+  });
 }
 
 function setAuthBusy(value) {

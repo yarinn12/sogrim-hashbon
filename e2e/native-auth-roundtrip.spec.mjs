@@ -355,6 +355,58 @@ test("an expired saved access token refreshes without asking Google to sign in a
   expect(counts.token).toBe(1);
 });
 
+test("a delayed startup user response cannot rotate the same expired session twice", async ({ page }) => {
+  await page.clock.install();
+  await page.addInitScript(() => {
+    globalThis.__roundtripReconciled = 0;
+    document.addEventListener('account-session-refreshed', () => globalThis.__roundtripReconciled++);
+  });
+  const { counts } = await prepare(page);
+  await page.getByRole('button', { name: 'המשך עם Google', exact: true }).click();
+  await expectAccount(page);
+  await expect.poll(() => page.evaluate(() => globalThis.__roundtripReconciled)).toBeGreaterThan(0);
+  let releaseUser, heldUserReads = 0;
+  const userGate = new Promise(resolve => { releaseUser = resolve; });
+  await page.route(`${AUTH}/auth/v1/user`, async route => {
+    if (route.request().headers().authorization === 'Bearer fixture-refreshed-access') {
+      heldUserReads++;
+      await userGate;
+    }
+    return route.fallback();
+  });
+  try {
+    await page.evaluate(() => {
+      const key = 'settle-friends-account-session';
+      const session = JSON.parse(localStorage.getItem(key));
+      session.expires_at = 1;
+      localStorage.setItem(key, JSON.stringify(session));
+    });
+    await page.reload();
+    await expect(page.getByText(eventName, { exact: true })).toBeVisible();
+    await expect.poll(() => counts.refresh).toBe(1);
+    await expect.poll(() => heldUserReads).toBe(1);
+    await page.evaluate(() => {
+      globalThis.__roundtripConcurrentRefreshFinished = false;
+      globalThis.__roundtripConcurrentRefresh = globalThis.SogrimAccountSession.refresh().then(session => {
+        globalThis.__roundtripConcurrentRefreshFinished = true;
+        return session?.access_token ?? null;
+      });
+    });
+    // Exercise the actual scheduled refresh while reconciliation still waits
+    // for its authenticated user. Advance time, not a wall-clock sleep/retry.
+    await page.clock.runFor(1500);
+    expect(counts.refresh, 'one token rotation must cover the whole startup reconciliation').toBe(1);
+    releaseUser();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('settle-friends-account-session'))?.access_token)).toBe('fixture-refreshed-access');
+    await expect.poll(() => page.evaluate(() => globalThis.__roundtripReconciled)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => globalThis.__roundtripConcurrentRefresh)).toBe('fixture-refreshed-access');
+    expect(counts.token).toBe(1);
+    expect(await page.evaluate(() => localStorage.getItem('roundtrip-chooser-count'))).toBe('1');
+  } finally {
+    releaseUser();
+  }
+});
+
 test("sign-out removes the saved session and returns to usable native login options", async ({ page }) => {
   const { counts } = await prepare(page);
   await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();

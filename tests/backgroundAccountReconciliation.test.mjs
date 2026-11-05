@@ -29,6 +29,7 @@ function harness() {
     accountSession: initialSession,
     storedSession: initialSession,
     accountRefreshGeneration: 0,
+    accountRefreshPromise: null, accountRefreshOwner: null,
     ACCOUNT_REFRESH_RETRY_MS: 3_000,
     STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS: 12_000,
     runtimeConfig: {},

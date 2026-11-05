@@ -10,6 +10,8 @@ test("unit and integration partitions run every discovered test exactly once", (
   assert.ok(unit.length>100);assert.ok(integration.length>=27);
   assert.deepEqual([...unit,...integration].sort(),all);
   assert.equal(new Set([...unit,...integration]).size,all.length);
+  assert.ok(integration.includes(resolve('tests/accountStartupRefreshConcurrency.test.mjs')),
+    'startup refresh coverage must exercise the actual auth, storage and workspace modules in integration');
   assert.deepEqual(selectTestFiles(all,root),all);
   assert.equal(requestedSuite(["--coverage","--suite","integration"]),"integration");
   assert.throws(()=>requestedSuite(["--suite"]),/Expected/);

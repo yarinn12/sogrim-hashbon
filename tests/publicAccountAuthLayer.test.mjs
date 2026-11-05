@@ -113,7 +113,7 @@ test("a returning session paints local state before remote reconciliation even w
   );
   assert.match(
     reconcile,
-    /restoreAccountSession\(resumedSession\)[\s\S]*?isUnauthorizedAccountError\(error\)[\s\S]*?refreshAccountSession\([\s\S]*?restoreAccountSession\(refreshedSession\)/
+    /restoreAccountSession\(resumedSession, \{ isCurrent \}\)[\s\S]*?isUnauthorizedAccountError\(error\)[\s\S]*?refreshAccountSession\([\s\S]*?restoreAccountSession\(refreshedSession, \{ isCurrent \}\)/
   );
   assert.match(
     reconcile,
@@ -419,7 +419,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   );
   assert.match(
     layer,
-    /requestGeneration !== accountRefreshGeneration \|\|\s*accountSession !== previousSession/
+    /const isCurrent = \(\) => accountRefreshOwner === owner && accountRefreshGeneration === generation &&\s*accountSession === owner\.session/
   );
   assert.match(layer, /isTransientAccountError/);
   assert.match(layer, /const pkce = await createOAuthPkce\(\);/);
@@ -785,10 +785,10 @@ test("account auth synchronizes completed account switches and sign-out across t
     layer,
     /globalThis\.SogrimAccountSession = Object\.freeze\(\{\s*refresh: refreshActiveAccountSession/
   );
-  assert.match(
-    layer,
-    /accountSession = saveAccountSession\(\{[\s\S]*?publishAccountSessionSync\(accountSession\);\s*scheduleAccountSessionRefresh\(\)/
-  );
+  const refresh = layer.slice(layer.indexOf("function refreshActiveAccountSession("), layer.indexOf("function setAuthBusy("));
+  assert.match(refresh, /runAccountSessionRefresh\(previousSession,[\s\S]*?const adopted = adoptSession\([\s\S]*?publishAccountSessionSync\(adopted\);[\s\S]*?scheduleAccountSessionRefresh\(\)/);
+  const coordinator = layer.slice(layer.indexOf("function runAccountSessionRefresh("), layer.indexOf("function lockForAccountSessionChange("));
+  assert.match(coordinator, /const adoptSession = nextSession => \{\s*if \(!isCurrent\(\)\) return null;[\s\S]*?accountSession = saveAccountSession\(nextSession\);\s*owner\.session = accountSession/);
 });
 
 test("account boundaries clear invite capabilities before another account loads", async () => {

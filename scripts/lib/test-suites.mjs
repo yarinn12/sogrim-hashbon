@@ -4,6 +4,7 @@ import { relative } from "node:path";
 // exercise HTTP, database, storage or orchestration contracts across modules.
 export const integrationFiles = [
   "auditPersistenceRegressions", "databaseIntegrity", "draftRecoveryIntegration",
+  "accountStartupRefreshConcurrency",
   "fxMigrationLifecycle", "fxSharedFirstInsert", "cloudStore", "cloudStartupSync",
   "cloudConflictRetry", "cloudObserverConcurrency", "sharedSaveReconciliation",
   "sharedSyncPartialFailure", "sharedWriteVersionRace", "sharedEventSparseWrite",
