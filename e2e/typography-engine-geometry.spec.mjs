@@ -63,8 +63,9 @@ test('summary and header text grow with system text and leave long copy readable
   const hero = summary.locator('.settlement-hero.is-personal-pending:not(.is-explained)');
   await expect(hero).toBeVisible();
   const description = hero.locator('.settlement-hero-title-row .muted');
-  await expect(description).toContainText('אפשר לראות את המצב כרגע');
-  await expect(description).toHaveCSS('font-size', '12px');
+  const approvedCopy = 'הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.';
+  await expect(description).toHaveText(approvedCopy);
+  await expect(description).toHaveCSS('font-size', '14px');
   const status = hero.locator('.status-chip');
   const heading = hero.locator('.settlement-hero-title-row h2');
   const firstTransfer = summary.locator('.settlement-transfer-board .transfer-row').first();
@@ -89,7 +90,7 @@ test('summary and header text grow with system text and leave long copy readable
     document.documentElement.classList.add('dynamic-type-preview');
     document.documentElement.style.setProperty('font-size', '32px', 'important');
   });
-  await expect(description).toHaveCSS('font-size', '24px');
+  await expect(description).toHaveCSS('font-size', '28px');
   await expect(status).toHaveCSS('font-size', '22px');
   expect(await heading.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThan(35);
   await expect(badge).toHaveCSS('font-size', '22px');
@@ -116,7 +117,7 @@ test('summary and header text grow with system text and leave long copy readable
   expect(headerLayout.brandTop).toBeGreaterThanOrEqual(headerLayout.markBottom - 1);
   expect(headerLayout.labelsFit).toBe(true);
 
-  const longCopy = 'אפשר לראות את המצב כרגע. מעבירים כסף רק לאחר סגירת האירוע. '.repeat(4).trim();
+  const longCopy = (approvedCopy + ' ').repeat(7).trim();
   await description.evaluate((element, text) => { element.textContent = text; }, longCopy);
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const layout = await description.evaluate(element => {
@@ -135,7 +136,7 @@ test('summary and header text grow with system text and leave long copy readable
       documentScrollWidth: document.documentElement.scrollWidth,
       documentClientWidth: document.documentElement.clientWidth };
   });
-  expect(layout.fontSize).toBe(24);
+  expect(layout.fontSize).toBe(28);
   expect(layout.inkBottom).toBeLessThanOrEqual(layout.boxBottom + 1);
   expect(layout.inkBottom).toBeLessThan(layout.actionsTop);
   expect(layout.inkBottom).toBeLessThan(layout.cardBottom);
@@ -146,7 +147,7 @@ test('summary and header text grow with system text and leave long copy readable
   expect(await headerLabel.evaluate(element => parseFloat(getComputedStyle(element).fontSize)))
     .toBeCloseTo(14 * 37.64706 / 16, 2);
   const extraLargeSize = await description.evaluate(element => parseFloat(getComputedStyle(element).fontSize));
-  expect(extraLargeSize).toBeCloseTo(12 * 37.64706 / 16, 2);
+  expect(extraLargeSize).toBeCloseTo(14 * 37.64706 / 16, 2);
   const extraLargeLayout = await description.evaluate(element => {
     const range = document.createRange();
     range.selectNodeContents(element);
@@ -191,7 +192,7 @@ test('summary and header text grow with system text and leave long copy readable
         SogrimCapabilities: { getCapabilities: async () => ({ fontScale: 2 }) }
       } });
     });
-    await expect(description).toHaveCSS('font-size', '12px');
+    await expect(description).toHaveCSS('font-size', '14px');
     // Native Android uses the OS scale and its large-text class, without the
     // extra root-font preview scale that would double-apply accessibility size.
     await expect(headerLabel).toHaveCSS('font-size', '14px');
@@ -214,7 +215,7 @@ test('summary and header text grow with system text and leave long copy readable
       document.documentElement.style.setProperty('font-size', '16px', 'important');
     });
   }
-  await expect(description).toHaveCSS('font-size', '12px');
+  await expect(description).toHaveCSS('font-size', '14px');
   await expect(status).toHaveCSS('font-size', '11px');
   await expect(headerLabel).toHaveCSS('font-size', '14px');
   await expect(brand).toHaveCSS('font-size', '17px');
