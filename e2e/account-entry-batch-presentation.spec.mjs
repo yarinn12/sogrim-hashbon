@@ -88,7 +88,9 @@ test('account entry: password recovery validates, normalizes and announces the s
 test('account entry: login rejection can retry the final password request without duplicate submission', async ({ page, baseURL }) => {
   const fixture = await prepareAccountEntry(page, baseURL, { acceptLogin: true, rejectLoginOnce: true }), gate = await openAccountEntry(page);
   for (let attempt = 0; attempt < 2; attempt++) {
-    await gate.locator('input[name=email]').fill(accountEntryEmail);await gate.locator('input[name=password]').fill('SyntheticOnly123!');await gate.getByRole('button', { name: 'התחבר', exact: true }).click();
+    await gate.locator('input[name=email]').fill(accountEntryEmail);await gate.locator('input[name=password]').fill('SyntheticOnly123!');
+    if (attempt) await fixture.reloadEvidence.withExpectedReload(() => gate.getByRole('button', { name: 'התחבר', exact: true }).click());
+    else await gate.getByRole('button', { name: 'התחבר', exact: true }).click();
     if (!attempt) { await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');await expect(gate.locator('#account-auth-feedback')).toContainText('האימייל או הסיסמה אינם נכונים'); }
   }
   await expect(gate).toHaveCount(0, { timeout: 20000 });await expect(page.getByText('אירוע בדיקת החשבון', { exact: true })).toBeVisible();
@@ -112,7 +114,9 @@ test('account entry: password mismatch and reveal stay local without clearing re
 test('account entry: password-update rejection preserves recovery and an acknowledged retry clears it', async ({ page, baseURL }) => {
   const fixture = await prepareAccountEntry(page, baseURL, { recovery: true, failUserWriteOnce: true }), gate = await openAccountEntry(page, { mode: 'reset' });
   for (let attempt = 0; attempt < 2; attempt++) {
-    await gate.locator('input[name=password]').fill('SyntheticOnly123!');await gate.locator('input[name=passwordConfirmation]').fill('SyntheticOnly123!');await gate.getByRole('button', { name: 'שמור סיסמה', exact: true }).click();
+    await gate.locator('input[name=password]').fill('SyntheticOnly123!');await gate.locator('input[name=passwordConfirmation]').fill('SyntheticOnly123!');
+    if (attempt) await fixture.reloadEvidence.withExpectedReload(() => gate.getByRole('button', { name: 'שמור סיסמה', exact: true }).click());
+    else await gate.getByRole('button', { name: 'שמור סיסמה', exact: true }).click();
     if (!attempt) { await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');expect(await page.evaluate(() => Boolean(localStorage.getItem('settle-friends-account-recovery-session')))).toBe(true); }
   }
   await expect(gate).toHaveCount(0, { timeout: 20000 });expect(fixture.record.userUpdates).toHaveLength(2);for (const request of fixture.record.userUpdates) { expect(request.payload).toEqual({ password: 'SyntheticOnly123!' });expect(request.authorization).toBe('Bearer synthetic-account-entry-access'); }
@@ -123,7 +127,8 @@ test('account entry: incomplete name requires both identity fields and submits e
   const fixture = await prepareAccountEntry(page, baseURL, { authenticated: true, incompleteName: true, incompleteUsername: true }), gate = await openAccountEntry(page, { mode: 'complete', size: 32, width: 320 });
   await expect(gate.getByRole('heading', { name: 'השלמת פרטים', exact: true })).toBeVisible();await assertAccountLayout(gate, 32);
   await gate.getByRole('button', { name: 'שמור והמשך', exact: true }).click();await expect(gate.locator('#account-auth-feedback')).toContainText('שם פרטי ושם משפחה');expect(fixture.record.userUpdates).toHaveLength(0);
-  await gate.locator('input[name=displayName]').fill('נועם לוי');await gate.locator('input[name=username]').fill('NOAM_LEVI');await gate.getByRole('button', { name: 'שמור והמשך', exact: true }).click();await expect(gate).toHaveCount(0, { timeout: 20000 });
+  await gate.locator('input[name=displayName]').fill('נועם לוי');await gate.locator('input[name=username]').fill('NOAM_LEVI');
+  await fixture.reloadEvidence.withExpectedReload(() => gate.getByRole('button', { name: 'שמור והמשך', exact: true }).click());await expect(gate).toHaveCount(0, { timeout: 20000 });
   expect(fixture.record.username[0]).toEqual({ p_username: 'noam_levi' });expect(fixture.record.userUpdates[0].payload).toEqual({ data: { full_name: 'נועם לוי', name: 'נועם לוי', display_name: 'נועם לוי', username: 'noam_levi', account_space_id: 'space-account-entry', account_space_key: 'abcdefghijklmnopqrstuvwxyzABCDEF' } });expectNoExternalFailures(fixture);
 });
 
@@ -137,7 +142,8 @@ test('account entry regression: username collision remains clear and preserves t
   const fixture = await prepareAccountEntry(page, baseURL, { authenticated: true, incompleteName: true, incompleteUsername: true, usernameCollisionOnce: true }), gate = await openAccountEntry(page, { mode: 'complete' });
   await gate.locator('input[name=displayName]').fill('נועם לוי');await gate.locator('input[name=username]').fill('taken_name');await gate.getByRole('button', { name: 'שמור והמשך', exact: true }).click();
   await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');await expect(gate.locator('#account-auth-feedback')).toContainText('שם המשתמש הזה כבר תפוס');await expect(gate.locator('input[name=displayName]')).toHaveValue('נועם לוי');await expect(gate.locator('input[name=username]')).toHaveValue('taken_name');await expect(gate.locator('input[name=username]')).toBeFocused();expect(fixture.record.userUpdates).toHaveLength(0);
-  await gate.locator('input[name=username]').fill('available_name');await gate.getByRole('button', { name: 'שמור והמשך', exact: true }).click();await expect(gate).toHaveCount(0, { timeout: 20000 });expect(fixture.record.username.slice(0, 2)).toEqual([{ p_username: 'taken_name' }, { p_username: 'available_name' }]);expectNoExternalFailures(fixture);
+  await gate.locator('input[name=username]').fill('available_name');
+  await fixture.reloadEvidence.withExpectedReload(() => gate.getByRole('button', { name: 'שמור והמשך', exact: true }).click());await expect(gate).toHaveCount(0, { timeout: 20000 });expect(fixture.record.username.slice(0, 2)).toEqual([{ p_username: 'taken_name' }, { p_username: 'available_name' }]);expectNoExternalFailures(fixture);
 });
 
 test('account entry: an incoming event invitation survives switching between login and signup', async ({ page, baseURL }) => {

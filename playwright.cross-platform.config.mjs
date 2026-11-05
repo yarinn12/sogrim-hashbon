@@ -21,6 +21,7 @@ const journeys = [
   "e2e/account-recovery-batch-presentation.spec.mjs",
   "e2e/account-entry-batch-presentation.spec.mjs",
   "e2e/account-entry-cors.spec.mjs",
+  "e2e/account-entry-reload-evidence.spec.mjs",
   "e2e/event-notes-batch-presentation.spec.mjs",
   "e2e/event-reopen-confirmation-presentation.spec.mjs",
   "e2e/event-leave-confirmation-presentation.spec.mjs",
@@ -115,7 +116,8 @@ export default defineConfig({
       ["desktop-webkit", "Desktop Safari"]
     ].map(([name, device]) => ({
       name,
-      testMatch: name === "desktop-firefox" ? [...journeys, firefoxNavigationReadiness] : journeys,
+      testMatch: name === "desktop-firefox" ? [...journeys, firefoxNavigationReadiness]
+        : name === "desktop-webkit" ? [...journeys, "e2e/account-entry-webkit-reload-evidence.spec.mjs"] : journeys,
       use: { ...devices[device], viewport: { width: 1280, height: 900 } }
     })),
     {

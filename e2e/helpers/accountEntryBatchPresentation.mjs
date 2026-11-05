@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect } from '@playwright/test';
+import { installAccountEntryReloadEvidence } from './accountEntryReloadEvidence.mjs';
 
 export const accountEntryAuthOrigin = 'https://account-entry-e2e.supabase.co';
 export const accountEntryUserId = '11111111-1111-4111-8111-111111111111';
@@ -32,9 +33,11 @@ export async function prepareAccountEntry(page, baseURL, options = {}) {
     auth: options.nativeProviders ? { googleClientId: 'fixture-web.apps.googleusercontent.com', googleIosClientId: 'fixture-ios.apps.googleusercontent.com' } : {},
     launch: { googleAuthReady: Boolean(options.nativeProviders), googleIosAuthReady: Boolean(options.nativeProviders), authEmailDeliveryReady: true }
   };
-  const record = { passwords: [], signup: [], recover: [], resend: [], userUpdates: [], username: [], snapshotWrites: [], external: [], pageErrors: [], methods: [] };
+  const record = { passwords: [], signup: [], recover: [], resend: [], userUpdates: [], username: [], snapshotWrites: [], external: [], pageErrors: [], runtimeErrors: [], unmatchedRequests: [], reloadDiagnostics: [], methods: [] };
   let failedUserWrites = 0, failedUsernames = 0;
-  page.on('pageerror', error => record.pageErrors.push(error.message));
+  const reloadEvidence = await installAccountEntryReloadEvidence(page, {
+    origin: accountEntryAuthOrigin, record, browserName: page.context().browser()?.browserType().name()
+  });
   await page.addInitScript({ content: '(' + bootstrap + ')(' + JSON.stringify({ session: options.authenticated || options.recovery ? session : null, recovery: Boolean(options.recovery), nativeProviders: Boolean(options.nativeProviders), runtimeConfig }) + ')' });
   // Optional immutable OLD source for explicit regression proof. Other tests use
   // the server's checkout unchanged, including the production auth entry point.
@@ -101,7 +104,7 @@ export async function prepareAccountEntry(page, baseURL, options = {}) {
     }
     return json([]);
   });
-  return { record, user: () => user };
+  return { record, user: () => user, reloadEvidence };
 }
 
 export async function openAccountEntry(page, { mode = 'login', size = 16, width = 393, height = 852, query = '', waitUntil = 'load', waitForFonts = true } = {}) {
@@ -148,7 +151,7 @@ export async function fillSignup(gate, { displayName = 'נועם לוי', userna
   await gate.locator('input[name=displayName]').fill(displayName);await gate.locator('input[name=username]').fill(username);await gate.locator('input[name=email]').fill(email);await gate.locator('input[name=password]').fill(password);
 }
 
-export function expectNoExternalFailures(fixture) { expect(fixture.record.external).toEqual([]);expect(fixture.record.pageErrors).toEqual([]); }
+export function expectNoExternalFailures(fixture) { fixture.reloadEvidence.assertNoExternalFailures(); }
 
 export async function emulateAccountSafeArea(page, insets) {
   const values = Object.fromEntries(['top', 'left', 'right', 'bottom'].map(edge => {
