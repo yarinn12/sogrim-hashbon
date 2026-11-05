@@ -402,14 +402,31 @@ test("profile sections use one visual surface system without changing their orde
     background: "rgba(0, 0, 0, 0)",
     shadow: "none"
   });
-  expect(new Set(presentation.surfaces.map((surface) => JSON.stringify(surface))).size).toBe(1);
+  // The approved avatar selection surface deliberately has no shadow.
+  // Borders, radius and background remain shared with the other profile rows.
+  expect(new Set(presentation.surfaces.map(({shadow, ...surface}) => JSON.stringify(surface))).size).toBe(1);
   expect(presentation.surfaces[0]).toEqual({
     borderWidth: "1px",
     borderColor: "rgb(226, 232, 240)",
     radius: "12px",
     background: "rgb(255, 255, 255)",
-    shadow: "rgba(15, 23, 42, 0.05) 0px 1px 3px 0px"
+    shadow: "none"
   });
+  expect(presentation.surfaces.slice(1).map(surface => surface.shadow)).toEqual(
+    Array(4).fill("rgba(15, 23, 42, 0.05) 0px 1px 3px 0px")
+  );
+  const sectionOrder = await profile.evaluate(screen => {
+    const selectors = [".profile-avatar-picker-shell", ".profile-shortcuts", ".referral-reward-card.is-profile", ".notification-settings-card", ".account-profile-controls"];
+    return selectors.map(selector => {
+      const element = screen.querySelector(selector), rect = element.getBoundingClientRect();
+      return {selector, top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right};
+    });
+  });
+  for (let index = 1; index < sectionOrder.length; index++) {
+    expect(sectionOrder[index].top, sectionOrder[index].selector).toBeGreaterThanOrEqual(sectionOrder[index - 1].bottom);
+    expect(Math.abs(sectionOrder[index].left - sectionOrder[0].left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(sectionOrder[index].right - sectionOrder[0].right)).toBeLessThanOrEqual(1);
+  }
   expect(new Set(presentation.titles.map(({lineHeight, ...title}) => JSON.stringify(title))).size).toBe(1);
   expect(presentation.titles[0]).toEqual({
     color: "rgb(15, 23, 42)",

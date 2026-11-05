@@ -463,8 +463,32 @@ test("friend relationship stays readable and legacy group routes return to frien
       '[data-friend-identity-section="connected"] .avatar[data-action="open-participant-statistics"]'
     )
     .click();
-  await expect(page.locator('[data-friend-profile-id]')).toBeVisible();
-  await expect(page.getByText("אתם במספרים", { exact: true })).toBeVisible();
+  const relationship = page.locator('[data-friend-profile-id]');
+  await expect(relationship).toBeVisible();
+  await expect(relationship.getByRole("heading", { name: "הפעילות המשותפת", exact: true })).toBeVisible();
+  await expect(relationship.locator(".relationship-identity-copy")).toContainText("מאור סיבוני");
+  const metrics = relationship.locator(".friend-activity-overview .friend-activity-metric");
+  await expect(metrics.locator("h3")).toHaveText(["כמה כל אחד שילם בהוצאות", "הוצאות שנוספו"]);
+  await expect(metrics.nth(0).locator(".font-num")).toHaveText(["₪180.00", "₪320.00"]);
+  await expect(metrics.nth(1).locator(".font-num")).toHaveText(["1", "2"]);
+  for (const values of await metrics.locator(".friend-activity-values").all()) {
+    await expect(values.locator("small")).toHaveText(["אתה", "מאור סיבוני"]);
+    const sides = await values.evaluate((element) => {
+      const [current, target] = [...element.children].map(node => node.getBoundingClientRect());
+      return {columns: getComputedStyle(element).gridTemplateColumns.split(" ").length,
+        current: {left: current.left, top: current.top, right: current.right, bottom: current.bottom},
+        target: {left: target.left, top: target.top, right: target.right, bottom: target.bottom},
+        clipped: [...element.querySelectorAll("small,strong")].some(node => node.scrollWidth > node.clientWidth + 1)};
+    });
+    expect(sides.clipped).toBe(false);
+    if (sides.columns === 1) {
+      expect(Math.abs(sides.current.left - sides.target.left)).toBeLessThanOrEqual(1);
+      expect(sides.target.top).toBeGreaterThanOrEqual(sides.current.bottom);
+    } else {
+      expect(sides.columns).toBe(2);
+      expect(sides.current.left).toBeGreaterThanOrEqual(sides.target.right);
+    }
+  }
   await assertNoHorizontalOverflow(page);
   await capture(page, "08e-friend-relationship");
 
