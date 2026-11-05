@@ -11,13 +11,34 @@ export async function pointClick(locator, page = locator.page()) {
   await expect(locator).toBeVisible();
   await expect(locator).toBeEnabled();
   await locator.evaluate(e => e.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}));
-  await expect.poll(() => locator.evaluate(async e => {
-    const before=e.getBoundingClientRect();
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const r=e.getBoundingClientRect(),hit=document.elementFromPoint((r.left+r.right)/2,(r.top+r.bottom)/2);
-    return Math.abs(before.top-r.top)<.1 && Math.abs(before.left-r.left)<.1 && !!hit && (hit===e || e.contains(hit));
-  })).toBe(true);
-  const point=await locator.evaluate(e => {const r=e.getBoundingClientRect();return{x:(r.left+r.right)/2,y:(r.top+r.bottom)/2}});
+  let point;
+  await expect.poll(async () => {
+    point=await locator.evaluate(async e => {
+      const rect=e.getBoundingClientRect(),x=(rect.left+rect.right)/2,y=(rect.top+rect.bottom)/2;
+      const hit=document.elementFromPoint(x,y);
+      if(!hit||(hit!==e&&!e.contains(hit))){
+        const navTop=Math.min(innerHeight,...[...document.querySelectorAll('.product-app-nav,.event-route-primary-nav')]
+          .filter(nav=>{const style=getComputedStyle(nav),r=nav.getBoundingClientRect();return style.display!=='none'&&style.visibility!=='hidden'&&r.width>0&&r.height>0&&r.top>0&&r.top<innerHeight&&r.bottom>innerHeight/2})
+          .map(nav=>nav.getBoundingClientRect().top));
+        const owners=[];
+        for(let owner=e.parentElement;owner&&owner!==document.body&&owner!==document.documentElement;owner=owner.parentElement){
+          if(/auto|scroll/.test(getComputedStyle(owner).overflowY)&&owner.scrollHeight>owner.clientHeight+1)owners.push(owner);
+        }
+        if(!owners.length)scrollBy({top:y-navTop/2,behavior:'instant'});
+        for(const owner of owners){
+          const box=owner.getBoundingClientRect(),top=Math.max(0,box.top),bottom=Math.min(navTop,box.bottom);
+          if(bottom<=top)continue;
+          const current=e.getBoundingClientRect();
+          owner.scrollTop+=(current.top+current.bottom)/2-(top+bottom)/2;
+        }
+      }
+      const before=e.getBoundingClientRect();
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      const r=e.getBoundingClientRect(),cx=(r.left+r.right)/2,cy=(r.top+r.bottom)/2,topElement=document.elementFromPoint(cx,cy);
+      return Math.abs(before.top-r.top)<.1&&Math.abs(before.left-r.left)<.1&&topElement&&(topElement===e||e.contains(topElement))?{x:cx,y:cy}:null;
+    });
+    return point!==null;
+  }).toBe(true);
   await page.mouse.click(point.x,point.y);
 }
 
