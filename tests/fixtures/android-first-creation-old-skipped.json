@@ -1,0 +1,16 @@
+{
+  "evidence": "Observed GET metadata, not synthetic execution; branch-creation flags used in the test are a separate synthetic fixture",
+  "repository": "yarinn12/sogrim-hashbon",
+  "runId": 42068966538,
+  "workflowId": 408405740,
+  "path": ".github/workflows/android-abcb-emulator-36310-qa.yml",
+  "branch": "codex/android-abcb-emulator-36310-20261104",
+  "headSha": "2a62c846ed397b93dd68fe0363da0dd148ca9a8e",
+  "event": "push",
+  "run_number": 3,
+  "run_attempt": 1,
+  "conclusion": "skipped",
+  "job": {"id": 127391272816, "conclusion": "skipped", "steps": []},
+  "artifacts": [],
+  "url": "https://github.com/yarinn12/sogrim-hashbon/actions/runs/42068966538"
+}
