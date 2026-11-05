@@ -3,7 +3,9 @@ export default function measureExpenseFlowTypography() {
  const modal=document.querySelector('.expense-step-modal[data-expense-step]');
  const rect=e=>{const r=e.getBoundingClientRect();return{x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
  const leaves=[];
- for(const [selector,ratio] of [['.field > span',.8125],['.expense-participant-row-copy strong',.875],
+ // A date-control wrapper includes an invisible absolute native input. Measure
+ // its visible caption separately so hidden picker bounds cannot mimic clipping.
+ for(const [selector,ratio] of [['.field > span:not(.expense-date-control)',.8125],['[data-expense-date-caption]',.9375],['.expense-participant-row-copy strong',.875],
    ['.expense-participant-row-copy small',.8125],['.expense-review-row small',.8125],['.expense-review-row strong',.9375]]) {
   for(const e of modal.querySelectorAll(selector)) {
    if(!e.textContent.trim()||rect(e).width===0)continue;
