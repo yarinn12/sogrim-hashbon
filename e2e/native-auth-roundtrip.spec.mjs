@@ -359,7 +359,11 @@ test("a delayed startup user response cannot rotate the same expired session twi
   await page.clock.install();
   await page.addInitScript(() => {
     globalThis.__roundtripReconciled = 0;
+    globalThis.__roundtripStorageNotices = 0;
     document.addEventListener('account-session-refreshed', () => globalThis.__roundtripReconciled++);
+    window.addEventListener('storage', event => {
+      if (event.key === 'settle-friends-account-session-sync') globalThis.__roundtripStorageNotices++;
+    });
   });
   const { counts } = await prepare(page);
   await page.getByRole('button', { name: 'המשך עם Google', exact: true }).click();
@@ -367,6 +371,7 @@ test("a delayed startup user response cannot rotate the same expired session twi
   await expect.poll(() => page.evaluate(() => globalThis.__roundtripReconciled)).toBeGreaterThan(0);
   let releaseUser, heldUserReads = 0;
   const userGate = new Promise(resolve => { releaseUser = resolve; });
+  let storageWitness;
   await page.route(`${AUTH}/auth/v1/user`, async route => {
     if (route.request().headers().authorization === 'Bearer fixture-refreshed-access') {
       heldUserReads++;
@@ -375,6 +380,18 @@ test("a delayed startup user response cannot rotate the same expired session twi
     return route.fallback();
   });
   try {
+    // Prepare the witness before holding /user. Freeze the clock before the
+    // reload so test orchestration cannot exhaust the real 2500ms startup
+    // request budget; the scheduled refresh still advances by 1500ms below.
+    storageWitness = await page.context().newPage();
+    await storageWitness.route('**/__startup-storage-witness', route => route.fulfill({
+      contentType: 'text/html', body: '<!doctype html><title>Storage witness</title>'
+    }));
+    await storageWitness.goto(new URL('/__startup-storage-witness', page.url()).href);
+    await storageWitness.evaluate(async () => {
+      globalThis.__storageAuth = await import('/src/data/accountAuth.mjs');
+    });
+    await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 1000)));
     await page.evaluate(() => {
       const key = 'settle-friends-account-session';
       const session = JSON.parse(localStorage.getItem(key));
@@ -382,9 +399,19 @@ test("a delayed startup user response cannot rotate the same expired session twi
       localStorage.setItem(key, JSON.stringify(session));
     });
     await page.reload();
+    await page.clock.runFor(100);
     await expect(page.getByText(eventName, { exact: true })).toBeVisible();
     await expect.poll(() => counts.refresh).toBe(1);
     await expect.poll(() => heldUserReads).toBe(1);
+    // A second same-origin document publishes through the real storage helper.
+    // It has no app bootstrap, so it cannot start an unrelated auth operation.
+    const storageNotice = await storageWitness.evaluate(() => {
+      const auth = globalThis.__storageAuth;
+      return auth.publishAccountSessionSync(auth.loadStoredAccountSession());
+    });
+    expect(storageNotice.reason).toBe('signed-in');
+    expect(storageNotice.userId).toBe(user.id);
+    await expect.poll(() => page.evaluate(() => globalThis.__roundtripStorageNotices)).toBe(1);
     await page.evaluate(() => {
       globalThis.__roundtripConcurrentRefreshFinished = false;
       globalThis.__roundtripConcurrentRefresh = globalThis.SogrimAccountSession.refresh().then(session => {
@@ -404,6 +431,7 @@ test("a delayed startup user response cannot rotate the same expired session twi
     expect(await page.evaluate(() => localStorage.getItem('roundtrip-chooser-count'))).toBe('1');
   } finally {
     releaseUser();
+    await storageWitness?.close();
   }
 });
 

@@ -4,7 +4,8 @@ import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {
   refreshAccountSession, loadAccountUser, ensureAccountWorkspace, saveAccountSession,
-  activateAccountWorkspace, clearAccountWorkspace, clearAccountSession, ACCOUNT_SESSION_STORAGE_KEY
+  activateAccountWorkspace, clearAccountWorkspace, clearAccountSession, loadStoredAccountSession,
+  publishAccountSessionSync, parseAccountSessionSync, ACCOUNT_SESSION_STORAGE_KEY, ACCOUNT_SESSION_SYNC_STORAGE_KEY
 } from '../src/data/accountAuth.mjs';
 import {isTransientAccountError} from '../src/domain/accountErrors.mjs';
 
@@ -31,7 +32,7 @@ const sessionFor=(id='a',login='old',expired=true,missing=false)=>({
 });
 
 function harness(options={}){
- const initial=sessionFor('a','old',options.expired!==false,options.missingWorkspace);
+ let initial=sessionFor('a','old',options.expired!==false,options.missingWorkspace);
  const values=new Map(),writes=[],rotations=[],requests=[],pending=[];
  const gates=Object.fromEntries(['user','workspace','update','token','secondToken'].map(k=>[k,deferred()]));
  const seen=Object.fromEntries(Object.keys(gates).map(k=>[k,deferred()]));
@@ -70,27 +71,39 @@ function harness(options={}){
   }
   throw new Error('Unexpected synthetic auth request '+parsed.pathname);
  };
- saveAccountSession(initial,storage);
+ initial=saveAccountSession(initial,storage);
  if(!options.missingWorkspace)activateAccountWorkspace({id:'startup-space-a',key:'abcdefghijklmnopqrstuvwxyz_123456'},{storage});
  storage.setItem('synthetic-outbox-a','pending-a-revision-1');
  storage.setItem('synthetic-outbox-b','pending-b-revision-2');
  writes.length=0;
  const effects={schedules:0,clears:0,publications:0,events:0,locks:0,localClears:0,workspaceClears:0,reentrant:[]};
+ const timers=new Map();let nextTimer=0;
  const context=vm.createContext({accountSession:initial,accountRefreshGeneration:0,accountRefreshPromise:null,accountRefreshOwner:null,runtimeConfig:config,
   STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS:2500,ACCOUNT_REFRESH_RETRY_MS:60000,
+  ACCOUNT_REFRESH_MARGIN_SECONDS:300,accountRefreshTimer:null,accountSyncReloadScheduled:false,
+  ACCOUNT_SESSION_STORAGE_KEY,ACCOUNT_SESSION_SYNC_STORAGE_KEY,parseAccountSessionSync,
+  window:{localStorage:storage,setTimeout:(callback,delay)=>{const id=++nextTimer;timers.set(id,{callback,delay});return id;}},
+  clearTimeout:id=>timers.delete(id),loadStoredAccountSession:()=>loadStoredAccountSession(storage),
   fetch:transport,refreshAccountSession:(cfg,session,fetchImpl,requestOptions)=>refreshAccountSession(cfg,session,fetchImpl??transport,requestOptions),
   loadAccountUser,ensureAccountWorkspace:(cfg,session,requestOptions)=>ensureAccountWorkspace(cfg,session,{...requestOptions,fetchImpl:transport,storage}),
   saveAccountSession:session=>saveAccountSession(session,storage),
   clearAccountSession:()=>{effects.clears++;clearAccountSession(storage);},
   clearAccountWorkspace:user=>{effects.workspaceClears++;clearAccountWorkspace(user,storage);},
   clearLocalAccountData:()=>{effects.localClears++;},getActiveCloudSpaceId:()=> 'startup-space-a',
-  clearAccountRecoverySession:()=>{},lockForAccountSessionChange:()=>{effects.locks++;context.accountSession=null;context.accountRefreshGeneration++;},
+  clearAccountRecoverySession:()=>{},lockForAccountSessionChange:()=>{effects.locks++;context.accountSession=null;context.accountRefreshGeneration++;context.accountSyncReloadScheduled=true;},
   scheduleAccountSessionRefresh:()=>effects.schedules++,publishAccountSessionSync:()=>effects.publications++,
   document:{dispatchEvent:()=>{
    effects.events++;
    if(options.reentrantRefresh)effects.reentrant.push(context.refreshActiveAccountSession());
   }},Event:class{},isTransientAccountError});
  vm.runInContext(actual,context);
+ if(options.storageSync){
+  vm.runInContext(body('function handleAccountSessionStorageSync(', 'function resumeAccountLocally(')+
+   body('function scheduleAccountSessionRefresh(', 'function refreshAccountSessionIfNeeded('),context);
+  // Match startup: an expired local session has a real scheduled refresh before
+  // reconciliation starts. Only the clock boundary is controlled by this test.
+  context.scheduleAccountSessionRefresh();
+ }
  const track=p=>{pending.push(p);return p;};
  const replace=(replacement)=>{
   context.accountRefreshGeneration++;
@@ -101,7 +114,17 @@ function harness(options={}){
   }else{clearAccountSession(storage);clearAccountWorkspace(initial.user,storage);}
   writes.length=0;
  };
- return {context,initial,rotations,requests,seen,gates,values,writes,effects,storage,config,replace,track,
+ const storageEvent=(key=ACCOUNT_SESSION_STORAGE_KEY)=>{
+  const value=storage.getItem(key);
+  context.handleAccountSessionStorageSync({key,newValue:value,storageArea:storage});
+ };
+ const fireRefreshTimer=()=>{
+  const id=context.accountRefreshTimer,timer=timers.get(id);
+  assert.ok(timer,'a refresh timer must be scheduled');assert.equal(timer.delay,1000);
+  timers.delete(id);return track(timer.callback());
+ };
+ return {context,initial,rotations,requests,seen,gates,values,writes,effects,storage,config,replace,track,storageEvent,fireRefreshTimer,
+  publishStorageSync:session=>publishAccountSessionSync(session,{storage,now:()=>1000,randomId:()=> 'synthetic-storage-clone'}),
   restore:()=>track(context.reconcileResumedAccountSession(context.accountSession)),
   active:()=>track(context.refreshActiveAccountSession()),
   snapshot:()=>JSON.stringify([...values].sort(([a],[b])=>a.localeCompare(b))),
@@ -263,3 +286,50 @@ test('previous-account clearing independently enforces the optional guard',async
   assert.equal(h.effects.localClears,0);assert.equal(h.effects.workspaceClears,0);assert.equal(h.snapshot(),snapshot);
  }finally{await h.close();}
 });
+
+for(const eventKind of ['session','sync','session-and-sync']){
+ test('an identical startup storage clone ('+eventKind+') keeps one rotation while the real user request is pending',async()=>{
+  const h=harness({storageSync:true});
+  try{
+   const pending=h.restore();await h.seen.user.promise;
+   const owner=h.context.accountRefreshOwner,promise=h.context.accountRefreshPromise,generation=h.context.accountRefreshGeneration;
+   if(eventKind!=='sync')h.storageEvent();
+   if(eventKind!=='session'){h.publishStorageSync(h.initial);h.storageEvent(ACCOUNT_SESSION_SYNC_STORAGE_KEY);}
+   const timer=h.fireRefreshTimer();await tick();
+   assert.equal(h.rotations.length,1,'storage clones must not resubmit the already rotated refresh token');
+   assert.strictEqual(h.context.accountRefreshOwner,owner);
+   assert.strictEqual(h.context.accountRefreshPromise,promise);
+   assert.equal(h.context.accountRefreshGeneration,generation);
+   h.gates.user.resolve();const [restored,refreshed]=await Promise.all([pending,timer]);
+   assert.equal(restored.access_token,'startup-new-access-a');assert.equal(refreshed.refresh_token,'startup-new-refresh-a');
+   assert.equal(loadStoredAccountSession(h.storage).refresh_token,'startup-new-refresh-a');
+   assert.equal(h.effects.publications,1);assert.equal(h.effects.events,1);
+  }finally{await h.close();}
+ });
+}
+
+for(const change of ['metadata','same-user new login','other account','logout']){
+ test('startup storage '+change+' remains an ownership boundary while the real user request is pending',async()=>{
+  const h=harness({storageSync:true});
+  try{
+   const pending=h.restore();await h.seen.user.promise;
+   const generation=h.context.accountRefreshGeneration;
+   if(change==='logout'){clearAccountSession(h.storage);clearAccountWorkspace(h.initial.user,h.storage);}
+   else{
+    const replacement=change==='metadata'
+     ? {...h.initial,user:{...h.initial.user,user_metadata:{...h.initial.user.user_metadata,full_name:'Later Profile Name'}}}
+     : sessionFor(change==='other account'?'b':'a','login2',false);
+    saveAccountSession(replacement,h.storage);
+   }
+   h.storageEvent();
+   const snapshot=h.snapshot(),current=h.context.accountSession;h.writes.length=0;
+   h.gates.user.resolve();assert.equal(await pending,null);
+   assert.equal(h.snapshot(),snapshot,'a late startup result must not overwrite the stored replacement');
+   assert.deepEqual(h.writes,[]);assert.strictEqual(h.context.accountSession,current);
+   assert.equal(h.effects.publications,0);assert.equal(h.effects.events,0);
+   if(change==='metadata'||change==='same-user new login')assert.equal(h.context.accountRefreshGeneration,generation);
+   else assert.equal(h.context.accountRefreshGeneration,generation+1);
+   if(change==='metadata')assert.equal(loadStoredAccountSession(h.storage).user.user_metadata.full_name,'Later Profile Name');
+  }finally{await h.close();}
+ });
+}

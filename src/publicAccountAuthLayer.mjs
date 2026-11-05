@@ -844,6 +844,7 @@ function handleAccountSessionStorageSync(event) {
   if (event.key === ACCOUNT_SESSION_STORAGE_KEY) {
     if (accountSyncReloadScheduled) return;
     if (currentUserId && currentUserId === storedUserId) {
+      if (isPendingAccountRestoreStorageClone(storedSession)) return;
       accountSession = storedSession;
       scheduleAccountSessionRefresh();
       return;
@@ -861,12 +862,26 @@ function handleAccountSessionStorageSync(event) {
   if (change.reason === "signed-in" && change.userId !== storedUserId) return;
 
   if (currentUserId && currentUserId === storedUserId) {
+    if (change.reason === "signed-in" && isPendingAccountRestoreStorageClone(storedSession)) return;
     accountSession = storedSession;
     scheduleAccountSessionRefresh();
     return;
   }
 
   lockForAccountSessionChange();
+}
+
+function isPendingAccountRestoreStorageClone(storedSession) {
+  const owner = accountRefreshOwner;
+  if (!accountRefreshPromise || !owner?.requiresRestore ||
+      owner.generation !== accountRefreshGeneration || owner.session !== accountSession ||
+      owner.backend !== JSON.stringify([
+        runtimeConfig?.storage?.url ?? "", runtimeConfig?.storage?.anonKey ?? ""
+      ])) return false;
+  // A storage read produces a new object even when nothing changed. Preserve
+  // the current restoration only for an identical complete session snapshot;
+  // different credentials, expiry or user metadata remain ownership changes.
+  return JSON.stringify(storedSession) === JSON.stringify(accountSession);
 }
 
 function resumeAccountLocally(session) {
