@@ -31,7 +31,15 @@ async function setup(page,baseURL,{root=16,w=393,h=852,single=false,system=false
 const state=cloud=>{const e=cloud.state().events[0];return {expenses:e.expenses,transfers:e.transfers,locked:!!e.locked}};
 async function open(page){
  await page.locator(".settlement-close-primary").click();const d=page.locator(".settlement-close-confirmation");
- await expect(d).toBeVisible();return d;
+ await expect(d).toBeVisible();
+ await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ await expect.poll(()=>d.evaluate(e=>{
+  const transform=getComputedStyle(e).transform;
+  if(transform==='none')return true;
+  const matrix=new DOMMatrixReadOnly(transform);
+  return Math.abs(matrix.m42)<.1&&Math.abs(matrix.a-1)<.001&&Math.abs(matrix.d-1)<.001;
+ }),{timeout:1000}).toBe(true);
+ return d;
 }
 async function layout(d,root,{initial=false}={}){
  const g=await d.evaluate(e=>{
@@ -59,6 +67,15 @@ async function reachable(button){
  });
  expect(g.w).toBeGreaterThanOrEqual(44);expect(g.h).toBeGreaterThanOrEqual(44);expect(g.hit).toBe(true);expect(g.inside).toBe(true);expect(g.navClear).toBe(true);
 }
+test('close confirmation readiness waits for JavaScript motion before touch geometry',async({page})=>{
+ await page.setContent('<button class="settlement-close-primary">סגירת אירוע</button>');
+ await page.evaluate(()=>document.querySelector('.settlement-close-primary').addEventListener('click',()=>{
+  document.body.insertAdjacentHTML('beforeend','<section class="settlement-close-confirmation" role="alertdialog" style="transform:translateY(12px) scale(0.99)">אישור סגירה</section>');
+  setTimeout(()=>{document.querySelector('.settlement-close-confirmation').style.transform='none'},400);
+ }));
+ const dialog=await open(page);
+ await expect(dialog).toHaveCSS('transform','none',{timeout:100});
+});
 for(const c of [{root:16,w:393,h:852},{root:20,w:411,h:852},{root:32,w:320,h:852},{root:20,w:393,h:390},{root:32,w:320,h:390}]){
  test("close confirmation scales actual glyphs and preserves all cancel paths root "+c.root+" "+c.w+"x"+c.h,async({page,baseURL},info)=>{
   const cloud=await setup(page,baseURL,c),before=state(cloud);
