@@ -3,9 +3,9 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {verifyOrigin,SOURCE,TREE,SIGNING_TOOLS} from './intake194-package-origin.mjs';
-export const SIGNED_RUN='38917936561',ARTIFACT_ID='12053816985',SIGNED_JOB=117030133090,ARTIFACT_SIZE=13259976;
-export const IPA_SHA='82ff41f44647989c4365b1607ea290f6802750f5c0b264b8dbadf5a333430897';
-export const ZIP_SHA='9abbc6c6b730fe8c3eadbe72266eec9f74766b8e4bba15710b1bb0b25ec53554';
+export const SIGNED_RUN='PENDING',ARTIFACT_ID='PENDING',SIGNED_JOB=0,ARTIFACT_SIZE=0;
+export const IPA_SHA='PENDING';
+export const ZIP_SHA='PENDING';
 export function requireBoundIntakePins(){
   assert.match(SIGNING_TOOLS,/^[0-9a-f]{40}$/,'Final immutable signing tools are required');
   for(const [name,value]of Object.entries({SIGNED_RUN,ARTIFACT_ID}))

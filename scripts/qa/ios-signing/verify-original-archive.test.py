@@ -41,8 +41,8 @@ class IdentityTests(unittest.TestCase):
         sha=hashlib.sha256(data).hexdigest()
         self.origin={'ipaSha256':sha,'signingRunId':'123','signingTools':'e'*40}
         self.envelope={'aad':json.dumps({'sourceCommit':guard.SOURCE,'sourceTree':guard.TREE,
-            'version':'4.58','build':'194','buildRunId':'123','buildRunAttempt':'1','ipaSha256':sha})}
-        proof={'sourceCommit':guard.SOURCE,'sourceTree':guard.TREE,'version':'4.58','build':'194',
+            'version':'4.59','build':'195','buildRunId':'123','buildRunAttempt':'1','ipaSha256':sha})}
+        proof={'sourceCommit':guard.SOURCE,'sourceTree':guard.TREE,'version':'4.59','build':'195',
             'ipaSha256':sha,'sha256':sha,'signatureVerified':True,'everyWwwAssetMatches':True,
             'everyWwwAssetMatchesCanonicalGitBuild':True,'appleUploadPerformed':False}
         self.write('artifact-verification.json',proof)

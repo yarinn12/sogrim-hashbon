@@ -9,9 +9,9 @@ import {verifyDatabaseReceipt} from './upload-origin-guard.mjs';
 const hashReady='a'.repeat(64);
 const env={SOURCE_SHA:SOURCE,SIGNED_RUN_ID:SIGNED_RUN,SIGNED_ARTIFACT_ID:ARTIFACT_ID,SIGNED_IPA_SHA256:IPA_SHA,SIGNED_ARTIFACT_ZIP_SHA256:ZIP_SHA};
 const run={id:Number(SIGNED_RUN),repository:{full_name:'yarinn12/sogrim-hashbon'},head_repository:{full_name:'yarinn12/sogrim-hashbon'},
- head_sha:SIGNING_TOOLS,head_branch:'codex/ios194-2cf-resilient-sign-only-20261016',path:'.github/workflows/ios194-2cf-resilient-sign-only.yml',event:'push',run_number:1,
+ head_sha:SIGNING_TOOLS,head_branch:'codex/ios195-459-private-tools-20261104',path:'.github/workflows/ios195-459-private-sign-only.yml',event:'push',run_number:1,
  run_attempt:1,status:'completed',conclusion:'success'};
-const artifact={id:Number(ARTIFACT_ID),size_in_bytes:ARTIFACT_SIZE,name:'sogrim-ios-4.58-194-encrypted',expired:false,expires_at:'2099-01-01T00:00:00Z',
+const artifact={id:Number(ARTIFACT_ID),size_in_bytes:ARTIFACT_SIZE,name:'sogrim-ios-4.59-195-encrypted',expired:false,expires_at:'2099-01-01T00:00:00Z',
  workflow_run:{id:Number(SIGNED_RUN),head_sha:SIGNING_TOOLS},digest:'sha256:'+ZIP_SHA};
 const jobs=[{id:SIGNED_JOB,run_id:Number(SIGNED_RUN),head_sha:SIGNING_TOOLS,name:'build-export-verify-private',status:'completed',conclusion:'success'}];
 const groups=[{id:'internal',attributes:{name:'Internal',isInternalGroup:true,hasAccessToAllBuilds:false,publicLinkEnabled:false}},
@@ -31,7 +31,7 @@ test('intake rejects changed artifact size or signing job identity',()=>{
  assert.throws(()=>verifyIntakeOrigin(run,artifact,[{...jobs[0],id:1}],env));
  assert.throws(()=>verifyIntakeOrigin(run,artifact,[{...jobs[0],head_sha:SOURCE}],env));
 });
-test('manual groups can retain links to previous builds without granting194',()=>requireManualGroups(groups));
+test('manual groups can retain links to previous builds without granting195',()=>requireManualGroups(groups));
 for(const value of [true,null,undefined,'false'])test('manual-group guard blocks automatic flag '+String(value),()=>{
  const g=copy(groups);g[0].attributes.hasAccessToAllBuilds=value;assert.throws(()=>requireManualGroups(g));
 });
@@ -55,10 +55,10 @@ function api(options={}){
      const id=path.split('/').at(-1),group=(options.groups??copy(groups)).find(g=>g.id===id);
      return {data:{...group,type:'betaGroups'}};
    }
-   if(path.startsWith('/v1/betaGroups/'))return {data:options.group193?[{id:'build194',attributes:{version:'194'}}]:[{id:'old191',attributes:{version:'191'}}],links:{next:null}};
+   if(path.startsWith('/v1/betaGroups/'))return {data:options.group193?[{id:'build195',attributes:{version:'195'}}]:[{id:'old191',attributes:{version:'191'}}],links:{next:null}};
    if(path.includes('/appStoreVersions?'))return {data:[{id:'store457',attributes:{versionString:'4.57',appStoreState:options.storeChanged?'READY_FOR_SALE':'PENDING_DEVELOPER_RELEASE',releaseType:'MANUAL'}}],links:{next:null}};
-   if(path.startsWith('/v1/builds?'))return {data:options.after?[{id:'build194',attributes:{version:'194',processingState:options.processing??'VALID',expired:false}}]:[],links:{next:null}};
-   if(path.endsWith('/preReleaseVersion'))return {data:{attributes:{version:options.version??'4.58',platform:'IOS'}}};
+   if(path.startsWith('/v1/builds?'))return {data:options.after?[{id:'build195',attributes:{version:'195',processingState:options.processing??'VALID',expired:false}}]:[],links:{next:null}};
+   if(path.endsWith('/preReleaseVersion'))return {data:{attributes:{version:options.version??'4.59',platform:'IOS'}}};
    if(path.includes('/individualTesters?'))return {data:options.tester193?[{id:'unintended'}]:[],links:{next:null}};
    if(path.endsWith('/relationships/appStoreVersion'))return {data:options.storeAssigned?{id:'store458'}:null};
    if(path.endsWith('/buildBetaDetail'))return {data:{attributes:{externalBuildState:options.externalState??'READY_FOR_BETA_SUBMISSION'}}};
@@ -75,7 +75,7 @@ test('preflight refuses already uploaded193',async()=>{
 test('preflight refuses193 group linkage even when filtered build query is empty',async()=>{
  const state=await collectState(api({group193:true}));assert.throws(()=>requireIntakePreflight(state));
 });
-test('postflight requires VALID4.58/194 with zero groups/testers/store associations',async()=>{
+test('postflight requires VALID4.59/195 with zero groups/testers/store associations',async()=>{
  const p=await verifyPostflight(api({after:true}),await collectState(api()));
  assert.equal(p.assignedIndividualTesters,0);assert.deepEqual(p.assignedGroups,[]);
  assert.equal(p.publicReleaseAccepted,false);assert.equal(p.databaseAccepted,false);
@@ -107,7 +107,7 @@ test('read-only endpoint proof uses known192 without changing or exposing it',as
  const proof=await verifyReadEndpoints(endpointApi());assert.equal(proof.readOnly,true);
  assert.equal(proof.individualTesterCount,0);assert.equal(proof.build,'192');
 });
-for(const change of [{version:'4.58'},{build:'194'},{store:{type:'other',id:'x'}},{state:42}])
+for(const change of [{version:'4.59'},{build:'195'},{store:{type:'other',id:'x'}},{state:42}])
  test('read-only endpoint proof rejects mismatched original or unsupported relationship '+JSON.stringify(change),
   async()=>assert.rejects(verifyReadEndpoints(endpointApi(change))));
 test('intake audit defaults to GET-only; public receipt workflow and verifier remain separate',()=>{
@@ -143,8 +143,8 @@ for(const [field,pattern,replacement]of [
   assert.equal(result.status,1);assert.match(result.stderr,/Real signing artifact (pin|digest) missing/);assert.doesNotMatch(result.stdout,/UNEXPECTED_FETCH/);
  });
 test('active private intake freezes source, original artifact and first push before secrets',()=>{
- const y=readFileSync(new URL('../../../.github/workflows/ios194-2cf-root-intake-only.yml',import.meta.url),'utf8');
- assert.ok(y.includes('branches: [codex/ios194-2cf-root-intake-only-20261016]'));
+ const y=readFileSync(new URL('../../../.github/workflows/ios195-459-private-intake-only.yml',import.meta.url),'utf8');
+ assert.ok(y.includes('branches: [codex/ios195-459-private-intake-20261104]'));
  assert.ok(y.includes('github.run_attempt == 1')&&y.includes('github.run_number == 1'));
  assert.ok(!y.includes('inputs.'));
  for(const [key,value]of Object.entries({SOURCE_SHA:SOURCE,SIGNED_RUN_ID:SIGNED_RUN,SIGNED_ARTIFACT_ID:ARTIFACT_ID,SIGNED_IPA_SHA256:IPA_SHA,SIGNED_ARTIFACT_ZIP_SHA256:ZIP_SHA}))

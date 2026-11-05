@@ -1,7 +1,7 @@
 import hashlib, importlib.util, json, os, pathlib, plistlib, subprocess, sys, tarfile, tempfile, zipfile
 
-SOURCE='2cf78afc23c1d9330834de63ed5f81ba4da5b052'
-TREE='52105dddf3b9a8edb61032c6149eac1b392c460a'
+SOURCE='abcbac91e97230e4737e80c4ea3c2206360e855f'
+TREE='76e2319de17a875db5f5b1e2b54c2b63659644b1'
 FILES={'SogrimHashbon.ipa','release-manifest.json','artifact-verification.json','source-ci-only.json','source-before-build.json','source-after-export.json','web-assets.json','Package.resolved'}
 
 def require(value,message):
@@ -24,14 +24,14 @@ def verify_identity(root,envelope,origin):
     directory=root/'build/ios'
     identity=json.loads(envelope['aad'])
     require(identity['sourceCommit']==SOURCE and identity['sourceTree']==TREE,'Wrong authenticated source')
-    require(identity['version']=='4.58' and identity['build']=='194','Wrong authenticated release')
+    require(identity['version']=='4.59' and identity['build']=='195','Wrong authenticated release')
     require(str(identity['buildRunId'])==origin['signingRunId'] and str(identity['buildRunAttempt'])=='1','Wrong authenticated signing run')
     sha=hashlib.sha256((directory/'SogrimHashbon.ipa').read_bytes()).hexdigest()
     require(sha==identity['ipaSha256']==origin['ipaSha256'],'Original IPA bytes changed')
     proof=json.loads((directory/'artifact-verification.json').read_text())
     manifest=json.loads((directory/'release-manifest.json').read_text())
     for r in (proof,manifest):
-        require(r['sourceCommit']==SOURCE and r['sourceTree']==TREE and r['version']=='4.58' and r['build']=='194','Release evidence mismatch')
+        require(r['sourceCommit']==SOURCE and r['sourceTree']==TREE and r['version']=='4.59' and r['build']=='195','Release evidence mismatch')
         require(r['ipaSha256']==sha and r['signatureVerified'] is True and r['everyWwwAssetMatches'] is True,'Original verification missing')
         require(r.get('everyWwwAssetMatchesCanonicalGitBuild') is True,'Original canonical Git verification missing')
         require(r['appleUploadPerformed'] is False,'Artifact was already marked as uploaded')

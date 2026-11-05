@@ -64,8 +64,8 @@ export async function collectState(api){
   const versions=await all(api,'/v1/apps/'+APP+'/appStoreVersions?'+new URLSearchParams({
     'filter[platform]':'IOS','fields[appStoreVersions]':'versionString,appStoreState,releaseType',limit:'200'}));
   const matches=await all(api,'/v1/builds?'+new URLSearchParams({
-    'filter[app]':APP,'filter[version]':'194','filter[preReleaseVersion.platform]':'IOS',limit:'200'}));
-  assert.ok(matches.length<=1,'Ambiguous build194');
+    'filter[app]':APP,'filter[version]':'195','filter[preReleaseVersion.platform]':'IOS',limit:'200'}));
+  assert.ok(matches.length<=1,'Ambiguous build195');
   return {appId:APP,groups:groupStates,rawGroups:groups,appStoreVersions:versionState(versions),
     build:matches[0]??null,checkedAt:new Date().toISOString(),mode:'GET_ONLY'};
 }
@@ -86,31 +86,31 @@ export async function verifyReadEndpoints(api){
 }
 export function requireIntakePreflight(snapshot){
   requireManualGroups(snapshot.rawGroups);
-  assert.equal(snapshot.build,null,'Build194 exists; do not upload twice');
+  assert.equal(snapshot.build,null,'Build195 exists; do not upload twice');
   for(const group of snapshot.groups)
-    assert.ok(!group.builds.some(b=>b.build==='194'),'Build194 already assigned to group');
+    assert.ok(!group.builds.some(b=>b.build==='195'),'Build195 already assigned to group');
 }
 export async function verifyPostflight(api,before){
   const after=await collectState(api);requireManualGroups(after.rawGroups);
   assert.deepEqual(after.appStoreVersions,before.appStoreVersions,'App Store release record changed');
-  const build=after.build;assert.ok(build?.id,'Missing processed194');
-  assert.equal(build.attributes?.version,'194');
+  const build=after.build;assert.ok(build?.id,'Missing processed195');
+  assert.equal(build.attributes?.version,'195');
   assert.equal(build.attributes.processingState,'VALID');
   assert.equal(build.attributes.expired,false);
   const prerelease=(await api('/v1/builds/'+build.id+'/preReleaseVersion',{method:'GET'})).data;
-  assert.equal(prerelease?.attributes?.version,'4.58');assert.equal(prerelease?.attributes?.platform,'IOS');
+  assert.equal(prerelease?.attributes?.version,'4.59');assert.equal(prerelease?.attributes?.platform,'IOS');
   for(const group of after.groups)
-    assert.ok(!group.builds.some(b=>b.id===build.id||b.build==='194'),'194 assigned to group '+group.id);
+    assert.ok(!group.builds.some(b=>b.id===build.id||b.build==='195'),'195 assigned to group '+group.id);
   const testers=await all(api,'/v1/builds/'+build.id+'/individualTesters?'+
     new URLSearchParams({'fields[betaTesters]':'state',limit:'200'}));
-  assert.equal(testers.length,0,'194 has individually assigned testers');
+  assert.equal(testers.length,0,'195 has individually assigned testers');
   const store=(await api('/v1/builds/'+build.id+'/relationships/appStoreVersion',{method:'GET'})).data;
-  assert.equal(store,null,'194 linked to an App Store release record');
+  assert.equal(store,null,'195 linked to an App Store release record');
   const beta=(await api('/v1/builds/'+build.id+'/buildBetaDetail',{method:'GET'})).data;
   assert.ok(beta?.attributes,'Missing beta status');
   assert.ok(['READY_FOR_BETA_SUBMISSION','NOT_APPLICABLE'].includes(beta.attributes.externalBuildState),
     'Unexpected external review/distribution state');
-  return {...after,rawGroups:undefined,build:{id:build.id,build:'194',version:'4.58',processingState:'VALID'},
+  return {...after,rawGroups:undefined,build:{id:build.id,build:'195',version:'4.59',processingState:'VALID'},
     assignedGroups:[],assignedIndividualTesters:0,appStoreVersion:null,betaState:beta.attributes,
     scope:'PACKAGE_INTAKE_ONLY',databaseAccepted:false,publicReleaseAccepted:false,distributionAllowed:false};
 }
@@ -123,7 +123,7 @@ async function main(){
     const before=JSON.parse(readFileSync('build/ios/intake-preflight.json','utf8'));
     const after=await verifyPostflight(api,before);
     writeFileSync('build/ios/intake-postflight.json',JSON.stringify(after,null,2)+'\n');
-    console.log('IOS194_INTAKE_POSTFLIGHT:'+JSON.stringify(after));return;
+    console.log('IOS195_INTAKE_POSTFLIGHT:'+JSON.stringify(after));return;
   }
   const snapshot=await collectState(api);
   if(phase==='audit')snapshot.endpointCapabilities=await verifyReadEndpoints(api);
@@ -135,7 +135,7 @@ async function main(){
   }
   const safe={...snapshot,rawGroups:undefined,build:snapshot.build?{id:snapshot.build.id,...snapshot.build.attributes}:null};
   writeFileSync('build/ios/intake-'+phase+'.json',JSON.stringify(snapshot,null,2)+'\n');
-  console.log('IOS194_INTAKE_'+phase.toUpperCase()+':'+JSON.stringify(safe));
+  console.log('IOS195_INTAKE_'+phase.toUpperCase()+':'+JSON.stringify(safe));
   if(phase==='preflight')requireIntakePreflight(snapshot);
 }
 if(import.meta.url.startsWith('file:')&&process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1]))await main();
