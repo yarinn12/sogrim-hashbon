@@ -169,9 +169,10 @@ test("an offline name links to its connected account without losing money", asyn
   await page
     .locator(`[data-action="review-duplicate-participants"][data-event-id="${EVENT_ID}"]`)
     .click();
-  const identityDialog = page.locator('.event-modal[role="dialog"]');
-  await expect(identityDialog).toContainText("אותו אדם?");
-  await expect(identityDialog).toContainText("שם אופליין");
+  const identityDialog = page.locator('.event-participant-identity-screen');
+  await expect(identityDialog.getByRole('heading', {name:'שמות דומים',exact:true})).toBeVisible();
+  await expect(identityDialog.getByRole('heading', {name:'זה אותו אדם?',exact:true})).toBeVisible();
+  await expect(identityDialog).toContainText("שם ללא חשבון");
   await expect(identityDialog).toContainText("חבר באפליקציה");
 
   await page

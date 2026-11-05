@@ -221,8 +221,8 @@ test("a new user completes the first useful loop without help", async ({ page })
 
   // A closed event intentionally blocks adding participants. Reopen it before
   // exercising the invitation journey so this test follows the real product flow.
-  await settlement.locator(".settlement-more-actions > summary").click();
-  await settlement.locator('[data-action="reopen-event"]').click();
+  await expect(settlement.locator('.settlement-reopen-action')).toHaveText('פתח אירוע מחדש');
+  await settlement.locator('.settlement-reopen-action[data-action="reopen-event"]').click();
   await page.locator('[data-action="confirm-important-action"]').click();
   await expect(settlement.locator('[data-action="close-event"]').first()).toBeVisible();
 

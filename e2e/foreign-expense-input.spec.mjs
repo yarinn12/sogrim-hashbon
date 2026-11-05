@@ -140,7 +140,7 @@ test("an event with a converted expense explains why its currency cannot change"
   await page.locator('[data-action="open-event-settings"]').first().click();
   await page.locator('[data-settings-section="currency"]').click();
   await expect(page.locator('[data-action="event-currency"]')).toBeDisabled();
-  await expect(page.locator('.event-currency-field')).toContainText("אי אפשר לשנות כעת");
+  await expect(page.locator('.event-currency-field > small')).toHaveText("יש באירוע הוצאה שהומרה ממטבע אחר. כדי לשמור על הסכומים והחובות, אי אפשר לשנות את מטבע האירוע.");
 });
 
 test("typing an amount while an automatic quote loads keeps the input and focus", async ({ page }) => {
