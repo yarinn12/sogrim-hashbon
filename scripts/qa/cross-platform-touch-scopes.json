@@ -1,0 +1,54 @@
+{
+  "source": "abcbac91e97230e4737e80c4ea3c2206360e855f",
+  "reason": "Unchanged existing keyboard tests skip before executing on non-touch desktop profiles. Actual scoped execution retained in release evidence.",
+  "cases": [
+    {
+      "projectId": "desktop-chromium",
+      "file": "e2e/restaurant-keyboard-presentation.spec.mjs",
+      "title": "restaurant keyboard preserves the visible viewport and Next at root 16",
+      "annotation": "software keyboard viewport applies to touch profiles"
+    },
+    {
+      "projectId": "desktop-firefox",
+      "file": "e2e/restaurant-keyboard-presentation.spec.mjs",
+      "title": "restaurant keyboard preserves the visible viewport and Next at root 16",
+      "annotation": "software keyboard viewport applies to touch profiles"
+    },
+    {
+      "projectId": "desktop-webkit",
+      "file": "e2e/restaurant-keyboard-presentation.spec.mjs",
+      "title": "restaurant keyboard preserves the visible viewport and Next at root 16",
+      "annotation": "software keyboard viewport applies to touch profiles"
+    },
+    {
+      "projectId": "compact-firefox",
+      "file": "e2e/restaurant-keyboard-presentation.spec.mjs",
+      "title": "restaurant keyboard preserves the visible viewport and Next at root 16",
+      "annotation": "software keyboard viewport applies to touch profiles"
+    },
+    {
+      "projectId": "desktop-chromium",
+      "file": "e2e/restaurant-keyboard-presentation.spec.mjs",
+      "title": "restaurant keyboard preserves the visible viewport and Next at root 32",
+      "annotation": "software keyboard viewport applies to touch profiles"
+    },
+    {
+      "projectId": "desktop-firefox",
+      "file": "e2e/restaurant-keyboard-presentation.spec.mjs",
+      "title": "restaurant keyboard preserves the visible viewport and Next at root 32",
+      "annotation": "software keyboard viewport applies to touch profiles"
+    },
+    {
+      "projectId": "desktop-webkit",
+      "file": "e2e/restaurant-keyboard-presentation.spec.mjs",
+      "title": "restaurant keyboard preserves the visible viewport and Next at root 32",
+      "annotation": "software keyboard viewport applies to touch profiles"
+    },
+    {
+      "projectId": "compact-firefox",
+      "file": "e2e/restaurant-keyboard-presentation.spec.mjs",
+      "title": "restaurant keyboard preserves the visible viewport and Next at root 32",
+      "annotation": "software keyboard viewport applies to touch profiles"
+    }
+  ]
+}

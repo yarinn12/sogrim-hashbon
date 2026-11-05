@@ -29,7 +29,7 @@ function fixture() {
     }
   }
   const receipts = Object.fromEntries([1, 2].map(shard => [shard,
-    { project: "iphone-webkit", source, tree, shard, runId: "123", runAttempt: "1" }]));
+    { project: "iphone-webkit", source, tree, shard, shardCount:2, runId: "123", runAttempt: "1" }]));
   return { inventory, planned, actual, receipts, source, tree, runId: "123", runAttempt: "1" };
 }
 

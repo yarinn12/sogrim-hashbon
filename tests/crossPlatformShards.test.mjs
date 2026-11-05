@@ -6,6 +6,7 @@ import { ALLOWED_SCOPE_SKIPS, MINIMUM_PROJECT_CASES,
 
 const captured = JSON.parse(readFileSync(new URL("./fixtures/cross-platform-qa467-lists.json", import.meta.url)));
 const historicalSkips = JSON.parse(readFileSync(new URL("./fixtures/cross-platform-qa465-skips.json", import.meta.url)));
+const touchScopes=JSON.parse(readFileSync(new URL('../scripts/qa/cross-platform-touch-scopes.json',import.meta.url),'utf8')).cases;
 const source = captured.source, tree = "b".repeat(40), runId = "38736395636", runAttempt = "1";
 const clone = value => structuredClone(value);
 
@@ -31,10 +32,11 @@ function executed(plan) {
   visitSpecs(result, spec => {
     for (const item of spec.tests) {
       const approved = ALLOWED_SCOPE_SKIPS.get(item.projectId);
-      if (approved && spec.file === approved.file && spec.title === approved.title) {
+      const touchScope=touchScopes.find(row=>row.projectId===item.projectId&&row.file===spec.file&&row.title===spec.title);
+      if (approved && spec.file === approved.file && spec.title === approved.title || touchScope) {
         item.expectedStatus = "skipped";
         item.status = "skipped";
-        item.annotations = [{ type: "skip", description: approved.annotation }];
+        item.annotations = [{ type: "skip", description: touchScope?.annotation??approved.annotation }];
         item.results = [{ status: "skipped", retry: 0 }];
         skipped++;
       } else {
@@ -57,10 +59,104 @@ function fixture() {
     planned: { 1: reports["1-2"], 2: reports["2-2"] },
     actual: { 1: executed(reports["1-2"]), 2: executed(reports["2-2"]) },
     receipts: Object.fromEntries([1, 2].map(shard => [shard,
-      { lane: "cross-platform", source, tree, shard, runId, runAttempt }])),
+      { lane: "cross-platform", source, tree, shard, shardCount:2, runId, runAttempt }])),
     source, tree, runId, runAttempt
   };
 }
+
+function sixteenShardFixture() {
+  const f=touchScopeFixture(), shardCount=16;
+  for(const [project,count] of Object.entries({'desktop-chromium':858,'desktop-firefox':869,'desktop-webkit':858,'compact-firefox':872,'cross-engine-comparison':9})){
+    let existing=0;visitSpecs(f.canonicalReports[project],()=>existing++);
+    const specs=Array.from({length:count-existing},(_,i)=>({id:`padding-${project}-${i}`,ok:true,
+      file:'capacity-padding.spec.mjs',title:'capacity case '+i,line:i+1,column:1,
+      tests:[{projectId:project,projectName:project,expectedStatus:'passed',status:'skipped',results:[]}]}));
+    const suite={title:'capacity-padding.spec.mjs',specs,suites:[]};
+    f.canonicalReports[project].suites.push(clone(suite));f.inventory.suites.push(clone(suite));
+  }
+  let ordinal=0;
+  const trees=Object.values(f.canonicalReports).map(report=>report.suites);
+  const tagged=trees.map(suites=>{
+    const tag=suite=>{for(const spec of suite.specs??[])spec.__shard=ordinal++%shardCount+1;
+      for(const child of suite.suites??[])tag(child);};
+    suites.forEach(tag);return suites;
+  });
+  const select=(suite,shard)=>{
+    const out=clone(suite);
+    out.specs=(suite.specs??[]).filter(spec=>spec.__shard===shard).map(spec=>{
+      const copy=clone(spec);delete copy.__shard;return copy;
+    });
+    out.suites=(suite.suites??[]).map(child=>select(child,shard))
+      .filter(child=>child.specs.length||child.suites.length);
+    return out;
+  };
+  const planned=Object.fromEntries(Array.from({length:shardCount},(_,i)=>{
+    const report=clone(f.inventory);
+    report.suites=tagged.flat().map(suite=>select(suite,i+1))
+      .filter(suite=>suite.specs.length||suite.suites.length);
+    return[i+1,report];
+  }));
+  // Tagging is local test fixture bookkeeping, never part of the source report.
+  for(const r of Object.values(f.canonicalReports))visitSpecs(r,spec=>delete spec.__shard);
+  return {...f,shardCount,planned,
+    actual:Object.fromEntries(Object.entries(planned).map(([id,plan])=>[id,executed(plan)])),
+    receipts:Object.fromEntries(Array.from({length:shardCount},(_,i)=>[i+1,{
+      lane:'cross-platform',source,tree,shard:i+1,shardCount,runId,runAttempt
+    }]))};
+}
+
+test('sixteen planned shards execute the complete canonical inventory exactly once',()=>{
+  const r=verifyCrossPlatformShards(sixteenShardFixture());
+  assert.equal(r.count,3466);assert.equal(r.shardCount,16);
+  assert.equal(Object.values(r.shards).reduce((a,b)=>a+b,0),3466);
+  assert.equal(r.passed,3454);assert.equal(r.skipped,12);
+});
+test('coherent omission from all cross-engine plans and results cannot narrow the source',()=>{
+  const f=sixteenShardFixture(),id='padding-desktop-chromium-0';
+  const remove=r=>{
+    let count=0;const visit=s=>{s.specs=(s.specs??[]).filter(spec=>{if(spec.id===id){count++;return false;}return true;});(s.suites??[]).forEach(visit);};
+    r.suites.forEach(visit);return count;
+  };
+  remove(f.canonicalReports['desktop-chromium']);remove(f.inventory);
+  Object.values(f.planned).forEach(remove);
+  for(const r of Object.values(f.actual))if(remove(r))r.stats.expected--;
+  assert.throws(()=>verifyCrossPlatformShards(f),/inventory narrowed/);
+});
+
+function touchScopeFixture(){
+  const f=fixture();
+  for(const row of touchScopes){
+    const spec={id:'fixture-touch-'+row.projectId+'-'+row.title.split(' ').at(-1),ok:true,
+      file:row.file,title:row.title,line:6,column:26,
+      tests:[{projectId:row.projectId,projectName:row.projectId,expectedStatus:'passed',status:'skipped',results:[]}]};
+    const suite={title:row.file,specs:[spec],suites:[]};
+    f.canonicalReports[row.projectId].suites.push(clone(suite));
+    f.inventory.suites.push(clone(suite));f.planned[1].suites.push(clone(suite));
+  }
+  f.actual[1]=executed(f.planned[1]);return f;
+}
+test('source-declared desktop keyboard scope is retained without hiding any ordinary test',()=>{
+  const r=verifyCrossPlatformShards(touchScopeFixture());
+  assert.equal(r.count,490);assert.equal(r.passed,478);assert.equal(r.skipped,12);
+});
+test('desktop touch scope rejects a changed annotation or an unapproved skipped case',()=>{
+  const f=touchScopeFixture();
+  const s=f.actual[1].suites.at(-1).specs[0];
+  s.tests[0].annotations=[{type:'skip',description:'hide a failure'}];
+  assert.throws(()=>verifyCrossPlatformShards(f),/invalid approved scope skip/);
+  const ordinary=touchScopeFixture(),t=ordinary.actual[1].suites[0].specs.find(s=>s.title!==ALLOWED_SCOPE_SKIPS.get('desktop-chromium').title).tests[0];
+  t.expectedStatus='skipped';t.status='skipped';t.results=[{status:'skipped',retry:0}];
+  assert.throws(()=>verifyCrossPlatformShards(ordinary));
+});
+
+test('sixteen-shard acceptance rejects absent, extra, misbound and retried evidence',()=>{
+  for(const change of [f=>delete f.actual[16],f=>f.receipts[16].shardCount=2,
+    f=>f.receipts[16].source='f'.repeat(40),f=>f.planned[17]=clone(f.planned[16]),
+    f=>ordinaryTest(f.actual[16]).results.push({status:'passed',retry:1}),
+    f=>f.actual[16].stats.flaky=1]){
+    const f=sixteenShardFixture();change(f);assert.throws(()=>verifyCrossPlatformShards(f));
+  }
+});
 
 test("captured unsharded and shard lists demonstrate why grouped spec.id is not a stable case key", () => {
   const find = report => {

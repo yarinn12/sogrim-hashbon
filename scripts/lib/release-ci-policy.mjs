@@ -1,3 +1,11 @@
+export const MOBILE_SHARD_JOBS = [
+  ...["android-mobile","ipad-webkit","reflow-200"].flatMap(project=>
+    Array.from({length:8},(_,i)=>`mobile (${project}, ${i+1})`)),
+  ...["iphone-webkit","iphone-large-text"].flatMap(project=>
+    Array.from({length:8},(_,i)=>`mobile-${project}-shard-${i<4?1:2} (${i+1})`))
+];
+export const CROSS_PLATFORM_SHARD_JOBS = Array.from({length:16}, (_, index) =>
+  `cross-platform-shard-${index < 8 ? 1 : 2} (${index + 1})`);
 export const REQUIRED_RELEASE_WORKFLOWS = [
   "qa.yml", "qa-windows.yml", "cross-engine-font-provenance-qa.yml", "ios-auth-return-qa.yml"
 ];
@@ -26,10 +34,9 @@ export function evaluateReleaseCi({ source, repository, runs, jobsByRun = {}, ca
     if (workflow === "qa.yml") {
       const names = new Set(jobs.map(job => job.name));
       for (const expected of ["unit", "backup-runtime", "two-client-sync",
-        "cross-platform-shard-1", "cross-platform-shard-2", "cross-platform", "unit-and-mobile",
+        ...CROSS_PLATFORM_SHARD_JOBS, "cross-platform", "unit-and-mobile",
         "mobile (android-mobile)", "mobile (iphone-webkit)", "mobile (ipad-webkit)", "mobile (iphone-large-text)", "mobile (reflow-200)",
-        "mobile-iphone-webkit-shard-1", "mobile-iphone-webkit-shard-2",
-        "mobile-iphone-large-text-shard-1", "mobile-iphone-large-text-shard-2",
+        ...MOBILE_SHARD_JOBS,
         "android-native / native-parity", "ios-native / native-parity"]) {
         if (!names.has(expected)) failures.push(`qa.yml: missing required job ${expected}`);
       }

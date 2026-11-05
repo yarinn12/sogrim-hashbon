@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 // Complete QA465/QA467 source inventory. New tests can increase these counts;
@@ -7,6 +8,10 @@ export const MINIMUM_PROJECT_CASES = new Map([
   ["desktop-chromium", 112], ["desktop-firefox", 123],
   ["desktop-webkit", 112], ["compact-firefox", 126],
   ["cross-engine-comparison", 9]
+]);
+export const CURRENT_MINIMUM_PROJECT_CASES=new Map([
+  ['desktop-chromium',858],['desktop-firefox',869],['desktop-webkit',858],
+  ['compact-firefox',872],['cross-engine-comparison',9]
 ]);
 
 // Four exact runtime skips from QA465 artifact 11967743798. A grouped JSON
@@ -21,6 +26,9 @@ export const ALLOWED_SCOPE_SKIPS = new Map([
   title: "touching the login fields focuses them on iPad and opens the software-input path",
   annotation: "the software-input path only exists in touch contexts"
 }]));
+// Existing touch-only keyboard declarations, observed unchanged on all four
+// desktop profiles. They were added to the source collection after QA467.
+export const TOUCH_SCOPE_CASES=JSON.parse(readFileSync(new URL('./cross-platform-touch-scopes.json',import.meta.url),'utf8')).cases;
 
 const identityKey = ({ projectId, file, suitePath, title, line, column }) =>
   JSON.stringify([projectId, file, ...suitePath, title, line, column]);
@@ -88,11 +96,12 @@ function sameKeys(actual, expected, label) {
 }
 
 export function verifyCrossPlatformShards({ canonicalReports, inventory, planned, actual,
-  receipts, source, tree, runId, runAttempt }) {
+  receipts, source, tree, runId, runAttempt, shardCount = 2 }) {
   if (!/^[a-f0-9]{40}$/.test(source ?? "") || !/^[a-f0-9]{40}$/.test(tree ?? "") ||
       !runId || !runAttempt) throw new Error("Missing exact source/run identity");
   const canonical = new Map(), counts = {};
-  for (const [projectId, minimum] of MINIMUM_PROJECT_CASES) {
+  const sourceMinimums=shardCount===16?CURRENT_MINIMUM_PROJECT_CASES:MINIMUM_PROJECT_CASES;
+  for (const [projectId, minimum] of sourceMinimums) {
     const cases = indexCrossPlatformReport(canonicalReports?.[projectId],
       `${projectId} canonical inventory`, { planned: true, singleProject: projectId });
     if (cases.size < minimum) {
@@ -112,11 +121,27 @@ export function verifyCrossPlatformShards({ canonicalReports, inventory, planned
     if (found.length !== 1) throw new Error(`Missing or changed approved scope skip: ${projectId}`);
   }
 
+  const requiredScopeSkips=new Map(ALLOWED_SCOPE_SKIPS);
+  for(const scope of TOUCH_SCOPE_CASES){
+    const found=[...canonical.values()].filter(item=>item.projectId===scope.projectId&&item.file===scope.file&&item.title===scope.title);
+    if(found.length===0&&shardCount===2)continue; // Historical QA467 did not collect these files.
+    if(found.length!==1)throw new Error('Missing or changed source-declared touch scope: '+scope.projectId+' '+scope.title);
+    const key=scope.projectId+'|'+found[0].canonicalId;
+    if(requiredScopeSkips.has(key))throw new Error('Duplicate touch scope');
+    requiredScopeSkips.set(key,{...scope,id:found[0].canonicalId});
+  }
+
+  if (![2,16].includes(shardCount)) throw new Error("Invalid fixed cross-platform shard count");
+  const shardIds = Array.from({length:shardCount}, (_, i)=>i+1);
+  for (const [label,rows] of Object.entries({planned,actual,receipts})) {
+    if (JSON.stringify(Object.keys(rows ?? {}).sort((a,b)=>Number(a)-Number(b))) !== JSON.stringify(shardIds.map(String)))
+      throw new Error(`${label}: missing or extra shard`);
+  }
   const plannedUnion = new Map(), actualUnion = new Map(), observedSkips = new Set();
   const shardCounts = {};
-  for (const shard of [1, 2]) {
+  for (const shard of shardIds) {
     const label = `shard ${shard}`, receipt = receipts?.[shard];
-    if (receipt?.lane !== "cross-platform" || receipt.shard !== shard ||
+    if (receipt?.lane !== "cross-platform" || receipt.shard !== shard || receipt.shardCount !== shardCount ||
         receipt.source !== source || receipt.tree !== tree ||
         receipt.runId !== runId || receipt.runAttempt !== runAttempt) {
       throw new Error(`${label}: missing or incorrect source receipt`);
@@ -131,10 +156,11 @@ export function verifyCrossPlatformShards({ canonicalReports, inventory, planned
     }
     let passed = 0, skipped = 0;
     for (const [key, item] of result) {
-      const test = item.test, run = test.results,
-        approved = ALLOWED_SCOPE_SKIPS.get(item.projectId),
-        isApprovedSkip = approved?.id === item.canonicalId &&
-          approved.file === item.file && approved.title === item.title;
+      const test = item.test, run = test.results;
+      const scopeKey=[...requiredScopeSkips].find(([,scope])=>scope.id===item.canonicalId&&
+        scope.file===item.file&&scope.title===item.title&&
+        (scope.projectId===undefined||scope.projectId===item.projectId))?.[0];
+      const approved=requiredScopeSkips.get(scopeKey),isApprovedSkip=Boolean(approved);
       if (run?.some(result => result.error != null ||
           (result.errors !== undefined &&
             (!Array.isArray(result.errors) || result.errors.length > 0)))) {
@@ -147,7 +173,7 @@ export function verifyCrossPlatformShards({ canonicalReports, inventory, planned
               annotation.description === approved.annotation)) {
           throw new Error(`${label}: invalid approved scope skip for ${key}`);
         }
-        observedSkips.add(item.projectId); skipped++;
+        observedSkips.add(scopeKey); skipped++;
       } else {
         if (test.expectedStatus !== "passed" || test.status !== "expected" ||
             run?.length !== 1 || run[0].status !== "passed" || run[0].retry !== 0 ||
@@ -170,16 +196,34 @@ export function verifyCrossPlatformShards({ canonicalReports, inventory, planned
   }
   sameKeys(plannedUnion, all, "combined plans");
   sameKeys(actualUnion, all, "combined results");
-  if (observedSkips.size !== ALLOWED_SCOPE_SKIPS.size ||
-      [...ALLOWED_SCOPE_SKIPS.keys()].some(id => !observedSkips.has(id))) {
+  if (observedSkips.size !== requiredScopeSkips.size ||
+      [...requiredScopeSkips.keys()].some(id => !observedSkips.has(id))) {
     throw new Error("Missing one or more approved scope skips");
   }
   return { source, tree, count: all.size, projects: counts,
-    shard1: shardCounts[1], shard2: shardCounts[2],
+    shard1: shardCounts[1], shard2: shardCounts[2], shardCount, shards: shardCounts,
     passed: all.size - observedSkips.size, skipped: observedSkips.size };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (process.argv[2] === "--shard-count") {
+    const [, countArg, inventoryDir, resultsDir, ...projects] = process.argv.slice(2);
+    const shardCount = Number(countArg);
+    if (shardCount !== 16 || !inventoryDir || !resultsDir || projects.length !== MINIMUM_PROJECT_CASES.size)
+      throw new Error("Expected all sixteen shard inventories, reports, receipts and canonical project inventories");
+    const read = path => JSON.parse(readFileSync(path, "utf8"));
+    const ids = Array.from({length:shardCount},(_,i)=>i+1);
+    const rows = pathFor => Object.fromEntries(ids.map(id=>[id,read(pathFor(id))]));
+    console.log(JSON.stringify(verifyCrossPlatformShards({
+      canonicalReports:Object.fromEntries([...MINIMUM_PROJECT_CASES.keys()].map((id,i)=>[id,read(projects[i])])),
+      inventory:read(join(inventoryDir,"all.json")),
+      planned:rows(id=>join(inventoryDir,`${id}-${shardCount}.json`)),
+      actual:rows(id=>join(resultsDir,`cross-platform-report-shard-${id}`,"qa-cross-platform-shard/results.json")),
+      receipts:rows(id=>join(resultsDir,`cross-platform-report-shard-${id}`,"qa-cross-platform-shard/receipt.json")),
+      shardCount,source:process.env.EXPECTED_SOURCE,tree:process.env.EXPECTED_TREE,
+      runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT
+    })));
+  } else {
   const [inventory, plan1, plan2, actual1, actual2, receipt1, receipt2,
     ...projectPaths] = process.argv.slice(2);
   if ([inventory, plan1, plan2, actual1, actual2, receipt1, receipt2].some(path => !path) ||
@@ -198,4 +242,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     runId: process.env.GITHUB_RUN_ID,
     runAttempt: process.env.GITHUB_RUN_ATTEMPT
   })));
+}
 }

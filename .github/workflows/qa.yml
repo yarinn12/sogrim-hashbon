@@ -63,6 +63,10 @@ jobs:
       fail-fast: false
       matrix:
         project: [android-mobile, ipad-webkit, reflow-200]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    env:
+      EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -75,26 +79,103 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Require bounded complete source shard before browser execution
+        run: |
+          mkdir -p qa-mobile-shard
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-mobile-shard/plan.json" \
+            npx playwright test --list --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8 --reporter=json
+          node scripts/qa/verify-shard-capacity.mjs qa-mobile-shard/plan.json
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
-
-      - name: Run mobile layout QA
-        run: npm run qa:mobile -- --project=${{ matrix.project }}
-
-      - name: Upload Playwright report
+      - name: Run complete mobile source shard
+        run: |
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-mobile-shard/results.json" \
+            npm run qa:mobile -- --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8 --reporter=github,html,json
+      - name: Record exact source, project and shard count
+        run: node scripts/qa/write-iphone-shard-receipt.mjs ${{ matrix.project }} ${{ matrix.shard }} 8
+      - name: Upload original shard evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-report-${{ matrix.project }}
+          name: playwright-report-${{ matrix.project }}-shard-${{ matrix.shard }}
           path: |
+            qa-mobile-shard/
             playwright-report/
             test-results/
-          retention-days: 7
+          if-no-files-found: error
+          retention-days: 14
+
+  mobile-coverage:
+    name: mobile (${{ matrix.project }})
+    if: ${{ always() }}
+    needs: [unit, mobile]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [android-mobile, ipad-webkit, reflow-200]
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - name: Require every original mobile shard
+        env:
+          UNIT_RESULT: ${{ needs.unit.result }}
+          MOBILE_RESULT: ${{ needs.mobile.result }}
+        run: |
+          test "$UNIT_RESULT" = success
+          test "$MOBILE_RESULT" = success
+      - name: Checkout exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Download every original project shard
+        uses: actions/download-artifact@v6
+        with:
+          pattern: playwright-report-${{ matrix.project }}-shard-*
+          path: shards
+          merge-multiple: false
+      - name: Inventory complete source and all eight shards
+        run: |
+          mkdir -p inventory
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/all.json" \
+            npx playwright test --list --project=${{ matrix.project }} --reporter=json
+          for shard in $(seq 1 8); do
+            PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$shard-8.json" \
+              npx playwright test --list --project=${{ matrix.project }} --shard="$shard/8" --reporter=json
+          done
+      - name: Require complete exact-once source coverage
+        env:
+          EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
+          EXPECTED_PROJECT: ${{ matrix.project }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          export EXPECTED_TREE="$(git rev-parse HEAD^{tree})"
+          node scripts/qa/verify-large-text-shards.mjs --shard-count 8 inventory shards
+      - name: Retain complete coverage inventory
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: mobile-coverage-${{ matrix.project }}
+          path: inventory/
+          if-no-files-found: error
+          retention-days: 14
 
   mobile-iphone-webkit-shard-1:
     needs: unit
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     env:
       EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
       PW_QA_PORT: "4185"
@@ -111,21 +192,27 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Require bounded complete source shard before browser execution
+        run: |
+          mkdir -p qa-iphone-webkit-shard
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-iphone-webkit-shard/plan.json" \
+            npx playwright test --list --project=iphone-webkit --shard=${{ matrix.shard }}/8 --reporter=json
+          node scripts/qa/verify-shard-capacity.mjs qa-iphone-webkit-shard/plan.json
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
       - name: Run first half of iPhone WebKit QA
         run: |
           mkdir -p qa-iphone-webkit-shard
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-iphone-webkit-shard/results.json" \
-            npm run qa:mobile -- --project=iphone-webkit --shard=1/2 \
+            npm run qa:mobile -- --project=iphone-webkit --shard=${{ matrix.shard }}/8 \
               --reporter=github,html,json --output=test-results-iphone-webkit-main
       - name: Record exact source, project and shard
-        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-webkit 1
+        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-webkit ${{ matrix.shard }} 8
       - name: Upload first shard evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-report-iphone-webkit-shard-1
+          name: playwright-report-iphone-webkit-shard-${{ matrix.shard }}
           path: |
             qa-iphone-webkit-shard/
             test-results-iphone-webkit-main/
@@ -137,6 +224,10 @@ jobs:
     needs: unit
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [5, 6, 7, 8]
     env:
       EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
       PW_QA_PORT: "4186"
@@ -153,21 +244,27 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Require bounded complete source shard before browser execution
+        run: |
+          mkdir -p qa-iphone-webkit-shard
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-iphone-webkit-shard/plan.json" \
+            npx playwright test --list --project=iphone-webkit --shard=${{ matrix.shard }}/8 --reporter=json
+          node scripts/qa/verify-shard-capacity.mjs qa-iphone-webkit-shard/plan.json
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
       - name: Run second half of iPhone WebKit QA
         run: |
           mkdir -p qa-iphone-webkit-shard
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-iphone-webkit-shard/results.json" \
-            npm run qa:mobile -- --project=iphone-webkit --shard=2/2 \
+            npm run qa:mobile -- --project=iphone-webkit --shard=${{ matrix.shard }}/8 \
               --reporter=github,html,json --output=test-results-iphone-webkit-main
       - name: Record exact source, project and shard
-        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-webkit 2
+        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-webkit ${{ matrix.shard }} 8
       - name: Upload second shard evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-report-iphone-webkit-shard-2
+          name: playwright-report-iphone-webkit-shard-${{ matrix.shard }}
           path: |
             qa-iphone-webkit-shard/
             test-results-iphone-webkit-main/
@@ -204,45 +301,38 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Download first shard evidence
+      - name: Download every original project shard
         uses: actions/download-artifact@v6
         with:
-          name: playwright-report-iphone-webkit-shard-1
-          path: shards/1
-      - name: Download second shard evidence
-        uses: actions/download-artifact@v6
-        with:
-          name: playwright-report-iphone-webkit-shard-2
-          path: shards/2
-      - name: Inventory source and each planned shard
+          pattern: playwright-report-iphone-webkit-shard-*
+          path: shards
+          merge-multiple: false
+      - name: Inventory source and all eight planned shards
         run: |
           mkdir -p inventory
-          for shard in all 1/2 2/2; do
-            name="${shard//\//-}"
-            if test "$shard" = all; then
-              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$name.json" \
-                npx playwright test --list --project=iphone-webkit --reporter=json
-            else
-              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$name.json" \
-                npx playwright test --list --project=iphone-webkit --shard="$shard" --reporter=json
-            fi
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/all.json" \
+            npx playwright test --list --project=iphone-webkit --reporter=json
+          for shard in $(seq 1 8); do
+            PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$shard-8.json" \
+              npx playwright test --list --project=iphone-webkit --shard="$shard/8" --reporter=json
           done
-      - name: Verify exact once coverage, project and source
+      - name: Verify exact-once coverage, project and source
         env:
           EXPECTED_PROJECT: iphone-webkit
           EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
           export EXPECTED_TREE="$(git rev-parse HEAD^{tree})"
-          node scripts/qa/verify-large-text-shards.mjs \
-            inventory/all.json inventory/1-2.json inventory/2-2.json \
-            shards/1/qa-iphone-webkit-shard/results.json shards/2/qa-iphone-webkit-shard/results.json \
-            shards/1/qa-iphone-webkit-shard/receipt.json shards/2/qa-iphone-webkit-shard/receipt.json
+          node scripts/qa/verify-large-text-shards.mjs --shard-count 8 inventory shards
 
   mobile-iphone-large-text-shard-1:
     needs: unit
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     env:
       EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
       PW_QA_PORT: "4183"
@@ -259,9 +349,16 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Require bounded complete source shard before browser execution
+        run: |
+          mkdir -p qa-large-text-shard
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-large-text-shard/plan.json" \
+            npx playwright test --list --project=iphone-large-text --shard=${{ matrix.shard }}/8 --reporter=json
+          node scripts/qa/verify-shard-capacity.mjs qa-large-text-shard/plan.json
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
       - name: Require whole phone actions at maximum preview and iOS accessibility size
+        if: ${{ matrix.shard == 1 }}
         run: |
           for size in 32 37.64706; do
             PW_DYNAMIC_TYPE_SIZE="$size" \
@@ -273,15 +370,15 @@ jobs:
         run: |
           mkdir -p qa-large-text-shard
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-large-text-shard/results.json" \
-            npm run qa:mobile -- --project=iphone-large-text --shard=1/2 \
+            npm run qa:mobile -- --project=iphone-large-text --shard=${{ matrix.shard }}/8 \
               --reporter=github,html,json --output=test-results-large-text-main
       - name: Record exact source and shard
-        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-large-text 1
+        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-large-text ${{ matrix.shard }} 8
       - name: Upload first shard evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-report-iphone-large-text-shard-1
+          name: playwright-report-iphone-large-text-shard-${{ matrix.shard }}
           path: |
             qa-large-text-shard/
             test-results-large-text/
@@ -294,6 +391,10 @@ jobs:
     needs: unit
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [5, 6, 7, 8]
     env:
       EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
       PW_QA_PORT: "4184"
@@ -310,21 +411,27 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Require bounded complete source shard before browser execution
+        run: |
+          mkdir -p qa-large-text-shard
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-large-text-shard/plan.json" \
+            npx playwright test --list --project=iphone-large-text --shard=${{ matrix.shard }}/8 --reporter=json
+          node scripts/qa/verify-shard-capacity.mjs qa-large-text-shard/plan.json
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
       - name: Run second half of iPhone large text QA
         run: |
           mkdir -p qa-large-text-shard
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-large-text-shard/results.json" \
-            npm run qa:mobile -- --project=iphone-large-text --shard=2/2 \
+            npm run qa:mobile -- --project=iphone-large-text --shard=${{ matrix.shard }}/8 \
               --reporter=github,html,json --output=test-results-large-text-main
       - name: Record exact source and shard
-        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-large-text 2
+        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-large-text ${{ matrix.shard }} 8
       - name: Upload second shard evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-report-iphone-large-text-shard-2
+          name: playwright-report-iphone-large-text-shard-${{ matrix.shard }}
           path: |
             qa-large-text-shard/
             test-results-large-text-main/
@@ -361,48 +468,42 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Download first shard evidence
+      - name: Download every original project shard
         uses: actions/download-artifact@v6
         with:
-          name: playwright-report-iphone-large-text-shard-1
-          path: shards/1
-      - name: Download second shard evidence
-        uses: actions/download-artifact@v6
-        with:
-          name: playwright-report-iphone-large-text-shard-2
-          path: shards/2
-      - name: Inventory source and each planned shard
+          pattern: playwright-report-iphone-large-text-shard-*
+          path: shards
+          merge-multiple: false
+      - name: Inventory source and all eight planned shards
         run: |
           mkdir -p inventory
-          for shard in all 1/2 2/2; do
-            name="${shard//\//-}"
-            if test "$shard" = all; then
-              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$name.json" \
-                npx playwright test --list --project=iphone-large-text --reporter=json
-            else
-              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$name.json" \
-                npx playwright test --list --project=iphone-large-text --shard="$shard" --reporter=json
-            fi
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/all.json" \
+            npx playwright test --list --project=iphone-large-text --reporter=json
+          for shard in $(seq 1 8); do
+            PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$shard-8.json" \
+              npx playwright test --list --project=iphone-large-text --shard="$shard/8" --reporter=json
           done
-      - name: Verify exact once coverage and source
+      - name: Verify exact-once coverage, project and source
         env:
+          EXPECTED_PROJECT: iphone-large-text
           EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
           export EXPECTED_TREE="$(git rev-parse HEAD^{tree})"
-          node scripts/qa/verify-large-text-shards.mjs \
-            inventory/all.json inventory/1-2.json inventory/2-2.json \
-            shards/1/qa-large-text-shard/results.json shards/2/qa-large-text-shard/results.json \
-            shards/1/qa-large-text-shard/receipt.json shards/2/qa-large-text-shard/receipt.json
+          node scripts/qa/verify-large-text-shards.mjs --shard-count 8 inventory shards
 
   cross-platform-shard-1:
     needs: unit
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
       EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
       PW_QA_PORT: "4187"
-      CROSS_PLATFORM_OUTPUT_DIR: test-results-cross-platform-shard-1
+      CROSS_PLATFORM_OUTPUT_DIR: test-results-cross-platform-shard-${{ matrix.shard }}
       SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
     steps:
       - name: Checkout
@@ -416,24 +517,30 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Require bounded complete source shard before browser execution
+        run: |
+          mkdir -p qa-cross-platform-shard
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-cross-platform-shard/plan.json" \
+            npx playwright test --config playwright.cross-platform.config.mjs --list --shard=${{ matrix.shard }}/16 --reporter=json
+          node scripts/qa/verify-shard-capacity.mjs qa-cross-platform-shard/plan.json
       - name: Install desktop comparison engines
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Run first half of cross-platform QA
         run: |
           mkdir -p qa-cross-platform-shard
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-cross-platform-shard/results.json" \
-            npm run qa:cross-platform -- --shard=1/2 --reporter=github,html,json
+            npm run qa:cross-platform -- --shard=${{ matrix.shard }}/16 --reporter=github,html,json
       - name: Record exact source and shard
-        run: node scripts/qa/write-cross-platform-shard-receipt.mjs 1
+        run: node scripts/qa/write-cross-platform-shard-receipt.mjs ${{ matrix.shard }} 16
       - name: Upload first shard evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
         with:
-          name: cross-platform-report-shard-1
+          name: cross-platform-report-shard-${{ matrix.shard }}
           path: |
             qa-cross-platform-shard/
             playwright-report/
-            test-results-cross-platform-shard-1/
+            test-results-cross-platform-shard-${{ matrix.shard }}/
           if-no-files-found: error
           retention-days: 14
 
@@ -441,10 +548,14 @@ jobs:
     needs: unit
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [9, 10, 11, 12, 13, 14, 15, 16]
     env:
       EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
       PW_QA_PORT: "4188"
-      CROSS_PLATFORM_OUTPUT_DIR: test-results-cross-platform-shard-2
+      CROSS_PLATFORM_OUTPUT_DIR: test-results-cross-platform-shard-${{ matrix.shard }}
       SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
     steps:
       - name: Checkout
@@ -458,24 +569,30 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Require bounded complete source shard before browser execution
+        run: |
+          mkdir -p qa-cross-platform-shard
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-cross-platform-shard/plan.json" \
+            npx playwright test --config playwright.cross-platform.config.mjs --list --shard=${{ matrix.shard }}/16 --reporter=json
+          node scripts/qa/verify-shard-capacity.mjs qa-cross-platform-shard/plan.json
       - name: Install desktop comparison engines
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Run second half of cross-platform QA
         run: |
           mkdir -p qa-cross-platform-shard
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-cross-platform-shard/results.json" \
-            npm run qa:cross-platform -- --shard=2/2 --reporter=github,html,json
+            npm run qa:cross-platform -- --shard=${{ matrix.shard }}/16 --reporter=github,html,json
       - name: Record exact source and shard
-        run: node scripts/qa/write-cross-platform-shard-receipt.mjs 2
+        run: node scripts/qa/write-cross-platform-shard-receipt.mjs ${{ matrix.shard }} 16
       - name: Upload second shard evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
         with:
-          name: cross-platform-report-shard-2
+          name: cross-platform-report-shard-${{ matrix.shard }}
           path: |
             qa-cross-platform-shard/
             playwright-report/
-            test-results-cross-platform-shard-2/
+            test-results-cross-platform-shard-${{ matrix.shard }}/
           if-no-files-found: error
           retention-days: 14
 
@@ -507,28 +624,20 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Download first shard evidence
+      - name: Download every original cross-platform shard evidence
         uses: actions/download-artifact@v6
         with:
-          name: cross-platform-report-shard-1
-          path: shards/1
-      - name: Download second shard evidence
-        uses: actions/download-artifact@v6
-        with:
-          name: cross-platform-report-shard-2
-          path: shards/2
-      - name: Inventory source and both planned shards
+          pattern: cross-platform-report-shard-*
+          path: shards
+          merge-multiple: false
+      - name: Inventory source and all sixteen planned shards
         run: |
           mkdir -p inventory
-          for shard in all 1/2 2/2; do
-            name="${shard//\//-}"
-            if test "$shard" = all; then
-              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$name.json" \
-                npx playwright test --config playwright.cross-platform.config.mjs --list --reporter=json
-            else
-              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$name.json" \
-                npx playwright test --config playwright.cross-platform.config.mjs --list --shard="$shard" --reporter=json
-            fi
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/all.json" \
+            npx playwright test --config playwright.cross-platform.config.mjs --list --reporter=json
+          for shard in $(seq 1 16); do
+            PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$shard-16.json" \
+              npx playwright test --config playwright.cross-platform.config.mjs --list --shard="$shard/16" --reporter=json
           done
           for project in desktop-chromium desktop-firefox desktop-webkit compact-firefox cross-engine-comparison; do
             PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/project-$project.json" \
@@ -540,10 +649,7 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
           export EXPECTED_TREE="$(git rev-parse HEAD^{tree})"
-          node scripts/qa/verify-cross-platform-shards.mjs \
-            inventory/all.json inventory/1-2.json inventory/2-2.json \
-            shards/1/qa-cross-platform-shard/results.json shards/2/qa-cross-platform-shard/results.json \
-            shards/1/qa-cross-platform-shard/receipt.json shards/2/qa-cross-platform-shard/receipt.json \
+          node scripts/qa/verify-cross-platform-shards.mjs --shard-count 16 inventory shards \
             inventory/project-desktop-chromium.json inventory/project-desktop-firefox.json \
             inventory/project-desktop-webkit.json inventory/project-compact-firefox.json \
             inventory/project-cross-engine-comparison.json
@@ -602,13 +708,14 @@ jobs:
 
   unit-and-mobile:
     if: ${{ always() }}
-    needs: [unit, mobile, mobile-iphone-webkit-shard-1, mobile-iphone-webkit-shard-2, mobile-iphone-webkit, mobile-iphone-large-text-shard-1, mobile-iphone-large-text-shard-2, mobile-iphone-large-text, two-client-sync, cross-platform-shard-1, cross-platform-shard-2, cross-platform, ios-native, android-native]
+    needs: [unit, mobile, mobile-coverage, mobile-iphone-webkit-shard-1, mobile-iphone-webkit-shard-2, mobile-iphone-webkit, mobile-iphone-large-text-shard-1, mobile-iphone-large-text-shard-2, mobile-iphone-large-text, two-client-sync, cross-platform-shard-1, cross-platform-shard-2, cross-platform, ios-native, android-native]
     runs-on: ubuntu-latest
     steps:
       - name: Require every verification lane to pass
         env:
           UNIT_RESULT: ${{ needs.unit.result }}
           MOBILE_RESULT: ${{ needs.mobile.result }}
+          MOBILE_COVERAGE_RESULT: ${{ needs.mobile-coverage.result }}
           IPHONE_WEBKIT_SHARD_1_RESULT: ${{ needs['mobile-iphone-webkit-shard-1'].result }}
           IPHONE_WEBKIT_SHARD_2_RESULT: ${{ needs['mobile-iphone-webkit-shard-2'].result }}
           IPHONE_WEBKIT_RESULT: ${{ needs['mobile-iphone-webkit'].result }}
@@ -624,6 +731,7 @@ jobs:
         run: |
           test "$UNIT_RESULT" = success
           test "$MOBILE_RESULT" = success
+          test "$MOBILE_COVERAGE_RESULT" = success
           test "$IPHONE_WEBKIT_SHARD_1_RESULT" = success
           test "$IPHONE_WEBKIT_SHARD_2_RESULT" = success
           test "$IPHONE_WEBKIT_RESULT" = success
