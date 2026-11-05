@@ -2,6 +2,12 @@ import {expect}from'@playwright/test';
 export{settled}from'./eventDeparturePresentation.mjs';
 const specs=[['#important-action-title',1.25],['#event-reopen-confirmation-name',.875],['#important-action-description',.875],['[data-action="cancel-important-action"]',.9375],['[data-action="confirm-important-action"]',.9375],['.reopen-payment-options legend',.875],['.reopen-payment-copy strong',.9375],['.reopen-payment-copy small',.875]];
 export async function geometry({page,dialog,root,query=''}){const kind='proposal',cancel=dialog.locator('[data-action="cancel-important-action"]'),confirm=dialog.locator('[data-action="confirm-important-action"]');
+ // A reopened confirmation is rendered before its foreground activation frame.
+ // Wait for activation and finite motion before measuring glyph reachability.
+ await dialog.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ await expect.poll(()=>page.evaluate(()=>document.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime)&&a.playState==='running').length)).toBe(0);
+ await expect.poll(()=>dialog.evaluate(e=>!e.closest('[inert]'))).toBe(true);
+ await expect(cancel).toBeFocused();
  const metrics=await dialog.evaluate((e,specs)=>{const fonts=[],bad=[];for(const[s,ratio]of specs)for(const n of e.querySelectorAll(s)){const box=n.getBoundingClientRect();fonts.push({s,ratio,size:parseFloat(getComputedStyle(n).fontSize)});const w=document.createTreeWalker(n,NodeFilter.SHOW_TEXT);let t;while(t=w.nextNode())for(let i=0;i<t.length;i++){if(!t.textContent[i].trim())continue;const r=document.createRange();r.setStart(t,i);r.setEnd(t,i+1);for(const b of r.getClientRects())if(b.width&&(b.left<Math.max(0,box.left)-1||b.right>Math.min(innerWidth,box.right)+1))bad.push(s)}}return{fonts,bad,overflow:document.documentElement.scrollWidth-innerWidth,dialogOverflow:e.scrollWidth-e.clientWidth}},specs);
  if(kind==='proposal'){
  expect(metrics.bad).toEqual([]);expect(metrics.overflow).toBe(0);expect(metrics.dialogOverflow).toBe(0);for(const f of metrics.fonts)expect(f.size,f.s).toBe(root*f.ratio);expect(metrics.fonts).toHaveLength(query.includes("reopen-paid=0")?5:10);
