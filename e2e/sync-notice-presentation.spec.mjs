@@ -33,6 +33,35 @@ test('sync feedback survives rerender and Enter dismissal stays closed',async({p
 test('sync feedback routine saving and recovery stay quiet',async({page})=>{await start(page);for(const status of['saving','saved','reconnecting','unavailable']){await page.evaluate(status=>__syncNoticePreview.emit({status,pending:false}),status);await expect(page.locator('[data-sync-status]')).not.toBeVisible()}});
 test('sync feedback blocked retry keeps both pending events and details',async({page})=>{await start(page,{scene:'home',scenario:'permission'});const summary=page.locator('.sync-pending-context');await summary.locator('summary').click();await expect(summary.locator('details')).toHaveAttribute('open','');await expect(summary.locator('li')).toHaveCount(2);for(const li of await summary.locator('li').all())await readable(li);const before=await page.evaluate(()=>__friendInviteQa.failedPendingAttempts.length);await summary.locator('[data-sync-retry]').click();await expect.poll(()=>page.evaluate(()=>__friendInviteQa.failedPendingAttempts.length)).toBeGreaterThan(before);await expect(summary.locator('[data-sync-retry]')).toBeEnabled();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem(__friendInviteQa.pendingKey)).__pendingSync.selection.eventIds.sort())).toEqual(['friend-friday','friend-weekend']);await expect(summary).toBeVisible()});
 test('sync feedback only a canonical ACK clears the pending queue',async({page})=>{await start(page,{scene:'home',scenario:'permission',root:16,width:393,query:'&pending-events=one'});await page.evaluate(()=>__friendInviteQa.allowPendingAcknowledgement=true);await page.locator('.sync-pending-context [data-sync-retry]').click();await expect.poll(()=>page.evaluate(()=>localStorage.getItem(__friendInviteQa.pendingKey))).toBeNull();await expect(page.locator('[data-sync-account-summary]')).not.toBeVisible();expect(await page.evaluate(()=>__friendInviteQa.canonicalWrites.length)).toBeGreaterThan(0)});
-test('sync feedback event review keeps queue and opens correct event',async({page})=>{await start(page,{scene:'home',scenario:'permission'});await page.locator('.sync-pending-context summary').click();await page.locator('.sync-pending-context [data-action="open-event"][data-event-id="friend-weekend"]').click();await expect(page.locator('.screen h1')).toHaveText('סוף השבוע בצפון');expect(await page.evaluate(()=>Boolean(localStorage.getItem(__friendInviteQa.pendingKey)))).toBe(true)});
+test('sync feedback event review keeps queue and opens correct event',async({page},info)=>{
+ await start(page,{scene:'home',scenario:'permission'});
+ const summary=page.locator('.sync-pending-context');
+ const readPending=()=>page.evaluate(()=>({
+  ids:JSON.parse(localStorage.getItem(__friendInviteQa.pendingKey)).__pendingSync.selection.eventIds.slice().sort(),
+  acknowledgements:__friendInviteQa.canonicalWrites.length,
+  savedEvents:__syncNoticePreview.sourceSaved
+ }));
+ const expected={ids:['friend-friday','friend-weekend'],acknowledgements:0,savedEvents:0};
+ expect(await readPending()).toEqual(expected);
+ await summary.locator('summary').click();
+ await expect(summary.locator('details')).toHaveAttribute('open','');
+ await expect(summary.locator('[data-action="open-event"]')).toHaveCount(2);
+ const attempts=await page.evaluate(()=>__friendInviteQa.failedPendingAttempts.length);
+ await summary.locator('[data-sync-retry]').click();
+ await expect.poll(()=>page.evaluate(()=>__friendInviteQa.failedPendingAttempts.length)).toBeGreaterThan(attempts);
+ await expect(summary.locator('[data-sync-retry]')).toBeEnabled();
+ await expect(summary.locator('details')).toHaveAttribute('open','');
+ expect(await readPending()).toEqual(expected);
+ const review=summary.locator('[data-action="open-event"][data-event-id="friend-weekend"]');
+ await expect(review).toHaveAttribute('aria-label','פתיחת האירוע סוף השבוע בצפון לבדיקת העדכון הממתין');
+ await review.scrollIntoViewIfNeeded();
+ const hit=await review.evaluate(element=>{const rect=element.getBoundingClientRect(),target=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);return{width:rect.width,height:rect.height,ownsHit:!!target&&(target===element||element.contains(target))}});
+ expect(hit.width).toBeGreaterThanOrEqual(44);expect(hit.height).toBeGreaterThanOrEqual(44);expect(hit.ownsHit).toBe(true);
+ await page.screenshot({path:info.outputPath('pending-event-review.png')});
+ await review.click();
+ await expect(page.locator('.screen h1')).toHaveText('סוף השבוע בצפון');
+ expect(await readPending()).toEqual(expected);
+ await info.attach('pending-review-contract',{body:JSON.stringify({before:expected,after:await readPending(),hit}),contentType:'application/json'});
+});
 
 test('sync feedback preserves system32 app20 system32 text and the error',async({page})=>{await page.addInitScript(installSyntheticSystemText);const ctx=await start(page,{root:0,height:390});ctx.root=32;await geometry(ctx);const entry=page.locator('.event-share-modal [data-open-accessibility]');for(const[value,root]of[['extra-large',20],['system',32]]){await entry.click();await page.locator('.accessibility-segmented-control label:has(input[value="'+value+'"])').click();await page.keyboard.press('Escape');await expect(entry).toBeFocused();ctx.root=root;await geometry(ctx)}});

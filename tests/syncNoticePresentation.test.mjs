@@ -56,6 +56,16 @@ test('all confirmed permission failures use concise count, retained-on-device gu
  assert.equal(nodes.find(n=>n.dataset?.syncRetry!==undefined).textContent,'נסה לשמור שוב');assert.equal(nodes.find(n=>n.dataset?.eventId==='a').textContent,'<b>שם</b>');
  assert.equal(nodes.find(n=>n.dataset?.syncEventDetails!==undefined).children[0].textContent,'באילו אירועים?');
 });
+
+test('a per-event failure refresh keeps the pending review details open and both event actions',()=>{
+ const events=[{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],h=summary(events,{failureKind:'permission'});
+ h.target.querySelector=selector=>selector==='[data-sync-event-details]'?descendants(h.target).find(node=>node.dataset?.syncEventDetails!==undefined)||null:null;
+ h.target.querySelector('[data-sync-event-details]').open=true;
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,failureDetails:{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'}]}});
+ assert.equal(h.target.querySelector('[data-sync-event-details]').open,true,'new failure attribution must not close an expanded event review');
+ assert.deepEqual(descendants(h.target).filter(node=>node.dataset?.action==='open-event').map(node=>[node.dataset.eventId,node.textContent]),events.map(event=>[event.id,event.name]));
+ assert.equal(descendants(h.target).filter(node=>node.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,1);
+});
 test('quiet or account-wide pending state never invents event IDs or drops failure guidance',()=>{
  const h=summary([],{failureKind:'auth'});assert.equal(descendants(h.target).filter(n=>n.dataset?.action==='open-event').length,0);assert.match(h.target.children[0].textContent,/אין הרשאה לבצע את השינוי/);
  renderPendingSyncSummary(h.target,'',h.options);assert.equal(h.target.children.length,0);

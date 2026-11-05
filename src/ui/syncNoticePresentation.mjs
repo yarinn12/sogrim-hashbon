@@ -80,6 +80,7 @@ export function renderPendingSyncSummary(target, message, { pendingEventIds = []
   target.classList.add("sync-pending-context");
   const key = JSON.stringify([message, events]);
   if (target.dataset.syncSummaryKey === key) return;
+  const detailsWereOpen = target.querySelector("[data-sync-event-details]")?.open === true;
   target.dataset.syncSummaryKey = key;
   target.replaceChildren();
   if (!message) return;
@@ -129,6 +130,7 @@ export function renderPendingSyncSummary(target, message, { pendingEventIds = []
   if (!events.length) return;
   const details = document.createElement("details");
   details.dataset.syncEventDetails = "";
+  details.open = detailsWereOpen;
   const summary = document.createElement("summary");
   summary.className = "pending-sync-review";
   summary.textContent = "באילו אירועים?";
