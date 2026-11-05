@@ -85,6 +85,10 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-mobile-shard/plan.json" \
             npx playwright test --list --project=${{ matrix.project }} --shard=${{ matrix.shard }}/8 --reporter=json
           node scripts/qa/verify-shard-capacity.mjs qa-mobile-shard/plan.json
+      - name: Prefer official HTTPS APT mirrors on the ephemeral Ubuntu runner
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS,RUNNER_ARCH,RUNNER_ENVIRONMENT \
+            "$(command -v node)" scripts/qa/prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
       - name: Run complete mobile source shard
@@ -198,6 +202,10 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-iphone-webkit-shard/plan.json" \
             npx playwright test --list --project=iphone-webkit --shard=${{ matrix.shard }}/8 --reporter=json
           node scripts/qa/verify-shard-capacity.mjs qa-iphone-webkit-shard/plan.json
+      - name: Prefer official HTTPS APT mirrors on the ephemeral Ubuntu runner
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS,RUNNER_ARCH,RUNNER_ENVIRONMENT \
+            "$(command -v node)" scripts/qa/prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
       - name: Run first half of iPhone WebKit QA
@@ -250,6 +258,10 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-iphone-webkit-shard/plan.json" \
             npx playwright test --list --project=iphone-webkit --shard=${{ matrix.shard }}/8 --reporter=json
           node scripts/qa/verify-shard-capacity.mjs qa-iphone-webkit-shard/plan.json
+      - name: Prefer official HTTPS APT mirrors on the ephemeral Ubuntu runner
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS,RUNNER_ARCH,RUNNER_ENVIRONMENT \
+            "$(command -v node)" scripts/qa/prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
       - name: Run second half of iPhone WebKit QA
@@ -355,6 +367,10 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-large-text-shard/plan.json" \
             npx playwright test --list --project=iphone-large-text --shard=${{ matrix.shard }}/8 --reporter=json
           node scripts/qa/verify-shard-capacity.mjs qa-large-text-shard/plan.json
+      - name: Prefer official HTTPS APT mirrors on the ephemeral Ubuntu runner
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS,RUNNER_ARCH,RUNNER_ENVIRONMENT \
+            "$(command -v node)" scripts/qa/prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
       - name: Require whole phone actions at maximum preview and iOS accessibility size
@@ -417,6 +433,10 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-large-text-shard/plan.json" \
             npx playwright test --list --project=iphone-large-text --shard=${{ matrix.shard }}/8 --reporter=json
           node scripts/qa/verify-shard-capacity.mjs qa-large-text-shard/plan.json
+      - name: Prefer official HTTPS APT mirrors on the ephemeral Ubuntu runner
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS,RUNNER_ARCH,RUNNER_ENVIRONMENT \
+            "$(command -v node)" scripts/qa/prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
       - name: Run second half of iPhone large text QA
@@ -523,6 +543,10 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-cross-platform-shard/plan.json" \
             npx playwright test --config playwright.cross-platform.config.mjs --list --shard=${{ matrix.shard }}/16 --reporter=json
           node scripts/qa/verify-shard-capacity.mjs qa-cross-platform-shard/plan.json
+      - name: Prefer official HTTPS APT mirrors on the ephemeral Ubuntu runner
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS,RUNNER_ARCH,RUNNER_ENVIRONMENT \
+            "$(command -v node)" scripts/qa/prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24
       - name: Install desktop comparison engines
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Run first half of cross-platform QA
@@ -575,6 +599,10 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-cross-platform-shard/plan.json" \
             npx playwright test --config playwright.cross-platform.config.mjs --list --shard=${{ matrix.shard }}/16 --reporter=json
           node scripts/qa/verify-shard-capacity.mjs qa-cross-platform-shard/plan.json
+      - name: Prefer official HTTPS APT mirrors on the ephemeral Ubuntu runner
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS,RUNNER_ARCH,RUNNER_ENVIRONMENT \
+            "$(command -v node)" scripts/qa/prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24
       - name: Install desktop comparison engines
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Run second half of cross-platform QA
@@ -678,6 +706,10 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Prefer official HTTPS APT mirrors on the ephemeral Ubuntu runner
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS,RUNNER_ARCH,RUNNER_ENVIRONMENT \
+            "$(command -v node)" scripts/qa/prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
       - name: Verify independent-user synchronization
