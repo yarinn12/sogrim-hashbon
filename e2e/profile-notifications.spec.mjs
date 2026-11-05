@@ -999,7 +999,8 @@ test(`late inbox HTTP ${refreshStatus} cannot undo mark-all read or resurrect it
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(page.locator(".notification-inbox-item:not(.is-read)")).toHaveCount(0);
     await expect(page.locator(".product-nav-badge")).toBeHidden();
-    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toHaveCount(0);
+    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toHaveCount(1);
+    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toBeDisabled();
     await assertNoHorizontalOverflow(page);
     await page.screenshot({ path: testInfo.outputPath(`inbox-after-${refreshStatus}.png`), fullPage: true });
   } finally {
@@ -1118,7 +1119,8 @@ test("server-confirmed read markers survive a delayed write error with an identi
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(page.locator(".notification-inbox-item.is-read")).toHaveCount(1);
     await expect(page.locator(".product-nav-badge")).toBeHidden();
-    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toHaveCount(0);
+    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toHaveCount(1);
+    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toBeDisabled();
     expect(errors).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath("inbox-confirmed-read-after-error.png"), fullPage: true });
   } finally { release(); }

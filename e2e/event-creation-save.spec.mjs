@@ -135,13 +135,14 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
         const store = await import("/src/data/localStore.mjs");
         return store.pendingSharedSyncStatus({ includeFailureKind: true }).eventFailures?.length;
       })).toBe(5);
-      await expect(notice).toContainText("5 אירועים לא סונכרנו");
+      await expect(notice.locator('.sync-pending-heading')).toHaveText("שמירת העדכונים נחסמה ב־5 אירועים");
+      await expect(notice.locator('.sync-pending-explanation')).toHaveText("העדכונים שמורים במכשיר הזה. בדקו הרשאות עם מנהלי האירועים.");
       await notice.locator("summary").click();
       await expect(notice.locator('[data-action="open-event"]')).toHaveCount(5);
       for (const event of initial.events) await expect(notice.locator(`[data-event-id="${event.id}"]`)).toHaveText(event.name);
       const originalDenied = deniedWrites;
       await page.reload();
-      await expect(notice).toContainText("5 אירועים לא סונכרנו");
+      await expect(notice.locator('.sync-pending-heading')).toHaveText("שמירת העדכונים נחסמה ב־5 אירועים");
       const automatic = await page.evaluate(async () => {
         const store = await import("/src/data/localStore.mjs");
         return store.flushPendingSharedState({ automatic: true });
@@ -217,7 +218,7 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
           return { id: parseInviteEventId(value), token: parseInviteToken(value) };
         }, qrUrl);
         expect(parsed).toEqual({ id: eventId, token: inviteToken });
-        await qr.locator("summary").click(); await expect(qr.locator("svg")).toBeVisible();
+        await qr.locator("summary").click(); await expect(qr.locator(".public-invite-qr-code > svg")).toBeVisible();
         await page.screenshot({ path: testInfo.outputPath("creation-link-and-qr-ready.png"), fullPage: true });
         // Reopen from the existing-event participant route and compare the
         // actual verified URL, token and QR rather than a second screen mock.

@@ -486,7 +486,8 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
       expect(deniedCounts).toEqual(Array(4).fill(deniedBeforeOnline));
       expect(await page.evaluate(spaceId =>
         localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).toBe(outboxBeforeOnline);
-      await expect(summary).toContainText("השרת דחה שמירה בגלל הרשאה");
+      await expect(summary.locator('.sync-pending-heading')).toHaveText("שמירת העדכונים באירוע נחסמה");
+      await expect(summary.locator('.sync-pending-explanation')).toHaveText("העדכונים שמורים במכשיר הזה. בדקו הרשאות עם מנהל האירוע.");
       await expect(summary).toContainText("אירוע שני");
       const reviewButton = summary.locator('[data-action="open-event"]');
       await expect(reviewButton).toHaveAttribute("data-event-id", secondEventId);
@@ -541,7 +542,7 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     if (permissionContext) {
       // A known permanent denial stays held after restart. The user explicitly
       // retries once permission is restored; only the actual ACK clears it.
-      await expect(page.locator("[data-sync-account-summary]")).toContainText("השרת דחה שמירה בגלל הרשאה");
+      await expect(page.locator("[data-sync-account-summary] .sync-pending-heading")).toHaveText("שמירת העדכונים באירוע נחסמה");
       expect(await page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).not.toBeNull();
       await page.locator("[data-sync-account-summary] [data-sync-retry]").click();
     }
