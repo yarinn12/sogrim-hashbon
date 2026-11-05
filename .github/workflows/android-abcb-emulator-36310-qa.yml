@@ -1,0 +1,226 @@
+name: Android abcb emulator36.3.10 diagnostic only
+
+on:
+  push:
+    branches: [codex/android-abcb-emulator-36310-20261104]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  abcb-emulator-36310-diagnostic:
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/android-abcb-emulator-36310-20261104' && github.run_attempt == 1 && github.run_number == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      ANDROID_QA_DEVICE: emulator-5582
+      ANDROID_QA_SOURCE: abcbac91e97230e4737e80c4ea3c2206360e855f
+      ANDROID_HISTORICAL_QA_TOOLS: 3b0e49be8bf1fb64cdc54950665d9cb4984f7c7f
+    steps:
+      # First reviewed branch push only. This is not Native release acceptance.
+      - name: Checkout diagnostic control code
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Checkout pinned original QA tools
+        uses: actions/checkout@v6
+        with:
+          ref: 3b0e49be8bf1fb64cdc54950665d9cb4984f7c7f
+          path: historical-tools
+          persist-credentials: false
+      - name: Checkout exact original application source
+        uses: actions/checkout@v6
+        with:
+          ref: abcbac91e97230e4737e80c4ea3c2206360e855f
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Prepare owned QA paths and source receipt
+        working-directory: app
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = "push"
+          test "$GITHUB_RUN_ATTEMPT" = "1"
+          test "$GITHUB_RUN_NUMBER" = "1"
+          test "$GITHUB_REPOSITORY" = "yarinn12/sogrim-hashbon"
+          test "$GITHUB_REF_NAME" = "codex/android-abcb-emulator-36310-20261104"
+          test "$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C "$GITHUB_WORKSPACE/historical-tools" rev-parse HEAD)" = "$ANDROID_HISTORICAL_QA_TOOLS"
+          test "$(git rev-parse HEAD)" = "$ANDROID_QA_SOURCE"
+          test "$(git rev-parse HEAD^{tree})" = "76e2319de17a875db5f5b1e2b54c2b63659644b1"
+          test -z "$(git status --porcelain)"
+          mkdir -p artifacts/android-native-isolated scripts/qa
+          cp -R "$GITHUB_WORKSPACE/historical-tools/scripts/qa/android-native-isolated" scripts/qa/
+          git -C "$GITHUB_WORKSPACE/historical-tools" ls-tree -r HEAD scripts/qa/android-native-isolated > artifacts/android-native-isolated/historical-tool-blobs.txt
+          printf '%s\n' "$ANDROID_HISTORICAL_QA_TOOLS" > artifacts/android-native-isolated/qa-tools-source.txt
+          printf '%s\n' "$GITHUB_SHA" > artifacts/android-native-isolated/diagnostic-control-source.txt
+          echo "ANDROID_QA_AVD=sogrim_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$RUNNER_TEMP/android-native-avd" >> "$GITHUB_ENV"
+          echo "ANDROID_USER_HOME=$RUNNER_TEMP/android-native-home" >> "$GITHUB_ENV"
+          echo "ANDROID_EMULATOR_HOME=$RUNNER_TEMP/android-native-home" >> "$GITHUB_ENV"
+          echo "ADB_VENDOR_KEYS=$RUNNER_TEMP/android-native-home/adbkey" >> "$GITHUB_ENV"
+          echo "ANDROID_ADB_SERVER_PORT=5037" >> "$GITHUB_ENV"
+          echo "ADB_SERVER_SOCKET=tcp:5037" >> "$GITHUB_ENV"
+          echo "SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE=$RUNNER_TEMP/android-native-no-upload.properties" >> "$GITHUB_ENV"
+          echo "ADB_PATH=$ANDROID_HOME/platform-tools/adb" >> "$GITHUB_ENV"
+      - name: Test frozen-artifact and exact-runtime rejection paths
+        run: python3 -m unittest discover -s tests -p android_abcb_emulator_36310_test.py -v
+      - name: Install actual Android emulator SDK and create an empty AVD
+        working-directory: app
+        run: |
+          set -euo pipefail
+          sdk_bin="$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -1)")"
+          test -x "$sdk_bin/sdkmanager"
+          "$sdk_bin/sdkmanager" --install 'platforms;android-36' 'build-tools;36.1.0' 'platform-tools' 'emulator' 'system-images;android-36.1;google_apis_playstore;x86_64' > artifacts/android-native-isolated/sdk.log 2>&1
+          # Verify the failed run's baseline before changing only its host emulator package.
+          python3 "$GITHUB_WORKSPACE/scripts/qa/android-abcb-emulator-36310.py" verify-baseline-sdk "$ANDROID_HOME" > artifacts/android-native-isolated/baseline-sdk-match.json
+          test ! -e "$RUNNER_TEMP/emulator-linux_x64-14472402.zip"
+          curl --fail --location --silent --show-error --connect-timeout 15 --max-time 120 \
+            'https://edgedl.me.gvt1.com/edgedl/android/repository/emulator-linux_x64-14472402.zip' \
+            --output "$RUNNER_TEMP/emulator-linux_x64-14472402.zip"
+          python3 "$GITHUB_WORKSPACE/scripts/qa/android-abcb-emulator-36310.py" install-emulator "$ANDROID_HOME" "$RUNNER_TEMP/emulator-linux_x64-14472402.zip" "$RUNNER_TEMP" > artifacts/android-native-isolated/emulator-package-replacement.json
+          python3 "$GITHUB_WORKSPACE/scripts/qa/android-abcb-emulator-36310.py" verify-sdk "$ANDROID_HOME" > artifacts/android-native-isolated/replacement-sdk-match.json
+          "$ANDROID_HOME/emulator/emulator" -version > artifacts/android-native-isolated/replacement-emulator-version.txt 2>&1
+          grep -qF 'Android emulator version 36.3.10.0 (build_id 14472402)' artifacts/android-native-isolated/replacement-emulator-version.txt
+          test ! -e "$ANDROID_AVD_HOME"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
+          printf 'no\n' | "$sdk_bin/avdmanager" create avd -n "$ANDROID_QA_AVD" -k 'system-images;android-36.1;google_apis_playstore;x86_64' -d pixel_6 > artifacts/android-native-isolated/avd.log 2>&1
+          python3 - <<'PY'
+          import os, pathlib
+          config=pathlib.Path(os.environ['ANDROID_AVD_HOME'])/(os.environ['ANDROID_QA_AVD']+'.avd')/'config.ini'
+          values={'hw.cpu.ncore':'2','hw.ramSize':'4096','hw.lcd.width':'1080','hw.lcd.height':'2400','hw.lcd.density':'420','hw.keyboard':'yes','hw.camera.back':'none','hw.camera.front':'none','hw.gltransport':'asg'}
+          rows=[line for line in config.read_text().splitlines() if line.split('=',1)[0].strip() not in values]
+          config.write_text('\n'.join(rows+[key+' = '+value for key,value in values.items()])+'\n')
+          PY
+          grep -qFx 'hw.ramSize = 4096' "$ANDROID_AVD_HOME/$ANDROID_QA_AVD.avd/config.ini"
+          grep -E '^hw\.(ramSize|cpu\.ncore) = ' "$ANDROID_AVD_HOME/$ANDROID_QA_AVD.avd/config.ini" > artifacts/android-native-isolated/avd-resources.txt
+          cat artifacts/android-native-isolated/avd-resources.txt
+      - name: Record actual host and guest DMA compatibility before emulator launch
+        working-directory: app
+        run: |
+          set -euo pipefail
+          node scripts/qa/android-native-isolated/renderer-capabilities.mjs snapshot
+          node scripts/qa/android-native-isolated/gltransport.mjs snapshot
+      - name: Prepare shared isolated key and fresh ADB server before first emulator launch
+        working-directory: app
+        run: |
+          set -euo pipefail
+          node scripts/qa/android-native-isolated/adb-key-preflight.mjs
+      - name: Prepare exact immutable original APK without rebuilding
+        working-directory: app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test ! -e "$SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE"
+          curl --fail --location --silent --show-error --connect-timeout 15 --max-time 120 \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            "$GITHUB_API_URL/repos/yarinn12/sogrim-hashbon/actions/artifacts/13354600815/zip" \
+            --output "$RUNNER_TEMP/original-native-artifact.zip"
+          python3 "$GITHUB_WORKSPACE/scripts/qa/android-abcb-emulator-36310.py" prepare "$RUNNER_TEMP/original-native-artifact.zip" "$PWD" > artifacts/android-native-isolated/historical-prepare.log 2>&1
+          "$ANDROID_HOME/build-tools/36.1.0/aapt" dump badging android/app/build/outputs/apk/debug/app-debug.apk > artifacts/android-native-isolated/apk-badging.txt
+          grep -q "package: name='com.sogrimhashbon.app.debug'" artifacts/android-native-isolated/apk-badging.txt
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk > artifacts/android-native-isolated/debug-certificate.txt
+          grep -qFx 'Signer #1 certificate SHA-256 digest: bd414dee7295f8cc62667913aa79f727fee8c76234b648a352f813f8be2b8e2a' artifacts/android-native-isolated/debug-certificate.txt
+      - name: Boot only the owned AVD and disable its real networking
+        working-directory: app
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          sudo setfacl -m "u:$USER:rw" /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator -verbose -memory 4096 -cores 2 > artifacts/android-native-isolated/emulator.log 2>&1 &
+          echo "$!" > artifacts/android-native-isolated/emulator.pid
+          # A failed emulator must produce diagnostics rather than leave ADB
+          # waiting for a device until the entire job times out.
+          timeout 240 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" wait-for-device
+          booted=0
+          for n in $(seq 1 180); do
+            if [[ "$("$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell getprop sys.boot_completed | tr -d '\r')" = 1 ]]; then booted=1; break; fi
+            sleep 1
+          done
+          test "$booted" = 1
+          test "$("$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD"
+          tr '\0' ' ' < "/proc/$(cat artifacts/android-native-isolated/emulator.pid)/cmdline" > artifacts/android-native-isolated/emulator-cmdline.txt
+          printf '\n' >> artifacts/android-native-isolated/emulator-cmdline.txt
+          grep -qF -- '-gpu swiftshader' artifacts/android-native-isolated/emulator-cmdline.txt
+          grep -qF -- '-memory 4096 -cores 2' artifacts/android-native-isolated/emulator-cmdline.txt
+          cat artifacts/android-native-isolated/emulator-cmdline.txt
+          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell cat /proc/meminfo > artifacts/android-native-isolated/guest-meminfo.txt
+          cat /proc/meminfo > artifacts/android-native-isolated/host-meminfo.txt
+          printf 'guest '; awk '/^MemTotal:/ {print; exit}' artifacts/android-native-isolated/guest-meminfo.txt
+          printf 'host '; awk '/^MemTotal:/ {print; exit}' artifacts/android-native-isolated/host-meminfo.txt
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/network-isolation.mjs
+          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell settings put secure show_ime_with_hard_keyboard 1
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/launcher-preparation.mjs
+          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" install android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Require healthy owned Android system before Native acceptance
+        working-directory: app
+        run: |
+          set -euo pipefail
+          ANDROID_QA_HEALTH_PHASE=before node scripts/qa/android-native-isolated/emulator-health.mjs
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/renderer-capabilities.mjs verify
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/gltransport.mjs verify
+          # Keep every Native-run event even if a later force-stop closes an ANR dialog.
+          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -b all -v threadtime > artifacts/android-native-isolated/logcat-live.log 2>&1 &
+          echo "$!" > artifacts/android-native-isolated/logcat-live.pid
+          # Start diagnostics before the first cold launch; this does not accept Native QA.
+          node scripts/qa/android-native-isolated/trace-diagnostics.mjs start
+      - name: Prove the Native guard detects stacked CSS then restores single OS scale
+        working-directory: app
+        run: |
+          set -euo pipefail
+          node scripts/qa/android-native-isolated/font-regression.mjs > artifacts/android-native-isolated/font-regression.log 2>&1
+      - name: Measure real OS font ratios, glyphs, three tabs, actual IME and acknowledged relaunch
+        working-directory: app
+        run: |
+          set -euo pipefail
+          node scripts/qa/android-native-isolated/acceptance.mjs > artifacts/android-native-isolated/acceptance.log 2>&1
+          cat artifacts/android-native-isolated/acceptance/acceptance.json
+      - name: Prove actual header and badge clipping makes the Native geometry gate fail
+        working-directory: app
+        run: |
+          set -euo pipefail
+          node scripts/qa/android-native-isolated/geometry-regression.mjs > artifacts/android-native-isolated/geometry-regression.log 2>&1
+      - name: Require healthy owned Android system after all Native acceptance gates
+        working-directory: app
+        run: |
+          set -euo pipefail
+          ANDROID_QA_HEALTH_PHASE=after node scripts/qa/android-native-isolated/emulator-health.mjs
+      - name: Preserve diagnostics and stop only the owned AVD
+        if: always()
+        working-directory: app
+        run: |
+          mkdir -p artifacts/android-native-isolated
+          # Finalize our trace/host observer on every failure before the original ANR gate.
+          trace_status=0
+          ANDROID_QA_JOB_STATUS="${{ job.status }}" node scripts/qa/android-native-isolated/trace-diagnostics.mjs finish || trace_status=$?
+          diagnostic_status=1
+          if [[ -s artifacts/android-native-isolated/emulator.pid && -n "${ADB_PATH:-}" && -n "${ANDROID_QA_AVD:-}" ]] && [[ "$(timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name 2>/dev/null | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD" ]]; then
+            timeout 20 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -b all -d -v threadtime > artifacts/android-native-isolated/logcat.txt 2>&1 || true
+            timeout 10 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell dumpsys activity lastanr > artifacts/android-native-isolated/last-anr.txt 2>&1 || true
+            diagnostic_status=0
+            ANDROID_QA_JOB_STATUS="${{ job.status }}" node scripts/qa/android-native-isolated/anr-diagnostics.mjs || diagnostic_status=$?
+            timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu kill || true
+          fi
+          if [[ "$diagnostic_status" != 0 ]]; then exit "$diagnostic_status"; fi
+          exit "$trace_status"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: diagnostic-abcb-emulator-36310-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            app/artifacts/android-native-isolated/
+            app/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
