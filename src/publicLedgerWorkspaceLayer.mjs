@@ -23171,7 +23171,7 @@ html.ledger-workspace-v1.install-app-open .install-app-done::before,html.ledger-
 html.ledger-workspace-v1.install-app-open .install-app-dialog button:focus-visible{outline:2px solid var(--install-brand)!important;outline-offset:3px!important}
 
 /* Keep installation entry clear of the fixed profile header and navigation when scrolled into view. */
-html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .account-profile-actions .account-install-button{scroll-margin-block:120px 16px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .account-profile-actions .account-install-button{scroll-margin-block:120px 52px!important;}
 
 /* Approved shared notification inbox presentation. */
 html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"]{padding-block-end:calc(var(--dynamic-type-bottom-nav-block,82px) + 34px + env(safe-area-inset-bottom))!important;}

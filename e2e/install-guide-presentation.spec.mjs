@@ -11,7 +11,7 @@ test.beforeEach(async({page})=>{
   for(const [env,file]of [["INSTALL_TEST_LAYER","publicInstallAppLayer.mjs"],["INSTALL_TEST_LEDGER","publicLedgerWorkspaceLayer.mjs"]])if(process.env[env])await page.route("**/src/"+file+"*",r=>r.fulfill({status:200,contentType:"text/javascript",body:readFileSync(process.env[env],"utf8")}));
 });
 test.afterEach(async({page})=>{expect(evidence.get(page).errors).toEqual([]);expect(evidence.get(page).external).toEqual([]);expect(await page.evaluate(()=>({profile:__friendInviteQa.profileWrites.length,friends:__friendInviteQa.writes.length,reward:__friendInviteQa.rewardWrites.length,deletion:__friendInviteQa.deletionRequests?.length??0}))).toEqual({profile:0,friends:0,reward:0,deletion:0});});
-async function platform(page,ios){if(ios)await page.addInitScript(()=>Object.defineProperty(navigator,"userAgent",{configurable:true,get:()=>"Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1"}));}
+async function platform(page,ios){await page.addInitScript(ios=>Object.defineProperty(navigator,"userAgent",{configurable:true,get:()=>ios?"Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1":"Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"}),ios);}
 async function enter(page){
   if(!await page.locator(".profile-edit-screen").count())await page.locator('.product-app-nav [data-nav-destination="profile"]').click();
   await expect(page.locator('[data-profile-identity="username"] strong')).toHaveText("noam_levi");
@@ -26,6 +26,12 @@ for(const [name,ios,root,width,height]of [["android",false,16,393,852],["iphone"
   await geometry(page,root);await expect(d.locator("li")).toHaveCount(ios?4:2);await expect(d).toHaveAttribute("aria-describedby","install-app-description");
   await d.evaluate(e=>e.scrollTop=0);await page.screenshot({path:info.outputPath(name+"-top.png"),animations:"disabled"});await d.evaluate(e=>e.scrollTop=e.scrollHeight);await page.screenshot({path:info.outputPath(name+"-bottom.png"),animations:"disabled"});
   await hit(d.locator(".install-app-done"));await returned(page);
+});
+test('installation geometry waits for dialog motion in short landscape',async({page})=>{
+  await page.setViewportSize({width:852,height:393});await open(page,true,32);const d=page.locator('.install-app-dialog');
+  await d.evaluate(e=>{e.style.transform='translateY(12px) scale(.99)';setTimeout(()=>{e.style.transform='none'},500)});
+  await stable(page);await expect(d).toHaveCSS('transform','none',{timeout:100});await geometry(page,32);
+  await hit(d.locator('.install-app-done'));await returned(page);
 });
 for(const ios of [false,true])test("installation keyboard, Back and simulated browser offer "+(ios?"iphone":"android"),async({page})=>{
   await page.addInitScript(()=>localStorage.setItem("settle-friends-accessibility-preferences-v1",JSON.stringify({textSize:"system",highContrast:true,reduceMotion:true})));
