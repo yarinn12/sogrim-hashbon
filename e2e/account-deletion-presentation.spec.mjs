@@ -196,3 +196,39 @@ test("account deletion returns to the mouse opener even when the browser does no
   await returned(page);
   expect(await deletionCount(page)).toBe(0);
 });
+
+test("account action click reaches its button when the bottom navigation moves over the measured point", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 390 });
+  await page.setContent(`<meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>html,body{margin:0;height:100%;overflow:hidden}.account-delete-button{position:absolute;top:230px;left:110px;width:100px;height:48px}.product-app-nav{position:fixed;bottom:0;left:0;right:0;height:80px;z-index:10;background:white}</style>
+    <button class="account-delete-button" type="button">מחיקת חשבון</button><nav class="product-app-nav"></nav>`);
+  await page.evaluate(() => {
+    window.__clickTargets = { button: 0, navigation: 0 };
+    document.querySelector(".account-delete-button").addEventListener("click", () => {
+      window.__clickTargets.button++;
+      document.body.insertAdjacentHTML("beforeend", '<div class="account-delete-dialog">אישור מחיקה</div>');
+    });
+    document.querySelector(".product-app-nav").addEventListener("click", () => window.__clickTargets.navigation++);
+  });
+  const button = page.locator(".account-delete-button");
+  let moved = false;
+  const shiftingButton = {
+    page: () => page,
+    click: options => button.click(options),
+    async evaluate(fn, arg) {
+      const value = await button.evaluate(fn, arg);
+      if (value === true && !moved) {
+        moved = true;
+        await page.evaluate(() => {
+          const nav = document.querySelector(".product-app-nav");
+          nav.style.height = "180px";
+          setTimeout(() => { nav.style.height = "80px"; }, 400);
+        });
+      }
+      return value;
+    }
+  };
+  await appClick(shiftingButton);
+  await expect(page.locator(".account-delete-dialog")).toBeVisible();
+  expect(await page.evaluate(() => window.__clickTargets)).toEqual({ button: 1, navigation: 0 });
+});

@@ -30,10 +30,30 @@ export async function control(locator) {
 }
 export async function click(locator) {
   await control(locator);
-  const point = await locator.evaluate((e) => {
-    const r = e.getBoundingClientRect();
-    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-  });
+  let point;
+  await expect.poll(async () => {
+    point = await locator.evaluate(async e => {
+      const band = () => {
+        const top = Math.max(0, ...[...document.querySelectorAll("body *")].filter(node => {
+          const style = getComputedStyle(node), r = node.getBoundingClientRect();
+          return ["fixed", "sticky"].includes(style.position) && r.top <= 24 && r.bottom > 0 &&
+            r.bottom < innerHeight / 2 && r.width > innerWidth / 2;
+        }).map(node => node.getBoundingClientRect().bottom));
+        return { top, bottom: document.querySelector(".product-app-nav").getBoundingClientRect().top };
+      };
+      const initial = e.getBoundingClientRect(), bounds = band();
+      scrollTo({ top: scrollY + initial.y + initial.height / 2 - (bounds.top + bounds.bottom) / 2, behavior: "instant" });
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const first = e.getBoundingClientRect();
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const r = e.getBoundingClientRect(), current = band(), x = r.x + r.width / 2, y = r.y + r.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      return Math.abs(first.x - r.x) < 0.1 && Math.abs(first.y - r.y) < 0.1 &&
+        r.width >= 44 && r.height >= 44 && y - 22 >= current.top - 1 &&
+        y + 22 <= current.bottom + 1 && hit && (hit === e || e.contains(hit)) ? { x, y } : null;
+    });
+    return point !== null;
+  }).toBe(true);
   await locator.page().mouse.click(point.x, point.y);
 }
 export async function textLines(locator) {
