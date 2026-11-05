@@ -922,7 +922,7 @@ test("native installation guide preserves bounded scroll and enlarged child typo
   assert.ok(rule(base+".install-app-steps").includes("overflow:visible!important"));
   assert.ok(rule(base+".install-app-done").includes("min-height:48px!important"));
   assert.ok(css.includes(".install-app-done::after{content:none!important"));
-  assert.ok(rule("html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .account-profile-actions .account-install-button").includes("scroll-margin-block:120px16px!important"));
+  assert.ok(rule("html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .account-profile-actions .account-install-button").includes("scroll-margin-block:120px52px!important"));
 });
 
 
