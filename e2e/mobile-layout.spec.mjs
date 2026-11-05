@@ -228,16 +228,25 @@ test("note editor shares the route header, form gutters and selection controls",
   await assertLayoutHealth(page, "saved note");
 });
 
-test("event cover settings use the neighboring panel surface", async ({ page }, testInfo) => {
+test("event cover settings preserve the approved flat section and adjacent menu rows", async ({ page }, testInfo) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page.locator('[data-action="open-event-settings"]').first().click();
   await settleCoherenceMotion(page);
   const surfaces = await page.locator(".event-settings-modal").evaluate(modal =>
     [".event-cover-settings", ".event-settings-menu"].map(selector => {
-      const style = getComputedStyle(modal.querySelector(selector));
-      return { radius: style.borderRadius, border: style.borderColor, background: style.backgroundColor };
+      const node = modal.querySelector(selector);
+      const style = getComputedStyle(node), rect = node.getBoundingClientRect();
+      return { radius: style.borderRadius, shadow: style.boxShadow, background: style.backgroundColor,
+        borderBottom: style.borderBottomWidth, borderBottomColor: style.borderBottomColor,
+        borderTopColor: style.borderTopColor, left: rect.left, width: rect.width, top: rect.top, bottom: rect.bottom };
     }));
-  expect(surfaces[0]).toEqual(surfaces[1]);
+  // 7a268ca4 approved a transparent cover section above white divided menu rows.
+  expect(surfaces[0]).toMatchObject({ radius: "0px", shadow: "none", background: "rgba(0, 0, 0, 0)", borderBottom: "1px" });
+  expect(surfaces[1]).toMatchObject({ radius: "0px", shadow: "none", background: "rgb(255, 255, 255)" });
+  expect(surfaces[0].borderBottomColor).toBe(surfaces[1].borderTopColor);
+  expect(Math.abs(surfaces[0].left - surfaces[1].left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(surfaces[0].width - surfaces[1].width)).toBeLessThanOrEqual(1);
+  expect(surfaces[1].top).toBeGreaterThanOrEqual(surfaces[0].bottom);
   await page.screenshot({ path: testInfo.outputPath("event-settings-surfaces.png") });
 });
 
@@ -374,12 +383,15 @@ test("adding a saved friend requires an explicit confirmation and keeps the pick
     `[data-action="select-event-participant-candidate"][data-participant-id="${AVAILABLE_FRIEND_ID}"]`
   );
   const confirm = addRoute.locator('[data-action="confirm-event-participant-add"]');
-  await expect(candidate).toHaveText(/בחר/);
+  await expect(candidate).toHaveAccessibleName("בחר את נועה חברה");
+  await expect(candidate).toHaveAttribute("aria-pressed", "false");
+  await expect(candidate.locator(".event-participant-selection-check svg")).toHaveCSS("opacity", "0");
   await expect(confirm).toBeDisabled();
 
   await candidate.click();
   await expect(candidate).toHaveAttribute("aria-pressed", "true");
-  await expect(candidate).toHaveText(/נבחר/);
+  await expect(candidate).toHaveAccessibleName("בטל בחירה של נועה חברה");
+  await expect(candidate.locator(".event-participant-selection-check svg")).toHaveCSS("opacity", "1");
   await expect(confirm).toBeEnabled();
   expect(
     await page.evaluate(({ eventId, participantId }) => {
@@ -472,7 +484,7 @@ test("participant identity uses colored or grayscale pictures without status dot
   const accountOption = picker.locator(`[data-choice-value="${MAOR_ID}"]`);
   const offlineOption = picker.locator('[data-choice-value="person-ariel"]');
   await expect(accountOption).toContainText("חבר באפליקציה");
-  await expect(offlineOption).toContainText("שם אופליין");
+  await expect(offlineOption).toContainText("שם ללא חשבון");
   await expect(accountOption).toHaveAttribute("aria-selected", "true");
   await expect(accountOption.locator(".app-choice-option-check")).toBeVisible();
   await assertNoIdentityDots(picker);
@@ -609,36 +621,49 @@ test("another person's picture alone opens shared statistics while editable text
     `.friend-relationship-screen[data-friend-profile-id="${MAOR_ID}"]`
   );
   await expect(statisticsScreen).toBeVisible();
-  await expect(statisticsScreen.getByText("אתם במספרים", { exact: true })).toBeVisible();
+  await expect(statisticsScreen.getByRole("heading", { name: "הפעילות המשותפת", exact: true })).toBeVisible();
+  await expect(statisticsScreen.locator(".relationship-identity-copy")).toContainText("Awesome Maor · מאור סיבוני");
   const relationshipSides = await statisticsScreen
-    .locator(".relationship-duo")
+    .locator(".friend-activity-values").first()
     .evaluate((element) => {
-      const current = element.querySelector('[data-relationship-person="current"]');
-      const target = element.querySelector('[data-relationship-person="target"]');
+      const current = element.firstElementChild;
+      const target = element.lastElementChild;
       return {
-        currentX: current?.getBoundingClientRect().x ?? -1,
-        targetX: target?.getBoundingClientRect().x ?? -1
+        currentX: current.getBoundingClientRect().x, targetX: target.getBoundingClientRect().x,
+        currentTop: current.getBoundingClientRect().top, targetTop: target.getBoundingClientRect().top,
+        currentLabel: current.querySelector("small").textContent,
+        targetLabel: target.querySelector("small").textContent,
+        columns: getComputedStyle(element).gridTemplateColumns.split(" ").length
       };
     });
-  expect(relationshipSides.currentX).toBeGreaterThan(relationshipSides.targetX);
+  expect(relationshipSides.currentLabel).toBe("אתה");
+  expect(relationshipSides.targetLabel).toBe("Awesome Maor · מאור סיבוני");
+  if (relationshipSides.columns === 1) {
+    expect(Math.abs(relationshipSides.currentX - relationshipSides.targetX)).toBeLessThanOrEqual(1);
+    expect(relationshipSides.currentTop).toBeLessThan(relationshipSides.targetTop);
+  } else {
+    expect(relationshipSides.columns).toBe(2);
+    expect(relationshipSides.currentX).toBeGreaterThan(relationshipSides.targetX);
+  }
   const comparisonSides = await statisticsScreen
-    .locator(".relationship-comparison-values")
+    .locator(".friend-activity-values")
     .first()
     .evaluate((element) => {
-      const current = element.querySelector('[data-relationship-person="current"]');
-      const target = element.querySelector('[data-relationship-person="target"]');
+      const current = element.firstElementChild;
+      const target = element.lastElementChild;
       return {
         currentX: current?.getBoundingClientRect().x ?? -1,
         targetX: target?.getBoundingClientRect().x ?? -1
       };
     });
-  expect(comparisonSides.currentX).toBeGreaterThan(comparisonSides.targetX);
+  if (relationshipSides.columns === 2) expect(comparisonSides.currentX).toBeGreaterThan(comparisonSides.targetX);
+  else expect(Math.abs(comparisonSides.currentX - comparisonSides.targetX)).toBeLessThanOrEqual(1);
   const comparisonValueAlignment = await statisticsScreen
-    .locator(".relationship-comparison-values")
+    .locator(".friend-activity-values")
     .first()
     .evaluate((element) => {
-      const current = element.querySelector('[data-relationship-person="current"]');
-      const target = element.querySelector('[data-relationship-person="target"]');
+      const current = element.firstElementChild;
+      const target = element.lastElementChild;
       const currentValue = current?.querySelector(".font-num");
       const targetValue = target?.querySelector(".font-num");
       const currentRect = current?.getBoundingClientRect();
@@ -647,12 +672,12 @@ test("another person's picture alone opens shared statistics while editable text
       const targetValueRect = targetValue?.getBoundingClientRect();
       return {
         currentEdgeGap: Math.abs((currentRect?.right ?? 0) - (currentValueRect?.right ?? 0)),
-        targetEdgeGap: Math.abs((targetValueRect?.left ?? 0) - (targetRect?.left ?? 0))
+        targetEdgeGap: Math.abs((targetValueRect?.right ?? 0) - (targetRect?.right ?? 0))
       };
     });
   expect(comparisonValueAlignment.currentEdgeGap).toBeLessThanOrEqual(2);
-  // Safari can reserve a few pixels for the longer pill label beside this value.
-  expect(comparisonValueAlignment.targetEdgeGap).toBeLessThanOrEqual(8);
+  // The approved metric columns align both values to their own right edge.
+  expect(comparisonValueAlignment.targetEdgeGap).toBeLessThanOrEqual(2);
   if (process.env.CAPTURE_PARTICIPANT_STATS === "1") {
     await page.screenshot({
       path: `design-audits/participant-statistics-${test.info().project.name}.png`,
@@ -917,6 +942,9 @@ test("participant roster keeps pending work silent and never stretches a status 
         textHeight: text.height, textClipped: textNode.scrollWidth > textNode.clientWidth + 1 ||
           textNode.scrollHeight > textNode.clientHeight + 1,
         retryWidth: retry.width, retryHeight: retry.height,
+        textBottom: text.bottom, retryTop: retry.top,
+        paddingTop: style.paddingTop, paddingBottom: style.paddingBottom,
+        rowGap: parseFloat(style.rowGap),
         retryReachable: retryNode === retryHit || retryNode.contains(retryHit),
         verticalChrome: [style.paddingTop, style.paddingBottom, style.borderTopWidth, style.borderBottomWidth]
           .reduce((sum, value) => sum + parseFloat(value), 0),
@@ -926,11 +954,14 @@ test("participant roster keeps pending work silent and never stretches a status 
     measurements.push({ failureKind, ...geometry });
     expect(Math.abs(geometry.headerTop)).toBeLessThanOrEqual(2);
     if (failureKind === "permission") {
-      // The 44px retry target, not the one-line message, sets the content height.
-      // Keep the status compact without hiding text or shrinking its tap target.
-      expect(geometry.verticalChrome).toBeLessThanOrEqual(18);
+      // 7a268ca4 uses a stacked in-flow message/retry row, not a horizontal pill.
+      expect(geometry.paddingTop).toBe("12px");
+      expect(geometry.paddingBottom).toBe("12px");
+      expect(geometry.verticalChrome).toBe(24);
+      expect(geometry.rowGap).toBe(16);
+      expect(geometry.retryTop - geometry.textBottom).toBeCloseTo(16, 0);
       expect(geometry.statusHeight).toBeLessThanOrEqual(
-        Math.max(44, geometry.textHeight, geometry.retryHeight) + 18
+        geometry.textHeight + geometry.retryHeight + geometry.rowGap + geometry.verticalChrome + 1
       );
       expect(geometry.statusLeft).toBeGreaterThanOrEqual(geometry.modalLeft);
       expect(geometry.statusRight).toBeLessThanOrEqual(geometry.modalRight);
@@ -971,6 +1002,7 @@ test("large text keeps participant and settings header icons compact and tappabl
       const rect = node.getBoundingClientRect();
       const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
       return { label: node.getAttribute("aria-label"), width: rect.width, height: rect.height,
+        flexBasis: getComputedStyle(node).flexBasis,
         reachable: node === hit || node.contains(hit) };
     }));
     await testInfo.attach(`header-icons-${route}`, { contentType: "application/json", body: JSON.stringify(geometry) });
@@ -1359,8 +1391,10 @@ test("manual participant names explain blank input and recover without losing th
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page.getByRole("button", { name: "משתתפים באירוע", exact: true }).click();
   await page.getByRole("button", { name: "הוסף משתתפים", exact: true }).click();
-  await page.getByRole("button", { name: "הוסף שם ידנית", exact: true }).click();
-  const input = page.getByRole("textbox", { name: "שם חדש להוספה ידנית", exact: true });
+  const manualRoute = page.locator('[data-action="set-event-participant-add-view"][data-participant-view="manual"]');
+  await expect(manualRoute.getByText("הוספה לפי שם", { exact: true })).toBeVisible();
+  await manualRoute.click();
+  const input = page.getByRole("textbox", { name: "שם המשתתף", exact: true });
   for (const invalid of ["", "   ", "\u200f\u200e"]) {
     await input.fill(invalid);
     await page.getByRole("button", { name: "הוסף לאירוע", exact: true }).click();
@@ -1655,7 +1689,7 @@ test(`close-event confirmation stays readable and scrollable in ${orientation}`,
 });
 }
 
-test("close-event action and its floating feedback stay polished on every mobile profile", async ({ page }, testInfo) => {
+test("close-event action and its approved in-flow feedback stay polished on every mobile profile", async ({ page }, testInfo) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
@@ -1701,9 +1735,17 @@ test("close-event action and its floating feedback stay polished on every mobile
   const toast = page.locator(".app-toast");
   await expect(toast).toBeVisible();
   await expect(toast).toContainText("האירוע נסגר וננעל לעריכה");
+  const initialNoticeBounds = await toast.boundingBox();
+  // Approved feedback is document content. Bring it into the foreground like the other route sections.
+  await toast.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
   const toastLayout = await toast.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
+    const parent = element.parentElement, parentRect = parent.getBoundingClientRect(), parentStyle = getComputedStyle(parent);
+    const navigation = [...document.querySelectorAll('.product-app-nav')].find(node => node.getBoundingClientRect().height > 0);
+    const copy = element.querySelector('.app-toast-copy');
+    const close = element.querySelector('[data-action="dismiss-notice"]');
+    const closeRect = close.getBoundingClientRect(), closeHit = document.elementFromPoint(closeRect.left + closeRect.width / 2, closeRect.top + closeRect.height / 2);
     return {
       position: style.position,
       left: Math.round(rect.left),
@@ -1713,17 +1755,30 @@ test("close-event action and its floating feedback stay polished on every mobile
       width: Math.round(rect.width),
       backgroundColor: style.backgroundColor,
       borderRadius: style.borderRadius,
+      nextContentTop: element.nextElementSibling?.getBoundingClientRect().top ?? -1,
+      elementBottom: rect.bottom,
+      parentContentLeft: parentRect.left + parseFloat(parentStyle.borderLeftWidth) + parseFloat(parentStyle.paddingLeft),
+      parentContentRight: parentRect.right - parseFloat(parentStyle.borderRightWidth) - parseFloat(parentStyle.paddingRight),
+      navigationTop: navigation.getBoundingClientRect().top,
+      copyClipped: copy.scrollWidth > copy.clientWidth + 1 || copy.scrollHeight > copy.clientHeight + 1,
+      closeReachable: close === closeHit || close.contains(closeHit),
       viewportWidth: innerWidth
     };
   });
-  expect(toastLayout.position).toBe("fixed");
-  expect(toastLayout.left).toBeGreaterThanOrEqual(13);
-  expect(toastLayout.right).toBeLessThanOrEqual(toastLayout.viewportWidth - 13);
+  expect(toastLayout.position).toBe("static");
+  expect(toastLayout.nextContentTop).toBeGreaterThanOrEqual(toastLayout.elementBottom);
+  // In-flow feedback fills the route's authored responsive inset, rather than the old floating gutter.
+  expect(toastLayout.left).toBeCloseTo(toastLayout.parentContentLeft, 0);
+  expect(toastLayout.right).toBeCloseTo(toastLayout.parentContentRight, 0);
+  expect(toastLayout.left).toBeGreaterThanOrEqual(0);
+  expect(toastLayout.right).toBeLessThanOrEqual(toastLayout.viewportWidth);
   expect(toastLayout.top).toBeGreaterThanOrEqual(0);
-  expect(toastLayout.bottom).toBeGreaterThanOrEqual(95);
-  expect(toastLayout.width).toBeLessThanOrEqual(520);
-  expect(toastLayout.backgroundColor).toBe("rgb(251, 254, 253)");
-  expect(toastLayout.borderRadius).toBe("12px");
+  expect(toastLayout.elementBottom).toBeLessThanOrEqual(toastLayout.navigationTop);
+  expect(Math.abs(toastLayout.width - (toastLayout.parentContentRight - toastLayout.parentContentLeft))).toBeLessThanOrEqual(1);
+  expect(toastLayout.copyClipped).toBe(false);
+  expect(toastLayout.closeReachable).toBe(true);
+  expect(toastLayout.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  expect(toastLayout.borderRadius).toBe("0px");
 
   const dismissButton = toast.locator('[data-action="dismiss-notice"]');
   const dismissSize = await dismissButton.evaluate((element) => {
@@ -1731,6 +1786,8 @@ test("close-event action and its floating feedback stay polished on every mobile
     return { width: Math.round(rect.width), height: Math.round(rect.height) };
   });
   expect(dismissSize).toEqual({ width: 44, height: 44 });
+  await testInfo.attach("in-flow-feedback-geometry", { contentType: "application/json", body: JSON.stringify({ initialNoticeBounds, foreground: toastLayout, dismissSize }) });
+  await page.screenshot({ path: testInfo.outputPath("in-flow-feedback-foreground.png") });
   if (process.env.CAPTURE_CLOSE_TOAST === "1") {
     await page.screenshot({
       path: `audit/close-event-toast-${testInfo.project.name}.png`,
@@ -2399,7 +2456,22 @@ test("transfer explanation and event management copy keep complete word wrapping
   const management = await readWordLines(page, managementSelectors);
   const naturalManagement = await readWordLines(page, managementSelectors, true);
   const expectedManagement = [
-    'ניהול משותף · קובע מי יכול לעדכן הוצאות. מנהל: ירין יצחק, Awesome Maor · מאור סיבוני'
+    'ניהול משותף'
+  ];
+  // The approved overview keeps only the current mode; full policy/admin copy lives inside its task.
+  await page.locator('.event-settings-menu-item[data-settings-section="management"]').click();
+  await expect(page.locator('.event-management-screen')).toBeVisible();
+  const managementDetailSelectors = [
+    '.event-management-screen .event-management-option:nth-child(1) small',
+    '.event-management-screen .event-management-option:nth-child(2) small',
+    '.event-management-screen .event-management-admins'
+  ];
+  const managementDetails = await readWordLines(page, managementDetailSelectors);
+  const naturalManagementDetails = await readWordLines(page, managementDetailSelectors, true);
+  const expectedManagementDetails = [
+    'רק מנהלי האירוע מוסיפים ומעדכנים הוצאות. כולם יכולים לצפות.',
+    'כל המשתתפים יכולים להוסיף ולעדכן הוצאות.',
+    'מנהלי האירוע: ירין יצחק, Awesome Maor · מאור סיבוני'
   ];
   const expectedTransfer = [
     'אריאל ניזרי מהטיול המשפחתי חייב ל־ירין יצחק ₪85.00',
@@ -2411,6 +2483,7 @@ test("transfer explanation and event management copy keep complete word wrapping
   // while the exact text and a bounded readable layout stay mandatory.
   for (const [actual, reference, expected] of [
     [management, naturalManagement, expectedManagement],
+    [managementDetails, naturalManagementDetails, expectedManagementDetails],
     [transfer, naturalTransfer, expectedTransfer]
   ]) {
     expect(actual.map(({ text }) => text), "the complete copy remains intact")
@@ -2427,6 +2500,8 @@ test("transfer explanation and event management copy keep complete word wrapping
       expect(lines.length, "the explanation remains visibly compact").toBeLessThanOrEqual(maxLines);
     }
   }
+  await testInfo.attach("complete-copy-and-word-wrapping", { contentType: "application/json", body: JSON.stringify({ management, managementDetails, transfer }) });
+  await page.screenshot({ path: testInfo.outputPath("approved-management-copy.png") });
 });
 
 async function readWordLines(page, selectors, naturalWrap = false) {
