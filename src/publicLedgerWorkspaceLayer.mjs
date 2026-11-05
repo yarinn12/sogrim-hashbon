@@ -24368,6 +24368,13 @@ html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-options-che
  html.ledger-workspace-v1 #app#app .screen:is([data-screen-kind="home"],.profile-edit-screen,.friends-hub-screen)>.product-app-identity {position:relative!important}
 }
 
+/* Match the authored 44px route icons when enlarged-text rules supply a 48px flex basis. */
+html.design-coherence-v1.ledger-workspace-v1 body #app
+ .event-modal:is(.event-participant-route-modal,.event-settings-modal,.event-task-modal)
+ > .event-modal-header .event-modal-header-actions > button {
+ flex: 0 0 44px !important;
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
