@@ -18,7 +18,7 @@ export async function homeArchiveReach(page,locator){
   }
   return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))
  });
- await expect.poll(()=>locator.evaluate(e=>{const r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return e===hit||e.contains(hit)})).toBe(true);
+ await expect.poll(()=>locator.evaluate(e=>{const target=e.dataset.action==='event-status-select'?e.querySelector('.event-row-options-chevron'):e,r=target.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return e===hit||e.contains(hit)})).toBe(true);
  const r=await locator.boundingBox();expect(r.x).toBeGreaterThanOrEqual(-1);expect(Math.round(r.width*100)/100).toBeGreaterThanOrEqual(44);expect(Math.round(r.height*100)/100).toBeGreaterThanOrEqual(44);
  const bottom=await locator.evaluate(e=>{const d=e.closest('.event-status-menu');return d?Math.min(innerHeight,d.getBoundingClientRect().bottom):document.querySelector('[aria-label="ניווט ראשי"]').getBoundingClientRect().top});
  if(await locator.getAttribute('data-action')==='event-status-select'){
@@ -34,7 +34,8 @@ export async function homeArchiveClick(page,locator){
  // Locator.click performs another automatic scroll in Chromium, which can
  // put a short landscape target back under the floating accessibility button.
  // Use real pointer input at the already hit-tested visible center instead.
- const r=await locator.boundingBox();await page.mouse.click(r.x+r.width/2,r.y+r.height/2);
+ const target=await locator.getAttribute('data-action')==='event-status-select'?locator.locator('.event-row-options-chevron'):locator;
+ const r=await target.boundingBox();await page.mouse.click(r.x+r.width/2,r.y+r.height/2);
 }
 export async function openHomeArchive(page,view='menu',{width=393,height=852,root=16,system=false,long=false,member=false}={}){
  await page.setViewportSize({width,height});if(system)await page.addInitScript(installSyntheticSystemText);

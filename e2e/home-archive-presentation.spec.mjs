@@ -31,6 +31,13 @@ test('[regression] enlarged filter labels stay whole after entering and leaving 
  const labels=()=>page.locator('.event-primary-filter button > span').evaluateAll(es=>es.map(e=>{const r=document.createRange();r.selectNodeContents(e);return[...r.getClientRects()].filter(x=>x.width).length}));
  expect(await labels()).toEqual([1,1]);await homeArchiveClick(page,home.locator('.home-list-empty [data-filter="events"]'));expect(await labels()).toEqual([1,1]);await homeArchiveClick(page,page.locator('[data-filter="archive"]').first());expect(await labels()).toEqual([1,1]);
 });
+test('[regression] tall event row uses its visible action glyph for a physical click',async({page})=>{
+ await page.setViewportSize({width:568,height:360});
+ await page.setContent(`<style>body{margin:0}.before{height:500px}.after{height:700px}.event-row-action{display:block;position:relative;width:100%;height:600px;padding:0;border:0;background:#fff}.event-row-options-chevron{position:absolute;top:140px;left:24px;width:44px;height:44px;background:#136b54}.product-app-nav{position:fixed;inset:auto 0 0;height:190px;background:#dde5e3;z-index:2}</style><div class="before"></div><button class="event-row-action" data-action="event-status-select" onclick="window.clicked=(window.clicked||0)+1"><span class="event-row-options-chevron"></span></button><div class="after"></div><nav class="product-app-nav" aria-label="ניווט ראשי"></nav>`);
+ const action=page.locator('[data-action="event-status-select"]');
+ await homeArchiveClick(page,action);
+ expect(await page.evaluate(()=>window.clicked)).toBe(1);
+});
 test('[regression] private pin copy agrees with acknowledged account storage',async({page})=>{
  await openHomeArchive(page);const before=homeArchiveRecords(await homeArchiveState(page));await homeArchiveClick(page,page.locator('[data-action="toggle-personal-event-pin"]'));await expect(page.locator('.event-status-menu')).toHaveCount(0);
  await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('qa-invite-server-row')).state.personalEventPinPreferences?.updates?.['friend-weekend']?.pinned)).toBe(true);
