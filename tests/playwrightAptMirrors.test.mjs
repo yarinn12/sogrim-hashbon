@@ -20,6 +20,11 @@ function snapshot(){
    [PATHS.sources+'/microsoft-prod.list']:Buffer.from('deb [arch=amd64] https://packages.microsoft.com/ubuntu/24.04/prod noble main\n')}};
 }
 const hosted={GITHUB_ACTIONS:'true',RUNNER_OS:'Linux',RUNNER_ARCH:'X64',RUNNER_ENVIRONMENT:'github-hosted'};
+function directSecuritySnapshot(uri){
+ const s=snapshot();
+ s.ubuntu=Buffer.from('# unchanged Ubuntu source\n'+stanza('noble noble-updates noble-backports')+'\n\n'+stanza('noble-security').replace('URIs: '+ROUTE,'URIs: '+uri)+'\n');
+ return s;
+}
 function fake(s=snapshot(),options={}){
  const files=new Map([[PATHS.os,Buffer.from(s.os)],[PATHS.ubuntu,Buffer.from(s.ubuntu)],[PATHS.mirrors,Buffer.from(s.mirrors)],
    ...Object.entries(s.otherSources).map(([p,b])=>[p,Buffer.from(b)])]);
@@ -82,6 +87,33 @@ test('actual CLI body changes only three mirror bytes through the fake descripto
  assert.match(r.beforeSha256,/^[0-9a-f]{64}$/);assert.notEqual(r.beforeSha256,r.afterSha256);
  assert.equal(f.calls.filter(c=>c[0]==='open').length,1);assert.equal(f.calls.at(-1)[0],'close');
  assert.equal(JSON.parse(f.logs[0]).afterSha256,r.afterSha256);
+});
+
+for(const uri of ['http://security.ubuntu.com/ubuntu','http://security.ubuntu.com/ubuntu/',
+ 'https://security.ubuntu.com/ubuntu','https://security.ubuntu.com/ubuntu/'])
+test('known direct noble-security route preserves original sources and only adjusts mirror priorities: '+uri,()=>{
+ const s=directSecuritySnapshot(uri),f=fake(s),before=new Map([...f.files].map(([p,b])=>[p,Buffer.from(b)]));
+ const result=f.run();assert.equal(result.changed,true);assert.equal(f.writes.length,3);
+ unchangedExceptPriorities(before.get(PATHS.mirrors),f.files.get(PATHS.mirrors));
+ for(const [path,b]of before)if(path!==PATHS.mirrors)assert.ok(b.equals(f.files.get(path)),path);
+ httpsFirst(f.files.get(PATHS.mirrors));
+ assert.equal(f.run().changed,false);assert.equal(f.writes.length,3,'Second invocation must not write');
+});
+for(const uri of ['http://security.ubuntu.com.evil.invalid/ubuntu','http://security.ubuntu.com:8080/ubuntu',
+ 'http://security.ubuntu.com/ubuntu?mirror=1','http://security.ubuntu.com/other',
+ 'https://archive.ubuntu.com/ubuntu/','mirror+file:/tmp/apt-mirrors.txt'])
+test('unknown direct security route is rejected before any write: '+uri,()=>{
+ const f=fake(directSecuritySnapshot(uri));assert.throws(()=>f.run());assert.equal(f.writes.length,0);
+});
+test('official direct security endpoint cannot replace the main archive stanza',()=>{
+ const s=snapshot();s.ubuntu=Buffer.from(s.ubuntu.toString().replace(ROUTE,'http://security.ubuntu.com/ubuntu'));
+ const f=fake(s);assert.throws(()=>f.run());assert.equal(f.writes.length,0);
+});
+test('known direct security route still requires the original suites and trust anchor',()=>{
+ for(const [from,to]of [['noble-security','noble-proposed'],['ubuntu-archive-keyring.gpg','other.gpg']]){
+  const s=directSecuritySnapshot('http://security.ubuntu.com/ubuntu');s.ubuntu=Buffer.from(s.ubuntu.toString().replace(from,to));
+  const f=fake(s);assert.throws(()=>f.run());assert.equal(f.writes.length,0);
+ }
 });
 test('short descriptor reads are completed before the bounded update',()=>{const f=fake(snapshot(),{partialReads:true});f.run();assert.equal(f.writes.length,3);});
 const badMirrors=[

@@ -16,6 +16,10 @@ export const PRIORITIES=Object.freeze({
 });
 const ORIGINAL=Object.freeze(Object.fromEntries(Object.keys(PRIORITIES).map((url,i)=>[url,i+1])));
 const ROUTE='mirror+file:'+PATHS.mirrors;
+// Hosted Ubuntu images can retain the official direct security stanza while
+// routing the main archive through the mirror file. Neither source is rewritten.
+const DIRECT_SECURITY=new Set(['http://security.ubuntu.com/ubuntu','http://security.ubuntu.com/ubuntu/',
+  'https://security.ubuntu.com/ubuntu','https://security.ubuntu.com/ubuntu/']);
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const active=text=>text.split(/\r?\n/).filter(line=>line.trim()&&!line.trimStart().startsWith('#')).join('\n');
 function bytes(value,limit){
@@ -41,13 +45,15 @@ function validateUbuntu(source){
   const suites=new Set();
   for(const row of fields){
     for(const key of ['types','uris','suites','components','signed-by'])assert.ok(row.has(key),'Missing Ubuntu field: '+key);
-    assert.equal(row.get('types'),'deb');assert.equal(row.get('uris'),ROUTE,'Unknown Ubuntu mirror+file route');
+    assert.equal(row.get('types'),'deb');
     assert.equal(row.get('signed-by'),'/usr/share/keyrings/ubuntu-archive-keyring.gpg','Unknown Ubuntu trust anchor');
     if(row.has('architectures'))assert.equal(row.get('architectures'),'amd64');
     if(row.has('enabled'))assert.equal(row.get('enabled'),'yes');
     assert.deepEqual(uniqueTokens(row.get('components')).sort(),['main','multiverse','restricted','universe']);
     const values=uniqueTokens(row.get('suites'));
     assert.ok(values.join(' ')==='noble-security'||[...values].sort().join(' ')==='noble noble-backports noble-updates','Unknown noble suites');
+    const securityOnly=values.length===1&&values[0]==='noble-security';
+    assert.ok(row.get('uris')===ROUTE||(securityOnly&&DIRECT_SECURITY.has(row.get('uris'))),'Unknown Ubuntu archive/security route');
     for(const value of values){assert.ok(!suites.has(value),'Duplicate Ubuntu suite');suites.add(value);}
   }
   assert.deepEqual([...suites].sort(),['noble','noble-backports','noble-security','noble-updates']);
