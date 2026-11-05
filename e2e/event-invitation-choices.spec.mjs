@@ -107,7 +107,86 @@ test('delayed Accessibility return never steals a newly focused invitation actio
  await open(page);const modal=page.locator('.event-participant-add-route-modal'),entry=modal.locator('[data-open-accessibility]');
  await entry.click();await expect(page.locator('.accessibility-center')).toBeVisible();await page.evaluate(()=>window.__holdAxReturn=true);
  await page.keyboard.press('Escape');await expect(page.locator('.accessibility-center')).toHaveCount(0);await expect(entry).toBeFocused();
- const next=modal.locator('[data-participant-view="friends"]');await next.focus();
- expect(await page.evaluate(()=>window.__flushAxReturn())).toBeGreaterThan(0);await expect(next).toBeFocused();
+ const next=modal.locator('[data-participant-view="friends"]');
+ const focus=await next.evaluate(button=>{
+  button.focus();
+  const before=document.activeElement===button;
+  const flushed=window.__flushAxReturn();
+  return {before,flushed,after:document.activeElement===button};
+ });
+ expect(focus.before).toBe(true);expect(focus.flushed).toBeGreaterThan(0);expect(focus.after).toBe(true);
+ await expect(next).toBeFocused();
  await next.press('Enter');await expect(modal.locator('h2').first()).toHaveText('בחר מחברים');
+});
+
+function holdNavigationReturn(){
+  const timeout=window.setTimeout.bind(window),queue=[];
+  window.__holdAxNavigationReturn=false;
+  window.__flushAxNavigationReturn=()=>{const held=queue.splice(0);for(const fn of held)fn();return held.length};
+  window.setTimeout=(fn,delay,...args)=>window.__holdAxNavigationReturn&&
+   String(fn).includes('entry.focus({ preventScroll: true })')
+    ?(queue.push(()=>fn(...args)),0):timeout(fn,delay,...args);
+}
+
+test('stale navigation return never steals a newly focused invitation action',async({page})=>{
+ await page.addInitScript(holdNavigationReturn);
+ await open(page);const modal=page.locator('.event-participant-add-route-modal'),entry=modal.locator('[data-open-accessibility]');
+ await entry.click();await expect(page.locator('.accessibility-center')).toBeVisible();
+ await page.keyboard.press('Escape');await expect(page.locator('.accessibility-center')).toHaveCount(0);
+ const next=modal.locator('[data-participant-view="friends"]');
+ for(const clearPending of [true,false]){
+  const focus=await next.evaluate((button,clearPending)=>{
+   window.__holdAxNavigationReturn=true;
+   sessionStorage.setItem('settle-friends-accessibility-return-focus','1');
+   document.dispatchEvent(new CustomEvent('settle-friends:screen-rendered'));
+   // The ordinary return may complete while this navigation callback waits.
+   if(clearPending)sessionStorage.removeItem('settle-friends-accessibility-return-focus');
+   button.focus();
+   const before=document.activeElement===button;
+   const flushed=window.__flushAxNavigationReturn();
+   return {before,flushed,after:document.activeElement===button,pending:sessionStorage.getItem('settle-friends-accessibility-return-focus')};
+  },clearPending);
+  expect(focus.before).toBe(true);expect(focus.flushed).toBeGreaterThan(0);
+  expect(focus.after).toBe(true);expect(focus.pending).toBeNull();
+  await expect(next).toBeFocused();
+ }
+ await next.press('Enter');await expect(modal.locator('h2').first()).toHaveText('בחר מחברים');
+});
+
+test('navigation return waits for an available entry and an unfocused page',async({page})=>{
+ await page.addInitScript(holdNavigationReturn);
+ await open(page);const modal=page.locator('.event-participant-add-route-modal'),entry=modal.locator('[data-open-accessibility]');
+ await entry.click();await expect(page.locator('.accessibility-center')).toBeVisible();
+ await page.keyboard.press('Escape');await expect(page.locator('.accessibility-center')).toHaveCount(0);
+ const result=await page.evaluate(()=>{
+  window.__holdAxNavigationReturn=true;
+  const key='settle-friends-accessibility-return-focus';
+  const schedule=()=>{sessionStorage.setItem(key,'1');document.dispatchEvent(new CustomEvent('settle-friends:screen-rendered'))};
+  const entries=[...document.querySelectorAll('[data-open-accessibility]')];
+  schedule();entries.forEach(item=>item.inert=true);
+  const missingCount=window.__flushAxNavigationReturn();
+  const missingPreservesPending=sessionStorage.getItem(key)==='1';
+  entries.forEach(item=>item.inert=false);
+  schedule();entries[0].click();
+  const reopened=Boolean(document.querySelector('.accessibility-center'));
+  const reopenedCount=window.__flushAxNavigationReturn();
+  const reopenedPreservesPending=sessionStorage.getItem(key)==='1';
+  return {missingCount,missingPreservesPending,reopened,reopenedCount,reopenedPreservesPending};
+ });
+ expect(result.missingCount).toBeGreaterThan(0);expect(result.missingPreservesPending).toBe(true);
+ expect(result.reopened).toBe(true);expect(result.reopenedCount).toBeGreaterThan(0);expect(result.reopenedPreservesPending).toBe(true);
+ await page.keyboard.press('Escape');await expect(page.locator('.accessibility-center')).toHaveCount(0);
+ const body=await page.evaluate(()=>{
+  const key='settle-friends-accessibility-return-focus';
+  sessionStorage.setItem(key,'1');document.dispatchEvent(new CustomEvent('settle-friends:screen-rendered'));
+  document.activeElement?.blur();
+  const before=document.activeElement===document.body;
+  const flushed=window.__flushAxNavigationReturn();
+  const visibleEntry=[...document.querySelectorAll('[data-open-accessibility]:not([disabled])')]
+   .find(item=>item.getClientRects().length>0&&!item.closest('[inert]'));
+  return {before,flushed,after:document.activeElement===visibleEntry,pending:sessionStorage.getItem(key)};
+ });
+ expect(body.before).toBe(true);expect(body.flushed).toBeGreaterThan(0);
+ expect(body.after).toBe(true);expect(body.pending).toBeNull();
+ await expect(modal).toBeVisible();
 });

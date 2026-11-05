@@ -396,10 +396,20 @@ function restoreAccessibilityEntryFocusAfterNavigation() {
     return;
   }
   window.setTimeout(() => {
+    if (document.querySelector(BACKDROP_SELECTOR)) return;
+    try {
+      if (window.sessionStorage.getItem(RETURN_FOCUS_STORAGE_KEY) !== "1") return;
+    } catch {
+      return;
+    }
     const entry = [...document.querySelectorAll(`${ENTRY_SELECTOR}:not([disabled])`)]
       .find((item) => item.getClientRects().length > 0 && !item.closest("[inert]"));
     if (!(entry instanceof HTMLElement)) return;
-    entry.focus({ preventScroll: true });
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement && active.isConnected && active !== document.body &&
+        active !== document.documentElement && active !== entry)) {
+      entry.focus({ preventScroll: true });
+    }
     try {
       window.sessionStorage.removeItem(RETURN_FOCUS_STORAGE_KEY);
     } catch {
