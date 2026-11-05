@@ -88,9 +88,10 @@ test("username editing never opens an empty action row", async ({ page }) => {
   await usernameValue.locator("bdi").evaluate((element) => {
     element.textContent = `@${"very-long-username-".repeat(12)}`;
   });
-  await expect(usernameValue).toHaveCSS("overflow", "hidden");
-  await expect(usernameValue).toHaveCSS("white-space", "nowrap");
-  await expect(usernameValue).toHaveCSS("text-overflow", "ellipsis");
+  await expect(usernameValue).toHaveCSS("overflow", "visible");
+  await expect(usernameValue).toHaveCSS("white-space", "normal");
+  await expect(usernameValue).toHaveCSS("text-overflow", "clip");
+  await expect(usernameValue.locator('bdi')).toHaveText(`@${"very-long-username-".repeat(12)}`);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     await page.evaluate(() => document.documentElement.clientWidth)
   );
@@ -358,14 +359,20 @@ test("a failed share link stops loading and explains the unavailable action", as
   await page.locator('[data-action="open-event-share"]').click();
 
   const shareDialog = page.locator(".event-share-modal");
-  const shareStatus = shareDialog.locator(".event-share-link-status");
+  const shareStatus = page.locator('.app-toast[data-notice-kind="error"]');
   const whatsappButton = shareDialog.locator('[data-action="share-invite-whatsapp"]');
-  await expect(shareStatus).toHaveClass(/is-error/);
-  await expect(shareStatus).toContainText("הקישור לא זמין");
+  await expect(shareDialog.locator('[data-action="retry-event-share"]')).toBeVisible();
+  await expect(shareStatus).toHaveCount(1);
+  await expect(shareStatus).toBeVisible();
+  await expect(shareStatus.locator('.app-toast-copy')).toHaveText("נדרש חיבור לענן כדי להכין קישור מאובטח.");
+  await expect(whatsappButton).toHaveAttribute('aria-describedby','app-notice-copy');
   await expect(whatsappButton).toBeDisabled();
-  await expect(whatsappButton).toHaveText("הקישור לא זמין");
+  await expect(whatsappButton).toHaveText("שתף קישור");
   await expect(whatsappButton).not.toHaveAttribute("aria-busy", "true");
   await expect(shareDialog.locator('[data-action="retry-event-share"]')).toBeVisible();
+  await shareStatus.locator('[data-action="dismiss-notice"]').click();
+  await expect(shareDialog.locator('.event-share-link-status.is-error')).toContainText("נדרש חיבור לענן כדי להכין קישור מאובטח.");
+  await expect(whatsappButton).toBeDisabled();
 });
 
 async function visibleWordLines(locator) {
@@ -379,6 +386,8 @@ async function visibleWordLines(locator) {
       const range = document.createRange();
       range.setStart(text, match.index);
       range.setEnd(text, match.index + match[0].length);
+      const wordRows = new Set([...range.getClientRects()].filter(rect => rect.width && rect.height).map(rect => Math.round(rect.top)));
+      if(wordRows.size !== 1)throw new Error('A visible Hebrew word is split across rows: '+match[0]);
       const top = Math.round(range.getBoundingClientRect().top);
       lines.set(top, [...(lines.get(top) ?? []), match[0]]);
     }
@@ -394,11 +403,13 @@ test("32px failed-share action keeps complete Hebrew words on the same lines", a
   await page.locator(`[data-action="open-event-participant-add"][data-event-id="${EVENT_ID}"]`).first().click();
   await page.locator('[data-action="open-event-share"]').click();
   const dialog = page.locator(".event-share-modal");
-  await expect(dialog.locator(".event-share-link-status")).toHaveClass(/is-error/);
+  await expect(page.locator('.app-toast[data-notice-kind="error"]')).toBeVisible();
+  await expect(page.locator('.app-toast[data-notice-kind="error"] .app-toast-copy')).toHaveText("נדרש חיבור לענן כדי להכין קישור מאובטח.");
   const action = dialog.locator('[data-action="share-invite-whatsapp"]');
-  await expect(action).toHaveText("הקישור לא זמין");
-  expect(await visibleWordLines(action)).toEqual(["הקישור לא", "זמין"]);
-  await expect(action).toHaveCSS('font-size', '32px');
+  await expect(action).toHaveText("שתף קישור");
+  expect((await visibleWordLines(action)).flatMap(line=>line.split(' '))).toEqual(["שתף", "קישור"]);
+  // Share actions use the approved .9375rem type scale at a 32px root.
+  await expect(action).toHaveCSS('font-size', '30px');
   const copy = dialog.locator('[data-action="copy-invite"]');
   for (const width of [393, 354, 320]) {
     await page.setViewportSize({ width, height: 852 });
@@ -406,15 +417,20 @@ test("32px failed-share action keeps complete Hebrew words on the same lines", a
       await document.fonts.ready;
       const range = document.createRange();
       range.selectNodeContents(element);
+      const text=element.firstChild;
+      const wordsAreWhole=[...text.textContent.matchAll(/\S+/gu)].every(match=>{
+        const word=document.createRange();word.setStart(text,match.index);word.setEnd(text,match.index+match[0].length);
+        return new Set([...word.getClientRects()].filter(rect=>rect.width&&rect.height).map(rect=>Math.round(rect.top))).size===1;
+      });
       const lines = [...range.getClientRects()].filter(rect => rect.width && rect.height)
         .map(rect => Math.round(rect.top));
       const row = element.closest('.event-invite-link-actions');
-      return { lines: new Set(lines).size, scrollWidth: element.scrollWidth,
+      return { wordsAreWhole, lines: new Set(lines).size, scrollWidth: element.scrollWidth,
         clientWidth: element.clientWidth, rowScrollWidth: row.scrollWidth,
         rowClientWidth: row.clientWidth, fontSize: getComputedStyle(element).fontSize };
     });
-    expect(copyLayout.fontSize).toBe('32px');
-    expect(copyLayout.lines, `העתק must stay on one line at ${width}px`).toBe(1);
+    expect(copyLayout.fontSize).toBe('30px');
+    expect(copyLayout.wordsAreWhole, `complete copy-action words at ${width}px`).toBe(true);
     expect(copyLayout.scrollWidth).toBeLessThanOrEqual(copyLayout.clientWidth + 1);
     expect(copyLayout.rowScrollWidth).toBeLessThanOrEqual(copyLayout.rowClientWidth + 1);
   }

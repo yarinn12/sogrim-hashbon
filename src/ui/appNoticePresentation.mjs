@@ -3,7 +3,8 @@ import {iconSvg} from "../uiIcons.mjs";
 export const APP_NOTICE_COPY_ID = "app-notice-copy";
 const attentionMessages = new Set([
   "החיבור לחשבון פג. התחברו מחדש ונסו שוב.",
-  "אין לך הרשאה ליצור קישור פתוח לאירוע הזה."
+  "אין לך הרשאה ליצור קישור פתוח לאירוע הזה.",
+  "נדרש חיבור לענן כדי להכין קישור מאובטח."
 ]);
 const connectionShareNotice = "לא הצלחנו להכין קישור בטוח כרגע. כדאי לבדוק את החיבור ולנסות שוב.";
 const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
