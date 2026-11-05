@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { calculateSettlement } from "../src/domain/settlement.mjs";
 import { prepareMobileLayoutFixture } from "./helpers/prepareMobileLayoutFixture.mjs";
+import { assertLargeSettlementContentFlow, assertReadableTextLines } from "./helpers/mobileContentFlow.mjs";
 
 const EVENT_ID = "event-layout-ci";
 const OWNER_ID = "person-owner";
@@ -1500,6 +1501,7 @@ test("expense overflow visually matches the event image menu", async ({ page }) 
     )
     .toBe("rgb(255, 255, 255)");
 
+  await settleCoherenceMotion(page);
   const presentation = await menu.evaluate((element) => {
     const trigger = element.querySelector(":scope > summary");
     const panel = element.querySelector(":scope > div");
@@ -1532,6 +1534,11 @@ test("expense overflow visually matches the event image menu", async ({ page }) 
     };
   });
 
+  // The approved menu keeps the 166px baseline and scales at 10.375rem,
+  // bounded by the viewport. The same rule is present in 7a268ca4.
+  const expectedPanelWidth = await page.evaluate(() => Math.max(
+    166, Math.min(10.375 * parseFloat(getComputedStyle(document.documentElement).fontSize), innerWidth - 32)
+  ));
   expect(presentation).toEqual({
     trigger: {
       width: "44px",
@@ -1540,7 +1547,7 @@ test("expense overflow visually matches the event image menu", async ({ page }) 
       background: "rgb(255, 255, 255)"
     },
     panel: {
-      width: "166px",
+      width: `${expectedPanelWidth}px`,
       padding: "8px",
       radius: "12px",
       background: "rgb(255, 255, 255)"
@@ -1553,6 +1560,21 @@ test("expense overflow visually matches the event image menu", async ({ page }) 
     },
     dangerColor: "rgb(163, 58, 50)"
   });
+  const panel = menu.locator(":scope > div");
+  const panelBounds = await panel.boundingBox();
+  expect(panelBounds.x).toBeGreaterThanOrEqual(0);
+  expect(panelBounds.x + panelBounds.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
+  await expect(panel.locator("button")).toHaveText(["ערוך הוצאה", "הערות ותמונה", "מחק הוצאה"]);
+  for (const action of await panel.locator("button").all()) {
+    const bounds = await action.boundingBox();
+    expect(bounds.width).toBeGreaterThanOrEqual(44);
+    expect(bounds.height).toBeGreaterThanOrEqual(44);
+    await assertReadableTextLines(action, {scroll:false});
+  }
+  await test.info().attach("expense-menu-presentation", {body:JSON.stringify({presentation,expectedPanelWidth,panelBounds}),contentType:"application/json"});
+  await page.screenshot({path:test.info().outputPath("expense-menu-scaled.png")});
+  await panel.locator('[data-action="edit-expense-notes"]').click();
+  await expect(page.locator('.expense-notes-modal')).toBeVisible();
 });
 
 test("iPad landscape keeps expense entry inside the responsive tablet canvas", async ({ page }, testInfo) => {
@@ -2632,8 +2654,7 @@ async function assertCompactSettlementFirstView(page) {
     });
   }
   if (extraLargeText) {
-    expect(layout.heading?.top, "large text keeps transfers close to the primary answer")
-      .toBeLessThan(layout.viewportHeight * 1.5);
+    await assertLargeSettlementContentFlow(page);
     expect(
       layout.firstTransfer?.top - layout.heading?.bottom,
       "large text must not introduce an empty block before the first transfer"
