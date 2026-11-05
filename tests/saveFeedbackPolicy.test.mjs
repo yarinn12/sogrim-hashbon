@@ -86,6 +86,7 @@ function functionSource(name) {
 test("late permission status keeps its review target stable across observer passes", () => {
   const target = {
     dataset: { syncAccountSummary: "" }, classList: {add() {}}, children: [],
+    querySelector: () => null, // This fixture has one event and no details element.
     replaceChildren() { this.children = []; },
     append(...nodes) { this.children.push(...nodes); },
     contains(node) { return this.children.includes(node); }
