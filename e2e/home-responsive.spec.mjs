@@ -329,8 +329,10 @@ test("home events and archive labels fit touch targets and retain their selectio
       expect(item.width,context).toBeGreaterThanOrEqual(44);
       expect(item.height,context).toBeGreaterThanOrEqual(44);
     }
-    const sorted=[...layout].sort((a,b)=>a.left-b.left);
-    expect(sorted[0].right,`${width}px: tabs must not overlap`).toBeLessThanOrEqual(sorted[1].left+1);
+    const [first,second]=layout;
+    const overlapWidth=Math.min(first.right,second.right)-Math.max(first.left,second.left);
+    const overlapHeight=Math.min(first.bottom,second.bottom)-Math.max(first.top,second.top);
+    expect(Math.min(overlapWidth,overlapHeight),`${width}px: tabs must not overlap`).toBeLessThanOrEqual(1);
     const archive=tabs.filter({hasText:'ארכיון'}), events=tabs.filter({hasText:'אירועים'});
     await archive.click();
     await expect(archive).toHaveAttribute('aria-pressed','true');
