@@ -1,45 +1,37 @@
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {verifyOrigin,SOURCE,TREE,SIGNING_TOOLS} from './intake194-package-origin.mjs';
-export const SIGNED_RUN='PENDING',ARTIFACT_ID='PENDING',SIGNED_JOB=0,ARTIFACT_SIZE=0;
-export const IPA_SHA='PENDING';
-export const ZIP_SHA='PENDING';
-export function requireBoundIntakePins(){
-  assert.match(SIGNING_TOOLS,/^[0-9a-f]{40}$/,'Final immutable signing tools are required');
-  for(const [name,value]of Object.entries({SIGNED_RUN,ARTIFACT_ID}))
-    assert.match(String(value??''),/^[1-9][0-9]*$/,'Real signing artifact pin missing: '+name);
-  for(const [name,value]of Object.entries({SIGNED_JOB,ARTIFACT_SIZE}))
-    assert.ok(Number.isSafeInteger(value)&&value>0,'Real signing artifact pin missing: '+name);
-  for(const [name,value]of Object.entries({IPA_SHA,ZIP_SHA}))
-    assert.match(value??'',/^[0-9a-f]{64}$/,'Real signing artifact digest missing: '+name);
+import {verifyOrigin} from './intake194-package-origin.mjs';
+import {INTAKE_BINDINGS,requireBoundIntakePins,requireBoundEnvironment,integer} from './intake-bindings.mjs';
+import {CONTROL_PATHS,verifySigningControls} from './intake-nov5-proof.mjs';
+export {requireBoundIntakePins};
+export const SIGNED_RUN=INTAKE_BINDINGS.signing.runId,ARTIFACT_ID=INTAKE_BINDINGS.signing.artifactId;
+export const SIGNED_JOB=INTAKE_BINDINGS.signing.jobId,ARTIFACT_SIZE=INTAKE_BINDINGS.signing.artifactSize;
+export const IPA_SHA=INTAKE_BINDINGS.signing.ipaSha256,ZIP_SHA=INTAKE_BINDINGS.signing.zipSha256;
+export const verifyIntakeOrigin=verifyOrigin;
+
+export async function main({env=process.env,fetchImpl=fetch}={}){
+ requireBoundEnvironment(env);
+ const root=resolve(env.GITHUB_WORKSPACE,'original-signing-tools');
+ const git=args=>execFileSync('git',['-C',root,...args],{encoding:'utf8'}).trim();
+ const controls=verifySigningControls(git(['rev-parse','HEAD']),git(['status','--porcelain']),
+  Object.fromEntries(Object.values(CONTROL_PATHS).map(path=>[path,readFileSync(resolve(root,path))])));
+ const get=async path=>{
+  const response=await fetchImpl('https://api.github.com/repos/yarinn12/sogrim-hashbon'+path,{
+   method:'GET',redirect:'error',headers:{Authorization:'Bearer '+env.GH_TOKEN,Accept:'application/vnd.github+json'},
+   signal:AbortSignal.timeout(30000)});
+  assert.equal(response.status,200,'Original package proof GET failed');return response.json();
+ };
+ const run=await get('/actions/runs/'+SIGNED_RUN);
+ assert.ok(integer(run.workflow_id),'Original workflow ID missing');
+ const workflow=await get('/actions/workflows/'+run.workflow_id);
+ const artifact=await get('/actions/artifacts/'+ARTIFACT_ID);
+ const jobs=await get('/actions/runs/'+SIGNED_RUN+'/attempts/1/jobs?per_page=100');
+ assert.equal(jobs.total_count,1);assert.equal(jobs.jobs?.length,1);
+ const proof=verifyOrigin(run,artifact,jobs.jobs,env,{controlProof:controls,workflow});
+ writeFileSync('build/ios/upload-origin.json',JSON.stringify(proof,null,2)+'\n',{flag:'wx'});
+ console.log('Exact Nov5 original signing run, controls and steps verified; no key or Apple write used.');
 }
-export function verifyIntakeOrigin(run,artifact,jobs,env){
-  requireBoundIntakePins();
-  assert.equal(env.SOURCE_SHA,SOURCE);
-  assert.equal(env.SIGNED_RUN_ID,SIGNED_RUN);assert.equal(env.SIGNED_ARTIFACT_ID,ARTIFACT_ID);
-  assert.equal(env.SIGNED_IPA_SHA256,IPA_SHA);assert.equal(env.SIGNED_ARTIFACT_ZIP_SHA256,ZIP_SHA);
-  const origin=verifyOrigin(run,artifact,jobs,env);
-  assert.equal(artifact.size_in_bytes,ARTIFACT_SIZE);
-  assert.equal(jobs[0].id,SIGNED_JOB);assert.equal(String(jobs[0].run_id),SIGNED_RUN);
-  assert.equal(jobs[0].head_sha,SIGNING_TOOLS);
-  return {...origin,scope:'PACKAGE_INTAKE_ONLY',databaseAccepted:false,
-    publicReleaseAccepted:false,distributionAllowed:false};
-}
-async function main(){
-  requireBoundIntakePins();
-  const env=process.env;
-  const get=async path=>{
-    const response=await fetch('https://api.github.com/repos/yarinn12/sogrim-hashbon'+path,{
-      method:'GET',redirect:'error',headers:{Authorization:'Bearer '+env.GH_TOKEN,Accept:'application/vnd.github+json'},
-      signal:AbortSignal.timeout(30000)});
-    assert.ok(response.ok,'GitHub original package read failed');return response.json();
-  };
-  const run=await get('/actions/runs/'+SIGNED_RUN),artifact=await get('/actions/artifacts/'+ARTIFACT_ID);
-  const jobs=await get('/actions/runs/'+SIGNED_RUN+'/attempts/1/jobs?per_page=100');
-  assert.equal(jobs.total_count,jobs.jobs.length);
-  writeFileSync('build/ios/upload-origin.json',JSON.stringify(verifyIntakeOrigin(run,artifact,jobs.jobs,env),null,2)+'\n',{flag:'wx'});
-  console.log('Exact original package verified for intake only. No database acceptance or distribution permission asserted.');
-}
-if(import.meta.url.startsWith('file:')&&process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1]))await main();
+if(process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1]))await main();

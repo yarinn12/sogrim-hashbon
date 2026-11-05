@@ -1,3 +1,5 @@
+import {validateOriginReceipt} from './intake-nov5-proof.mjs';
+import {INTAKE_BINDINGS,requireBoundIntakePins,requireBoundEnvironment} from './intake-bindings.mjs';
 import assert from 'node:assert/strict';
 import {createCipheriv, createDecipheriv, createHash, createPrivateKey, hkdfSync, randomBytes} from 'node:crypto';
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
@@ -5,9 +7,7 @@ import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const CONTEXT = 'sogrim-ios-private-artifact-v1';
-const SOURCE = process.env.SOURCE_SHA;
-const TREE = '76e2319de17a875db5f5b1e2b54c2b63659644b1';
-assert.equal(SOURCE, 'abcbac91e97230e4737e80c4ea3c2206360e855f', 'Expected the coordinator frozen release source');
+const SOURCE=INTAKE_BINDINGS.application.sourceSha,TREE=INTAKE_BINDINGS.application.sourceTree;
 const hash = data => createHash('sha256').update(data).digest('hex');
 
 function derive(pem, salt, aad) {
@@ -17,6 +17,7 @@ function derive(pem, salt, aad) {
 }
 
 export function protect(plaintext, pem, identity) {
+  requireBoundIntakePins();
   assert.equal(identity.sourceCommit, SOURCE);
   assert.equal(identity.sourceTree, TREE);
   assert.equal(identity.version, '4.59');
@@ -34,9 +35,12 @@ export function protect(plaintext, pem, identity) {
 }
 
 export function unprotect(ciphertext, envelope, pem) {
+  requireBoundIntakePins();
   assert.equal(envelope.format, CONTEXT);
   assert.equal(envelope.algorithm, 'AES-256-GCM');
   assert.equal(envelope.kdf, 'HKDF-SHA256-PKCS8-DER');
+  assert.equal(ciphertext.length,INTAKE_BINDINGS.signing.ciphertextSize);
+  assert.equal(hash(ciphertext),INTAKE_BINDINGS.signing.ciphertextSha256);
   assert.equal(hash(ciphertext), envelope.ciphertextSha256);
   const identity = JSON.parse(envelope.aad);
   assert.equal(identity.context, CONTEXT);
@@ -44,6 +48,9 @@ export function unprotect(ciphertext, envelope, pem) {
   assert.equal(identity.sourceTree, TREE);
   assert.equal(identity.version, '4.59');
   assert.equal(identity.build, '195');
+  assert.equal(String(identity.buildRunId),INTAKE_BINDINGS.signing.runId);
+  assert.equal(String(identity.buildRunAttempt),'1');
+  assert.equal(identity.ipaSha256,INTAKE_BINDINGS.signing.ipaSha256);
   const salt = Buffer.from(envelope.salt, 'base64'), iv = Buffer.from(envelope.iv, 'base64'), tag = Buffer.from(envelope.tag, 'base64');
   assert.equal(salt.length, 32); assert.equal(iv.length, 12); assert.equal(tag.length, 16);
   const key = derive(pem, salt, envelope.aad);
@@ -56,29 +63,17 @@ export function unprotect(ciphertext, envelope, pem) {
   } finally {key.fill(0);}
 }
 
-function main() {
-  const [mode, input, output] = process.argv.slice(2);
-  const pem = process.env.APPSTORE_API_PRIVATE_KEY;
-  assert.ok(pem, 'Existing App Store API private key must be supplied through the environment');
-  if (mode === 'encrypt') {
-    const manifest = JSON.parse(readFileSync('build/ios/artifact-verification.json', 'utf8'));
-    assert.equal(manifest.appleUploadPerformed, false);
-    assert.equal(manifest.signatureVerified, true);
-    assert.equal(manifest.everyWwwAssetMatches, true);
-    assert.equal(manifest.everyWwwAssetMatchesCanonicalGitBuild, true);
-    const result = protect(readFileSync(input), pem, {sourceCommit: manifest.sourceCommit,
-      sourceTree: manifest.sourceTree, version: manifest.version, build: manifest.build, buildRunId: process.env.GITHUB_RUN_ID,
-      buildRunAttempt: process.env.GITHUB_RUN_ATTEMPT, ipaSha256: manifest.ipaSha256});
-    mkdirSync(output, {recursive: true});
-    writeFileSync(resolve(output, 'release.tar.enc'), result.ciphertext);
-    writeFileSync(resolve(output, 'envelope.json'), JSON.stringify(result.envelope, null, 2) + '\n');
-    console.log('Verified release encrypted; only ciphertext and envelope may be retained as GitHub artifacts.');
-  } else if (mode === 'decrypt') {
-    const envelope = JSON.parse(readFileSync(resolve(input, 'envelope.json'), 'utf8'));
-    const plaintext = unprotect(readFileSync(resolve(input, 'release.tar.enc')), envelope, pem);
-    writeFileSync(output, plaintext, {flag: 'wx'});
-    console.log('Authenticated release archive decrypted to a new local file.');
-  } else throw new Error('Expected encrypt or decrypt');
+export function main(args=process.argv.slice(2),env=process.env) {
+  requireBoundEnvironment(env);
+  const [mode,input,output]=args;
+  assert.equal(mode,'decrypt','Intake cannot encrypt, rebuild or sign another artifact');
+  validateOriginReceipt(JSON.parse(readFileSync('build/ios/upload-origin.json','utf8')));
+  const pem=env.APPSTORE_API_PRIVATE_KEY;
+  assert.ok(pem,'Existing key must be supplied through the environment');
+  const envelope=JSON.parse(readFileSync(resolve(input,'envelope.json'),'utf8'));
+  const plaintext=unprotect(readFileSync(resolve(input,'release.tar.enc')),envelope,pem);
+  writeFileSync(output,plaintext,{flag:'wx'});
+  console.log('Authenticated original archive decrypted once; no build, signing or upload.');
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) main();

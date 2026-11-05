@@ -1,7 +1,9 @@
+import {requireBoundEnvironment} from './intake-bindings.mjs';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {mkdirSync} from 'node:fs';
 import {SOURCE,RELEASE_TREE,verifyCommit,verifyRuns} from './intake-source-guard.mjs';
+requireBoundEnvironment(process.env);
 assert.equal(process.env.GITHUB_EVENT_NAME,'push','This entry point is a GET-only push audit, not a release');
 assert.equal(process.env.GITHUB_REPOSITORY,'yarinn12/sogrim-hashbon');
 const git=args=>execFileSync('git',args,{encoding:'utf8'}).trim();

@@ -1,3 +1,7 @@
+import {CONTRACT as INTAKE_CREATION,verifyFirstCreationReceipt as verifyIntakeCreationReceipt} from './intake-first-creation-guard.mjs';
+import {CONTRACT,INTAKE_BINDINGS,requireBoundEnvironment,requireBoundIntakePins,decimal,digest} from './intake-bindings.mjs';
+import {SOURCE_QA_JOBS} from './source-ci-required-jobs.mjs';
+import {validateOriginReceipt,verifyStoredFirstCreation} from './intake-nov5-proof.mjs';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
@@ -5,16 +9,13 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-export const RELEASE_SOURCE = 'abcbac91e97230e4737e80c4ea3c2206360e855f';
-export const RELEASE_TREE = '76e2319de17a875db5f5b1e2b54c2b63659644b1';
-export const SOURCE = process.env.SOURCE_SHA;
-export const ARTIFACT_NAME = 'sogrim-ios-4.59-195-encrypted';
-export const APPLE_APP_ID = '6809952514';
-export const SOURCE_BRANCH = 'codex/test-release-459-20261104';
-assert.match(SOURCE ?? '', /^[0-9a-f]{40}$/, 'source_sha must be a full commit');
-assert.equal(SOURCE, RELEASE_SOURCE, 'Only the coordinator frozen release source is authorized');
+export const RELEASE_SOURCE=INTAKE_BINDINGS.application.sourceSha,RELEASE_TREE=INTAKE_BINDINGS.application.sourceTree;
+export const SOURCE=RELEASE_SOURCE;
+export const ARTIFACT_NAME=CONTRACT.artifactName,APPLE_APP_ID='6809952514';
+export const SOURCE_BRANCH=INTAKE_BINDINGS.application.branch;
 
-export function requiredRuns(env) {
+export function requiredRuns(env,pins=INTAKE_BINDINGS) {
+  requireBoundEnvironment(env,pins);
   const rows = [
     [env.SOURCE_QA_RUN, '.github/workflows/qa.yml'],
     [env.SOURCE_WINDOWS_QA_RUN, '.github/workflows/qa-windows.yml'],
@@ -38,16 +39,20 @@ async function githubRead(fetchImpl, token, path) {
   return response.json();
 }
 
-export async function verifyCommit(fetchImpl, token, tree) {
+export async function verifyCommit(fetchImpl, token, tree,pins=INTAKE_BINDINGS) {
+  requireBoundIntakePins(pins);
+  const SOURCE=pins.application.sourceSha,RELEASE_TREE=pins.application.sourceTree;
   assert.equal(tree, RELEASE_TREE);
   const commit = await githubRead(fetchImpl, token, '/git/commits/' + SOURCE);
   assert.equal(commit.sha, SOURCE);
   assert.equal(commit.tree?.sha, tree, 'GitHub tree differs from checked-out source');
 }
 
-export async function verifyRuns(fetchImpl, token, env) {
+export async function verifyRuns(fetchImpl, token, env,pins=INTAKE_BINDINGS) {
+  requireBoundEnvironment(env,pins);
+  const SOURCE=pins.application.sourceSha,SOURCE_BRANCH=pins.application.branch;
   const proofs = [];
-  for (const [id, path] of requiredRuns(env)) {
+  for (const [id, path] of requiredRuns(env,pins)) {
     const run = await githubRead(fetchImpl, token, '/actions/runs/' + id);
     assert.equal(String(run.id), id);
     assert.equal(run.repository?.full_name, 'yarinn12/sogrim-hashbon');
@@ -77,12 +82,7 @@ export async function verifyRuns(fetchImpl, token, env) {
       assert.equal(job.conclusion, 'success', 'Failed, skipped or cancelled CI job');
     }
     if (path === '.github/workflows/qa.yml') {
-      const required = ['unit', 'cross-platform', 'cross-platform-shard-1', 'cross-platform-shard-2',
-        'two-client-sync', 'unit-and-mobile', 'backup-runtime',
-        ...['android-mobile', 'iphone-webkit', 'ipad-webkit', 'iphone-large-text', 'reflow-200'].map(p => 'mobile (' + p + ')'),
-        'ios-native / native-parity', 'android-native / native-parity',
-        'mobile-iphone-large-text-shard-1', 'mobile-iphone-large-text-shard-2',
-        'mobile-iphone-webkit-shard-1', 'mobile-iphone-webkit-shard-2'];
+      const required = SOURCE_QA_JOBS;
       for (const name of required) assert.equal(jobs.filter(job => job.name === name).length, 1, 'Missing QA lane: ' + name);
     } else {
       const requiredName = {'.github/workflows/qa-windows.yml':'windows-unit',
@@ -136,17 +136,11 @@ export async function readUnusedBuild(request) {
     reserved: false, checkedAt: new Date().toISOString()};
 }
 
-export function verifyCheckout(runGit, readText, env) {
+export function verifyCheckout(runGit, readText, env,pins=INTAKE_BINDINGS) {
+  requireBoundEnvironment(env,pins);
+  const SOURCE=pins.application.sourceSha,RELEASE_TREE=pins.application.sourceTree;
   assert.equal(env.GITHUB_REPOSITORY, 'yarinn12/sogrim-hashbon');
-  if (env.GITHUB_EVENT_NAME === 'push') {
-    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios195-459-private-intake-20261104');
-    assert.equal(env.GITHUB_WORKFLOW_REF,
-      'yarinn12/sogrim-hashbon/.github/workflows/ios195-459-private-intake-only.yml@refs/heads/codex/ios195-459-private-intake-20261104');
-    assert.equal(String(env.GITHUB_RUN_ATTEMPT), '1', 'No signing retry');
-    assert.equal(String(env.GITHUB_RUN_NUMBER), '1', 'Only the first one-shot signing run may proceed');
-  } else {
-    assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
-  }
+  verifyIntakeExecution(env,JSON.parse(readText(env.GITHUB_EVENT_PATH)));
   assert.equal(env.APPLE_TEAM_ID, 'MA9S4L7WKS');
   assert.equal(env.SOURCE_SHA, SOURCE);
   assert.equal(env.IOS_VERSION, '4.59');
@@ -154,29 +148,79 @@ export function verifyCheckout(runGit, readText, env) {
   assert.equal(runGit(['rev-parse', 'HEAD']), SOURCE);
   assert.equal(runGit(['rev-parse', 'HEAD^{tree}']), RELEASE_TREE);
   const pwa = readText('src/pwaBootstrap.mjs').match(/const PWA_RELEASE = "(\d+)"/)?.[1];
-  assert.equal(pwa, '532');
+  assert.equal(pwa,pins.application.pwa);
   const metadata = JSON.parse(readText('docs/store-submission/app-store-metadata-he.json'));
   assert.equal(metadata.version?.number, '4.59');
   assert.equal(String(metadata.version?.build), '195');
   return {sourceCommit: SOURCE, sourceTree: RELEASE_TREE, pwaRelease: pwa};
 }
 
+
+export function verifyIntakeFirstCreation(readText,env,pins=INTAKE_BINDINGS){
+  requireBoundEnvironment(env,pins);
+  assert.ok(env.RUNNER_TEMP&&env.GITHUB_EVENT_PATH,'Missing intake creation runtime paths');
+  const expected=resolve(env.RUNNER_TEMP,INTAKE_CREATION.outputDirectory,'first-creation-receipt.json');
+  assert.equal(env.IOS_INTAKE_FIRST_CREATION_RECEIPT,expected,'Missing/substituted intake creation proof');
+  return verifyIntakeCreationReceipt(Buffer.from(readText(expected)),env.IOS_INTAKE_FIRST_CREATION_SHA256,env,JSON.parse(readText(env.GITHUB_EVENT_PATH)));
+}
+
+export function verifyIntakeExecution(env,event){
+ const ref='refs/heads/'+CONTRACT.intakeBranch,workflowRef=CONTRACT.repository+'/'+CONTRACT.intakePath+'@'+ref;
+ assert.equal(env.GITHUB_REPOSITORY,CONTRACT.repository);assert.equal(env.GITHUB_REPOSITORY_ID,String(CONTRACT.repositoryId));
+ assert.equal(env.GITHUB_EVENT_NAME,'push');assert.equal(env.GITHUB_REF,ref);
+ assert.equal(env.GITHUB_WORKFLOW_REF,workflowRef);assert.equal(env.WORKFLOW_REF,workflowRef);
+ assert.ok(digest(env.GITHUB_SHA,40));assert.equal(env.GITHUB_WORKFLOW_SHA,env.GITHUB_SHA);
+ assert.equal(env.WORKFLOW_COMMIT,env.GITHUB_SHA);assert.equal(env.GITHUB_RUN_ATTEMPT,'1');
+ assert.ok(decimal(env.GITHUB_RUN_ID)&&decimal(env.GITHUB_RUN_NUMBER),'Invalid actual intake run/counter');
+ assert.equal(event?.ref,ref);assert.equal(event?.created,true);assert.equal(event?.before,'0'.repeat(40));
+ assert.equal(event?.forced,false);assert.equal(event?.deleted,false);
+ assert.equal(event?.after,env.GITHUB_SHA);assert.equal(event?.head_commit?.id,env.GITHUB_SHA);
+ assert.equal(event?.repository?.full_name,CONTRACT.repository);assert.equal(event?.repository?.id,CONTRACT.repositoryId);
+}
+export function verifyPreUploadEvidence(read,pins=INTAKE_BINDINGS){
+ requireBoundIntakePins(pins);
+ const json=path=>JSON.parse(read('build/ios/'+path).toString('utf8'));
+ const origin=validateOriginReceipt(json('upload-origin.json'),pins);
+ const receipt=json('original-artifact-before-upload.json');
+ for(const [key,value]of Object.entries({
+  sourceCommit:pins.application.sourceSha,sourceTree:pins.application.sourceTree,
+  ipaSha256:pins.signing.ipaSha256,originalSigningRunId:pins.signing.runId,
+  signingRunNumber:pins.signing.runNumber,rebuilt:false,signatureReverified:true,
+  everyOriginalWebAssetMatches:true,everyOriginalWebAssetMatchesCanonicalGitBuild:true,
+  originalSourceInputsMatchCurrentGit:true,firstCreationVerified:true,appleUploadPerformed:false
+ }))assert.equal(receipt[key],value,'Pre-upload original evidence missing: '+key);
+ let proof;
+ for(const name of ['source-ci-only','source-before-build','source-after-export']){
+  const current=verifyStoredFirstCreation(json(name+'.json').firstCreation,origin,pins);
+  if(proof)assert.deepEqual(current,proof,'Original first-creation proof differs across source receipts');
+  proof=current;
+ }
+ const ipa=read('build/ios/SogrimHashbon.ipa');
+ assert.equal(ipa.length,pins.signing.ipaSize);
+ assert.equal(createHash('sha256').update(ipa).digest('hex'),pins.signing.ipaSha256);
+ return proof;
+}
+
 async function main() {
   const phase = process.argv[2];
-  assert.ok(['ci-only', 'before-build', 'after-export', 'before-upload'].includes(phase));
+  assert.ok(['ci-only','before-upload'].includes(phase));
   const env = process.env;
+  requireBoundEnvironment(env);
+  const intakeFirstCreation=verifyIntakeFirstCreation(path=>readFileSync(path,'utf8'),env);
+  verifyIntakeExecution(env,JSON.parse(readFileSync(env.GITHUB_EVENT_PATH,'utf8')));
   const runGit = args => execFileSync('git', args, {encoding: 'utf8'}).trim();
   const source = verifyCheckout(runGit, path => readFileSync(path, 'utf8'), env);
   if (phase === 'ci-only') assert.equal(runGit(['status', '--porcelain']), '', 'App checkout must start clean');
   await verifyCommit(fetch, env.GH_TOKEN, source.sourceTree);
   const ci = await verifyRuns(fetch, env.GH_TOKEN, env);
-  let apple = null, artifactSlot = null;
+  let apple = null, artifactSlot = null, originalFirstCreation = null;
   if (phase !== 'ci-only') {
+    originalFirstCreation=verifyPreUploadEvidence(path=>readFileSync(path),INTAKE_BINDINGS);
     const {createAppStoreClient} = await import(pathToFileURL(resolve('scripts/lib/app-store-release.mjs')));
     const api = createAppStoreClient({issuerId: env.APPSTORE_ISSUER_ID, keyId: env.APPSTORE_API_KEY_ID,
       privateKey: env.APPSTORE_API_PRIVATE_KEY});
     apple = await readUnusedBuild(api);
-    if (phase !== 'before-upload') artifactSlot = await requireUnusedArtifactSlot(fetch, env.GH_TOKEN);
+
   }
   const sha256 = path => createHash('sha256').update(readFileSync(path)).digest('hex');
   const paths = execFileSync('git', ['ls-files', '--cached', '-z'], {encoding: 'utf8'}).split('\0').filter(Boolean)
@@ -188,10 +232,11 @@ async function main() {
     const before = JSON.parse(readFileSync('build/ios/source-ci-only.json', 'utf8'));
     assert.deepEqual(sourceInputs, before.sourceInputs, 'Application inputs changed during native preparation');
     assert.equal(before.sourceCommit, SOURCE); assert.equal(before.sourceTree, RELEASE_TREE);
+    verifyStoredFirstCreation(before.firstCreation,JSON.parse(readFileSync('build/ios/upload-origin.json','utf8')));
   }
   mkdirSync('build/ios', {recursive: true});
   writeFileSync('build/ios/source-' + phase + '.json', JSON.stringify({
-    ...source, phase, ci, apple, artifactSlot, version: env.IOS_VERSION, build: env.IOS_BUILD,
+    ...source, intakeFirstCreation, originalFirstCreation, phase, ci, apple, artifactSlot, version: env.IOS_VERSION, build: env.IOS_BUILD,
     packageSha256: sha256('package.json'), packageLockSha256: sha256('package-lock.json'), sourceInputs,
     workflowCommit: env.WORKFLOW_COMMIT, workflowRef: env.WORKFLOW_REF,
     buildRunId: env.GITHUB_RUN_ID, buildRunAttempt: env.GITHUB_RUN_ATTEMPT,

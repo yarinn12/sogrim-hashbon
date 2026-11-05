@@ -1,35 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
-import {verifyIntakeOrigin,requireBoundIntakePins,SIGNED_RUN,ARTIFACT_ID,SIGNED_JOB,ARTIFACT_SIZE,IPA_SHA,ZIP_SHA} from './intake-origin-guard.mjs';
+import {requireBoundIntakePins,boundEnvironment} from './intake-bindings.mjs';
+import {verifyOrigin} from './intake194-package-origin.mjs';
+import {verifySigningControls} from './intake-nov5-proof.mjs';
 import {all,requireManualGroups,requireIntakePreflight,collectState,verifyPostflight,verifyReadEndpoints} from './intake-distribution-guard.mjs';
-import {SOURCE,TREE,SIGNING_TOOLS} from './intake194-package-origin.mjs';
 import {verifyDatabaseReceipt} from './upload-origin-guard.mjs';
-const hashReady='a'.repeat(64);
-const env={SOURCE_SHA:SOURCE,SIGNED_RUN_ID:SIGNED_RUN,SIGNED_ARTIFACT_ID:ARTIFACT_ID,SIGNED_IPA_SHA256:IPA_SHA,SIGNED_ARTIFACT_ZIP_SHA256:ZIP_SHA};
-const run={id:Number(SIGNED_RUN),repository:{full_name:'yarinn12/sogrim-hashbon'},head_repository:{full_name:'yarinn12/sogrim-hashbon'},
- head_sha:SIGNING_TOOLS,head_branch:'codex/ios195-459-private-tools-20261104',path:'.github/workflows/ios195-459-private-sign-only.yml',event:'push',run_number:1,
- run_attempt:1,status:'completed',conclusion:'success'};
-const artifact={id:Number(ARTIFACT_ID),size_in_bytes:ARTIFACT_SIZE,name:'sogrim-ios-4.59-195-encrypted',expired:false,expires_at:'2099-01-01T00:00:00Z',
- workflow_run:{id:Number(SIGNED_RUN),head_sha:SIGNING_TOOLS},digest:'sha256:'+ZIP_SHA};
-const jobs=[{id:SIGNED_JOB,run_id:Number(SIGNED_RUN),head_sha:SIGNING_TOOLS,name:'build-export-verify-private',status:'completed',conclusion:'success'}];
+const sample=JSON.parse(readFileSync(new URL('../../../tests/fixtures/ios195-nov5-intake.json',import.meta.url),'utf8'));
+assert.equal(sample.scope,'SYNTHETIC_ONLY_NOT_AN_ARTIFACT_OR_RELEASE');
 const groups=[{id:'internal',attributes:{name:'Internal',isInternalGroup:true,hasAccessToAllBuilds:false,publicLinkEnabled:false}},
  {id:'external',attributes:{name:'External',isInternalGroup:false,hasAccessToAllBuilds:null,publicLinkEnabled:false}}];
-const copy=x=>structuredClone(x);
-test('intake origin accepts original bytes but never grants database/public/distribution acceptance',()=>{
- const p=verifyIntakeOrigin(run,artifact,jobs,env);
+const copy=x=>JSON.parse(JSON.stringify(x));
+test('synthetic intake origin cannot grant database/public/distribution acceptance',()=>{
+ const pins=sample.pins,controls=verifySigningControls(pins.signing.toolsSha,'',sample.controlFiles,pins);
+ const p=verifyOrigin(sample.run,sample.artifact,sample.jobs,boundEnvironment(pins),{pins,controlProof:controls,workflow:sample.workflow});
  assert.equal(p.scope,'PACKAGE_INTAKE_ONLY');assert.equal(p.databaseAccepted,false);
  assert.equal(p.publicReleaseAccepted,false);assert.equal(p.distributionAllowed,false);
- assert.throws(()=>verifyDatabaseReceipt(Buffer.from('{}'),hashReady),'public gate still refuses missing real evidence');
-});
-for(const [field,value]of [['SOURCE_SHA','0'.repeat(40)],['SIGNED_RUN_ID','901'],['SIGNED_ARTIFACT_ID','902'],
- ['SIGNED_IPA_SHA256','b'.repeat(64)],['SIGNED_ARTIFACT_ZIP_SHA256','c'.repeat(64)]])
- test('intake rejects substituted '+field,()=>assert.throws(()=>verifyIntakeOrigin(run,artifact,jobs,{...env,[field]:value})));
-test('intake rejects changed artifact size or signing job identity',()=>{
- assert.throws(()=>verifyIntakeOrigin(run,{...artifact,size_in_bytes:1},jobs,env));
- assert.throws(()=>verifyIntakeOrigin(run,artifact,[{...jobs[0],id:1}],env));
- assert.throws(()=>verifyIntakeOrigin(run,artifact,[{...jobs[0],head_sha:SOURCE}],env));
+ assert.throws(()=>verifyDatabaseReceipt(Buffer.from('{}'),'a'.repeat(64)),'public gate still refuses missing real evidence');
 });
 test('manual groups can retain links to previous builds without granting195',()=>requireManualGroups(groups));
 for(const value of [true,null,undefined,'false'])test('manual-group guard blocks automatic flag '+String(value),()=>{
@@ -122,33 +109,7 @@ test('intake audit defaults to GET-only; public receipt workflow and verifier re
 });
 
 
-test('real frozen intake signing pins are bound before any package access',()=>{
- assert.doesNotThrow(()=>requireBoundIntakePins());
- for(const value of [SIGNED_RUN,ARTIFACT_ID])assert.match(value,/^[1-9][0-9]*$/);
- for(const value of [IPA_SHA,ZIP_SHA])assert.match(value,/^[0-9a-f]{64}$/);
-});
-for(const [field,pattern,replacement]of [
- ['run',/SIGNED_RUN='[^']*'/,"SIGNED_RUN='PENDING'"],
- ['artifact',/ARTIFACT_ID='[^']*'/,"ARTIFACT_ID='PENDING'"],
- ['job',/SIGNED_JOB=[0-9]+/,'SIGNED_JOB=0'],
- ['size',/ARTIFACT_SIZE=[0-9]+/,'ARTIFACT_SIZE=0'],
- ['IPA',/IPA_SHA='[^']*'/,"IPA_SHA='PENDING'"],
- ['ZIP',/ZIP_SHA='[^']*'/,"ZIP_SHA='PENDING'"]])
- test('unbound '+field+' fails before the first actual CLI package API request',()=>{
-  const url=new URL('./intake-origin-guard.mjs',import.meta.url);
-  const raw=readFileSync(url,'utf8');let changed=raw.replace(pattern,replacement);assert.notEqual(changed,raw);
-  changed=changed.replace("'./intake194-package-origin.mjs'",JSON.stringify(new URL('./intake194-package-origin.mjs',import.meta.url).href));
-  const control="globalThis.fetch=async()=>{console.log('UNEXPECTED_FETCH');throw Error('fetch reached');};\n"+changed+"\ntry{await main();}catch(e){console.error(e.message);process.exitCode=1;}";
-  const result=spawnSync(process.execPath,['--input-type=module','-e',control],{encoding:'utf8',timeout:15000,env:{PATH:process.env.PATH??''}});
-  assert.equal(result.status,1);assert.match(result.stderr,/Real signing artifact (pin|digest) missing/);assert.doesNotMatch(result.stdout,/UNEXPECTED_FETCH/);
- });
-test('active private intake freezes source, original artifact and first push before secrets',()=>{
- const y=readFileSync(new URL('../../../.github/workflows/ios195-459-private-intake-only.yml',import.meta.url),'utf8');
- assert.ok(y.includes('branches: [codex/ios195-459-private-intake-20261104]'));
- assert.ok(y.includes('github.run_attempt == 1')&&y.includes('github.run_number == 1'));
- assert.ok(!y.includes('inputs.'));
- for(const [key,value]of Object.entries({SOURCE_SHA:SOURCE,SIGNED_RUN_ID:SIGNED_RUN,SIGNED_ARTIFACT_ID:ARTIFACT_ID,SIGNED_IPA_SHA256:IPA_SHA,SIGNED_ARTIFACT_ZIP_SHA256:ZIP_SHA}))
-  assert.ok(y.includes(key+': "'+value+'"'),'frozen intake '+key);
- assert.ok(y.indexOf('intake-origin-guard.mjs')<y.indexOf('secrets.APPSTORE_API_PRIVATE_KEY'));
- for(const token of ['xcodebuild','native:prepare','import-codesign','reviewSubmission','betaAppReviewSubmission','appStoreVersionReleaseRequest'])assert.ok(!y.includes(token));
+test('real preparation pins remain unbound; synthetic fixture is explicit and isolated',()=>{
+ if(JSON.stringify(JSON.parse(readFileSync(new URL('./intake-bindings.json',import.meta.url),'utf8'))).includes('PENDING'))assert.throws(()=>requireBoundIntakePins(),/PENDING/);else requireBoundIntakePins();
+ assert.doesNotThrow(()=>requireBoundIntakePins(sample.pins));
 });

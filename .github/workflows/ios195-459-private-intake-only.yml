@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   upload-original:
-    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios195-459-private-intake-20261104' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
+    if: ${{ false && github.repository == 'yarinn12/sogrim-hashbon' }} # Historical Nov4 intake is disabled.
     runs-on: macos-26
     timeout-minutes: 45
     defaults:

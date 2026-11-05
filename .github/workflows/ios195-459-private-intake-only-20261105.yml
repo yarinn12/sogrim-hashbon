@@ -1,0 +1,171 @@
+name: iOS195 4.59 private intake only
+run-name: iOS195 original Nov5 signed bytes — final bindings required
+on:
+  push:
+    branches: [codex/ios195-459-private-intake-20261105]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ios-testflight-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  upload-original:
+    # Preparation is deliberately inactive until the coordinator binds the real
+    # final source, all CI, original run/artifact and every byte/control digest.
+    if: ${{ false && github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios195-459-private-intake-20261105' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+        working-directory: app
+    env:
+      SOURCE_SHA: "551abc5f6f9670b8129efaca629ac98be2bd20bb"
+      SOURCE_TREE: "d3836a2a92bd6c08a9133ee0d047bf54a6fd7d1d"
+      PWA_RELEASE: "532"
+      SOURCE_QA_RUN: "42097460112"
+      SOURCE_WINDOWS_QA_RUN: "42097460317"
+      SOURCE_FONT_QA_RUN: "42097460243"
+      SOURCE_AUTH_QA_RUN: "42097460077"
+      SIGNING_TOOLS_SHA: "d03674135101840b963168e467915a66e8379d6e"
+      SIGNED_RUN_ID: "PENDING"
+      SIGNED_RUN_NUMBER: "0"
+      SIGNED_JOB_ID: "0"
+      SIGNED_ARTIFACT_ID: "PENDING"
+      SIGNED_ARTIFACT_SIZE: "0"
+      SIGNED_IPA_SHA256: "PENDING"
+      SIGNED_IPA_SIZE: "0"
+      SIGNED_ARTIFACT_ZIP_SHA256: "PENDING"
+      SIGNED_CIPHERTEXT_SHA256: "PENDING"
+      SIGNED_CIPHERTEXT_SIZE: "0"
+      WORKFLOW_COMMIT: ${{ github.workflow_sha }}
+      WORKFLOW_REF: ${{ github.workflow_ref }}
+      APPLE_TEAM_ID: MA9S4L7WKS
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      IOS_VERSION: '4.59'
+      IOS_BUILD: '195'
+    steps:
+      - name: Checkout immutable intake controls only
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tools
+          persist-credentials: false
+      - name: Select Node24 without application dependencies or cache
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Require every final immutable binding before checkout, keys or download
+        id: bindings
+        working-directory: ${{ github.workspace }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-bindings.mjs"
+      - name: Require original intake branch creation and two complete unfiltered histories
+        id: intake_first_creation
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-first-creation-guard.mjs" --output "$RUNNER_TEMP/ios195-intake-first-creation-20261105"
+      - name: Checkout frozen application source explicitly
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.bindings.outputs.source_sha }}
+          path: app
+          persist-credentials: false
+      - name: Checkout exact original Nov5 signing controls explicitly
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.bindings.outputs.signing_tools_sha }}
+          path: original-signing-tools
+          persist-credentials: false
+      - name: Load public release notes from the frozen source
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/load-release-notes.mjs"
+      - name: Check release notes and certificate rejection controls before keys
+        env:
+          IOS_RELEASE_METADATA_FILE: ${{ github.workspace }}/app/docs/store-submission/app-store-metadata-he.json
+        run: |
+          set -euo pipefail
+          node --test "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-release-notes.mjs"
+          python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-signing-certificate.py"
+      - name: Check Nov5 origin, first-creation, source receipts and zero-distribution controls
+        working-directory: ${{ github.workspace }}/release-tools
+        run: |
+          set -euo pipefail
+          node --experimental-vm-modules --test scripts/qa/ios-signing/intake-guards.test.mjs tests/iosIntakeNov5Origin.test.mjs
+          python3 scripts/qa/ios-signing/verify-original-archive.test.py
+      - name: Require all four exact successful source CI runs before keys
+        env:
+          IOS_INTAKE_FIRST_CREATION_RECEIPT: ${{ steps.intake_first_creation.outputs.receipt_path }}
+          IOS_INTAKE_FIRST_CREATION_SHA256: ${{ steps.intake_first_creation.outputs.receipt_sha256 }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-source-guard.mjs" ci-only
+          mv build/ios/source-ci-only.json build/ios/live-ci-before-download.json
+      - name: Verify original Nov5 signing run, complete steps and immutable controls before keys
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-origin-guard.mjs"
+      - name: Require live manual distribution and unused195 before private access
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" preflight
+      - name: Download and verify the original encrypted bytes and public envelope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/download-intake-artifact.mjs"
+          python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/extract-intake-envelope.py"
+      - name: Authenticate the same original archive with the existing key
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/protect-artifact.mjs" decrypt \
+            build/ios/original-encrypted "$RUNNER_TEMP/sogrim-original-release.tar"
+      - name: Verify all three original firstCreation source receipts and original IPA without rebuilding
+        run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/verify-original-archive.py"
+      - name: Recheck exact source, original receipt and manual distribution before upload
+        env:
+          IOS_INTAKE_FIRST_CREATION_RECEIPT: ${{ steps.intake_first_creation.outputs.receipt_path }}
+          IOS_INTAKE_FIRST_CREATION_SHA256: ${{ steps.intake_first_creation.outputs.receipt_sha256 }}
+          GH_TOKEN: ${{ github.token }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" preflight
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-source-guard.mjs" before-upload
+      - name: Upload only the same original IPA bytes
+        uses: apple-actions/upload-testflight-build@v5
+        with:
+          app-path: app/build/ios/SogrimHashbon.ipa
+          app-type: ios
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          wait-for-processing: 'false'
+          backend: appstore-api
+      - name: Verify Apple processing and Hebrew TestFlight notes
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node scripts/complete-ios-testflight.mjs
+      - name: Verify zero groups, zero individual testers and no store association
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" postflight
+      - name: Retain JSON intake receipts only
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios195-intake-evidence-${{ github.run_id }}
+          path: |
+            app/build/ios/live-ci-before-download.json
+            app/build/ios/upload-origin.json
+            app/build/ios/intake-*.json
+            app/build/ios/source-before-upload.json
+            app/build/ios/original-artifact-before-upload.json
+            app/build/ios/testflight-completion.json
+          if-no-files-found: warn
+          retention-days: 7

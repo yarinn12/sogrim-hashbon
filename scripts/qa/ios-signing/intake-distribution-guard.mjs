@@ -1,3 +1,4 @@
+import {requireBoundEnvironment} from './intake-bindings.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
@@ -115,6 +116,7 @@ export async function verifyPostflight(api,before){
     scope:'PACKAGE_INTAKE_ONLY',databaseAccepted:false,publicReleaseAccepted:false,distributionAllowed:false};
 }
 async function main(){
+  requireBoundEnvironment(process.env);
   const phase=process.argv[2];assert.ok(['audit','preflight','postflight'].includes(phase));
   const {createAppStoreClient}=await import(pathToFileURL(resolve('scripts/lib/app-store-release.mjs')));
   const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,

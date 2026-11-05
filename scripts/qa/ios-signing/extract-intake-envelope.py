@@ -1,25 +1,38 @@
-import hashlib,json,pathlib,re,stat,zipfile
-CIPHERTEXT_SHA256='PENDING'
-SIGNING_RUN_ID='PENDING'
-IPA_SHA256='PENDING'
-folder=pathlib.Path('build/ios/original-encrypted')
-def require(ok,message):
-    if not ok:raise ValueError(message)
-require(re.fullmatch(r'[0-9a-f]{64}',CIPHERTEXT_SHA256) is not None,'Real encrypted payload digest must be bound before extraction')
-require(re.fullmatch(r'[1-9][0-9]*',SIGNING_RUN_ID) is not None,'Real signing run must be bound before extraction')
-require(re.fullmatch(r'[0-9a-f]{64}',IPA_SHA256) is not None,'Real IPA digest must be bound before extraction')
-with zipfile.ZipFile(folder/'original.zip') as archive:
-    entries=archive.infolist()
-    require(len(entries)==2 and {e.filename for e in entries}=={'release.tar.enc','envelope.json'},'Unexpected encrypted ZIP entries')
-    for entry in entries:
-        require(not entry.is_dir() and not stat.S_ISLNK(entry.external_attr>>16),'Non-regular encrypted ZIP entry')
-        require(entry.file_size<=536870912,'Oversized encrypted payload')
-        if entry.filename=='envelope.json':require(entry.file_size<100000,'Oversized envelope')
-        with (folder/entry.filename).open('xb') as output:output.write(archive.read(entry))
-require(hashlib.sha256((folder/'release.tar.enc').read_bytes()).hexdigest()==CIPHERTEXT_SHA256,'Original encrypted payload changed')
-identity=json.loads(json.loads((folder/'envelope.json').read_text())['aad'])
-require(identity['sourceCommit']=='abcbac91e97230e4737e80c4ea3c2206360e855f' and identity['sourceTree']=='76e2319de17a875db5f5b1e2b54c2b63659644b1','Original source identity changed')
-require(identity['version']=='4.59' and identity['build']=='195','Original version or build changed')
-require(identity['buildRunId']==SIGNING_RUN_ID and identity['buildRunAttempt']=='1','Original signing run changed')
-require(identity['ipaSha256']==IPA_SHA256,'Original IPA hash changed')
-print('Original encrypted components and public AAD identity verified; no decryption or Apple write used.')
+import base64,hashlib,io,json,pathlib,stat,zipfile
+from intake_bindings import require,require_bindings,json_read,exact_fields,digest,VERSION,BUILD
+
+def verify_envelope(ciphertext,envelope,pins=None):
+    pins=require_bindings(pins);a,s=pins['application'],pins['signing']
+    require(len(ciphertext)==s['ciphertextSize'] and hashlib.sha256(ciphertext).hexdigest()==s['ciphertextSha256'],'Original encrypted payload changed')
+    exact_fields(envelope,{'format':'sogrim-ios-private-artifact-v1','algorithm':'AES-256-GCM',
+        'kdf':'HKDF-SHA256-PKCS8-DER','ciphertextSha256':s['ciphertextSha256']},'Original encryption format differs')
+    for key,size in [('salt',32),('iv',12),('tag',16)]:
+        require(len(base64.b64decode(envelope[key],validate=True))==size,'Invalid original encryption '+key)
+    require(digest(envelope.get('plaintextSha256'),64),'Plaintext archive digest missing')
+    identity=json_read(envelope['aad'])
+    exact_fields(identity,{'context':'sogrim-ios-private-artifact-v1','sourceCommit':a['sourceSha'],'sourceTree':a['sourceTree'],
+        'version':VERSION,'build':BUILD,'buildRunId':s['runId'],'buildRunAttempt':'1','ipaSha256':s['ipaSha256']},'Original authenticated identity differs')
+    return identity
+
+def extract_components(raw,folder,pins=None):
+    pins=require_bindings(pins);s=pins['signing']
+    require(len(raw)==s['artifactSize'] and hashlib.sha256(raw).hexdigest()==s['zipSha256'],'Original encrypted ZIP bytes changed')
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        entries=archive.infolist()
+        require(len(entries)==2 and {e.filename for e in entries}=={'release.tar.enc','envelope.json'},'Unexpected encrypted ZIP entries')
+        for entry in entries:
+            require(not entry.is_dir() and not stat.S_ISLNK(entry.external_attr>>16) and not (entry.flag_bits&1),'Non-regular or encrypted ZIP entry')
+            require(entry.file_size<=536870912,'Oversized encrypted ZIP entry')
+            if entry.filename=='envelope.json':require(entry.file_size<100000,'Oversized envelope')
+        ciphertext,envelope_raw=archive.read('release.tar.enc'),archive.read('envelope.json')
+    verify_envelope(ciphertext,json_read(envelope_raw.decode('utf-8')),pins)
+    for name in ['release.tar.enc','envelope.json']:require(not (folder/name).exists(),'Refuse to replace original encrypted component')
+    for name,data in [('release.tar.enc',ciphertext),('envelope.json',envelope_raw)]:
+        with (folder/name).open('xb') as output:output.write(data)
+
+def main():
+    pins=require_bindings()
+    folder=pathlib.Path('build/ios/original-encrypted')
+    extract_components((folder/'original.zip').read_bytes(),folder,pins)
+    print('Original ZIP, ciphertext and public authenticated identity verified; no key or decryption used.')
+if __name__=='__main__':main()

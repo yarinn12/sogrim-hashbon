@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "application": {
+    "sourceSha": "551abc5f6f9670b8129efaca629ac98be2bd20bb",
+    "sourceTree": "d3836a2a92bd6c08a9133ee0d047bf54a6fd7d1d",
+    "branch": "codex/test-release-459-20261104",
+    "pwa": "532",
+    "ciRuns": {
+      "SOURCE_QA_RUN": "42097460112",
+      "SOURCE_WINDOWS_QA_RUN": "42097460317",
+      "SOURCE_FONT_QA_RUN": "42097460243",
+      "SOURCE_AUTH_QA_RUN": "42097460077"
+    }
+  },
+  "signing": {
+    "toolsSha": "d03674135101840b963168e467915a66e8379d6e",
+    "runId": "PENDING",
+    "runNumber": 0,
+    "jobId": 0,
+    "artifactId": "PENDING",
+    "artifactSize": 0,
+    "zipSha256": "PENDING",
+    "ipaSha256": "PENDING",
+    "ipaSize": 0,
+    "ciphertextSha256": "PENDING",
+    "ciphertextSize": 0,
+    "controls": {
+      "firstCreation": "a6ba0870cf45e50af2cc7cfb7561e87ef4c965d32768b221ed3946c056afe12d",
+      "sourceGuard": "f716171fc1adb28aaa93e7fbdc58b8fba49def2284fe0dfbb2af895745b47eb5",
+      "workflow": "184eb34ca9a51b61579abae19c43b3d3638fc31b35c281a919719579cb2a18bb",
+      "requiredJobs": "62b035d2e175acc5e6006a548fb5bb2167d679dc2c9be680ca2f517d14c83db3"
+    }
+  }
+}
