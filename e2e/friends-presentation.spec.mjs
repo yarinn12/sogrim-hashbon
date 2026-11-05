@@ -55,10 +55,21 @@ async function reachable(locator){
  });
  const read=()=>locator.evaluate(e=>{const r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return {w:r.width,h:r.height,hit:e.contains(hit),cover:hit?.outerHTML.slice(0,160),top:r.top,bottom:r.bottom,height:innerHeight}});
  await expect.poll(async()=>(await read()).hit,{message:'The actual touch center must be clear after user scrolling'}).toBe(true);
+ // A pressed summary can still be returning from its scale transform after
+ // the click ACK. Check the rendered 44px target only after that motion ends.
+ await expect.poll(()=>locator.evaluate(e=>e.getAnimations().filter(a=>a.playState==='running'&&a.effect?.getKeyframes().some(frame=>'transform'in frame)).length)).toBe(0);
  const v=await read();expect(v.w).toBeGreaterThanOrEqual(44);expect(v.h).toBeGreaterThanOrEqual(44);expect(v.top).toBeGreaterThanOrEqual(0);expect(v.bottom).toBeLessThanOrEqual(v.height);expect(v.hit,JSON.stringify(v)).toBe(true);
 }
 for(const c of [{name:'normal',root:16},{name:'enlarged long names',root:32,w:320,long:true},{name:'short text',root:20,w:393,h:390},{name:'short enlarged',root:32,w:320,h:390,long:true},{name:'system text at startup',root:32,system:true}])test('friend glyph scaling and trash confirmation '+c.name,async({page,baseURL})=>{
  const cloud=await setup(page,baseURL,c),before=cloud.state();await glyphs(page,c.root);const buttons=page.locator('.friend-remove-button');await expect(buttons).toHaveCount(2);await expect(buttons.first().locator('svg path').first()).toHaveAttribute('d','M4 7h16');await reachable(buttons.first());await buttons.first().click();const d=page.locator('.important-action-dialog');await expect(d).toBeVisible();await expect(d).toContainText('השם יישאר באירועים ובהוצאות קיימים');await d.locator('[data-action="cancel-important-action"]').click();await expect(d).toBeHidden();await expect(buttons).toHaveCount(2);await reachable(page.locator('#referral-reward-card-friends'));expect(cloud.state()).toEqual(before);expect(cloud.errors).toEqual([]);
+});
+test('privacy touch target reaches 44px after opening press motion',async({page,baseURL})=>{
+ const cloud=await setup(page,baseURL,{root:32,w:320,long:true}),before=cloud.state();
+ const note=page.locator('.friends-people-panel > .friend-privacy-note:not(.blocked-users-panel)'),summary=note.locator('summary');
+ await reachable(summary);await summary.click();await expect(note).toHaveAttribute('open','');
+ await summary.evaluate(e=>e.animate([{transform:'scale(.96)'},{transform:'scale(1)'}],{duration:1500,easing:'linear'}));
+ await reachable(summary);
+ expect(cloud.state()).toEqual(before);expect(cloud.errors).toEqual([]);
 });
 test('friend text survives reload rotation and resetting to normal size',async({page,baseURL})=>{
  const cloud=await setup(page,baseURL,{root:32,w:320,long:true,system:true}),before=cloud.state();await glyphs(page,32);await cloud.reload();await page.getByRole('button',{name:'חברים',exact:true}).click();await glyphs(page,32);await page.setViewportSize({width:852,height:320});await glyphs(page,32);await reachable(page.locator('#referral-reward-card-friends'));await page.evaluate(()=>{document.getElementById('friends-system-text-fixture').textContent='#apple-system-body-size-probe{font-size:17px!important}';window.dispatchEvent(new Event('resize'))});await expect.poll(()=>page.evaluate(()=>parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(16);await page.setViewportSize({width:393,height:852});await glyphs(page,16);expect(cloud.state()).toEqual(before);expect(cloud.errors).toEqual([]);

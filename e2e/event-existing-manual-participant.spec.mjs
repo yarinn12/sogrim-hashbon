@@ -34,6 +34,13 @@ for(const[id,width,height,root,query,value,invalid]of [
  await page.setViewportSize({width,height});await open(page,root,query);const m=page.locator('.event-manual-name-screen'),input=m.locator('input');if(value)await input.fill(value);if(invalid){await m.locator('[data-action="event-add-guest"]').click();await expect(input).toHaveAttribute('aria-invalid','true');expect(await m.evaluate(e=>{const form=e.querySelector('.event-participant-offline-form'),error=e.querySelector('.field-error'),button=e.querySelector('[data-action="event-add-guest"]');return form.nextElementSibling===error&&error.nextElementSibling===button})).toBe(true)}await geometry(page,root);if(value)await expect(input).toHaveValue(value);await expect(m.locator('h2')).toHaveText('הוספת משתתף לפי שם');await expect(m.locator('.participant-add-privacy-note')).toHaveCount(0);
  await m.evaluate(e=>e.scrollTo({top:0,behavior:'instant'}));await page.screenshot({path:info.outputPath(id+'-top.png'),animations:'disabled'});await m.evaluate(e=>e.scrollTo({top:e.scrollHeight,behavior:'instant'}));await page.screenshot({path:info.outputPath(id+'-bottom.png'),animations:'disabled'});
 });
+test('short manual title remains readable while its route entrance finishes',async({page})=>{
+ await page.setViewportSize({width:320,height:390});await open(page,32);
+ await page.locator('.event-manual-name-screen .event-modal-header > div:first-child').evaluate(e=>{
+  e.animate([{transform:'translateY(450px)'},{transform:'translateY(0px)'}],{duration:3000,easing:'linear'});
+ });
+ await geometry(page,32);
+});
 test('existing manual empty and Unicode whitespace errors clear with typing; keyboard and Back do not save',async({page})=>{
  await page.setViewportSize({width:320,height:390});await open(page,32);const input=page.locator('.event-manual-name-screen input'),cta=page.locator('.event-manual-name-screen [data-action="event-add-guest"]');await input.press('Enter');await expect(input).toHaveAttribute('aria-invalid','true');await expect(input).toBeFocused();await input.fill('\u200b \u2060');await input.press('Enter');await expect(input).toHaveAttribute('aria-invalid','true');await input.fill('אורן ישראלי');await expect(input).not.toHaveAttribute('aria-invalid','true');await expect(page.locator('.event-manual-name-screen .field-error')).toHaveCount(0);await input.press('Tab');await expect(cta).toBeFocused();await page.getByRole('button',{name:'חזרה לדרכי ההוספה',exact:true}).press('Enter');await expect(page.locator('.event-invitation-choice-screen')).toBeVisible();await page.locator('[data-participant-view="manual"]').click();await expect(input).toHaveValue('');
 });

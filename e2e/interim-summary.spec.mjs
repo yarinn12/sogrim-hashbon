@@ -86,8 +86,7 @@ test("empty summary keeps the existing add-expense action without an interim pay
 
 
 async function expectSettledDisclosureRotation(row,direction){
- // Bounding rectangles include the in-flight rotated square. Wait for both
- // diagonal and off-diagonal terms to settle before checking the exact size.
+ // Verify that the disclosure reached the expected rotation state.
  await expect.poll(()=>row.locator(".transfer-expand-indicator").evaluate((element,target)=>{
   const m=new DOMMatrix(getComputedStyle(element).transform),epsilon=.000001;
   return Math.abs(m.a-target)<epsilon&&Math.abs(m.d-target)<epsilon&&Math.abs(m.b)<epsilon&&Math.abs(m.c)<epsilon;
@@ -101,12 +100,13 @@ async function expectCenteredStatus(row){
   const path=arrow.querySelector("svg path");let paintedCenter=null;
   if(path){const b=path.getBBox(),point=new DOMPoint(b.x+b.width/2,b.y+b.height/2).matrixTransform(path.getScreenCTM());paintedCenter=point.y;}
   return {outside,centerDifference:Math.abs(a.y+a.height/2-t.y-t.height/2),paintedDifference:paintedCenter===null?null:Math.abs(paintedCenter-t.y-t.height/2),
-   iconSize:a.width,root:parseFloat(getComputedStyle(document.documentElement).fontSize),labelVisible:t.width>0&&t.height>0,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth};
+   iconWidth:parseFloat(getComputedStyle(arrow).width),iconHeight:parseFloat(getComputedStyle(arrow).height),root:parseFloat(getComputedStyle(document.documentElement).fontSize),labelVisible:t.width>0&&t.height>0,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth};
  });
  expect(geometry.centerDifference,"the actual status and indicator boxes must share a vertical center").toBeLessThanOrEqual(.5);
  expect(geometry.paintedDifference,"the shared source chevron must paint at the label center").not.toBeNull();
  expect(geometry.paintedDifference).toBeLessThanOrEqual(.5);
- expect(geometry.iconSize).toBeCloseTo(geometry.root*.875,1);
+ expect(geometry.iconWidth).toBeCloseTo(geometry.root*.875,1);
+ expect(geometry.iconHeight).toBeCloseTo(geometry.root*.875,1);
  expect(geometry.labelVisible).toBe(true);expect(geometry.overflow).toBe(false);expect(geometry.outside,"every status glyph must fit the visible status cluster at the requested text size").toEqual([]);
 }
 for(const root of [16,20,32])for(const closed of [false,true]){
@@ -124,3 +124,15 @@ for(const root of [16,20,32])for(const closed of [false,true]){
   const after=cloud.state().events[0];expect(after.expenses).toEqual(before.expenses);expect(after.transfers).toEqual(before.transfers);expect(after.locked).toBe(before.locked);expect(cloud.errors).toEqual([]);
  });
 }
+
+test("status indicator keeps its requested layout size during disclosure rotation",async({page,baseURL})=>{
+ const {screen,cloud}=await setup(page,baseURL,{root:32,closed:true});
+ const row=screen.locator(".transfer-row").first();
+ await expect(row).toHaveAttribute("aria-expanded","false");
+ await row.locator(".transfer-expand-indicator").evaluate(element=>{
+  element.style.setProperty("transition","none","important");
+  element.style.setProperty("transform","rotate(45deg)","important");
+ });
+ await expectCenteredStatus(row);
+ expect(cloud.errors).toEqual([]);
+});
