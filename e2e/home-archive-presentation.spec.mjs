@@ -38,6 +38,33 @@ test('[regression] tall event row uses its visible action glyph for a physical c
  await homeArchiveClick(page,action);
  expect(await page.evaluate(()=>window.clicked)).toBe(1);
 });
+
+test('[regression] archive action realigns after a late scroll restores its covered center',async({page})=>{
+ await page.setViewportSize({width:568,height:360});
+ await page.setContent(`<style>body{margin:0}.before{height:500px}.after{height:700px}#archive{display:block;margin-left:21px;width:261px;height:92px;scroll-margin-block:0 300px}.product-route-controls{position:fixed;left:136px;top:10px;z-index:3}.product-route-controls button{width:48px;height:48px}nav{position:fixed;left:104px;bottom:14px;width:360px;height:150px;background:#dde5e3;z-index:2}</style><div class="before"></div><button id="archive" onclick="window.archiveClicks=(window.archiveClicks||0)+1">ארכיון</button><div class="after"></div><div class="product-route-controls"><button>נגישות</button></div><nav aria-label="ניווט ראשי"></nav>`);
+ await page.evaluate(()=>{
+  const action=document.querySelector('#archive');let coveredScroll;
+  window.archiveRestores=0;
+  addEventListener('scroll',()=>{
+   const r=action.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+   if(!action.contains(hit))coveredScroll=scrollY;
+   else if(coveredScroll!==undefined&&!window.archiveRestores){
+    window.archiveRestores++;
+    // The original capture restores the covered position on the next frame.
+    requestAnimationFrame(()=>scrollTo({top:coveredScroll,behavior:'instant'}));
+   }
+  });
+ });
+ await homeArchiveClick(page,page.locator('#archive'));
+ expect(await page.evaluate(()=>window.archiveRestores)).toBe(1);
+ expect(await page.evaluate(()=>window.archiveClicks)).toBe(1);
+});
+
+test('[negative control] archive reach rejects a permanently covered center',async({page})=>{
+ await page.setViewportSize({width:568,height:360});
+ await page.setContent('<style>body{margin:0}#archive{margin:100px 21px;width:261px;height:92px}nav{position:fixed;bottom:0;height:150px;width:100%}.foreign-overlay{position:fixed;inset:0;background:#fff;z-index:100}</style><button id="archive">ארכיון</button><nav aria-label="ניווט ראשי"></nav><div class="foreign-overlay"></div>');
+ await expect(homeArchiveReach(page,page.locator('#archive'))).rejects.toThrow(/Timeout 8000ms exceeded/);
+});
 test('[regression] private pin copy agrees with acknowledged account storage',async({page})=>{
  await openHomeArchive(page);const before=homeArchiveRecords(await homeArchiveState(page));await homeArchiveClick(page,page.locator('[data-action="toggle-personal-event-pin"]'));await expect(page.locator('.event-status-menu')).toHaveCount(0);
  await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('qa-invite-server-row')).state.personalEventPinPreferences?.updates?.['friend-weekend']?.pinned)).toBe(true);

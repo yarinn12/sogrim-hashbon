@@ -1,3 +1,5 @@
+import {expect} from '@playwright/test';
+
 // Measure actual participant glyphs, checkbox shapes and tap targets.
 export default function measureExpenseParticipants() {
  const modal=document.querySelector('.expense-step-modal[data-expense-step="participants"]');
@@ -12,4 +14,14 @@ export default function measureExpenseParticipants() {
   names:[...modal.querySelectorAll('.expense-participant-row-copy strong')].map(leaf),bulkMark:mark(bulk.querySelector('span[aria-hidden="true"]')),
   rowMark:mark(modal.querySelector('.expense-participant-row-check')),
   controls:[...modal.querySelectorAll('.expense-participant-row,.expense-select-all-compact,.expense-participant-add-launch')].map(rect)};
+}
+
+export async function measureSettledExpenseParticipants(page) {
+ // Exact style comparisons describe the settled selection, not a color sampled
+ // partway through its existing transition. Permanent differences remain visible.
+ await expect.poll(()=>page.locator('.expense-step-modal[data-expense-step="participants"]').evaluate(modal=>
+  [...modal.querySelectorAll('.expense-participant-row-check,.expense-select-all-compact>span[aria-hidden="true"]')]
+   .some(mark=>mark.getAnimations().some(animation=>!['finished','idle'].includes(animation.playState)))
+ )).toBe(false);
+ return page.evaluate(measureExpenseParticipants);
 }

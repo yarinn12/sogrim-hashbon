@@ -1,4 +1,4 @@
-import measureExpenseParticipants from "./helpers/expenseParticipantPresentation.mjs";
+import {measureSettledExpenseParticipants} from "./helpers/expenseParticipantPresentation.mjs";
 import measureExpensePayer from "./helpers/expensePayerPresentation.mjs";
 import measureExpenseName from "./helpers/expenseNamePresentation.mjs";
 import measureExpenseFlowTypography from "./helpers/expenseFlowTypography.mjs";
@@ -1114,7 +1114,7 @@ for(const root of [16,20,32]) {
   const selected=()=>dialog.locator('[data-action="expense-shared"]:checked').count();
   for(const width of [320,393,411]){
    await page.setViewportSize({width,height:852});await page.evaluate(()=>document.fonts.ready);
-   const m=await page.evaluate(measureExpenseParticipants),context=`participants/${width}/${root}`;
+   const m=await measureSettledExpenseParticipants(page),context=`participants/${width}/${root}`;
    expect(m.noOverflow,context).toBe(true);expect(m.currencyVisible,context).toBe(false);expect(m.bodyHeight,context).toBeGreaterThanOrEqual(80);
    expect(m.addStrong.font,context).toBeCloseTo(root*.875,1);expect(m.addSmall.font,context).toBeCloseTo(root*.8125,1);expect(m.bulkCopy.font,context).toBeCloseTo(root*.875,1);
    for(const leaf of [m.addStrong,m.addSmall,m.bulkCopy,...m.names])expect(leaf.fits,context+': '+leaf.text).toBe(true);
@@ -1135,6 +1135,28 @@ for(const root of [16,20,32]) {
   await page.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();await expect(page.locator('.expense-row')).toHaveCount(1);expect(errors).toEqual([]);
  });
 }
+
+const participantMeasurementFixture=`<style>html{font-size:20px}*{box-sizing:border-box}.expense-flow-body{display:grid;gap:8px;width:300px;min-height:160px}.expense-source-currency-field{display:none}.expense-participant-add-launch{display:grid}.expense-participant-add-launch strong,.expense-select-all-compact{font-size:.875rem}.expense-participant-add-launch small{font-size:.8125rem}.expense-select-all-compact,.expense-participant-row{display:flex;align-items:center;gap:10px;min-width:44px;min-height:44px}.expense-participant-row-copy strong{font-size:.875rem}.expense-select-all-compact>span[aria-hidden],.expense-participant-row-check{display:grid;width:24px;height:24px;min-width:24px;border:1px solid rgb(11,74,56);border-radius:6px;background:transparent;color:rgb(11,74,56)}svg{width:15px;stroke-width:2px}.expense-participant-row-check{border-color:rgb(170,182,178);color:transparent;transition:color 1000ms linear,border-color 1000ms linear}.expense-participant-checkbox:checked~.expense-participant-row-check{border-color:rgb(11,74,56);color:rgb(11,74,56)}</style><div class="expense-step-modal" data-expense-step="participants"><div class="expense-source-currency-field"></div><div class="expense-flow-body"><button class="expense-participant-add-launch"><strong>הוסף משתתף</strong><small>חבר, קישור או שם</small></button><button class="expense-select-all-compact"><span aria-hidden="true"><svg></svg></span><span>סמן את כולם</span></button><label class="expense-participant-row"><input type="checkbox" class="expense-participant-checkbox"><span class="expense-participant-row-copy"><strong>משתתף בדיקה</strong></span><span class="expense-participant-row-check"><svg></svg></span></label></div></div>`;
+
+test('[regression] participant mark comparison waits for the actual selection transition',async({page},info)=>{
+ await page.setContent(participantMeasurementFixture);
+ await page.locator('.expense-participant-row-check').evaluate(e=>getComputedStyle(e).color);
+ await page.locator('.expense-participant-checkbox').check();
+ const animations=await page.locator('.expense-participant-row-check').evaluate(e=>e.getAnimations().map(a=>({state:a.playState,property:a.transitionProperty,duration:a.effect.getTiming().duration})));
+ expect(animations.some(a=>a.state==='running'&&a.property==='color')).toBe(true);
+ await info.attach('participant-measurement-transitions',{body:JSON.stringify(animations),contentType:'application/json'});
+ const m=await measureSettledExpenseParticipants(page);
+ expect(m.bulkMark).toEqual(m.rowMark);
+ expect(m.rowMark.width).toBe('24px');expect(m.rowMark.radius).toBe('6px');expect(m.rowMark.background).toBe('rgba(0, 0, 0, 0)');
+});
+
+test('[negative control] settled participant measurement retains a permanent mark mismatch',async({page})=>{
+ await page.setContent(participantMeasurementFixture);
+ await page.locator('.expense-participant-row-check').evaluate(e=>{e.style.transition='none';e.style.color='rgb(180,0,0)';e.style.width='23px';e.style.minWidth='23px';});
+ const m=await measureSettledExpenseParticipants(page);
+ expect(m.bulkMark).not.toEqual(m.rowMark);
+ expect(m.rowMark.color).toBe('rgb(180, 0, 0)');expect(m.rowMark.width).toBe('23px');
+});
 
 test('expense progress bars guard required fields and retain draft on direct navigation',async({page})=>{
  await openTypographyHome(page);await openEvent(page,OPEN_EVENT);await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();
