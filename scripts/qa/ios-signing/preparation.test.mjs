@@ -1,11 +1,11 @@
 import {SOURCE_QA_JOBS} from './source-ci-required-jobs.mjs';
 import assert from 'node:assert/strict';
-import {generateKeyPairSync, randomBytes} from 'node:crypto';
+import {createHash, generateKeyPairSync, randomBytes} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {RELEASE_SOURCE, RELEASE_TREE, SOURCE, requiredRuns, verifyRuns, verifyCommit,
   requireUnusedArtifactSlot, readUnusedBuild, verifyCheckout, APPLE_APP_ID, SOURCE_BRANCH} from './source-guard.mjs';
-import {protect, unprotect} from './protect-artifact.mjs';
+import {protect, unprotect, publicIpaIdentity} from './protect-artifact.mjs';
 import {verifyRuns as verifyIntakeRuns, readUnusedBuild as readIntakeUnusedBuild} from './intake-source-guard.mjs';
 
 const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '42274817530', SOURCE_WINDOWS_QA_RUN: '42274817664',
@@ -144,6 +144,15 @@ test('checkout rejects another tree/PWA/store metadata',()=>{
 });
 const pem=()=>generateKeyPairSync('ec',{namedCurve:'prime256v1'}).privateKey.export({type:'pkcs8',format:'pem'});
 const key=pem(),otherKey=pem(),payload=randomBytes(4096);
+const packageFacts={bytes:payload.length,ipaSha256:createHash('sha256').update(payload).digest('hex')};
+test('public original IPA facts contain only verified hash and exact size',()=>{
+  assert.deepEqual(publicIpaIdentity({...packageFacts,privateReceipt:'must remain private'},payload),
+    {ipaSha256:packageFacts.ipaSha256,ipaSize:payload.length});
+});
+for(const [name,change] of [['missing size',{bytes:undefined}],['zero size',{bytes:0}],
+  ['fractional size',{bytes:1.5}],['unbounded size',{bytes:536870913}],
+  ['changed size',{bytes:payload.length+1}],['changed digest',{ipaSha256:'f'.repeat(64)}]])
+  test('public original IPA facts reject '+name,()=>assert.throws(()=>publicIpaIdentity({...packageFacts,...change},payload)));
 const identity={sourceCommit:SOURCE,sourceTree:RELEASE_TREE,version:'4.59',build:'195',buildRunId:'synthetic',buildRunAttempt:'1'};
 test('authenticated encryption round trip and canonical DER whitespace',()=>{
   const r=protect(payload,'\n'+key+'\n',identity);

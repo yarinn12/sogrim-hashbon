@@ -10,6 +10,17 @@ const TREE = '6c8c8afe3315d3f86f96c4805aae23894a7aa210';
 assert.equal(SOURCE, '2d4a973a197a2228fcd134f01d6763f500fd63bb', 'Expected the coordinator frozen release source');
 const hash = data => createHash('sha256').update(data).digest('hex');
 
+// Public package facts needed to bind the next stage without decrypting the archive.
+export function publicIpaIdentity(manifest, ipa) {
+  assert.ok(Buffer.isBuffer(ipa), 'Original IPA bytes are required');
+  assert.ok(Number.isSafeInteger(manifest.bytes) && manifest.bytes > 0 && manifest.bytes <= 536870912,
+    'Verified original IPA size is missing or unbounded');
+  assert.equal(ipa.length, manifest.bytes, 'Original IPA size changed after verification');
+  assert.match(manifest.ipaSha256 ?? '', /^[a-f0-9]{64}$/, 'Verified original IPA digest is missing');
+  assert.equal(hash(ipa), manifest.ipaSha256, 'Original IPA bytes changed after verification');
+  return Object.freeze({ipaSha256: manifest.ipaSha256, ipaSize: manifest.bytes});
+}
+
 function derive(pem, salt, aad) {
   const secret = createPrivateKey(pem).export({type: 'pkcs8', format: 'der'});
   try { return Buffer.from(hkdfSync('sha256', secret, salt, Buffer.from(CONTEXT + '\n' + aad), 32)); }
@@ -66,6 +77,7 @@ function main() {
     assert.equal(manifest.signatureVerified, true);
     assert.equal(manifest.everyWwwAssetMatches, true);
     assert.equal(manifest.everyWwwAssetMatchesCanonicalGitBuild, true);
+    const publicIdentity = publicIpaIdentity(manifest, readFileSync('build/ios/SogrimHashbon.ipa'));
     const result = protect(readFileSync(input), pem, {sourceCommit: manifest.sourceCommit,
       sourceTree: manifest.sourceTree, version: manifest.version, build: manifest.build, buildRunId: process.env.GITHUB_RUN_ID,
       buildRunAttempt: process.env.GITHUB_RUN_ATTEMPT, ipaSha256: manifest.ipaSha256});
@@ -73,6 +85,7 @@ function main() {
     writeFileSync(resolve(output, 'release.tar.enc'), result.ciphertext);
     writeFileSync(resolve(output, 'envelope.json'), JSON.stringify(result.envelope, null, 2) + '\n');
     console.log('Verified release encrypted; only ciphertext and envelope may be retained as GitHub artifacts.');
+    console.log('PUBLIC_ORIGINAL_SIGNED_IPA_IDENTITY ' + JSON.stringify(publicIdentity));
   } else if (mode === 'decrypt') {
     const envelope = JSON.parse(readFileSync(resolve(input, 'envelope.json'), 'utf8'));
     const plaintext = unprotect(readFileSync(resolve(input, 'release.tar.enc')), envelope, pem);
