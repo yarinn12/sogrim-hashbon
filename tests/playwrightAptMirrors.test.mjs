@@ -198,3 +198,14 @@ test('each Ubuntu Playwright install in qa is immediately preceded by the guarde
  }
  assert.deepEqual(hooked,expected);
 });
+
+test('font provenance guards the same Ubuntu24 dependency installation before browsers',()=>{
+ const workflow=readFileSync(new URL('../.github/workflows/cross-engine-font-provenance-qa.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
+ const hook='scripts/qa/prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24';
+ assert.equal(workflow.split(hook).length-1,1,'Font installation must use the guarded existing mirrors');
+ assert.match(workflow,/runs-on: ubuntu-24\.04/);
+ const before=workflow.indexOf(hook),install=workflow.indexOf('run: npx playwright install --with-deps chromium firefox webkit');
+ assert.ok(before>=0&&install>before);
+ assert.equal((workflow.slice(before,install).match(/      - name:/g)??[]).length,1);
+ assert.match(workflow.slice(0,install),/sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS,RUNNER_ARCH,RUNNER_ENVIRONMENT/);
+});

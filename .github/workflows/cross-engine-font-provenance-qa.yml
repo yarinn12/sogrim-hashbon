@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   linux-font-provenance:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -25,6 +25,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Prioritize existing Ubuntu mirrors for Playwright
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS,RUNNER_ARCH,RUNNER_ENVIRONMENT node scripts/qa/prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24
       - name: Install Chromium, Firefox and WebKit
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Capture paired font scenarios at normal and accessibility sizes
