@@ -1,4 +1,5 @@
 import {renderBlockedUsersView, captureBlockedUsersDisclosure, restoreBlockedUsersDisclosure} from "./ui/blockedUsersPresentation.mjs";
+import {createPointerRenderRecovery} from "./ui/pointerRenderRecovery.mjs";
 import {renderProfileAvatarPickerView} from "./ui/profileAvatarPresentation.mjs";
 import {renderFriendsSearchEmptyView} from "./ui/friendsSearchEmptyPresentation.mjs";
 import {renderHomeEventCardView} from "./ui/homeEventCardPresentation.mjs";
@@ -688,6 +689,11 @@ let eventLongPressTarget = null;
 let suppressedEventOpenId = "";
 let suppressEventOpenUntil = 0;
 let eventWorkspaceSwipe = null;
+const paymentPressRecovery = createPointerRenderRecovery({
+  resolveTarget: resolvePaymentPressTarget,
+  resolveRenderTarget: currentPaymentPressTarget,
+  preservePosition: offset => window.scrollBy?.({left: 0, top: offset, behavior: "instant"})
+});
 let resumeSyncRequest = null;
 let resumeSyncScope = "";
 let resumeSyncFollowUpRequest = null;
@@ -730,6 +736,14 @@ app.addEventListener("pointerup", handleEventLongPressEnd);
 app.addEventListener("pointercancel", handleEventLongPressCancel);
 document.addEventListener("pointerdown", handleEventPressPointerDown, true);
 document.addEventListener("click", consumeEventPressClick, true);
+document.addEventListener("pointerdown", handlePaymentPointerDown, true);
+document.addEventListener("pointermove", event => paymentPressRecovery.move(event), true);
+document.addEventListener("pointerup", event => paymentPressRecovery.finish(event), true);
+document.addEventListener("pointercancel", event => paymentPressRecovery.cancel(event), true);
+document.addEventListener("contextmenu", () => paymentPressRecovery.cancel(), true);
+document.addEventListener("click", consumePaymentCompatibilityClick, true);
+window.addEventListener("blur", () => paymentPressRecovery.cancel());
+window.addEventListener("pagehide", () => paymentPressRecovery.cancel());
 app.addEventListener("pointerdown", handleEventWorkspaceSwipeStart);
 app.addEventListener("pointerup", handleEventWorkspaceSwipeEnd);
 app.addEventListener("pointercancel", cancelEventWorkspaceSwipe);
@@ -1137,6 +1151,7 @@ function commitRenderedScreen(html) {
 
   const currentRenderGeneration = ++renderGeneration;
   const interactionSnapshot = captureRenderInteractionState();
+  const paymentPressAnchor = paymentPressRecovery.captureRenderAnchor();
   const persistentIdentity = app.querySelector(
     ":scope > .screen > .product-app-identity"
   );
@@ -1159,6 +1174,9 @@ function commitRenderedScreen(html) {
   lastRenderedScreenKey = nextScreenKey;
   if (!screenChanged) {
     restoreRenderInteractionState(interactionSnapshot, currentRenderGeneration);
+    if (currentRenderGeneration === renderGeneration && paymentPressRecovery.restoreRenderAnchor(paymentPressAnchor)) {
+      interactionSnapshot.pageScrollY = window.scrollY;
+    }
   }
 
   if (!screenChanged) return;
@@ -10868,6 +10886,58 @@ function handleEventLongPressEnd(event) {
     // existing click route once; the gesture token consumes later compat clicks.
     result.activationTarget?.click();
   }
+}
+
+function paymentPressScope(target) {
+  if (screen.name !== "settlement" || eventDialog || expenseDraft || eventStatusMenu ||
+      importantActionDialog || settlementCelebration || settlementCloseConfirmation) return null;
+  if (!target || !app.contains(target) || !target.closest(".settlement-screen .transfer-row") ||
+      target.disabled || target.inert || target.closest("[inert]") || target.getAttribute("aria-disabled") === "true") return null;
+  const action = target.dataset.action;
+  if (!["mark-paid", "mark-pending", "mark-pending-group"].includes(action)) return null;
+  const ids = action === "mark-pending-group"
+    ? String(target.dataset.transferIds || "").split(",").filter(Boolean)
+    : [target.dataset.transferId].filter(Boolean);
+  const event = getEvent(screen.eventId);
+  if (!event || !ids.length || new Set(ids).size !== ids.length) return null;
+  const transfers = ids.map(id => event.transfers.find(transfer => transfer.id === id));
+  if (transfers.some(transfer => !transfer || !canCurrentParticipantUpdateTransfer(event, transfer) ||
+      (action === "mark-paid" ? transfer.status === "paid" : transfer.status !== "paid"))) return null;
+  return {account: captureFriendAccountContext(), route: screen, action, ids,
+    fingerprint: JSON.stringify([window.innerWidth, window.innerHeight, event.id, event.locked, event.currency, event.participantIds,
+      event.adminIds, event.createdByParticipantId, event.adminsCanEditOnly,
+      transfers.map(transfer => [transfer.id, transfer.status, transfer.statusUpdatedAt,
+        transfer.markedPaidAt, transfer.markedPaidByParticipantId, transfer.amount,
+        transfer.fromParticipantId, transfer.toParticipantId])])};
+}
+
+function handlePaymentPointerDown(event) {
+  const target = event.target.closest?.("button[data-action]");
+  paymentPressRecovery.start(event, target, paymentPressScope(target));
+}
+
+function currentPaymentPressTarget(scope) {
+  if (!scope.account.isCurrent() || scope.route !== screen) return null;
+  const candidates = [...app.querySelectorAll(".settlement-screen .transfer-row button[data-action]")]
+    .filter(button => button.dataset.action === scope.action &&
+      JSON.stringify(scope.action === "mark-pending-group"
+        ? String(button.dataset.transferIds || "").split(",").filter(Boolean)
+        : [button.dataset.transferId].filter(Boolean)) === JSON.stringify(scope.ids));
+  if (candidates.length !== 1) return null;
+  const target = candidates[0], current = paymentPressScope(target);
+  if (!current || current.fingerprint !== scope.fingerprint) return null;
+  return target;
+}
+
+function resolvePaymentPressTarget(scope, pointer) {
+  const target = currentPaymentPressTarget(scope);
+  return target?.contains(document.elementFromPoint(pointer.clientX, pointer.clientY)) ? target : null;
+}
+
+function consumePaymentCompatibilityClick(event) {
+  if (!paymentPressRecovery.consumeCompatibilityClick(event)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
 }
 
 function handleEventWorkspaceSwipeStart(event) {
