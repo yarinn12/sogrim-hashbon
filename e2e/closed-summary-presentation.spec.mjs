@@ -4,6 +4,86 @@ import {closedSummarySeed,eventId} from "./helpers/closedSummaryFixture.mjs";
 import {formatSettlementSummary} from "../src/domain/settlementSummary.mjs";
 
 test.use({serviceWorkers:"block"});
+
+for(const root of [16,32]) test('payment activation survives a notice render between pointer down and up root '+root, async ({page,baseURL},info) => {
+ const cloud=await setup(page,baseURL,{root,w:root===32?320:393,payer:true});
+ const transfer=event(cloud).transfers.find(t=>t.fromParticipantId===cloud.state().currentParticipantId);
+ expect(transfer).toBeTruthy();
+ const selector='.transfer-row [data-action="mark-paid"][data-transfer-id="'+transfer.id+'"]';
+ await page.locator('.settlement-debt-share > summary').press('Enter');
+ await page.locator('.settlement-debt-share [data-action="copy-settlement"]').click();
+ await expect(page.locator('[data-action="dismiss-notice"]')).toBeVisible();
+ const action=page.locator(selector);
+ await action.scrollIntoViewIfNeeded();
+ const point=await action.evaluate(button=>{
+  const box=button.getBoundingClientRect();
+  const point={x:box.x+box.width/2,y:box.y+box.height/2};
+  return {...point,hit:button.contains(document.elementFromPoint(point.x,point.y))};
+ });
+ expect(point.hit).toBe(true);
+ await page.mouse.move(point.x,point.y);
+ await page.mouse.down();
+ const evidence=await page.evaluate(async ({selector,point})=>{
+  const before=document.querySelector(selector);
+  document.dispatchEvent(new CustomEvent('settle-friends:notice',{detail:{message:'הודעת בדיקה מבוקרת בזמן לחיצה'}}));
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const after=document.querySelector(selector);
+  return {replaced:before!==after,beforeConnected:before.isConnected,afterConnected:after?.isConnected,
+   sameHit:after?.contains(document.elementFromPoint(point.x,point.y)),transferId:after?.dataset.transferId};
+ },{selector,point});
+ await info.attach('payment-pointer-render-boundary',{body:JSON.stringify(evidence),contentType:'application/json'});
+ expect(evidence).toEqual({replaced:true,beforeConnected:false,afterConnected:true,sameHit:true,transferId:transfer.id});
+ await page.mouse.up();
+ await expect.poll(()=>event(cloud).transfers.find(t=>t.id===transfer.id)?.status).toBe('paid');
+ await expect.poll(()=>cloud.writes.at(-1)?.state.events[0].transfers.find(t=>t.id===transfer.id)?.status).toBe('paid');
+ expect(event(cloud).activityLog.filter(item=>item.kind==='transfer-paid'&&item.entityId===transfer.id)).toHaveLength(1);
+ // A delayed compatibility click must not activate the newly displayed undo.
+ const undo=page.locator('[data-action="mark-pending"][data-transfer-id="'+transfer.id+'"]');
+ await undo.dispatchEvent('click',{bubbles:true,detail:1,button:0});
+ await expect(page.locator('.transfer-row[data-transfer-id="'+transfer.id+'"]').first()).toHaveAttribute('data-transfer-status','paid');
+ expect(event(cloud).transfers.find(t=>t.id===transfer.id)?.status).toBe('paid');
+ // A fresh intentional press is still available and reaches the real write ACK.
+ await undo.click();
+ await expect.poll(()=>cloud.writes.at(-1)?.state.events[0].transfers.find(t=>t.id===transfer.id)?.status).toBe('pending');
+ expect(cloud.errors).toEqual([]);
+});
+
+for(const change of ['cancel','different transfer']) test('payment recovery rejects '+change+' after a render',async({page,baseURL},info)=>{
+ const cloud=await setup(page,baseURL,{root:16,w:393,payer:true});
+ const before=finances(cloud),transfer=event(cloud).transfers.find(t=>t.fromParticipantId===cloud.state().currentParticipantId);
+ const selector='.transfer-row [data-action="mark-paid"][data-transfer-id="'+transfer.id+'"]';
+ const action=page.locator(selector);await action.scrollIntoViewIfNeeded();
+ const point=await action.evaluate(button=>{const b=button.getBoundingClientRect();return{x:b.x+b.width/2,y:b.y+b.height/2};});
+ await page.evaluate(()=>document.addEventListener('pointerdown',event=>{
+  window.__paymentTestPointer={pointerId:event.pointerId,pointerType:event.pointerType,isPrimary:event.isPrimary};
+ },{capture:true,once:true}));
+ await page.mouse.move(point.x,point.y);await page.mouse.down();
+ const boundary=await page.evaluate(async({selector,point,change})=>{
+  const old=document.querySelector(selector);
+  document.dispatchEvent(new CustomEvent('settle-friends:notice',{detail:{message:'בדיקת ביטול פעולה בזמן רענון'}}));
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+  const current=document.querySelector(selector);
+  let otherId='';
+  if(change==='cancel'){
+   const pointer=window.__paymentTestPointer;
+   if(!pointer||!Number.isInteger(pointer.pointerId))throw new Error('Original pointer identity was not captured');
+   document.dispatchEvent(new PointerEvent('pointercancel',{...pointer,button:0,bubbles:true}));
+  }
+  else{
+   const other=[...document.querySelectorAll('.transfer-row [data-action="mark-paid"]')].find(button=>button.dataset.transferId!==current.dataset.transferId);
+   if(!other)throw new Error('A second transfer is required for the wrong-target control');
+   otherId=other.dataset.transferId;
+   other.style.cssText=`inset:auto!important;position:fixed!important;left:${point.x-22}px!important;top:${point.y-22}px!important;margin:0!important;width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;z-index:99999!important;transform:none!important`;
+  }
+  return {replaced:old!==current,otherId,hit:document.elementFromPoint(point.x,point.y)?.closest('[data-action]')?.dataset.transferId};
+ },{selector,point,change});
+ await info.attach('cancelled-payment-pointer',{body:JSON.stringify(boundary),contentType:'application/json'});
+ expect(boundary.replaced).toBe(true);
+ if(change==='different transfer')expect(boundary.hit).toBe(boundary.otherId);
+ await page.mouse.up();
+ await expect(page.locator('.transfer-row[data-transfer-status="paid"]')).toHaveCount(0);
+ expect(finances(cloud)).toEqual(before);expect(cloud.errors).toEqual([]);
+});
 const event=cloud=>cloud.state().events[0];
 const finances=cloud=>{const e=event(cloud);return {expenses:e.expenses,transfers:e.transfers,locked:e.locked}};
 async function setup(page,baseURL,c={}) {
