@@ -54,7 +54,11 @@ for(const root of [16,20,32]){
   expect(amounts(cloud)).toEqual(before);
   expect(cloud.writes.at(-1).state.events[0].transfers.find(t=>t.id===id)?.status).toBe("paid");
   await cloud.reload();await page.locator('[data-action="open-event"][data-event-id="'+eventId+'"]').click();await page.getByRole("button",{name:"פתיחת הסיכום: מי מעביר למי",exact:true}).click();
-  await expect(screen.locator('.transfer-row[data-transfer-id="'+id+'"]')).toHaveAttribute("data-transfer-status","paid");expect(amounts(cloud)).toEqual(before);expect(cloud.errors).toEqual([]);
+  await expect(screen.locator('.transfer-row[data-transfer-id="'+id+'"]')).toHaveAttribute("data-transfer-status","paid");expect(amounts(cloud)).toEqual(before);
+  if (cloud.diagnostics.length) await test.info().attach("personal-pins-reload-diagnostics", {
+    contentType: "application/json", body: JSON.stringify(cloud.diagnostics)
+  });
+  expect(cloud.errors).toEqual([]);
  });
 }
 test("large type gives the transfer heading full width and keeps the shortcut compact",async({page,baseURL})=>{

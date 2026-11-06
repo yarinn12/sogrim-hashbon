@@ -44,5 +44,6 @@ test('foreground failures prevent a successful refresh receipt',async()=>{
 test('only the incoming-change case uses live refresh and reload persistence stays present',async()=>{
  const fixture=await readFile(new URL('../e2e/helpers/personalPinsCloud.mjs',import.meta.url),'utf8');
  assert.match(fixture,/refresh: \(\) => refreshPersonalPinsSnapshot\(page, \{ origin, space, updatedAt: current\.updated_at \}\)/);
- assert.match(fixture,/reload: \(\) => errorMonitor\.withReload\(\(\) => page\.reload\(\)\)/);
+ assert.match(fixture,/reload: \(\) => errorMonitor\.withReload\(\(\) => page\.reload\(\), \{/);
+ assert.match(fixture,/ready: \(\) => expect\(page\.locator\("\.event-row"\)\)\.toHaveCount\(current\.state\.events\.length\)/);
 });

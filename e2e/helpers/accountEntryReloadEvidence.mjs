@@ -67,13 +67,51 @@ export function classifyAccountEntryReloadError(error, {
     item.response?.status >= 200 && item.response?.status < 300 &&
     [origin, '*'].includes(item.response?.allowOrigin) && item.finished &&
     item.finished > reload.boundaryStart && item.finished < reload.navigationStart);
+  // A workspace metadata probe can be the first of its exact query. In that
+  // case require the full workspace read on both sides of the navigation,
+  // an acknowledged old-document write, and no other failed or pending work.
+  const queryNames = [...url.searchParams.keys()].filter(name => name !== ATTEMPT_PARAM);
+  const workspaceId = url.searchParams.get('id');
+  const metadataProbe = attempt.method === 'GET' && queryNames.length === 2 &&
+    queryNames.includes('id') && queryNames.includes('select') &&
+    /^eq\.space-[A-Za-z0-9_-]+$/.test(workspaceId ?? '') &&
+    url.searchParams.get('select') === 'updated_at';
+  const sameWorkspace = item => {
+    const parsed = snapshotAttemptUrl(item.url, origin);
+    return parsed?.searchParams.get('id') === workspaceId;
+  };
+  const acknowledged = item => item.response?.status >= 200 && item.response?.status < 300 &&
+    [origin, '*'].includes(item.response?.allowOrigin) && item.finished && !item.failure;
+  const fullRead = (documentId, after, before) => [...attempts.values()].some(item => {
+    const parsed = snapshotAttemptUrl(item.url, origin);
+    return item.documentId === documentId && item.method === 'GET' && sameWorkspace(item) &&
+      parsed?.searchParams.get('select') === 'state,updated_at' &&
+      [...parsed.searchParams.keys()].length === 3 &&
+      item.sequence > after && item.finished < before && acknowledged(item);
+  });
+  const metadataProof = metadataProbe &&
+    fullRead(reload.oldDocumentId, reload.boundaryStart, reload.navigationStart) &&
+    fullRead(reload.finalDocumentId, reload.navigationCommit, reload.boundaryEnd) &&
+    [...attempts.values()].some(item =>
+      item.documentId === reload.oldDocumentId && item.method !== 'GET' &&
+      sameWorkspace(item) && item.sequence > reload.boundaryStart &&
+      item.finished < reload.navigationStart && acknowledged(item)) &&
+    ![...attempts.values()].some(item => item !== attempt &&
+      item.documentId === reload.oldDocumentId &&
+      item.sequence > reload.boundaryStart && item.sequence < reload.navigationCommit &&
+      (item.failure || item.method !== 'GET' && !acknowledged(item) ||
+        item.request && !acknowledged(item))) &&
+    ![...accountRequests.values()].some(item =>
+      item.sequence > reload.boundaryStart && item.sequence < reload.navigationCommit &&
+      (item.failure || !(item.status >= 200 && item.status < 300 &&
+        [origin, '*'].includes(item.allowOrigin) && item.finished)));
   const snapshotAcknowledged = [...attempts.values()].some(item => item.method !== 'GET' &&
     item.response?.status >= 200 && item.response?.status < 300 && item.finished &&
     item.finished > reload.boundaryStart && item.finished < reload.navigationStart);
   const accountAcknowledged = [...accountRequests.values()].some(item =>
     item.status >= 200 && item.status < 300 && item.finished &&
     item.finished > reload.boundaryStart && item.finished < reload.navigationStart);
-  if (!priorSameRequestAcknowledged || !snapshotAcknowledged ||
+  if ((!priorSameRequestAcknowledged && !metadataProof) || !snapshotAcknowledged ||
       !accountAcknowledged || runtimeErrors.length) return null;
   return { id, url: url.href, documentId: attempt.documentId, reason: 'webkit-unissued-reload-fetch' };
 }

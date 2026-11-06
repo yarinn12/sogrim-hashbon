@@ -87,7 +87,9 @@ export async function personalPinsCloud(page, baseURL, initialState, { legacyPin
   await connectPage(page);
   return { reads, writes, errors: errorMonitor.errors, diagnostics: errorMonitor.diagnostics,
     refresh: () => refreshPersonalPinsSnapshot(page, { origin, space, updatedAt: current.updated_at }),
-    reload: () => errorMonitor.withReload(() => page.reload()), state: () => structuredClone(current.state),
+    reload: () => errorMonitor.withReload(() => page.reload(), {
+      ready: () => expect(page.locator(".event-row")).toHaveCount(current.state.events.length)
+    }), state: () => structuredClone(current.state),
     update: next => { current = { ...current, state: structuredClone(next), updated_at: stamp() }; },
     conflicts: () => conflicts,
     setWriteFailure: reject => { writesRejected = reject; },

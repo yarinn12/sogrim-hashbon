@@ -12,7 +12,15 @@ test('account recovery regression: opening the request does not deliver an email
 });
 test('account recovery: empty and malformed email remain editable and cannot reach delivery',async({page,baseURL})=>{
  const f=await prepareAccountEntry(page,baseURL),gate=await request(page,{size:32,width:320,height:568});
- for(const email of['','invalid@example']){await gate.locator('input[name=email]').fill(email);await send(gate);await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');await expect(gate.locator('input[name=email]')).toHaveAttribute('aria-invalid','true');await expect(gate.locator('input[name=email]')).toBeFocused();await expect(gate.locator('input[name=email]')).toHaveValue(email)}
+ const input=gate.locator('input[name=email]');
+ // WebKit's empty fill can finish without clearing the mobile email control.
+ await input.press('ControlOrMeta+A');await input.press('Backspace');
+ await expect(input).toHaveValue('');await send(gate);
+ await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');
+ await expect(input).toHaveAttribute('aria-invalid','true');await expect(input).toBeFocused();await expect(input).toHaveValue('');
+ await input.fill('invalid@example');await expect(input).toHaveValue('invalid@example');await send(gate);
+ await expect(gate.locator('#account-auth-feedback')).toHaveRole('alert');
+ await expect(input).toHaveAttribute('aria-invalid','true');await expect(input).toBeFocused();await expect(input).toHaveValue('invalid@example');
  expect(f.record.recover).toHaveLength(0);await assertAccountLayout(gate,32);expectNoExternalFailures(f);
 });
 test('account recovery: acknowledged delivery uses normalized email and keeps invitation context',async({page,baseURL})=>{

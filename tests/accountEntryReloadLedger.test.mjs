@@ -77,6 +77,69 @@ test('iPhone CI ledger: both distinct unissued snapshot operations are retained'
   assert.deepEqual(diagnostics.map(item => item.raw), [patch, read]);
 });
 
+function metadataReadAtReloadLedger() {
+  const fixture = ledger({ boundaryStart: 252, navigationStart: 289, navigationCommit: 292, boundaryEnd: 539 });
+  fixture.context.attempts.clear();
+  const snapshot = (id, documentId, method, query, sequence, finished) => ({
+    id, documentId, method, sequence, finished,
+    url: `${ORIGIN}${PATH}?${query}&__qa_account_attempt=${id}`,
+    request: { sequence: sequence + 1 }, response: { status: 200, allowOrigin: '*' }
+  });
+  fixture.context.attempts.set('old-full-read', snapshot('old-full-read', 'old-document', 'GET',
+    'id=eq.space-account-entry&select=state%2Cupdated_at', 267, 272));
+  fixture.context.attempts.set('acknowledged-write', snapshot('acknowledged-write', 'old-document', 'PATCH',
+    'id=eq.space-account-entry&updated_at=eq.2026-10-01T08%3A00%3A01.000Z&select=updated_at', 281, 288));
+  fixture.context.attempts.set('new-full-read', snapshot('new-full-read', 'new-document', 'GET',
+    'id=eq.space-account-entry&select=state%2Cupdated_at', 517, 530));
+  fixture.context.accountRequests.get('acknowledged-account').finished = 269;
+  fixture.context.accountRequests.get('acknowledged-account').sequence = 253;
+  fixture.context.accountRequests.get('acknowledged-account').allowOrigin = '*';
+  const error = addUnissuedSnapshot(fixture, {
+    id: 'unissued-metadata-read', sequence: 290, errorSequence: 291, method: 'GET',
+    query: 'id=eq.space-account-entry&select=updated_at'
+  });
+  fixture.context.attempts.delete('prior-unissued-metadata-read');
+  return { fixture, error };
+}
+
+test('iPhone CI ledger: unissued metadata read during a fully acknowledged reload is diagnostic', () => {
+  const { fixture, error } = metadataReadAtReloadLedger();
+  const diagnostics = assertAccountEntryReloadLedger(fixture.record, fixture.context);
+  assert.equal(diagnostics.length, 1);
+  assert.equal(diagnostics[0].raw, error);
+  assert.deepEqual(fixture.record.pageErrors, [error]);
+});
+
+test('metadata diagnostic rejects missing read/write acknowledgement and real requests', () => {
+  for (const mutation of [
+    fixture => fixture.context.attempts.delete('old-full-read'),
+    fixture => fixture.context.attempts.delete('new-full-read'),
+    fixture => { fixture.context.attempts.get('new-full-read').response.allowOrigin = null; },
+    fixture => { fixture.context.attempts.get('acknowledged-write').response.status = 409; },
+    fixture => { fixture.context.attempts.get('acknowledged-write').finished = undefined; },
+    fixture => { fixture.context.attempts.get('acknowledged-write').url =
+      fixture.context.attempts.get('acknowledged-write').url.replace('space-account-entry', 'space-other'); },
+    fixture => { fixture.context.attempts.set('pending-old-read', {
+      id: 'pending-old-read', documentId: 'old-document', method: 'GET', sequence: 286,
+      request: { sequence: 287 }, url: `${ORIGIN}${PATH}?id=eq.space-account-entry&select=state%2Cupdated_at&__qa_account_attempt=pending-old-read`
+    }); },
+    fixture => { fixture.context.attempts.set('unissued-old-write', {
+      id: 'unissued-old-write', documentId: 'old-document', method: 'PATCH', sequence: 287,
+      url: `${ORIGIN}${PATH}?id=eq.space-account-entry&select=updated_at&__qa_account_attempt=unissued-old-write`
+    }); },
+    fixture => { fixture.context.attempts.get('unissued-metadata-read').request = { sequence: 291 }; },
+    fixture => { fixture.context.accountRequests.get('acknowledged-account').status = 401; },
+    fixture => { fixture.context.accountRequests.set('pending-account', { sequence: 286, method: 'PUT' }); },
+    fixture => fixture.context.accountRequests.clear(),
+    fixture => { fixture.context.browserName = 'chromium'; },
+    fixture => { fixture.record.runtimeErrors.push({ message: 'actual JavaScript error' }); }
+  ]) {
+    const { fixture } = metadataReadAtReloadLedger();
+    mutation(fixture);
+    assert.throws(() => assertAccountEntryReloadLedger(fixture.record, fixture.context));
+  }
+});
+
 function signedOutLedger() {
   const fixture = ledger({ boundaryStart: 240, navigationStart: 246, navigationCommit: 250, boundaryEnd: 510 });
   fixture.context.reloads[0].kind = 'signout';
