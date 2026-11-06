@@ -6,8 +6,8 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-export const RELEASE_SOURCE = '7d6e13f561578bc8001f789046e1275b8a166a39';
-export const RELEASE_TREE = '0641036614db318b59ed0a356e86da5623eef474';
+export const RELEASE_SOURCE = '8bdcd884aa916c528eff19fa3279c72ca481e575';
+export const RELEASE_TREE = 'd59723b37fd8839864d924496efc01247e97b9da';
 export const SOURCE = process.env.SOURCE_SHA;
 export const ARTIFACT_NAME = 'sogrim-ios-4.59-195-encrypted';
 export const APPLE_APP_ID = '6809952514';
