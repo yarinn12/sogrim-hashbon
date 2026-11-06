@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readable, readableAll } from '../e2e/helpers/syncNoticePresentation.mjs';
 
-test('a stable readable text uses one browser evaluation for the complete pass', async () => {
+test('a stable readable text is rechecked after the first browser evaluation resolves', async () => {
   let evaluations = 0;
   const locator = { evaluate: async () => {
     evaluations += 1;
@@ -11,7 +11,22 @@ test('a stable readable text uses one browser evaluation for the complete pass',
       last: { text: 'visible', lines: [{ top: 0 }] }, index: 0 };
   } };
   await readable(locator);
-  assert.equal(evaluations, 1);
+  assert.equal(evaluations, 2);
+});
+
+test('readability waits for current proof when a passing browser result becomes stale', async () => {
+  let evaluations = 0;
+  let currentReadable = false;
+  const locator = { evaluate: async () => {
+    evaluations += 1;
+    // The first proof was valid inside the browser, then a late render clipped it
+    // before the awaited protocol result reached the caller.
+    if (evaluations === 1) return { passed: true };
+    currentReadable = evaluations > 2;
+    return { passed: currentReadable };
+  } };
+  await readable(locator);
+  assert.equal(currentReadable, true, 'a stale passing result cannot finish the check');
 });
 
 function batchFixture(changed = false) {

@@ -42,6 +42,7 @@ const journeys = [
   "e2e/event-settings-overview-presentation.spec.mjs",
   "e2e/sync-notice-presentation.spec.mjs",
   "e2e/sync-notice-readable-regression.spec.mjs",
+  "e2e/sync-notice-readable.spec.mjs",
   "e2e/point-click-layout-shift.spec.mjs",
   "e2e/app-notice-presentation.spec.mjs",
   "e2e/event-share-presentation.spec.mjs",

@@ -75,6 +75,10 @@ async function readable(l) {
   try{
     await expect.poll(async()=>{
       outcome=await l.evaluate(probeReadablePass);
+      if(!outcome.passed)return false;
+      // A render may finish after the first browser evaluation resolves.
+      // Verify the current glyphs once more across that async boundary.
+      outcome=await l.evaluate(probeReadablePass);
       return outcome.passed;
     },{timeout:8000}).toBe(true);
   }catch(error){
