@@ -13,7 +13,8 @@
       "codex/android-asg-qa-coverage-20261015": false,
       "codex/android-host-profile-2d4-20261106": false,
       "codex/android-host-profile-info-2d4-20261107": false,
-      "codex/android-host-profile-stdout-2d4-20261107": false
+      "codex/android-host-profile-stdout-2d4-20261107": false,
+      "codex/android-host-profile-env-2d4-20261107": false
     }
   },
   "builds": [

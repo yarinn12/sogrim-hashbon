@@ -124,3 +124,22 @@ scope preflight, original APK/SDK/ASG/SwiftShader and full Native workload remai
 unchanged. The third workflow path has its own first run1/attempt1; both consumed
 workflow files remain unchanged and match only their old branches. No new cloud
 or first push is authorized before Root verifies the frozen local handoff.
+
+The original stdout run42310518170 passed the real BPF scope preflight:195
+samples, main and a later pthread observed, busy fork excluded, identity and
+cleanup verified. It then stopped before emulator launch at the unchanged
+original ADB helper, because the QA command environment omitted RUNNER_TEMP.
+The helper also requires both Android homes and the vendor key to share
+RUNNER_TEMP/android-native-home. No emulator/application measurement occurred.
+
+This env branch builds QA RUNNER_TEMP from the existing private profile root.
+Android user/emulator homes and adbkey now use that root/android-native-home;
+HOME, config/cache and temp remain private. The privileged helper independently
+reconstructs the same operational values. Only original QA commands receive
+RUNNER_TEMP; emulator, profiler and scope-fixture environments remain separately
+allowlisted and do not inherit credentials. Original ADB key/port guards stay
+unchanged. The normal regression uses the real original helper with a synthetic
+SDK boundary, actual temporary RSA key-pair validation and existing-key refusal.
+OLD reproduces the recorded missing-temp failure; FINAL completes that boundary.
+All original APK/SDK/renderer/workload/deadlines remain unchanged. This separate
+first-created workflow still needs actual cloud acceptance; it is not a release.

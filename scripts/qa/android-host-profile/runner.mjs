@@ -13,6 +13,7 @@ import {readAsgSdk,ASG_PROPERTIES} from '../android-native-isolated/gltransport.
 import {createProfileRoot,inspectTool,runScopePreflight,startProfile,finishProfile} from './profiler.mjs';
 import {captureModules} from './modules.mjs';
 import {analyzeStoppedProfile} from './offline.mjs';
+import {nativeQaEnvironment} from './native-environment.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),control=resolve(here,'../../..');
 const json=path=>JSON.parse(readFileSync(path,'utf8'));
 const save=(path,data)=>writeFileSync(path,JSON.stringify(data,null,2)+'\n');
@@ -43,7 +44,7 @@ export async function runDiagnostic(env=process.env){
   catch(error){const invalid={...top,diagnosticOutcome:'INVALID_PROFILE_PREFLIGHT',technicalExitCode:1,error:error.stack,workloadExecuted:false,originalSourceGate:'FAILED',nativeAcceptance:false,releaseAcceptance:false};save(join(output,'diagnostic-result.json'),invalid);return invalid;}
   const baselineBinaries=readSdkReference(readFileSync(join(here,'reference-sdk-binaries.json')));
   const stock=Object.fromEntries(['fixture-provenance.json','apk-assets.json','qa-tools-source.txt','transport-original-apk-provenance.json'].map(f=>[f,readFileSync(join(native,f))]));
-  const baseEnv={...profileContext.childEnv,ANDROID_QA_SOURCE:SOURCE,ANDROID_QA_DEVICE:'emulator-5582',ADB_PATH:adb,SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD:'1',NODE_OPTIONS:''};
+  const baseEnv=nativeQaEnvironment(profileContext);
   // A fresh server/key is prepared once, with the original unused-port guard.
   // Never kill a pre-existing ADB server or change the global Android homes.
   const result=await runOneProfile(async arm=>{

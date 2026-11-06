@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
-import {isAbsolute,join,resolve,delimiter,relative} from 'node:path';
+import {isAbsolute,join,resolve,dirname,delimiter,relative} from 'node:path';
 import {realpathSync} from 'node:fs';
 export const PROFILE=Object.freeze({hz:49,frames:32,bucketNs:1000000000,maxMapKeys:65536,maxBytes:268435456,rawFileMaxBytes:67108864,maxDurationMs:1200000,startupMs:30000,stopMs:15000,preflightMinCpuNs:250000000});
 const fixedPath='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
 const paths=(value,label)=>{assert.equal(typeof value,'string');assert.ok(isAbsolute(value),label+' must be absolute');assert.ok(!/[\0\r\n]/.test(value),'Unsafe path');return resolve(value);};
 export function childEnvironment({sdk,avdHome,home,temp}){
   sdk=paths(sdk,'SDK');avdHome=paths(avdHome,'AVD home');home=paths(home,'Private home');temp=paths(temp,'Private temp');
+  const androidHome=join(dirname(home),'android-native-home');
   // Build from explicit operational values; never spread process.env. Private
   // home/config paths prevent implicit reads of the runner's private config.
   return {PATH:fixedPath,HOME:home,TMPDIR:temp,XDG_CONFIG_HOME:join(home,'config'),XDG_CACHE_HOME:join(home,'cache'),LANG:'C.UTF-8',LC_ALL:'C.UTF-8',TZ:'UTC',
-    SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD:'1',ANDROID_HOME:sdk,ANDROID_SDK_ROOT:sdk,ANDROID_AVD_HOME:avdHome,ANDROID_USER_HOME:home,ANDROID_EMULATOR_HOME:home,
-    ADB_VENDOR_KEYS:join(home,'adbkey'),ANDROID_ADB_SERVER_PORT:'5037',ADB_SERVER_SOCKET:'tcp:5037'};
+    SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD:'1',ANDROID_HOME:sdk,ANDROID_SDK_ROOT:sdk,ANDROID_AVD_HOME:avdHome,ANDROID_USER_HOME:androidHome,ANDROID_EMULATOR_HOME:androidHome,
+    ADB_VENDOR_KEYS:join(androidHome,'adbkey'),ANDROID_ADB_SERVER_PORT:'5037',ADB_SERVER_SOCKET:'tcp:5037'};
 }
 export function profilerEnvironment(options){
   return {...childEnvironment(options),BPFTRACE_BTF:'/sys/kernel/btf/vmlinux',BPFTRACE_MAX_MAP_KEYS:String(PROFILE.maxMapKeys),BPFTRACE_LOG_SIZE:'1048576',BPFTRACE_STACK_MODE:'raw'};
