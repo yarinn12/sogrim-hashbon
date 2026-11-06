@@ -183,7 +183,10 @@ test('account entry regression: asymmetric safe areas keep accessibility inside 
     // roundtrip leaves it over this trigger, whose intentional :hover style
     // translates -1px. Prepare idle geometry before creating the next document.
     await page.mouse.move(0, 0);
-    const gate = await openAccountEntry(page, { size, width: size === 16 ? 393 : 320 });
+    let gate;
+    const open = async () => { gate = await openAccountEntry(page, { size, width: size === 16 ? 393 : 320 }); };
+    if (size === 16) await open();
+    else await fixture.reloadEvidence.withExpectedReload(open, { expectedFinal: 'account-gate' });
     await expect(gate.locator('[data-account-action=apple]')).toBeVisible();
     const button = gate.locator('.accessibility-entry-auth');
     await expect(button).toBeVisible();

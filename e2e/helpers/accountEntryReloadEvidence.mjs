@@ -38,6 +38,40 @@ export function classifyAccountEntryReloadError(error, {
       item.navigationStart < attempt.sequence && attempt.sequence < error.sequence;
   });
   if (!reload) return null;
+  if (reload.kind === 'presentation') {
+    // A presentation test deliberately replaces the logged-out document.
+    // Only an unissued read is safe to classify, and both documents must have
+    // acknowledged the same workspace query with valid CORS headers.
+    const queryNames = [...url.searchParams.keys()].filter(name => name !== ATTEMPT_PARAM);
+    const workspaceRead = attempt.method === 'GET' && queryNames.length === 2 &&
+      queryNames.includes('id') && queryNames.includes('select') &&
+      /^eq\.space-[A-Za-z0-9_-]+$/.test(url.searchParams.get('id') ?? '') &&
+      url.searchParams.get('select') === 'state,updated_at';
+    const acknowledgedRead = (documentId, after, before) => [...attempts.values()].some(item => {
+      const readUrl = snapshotAttemptUrl(item.url, origin);
+      return item.documentId === documentId && item.method === 'GET' &&
+        readUrl?.searchParams.get('id') === url.searchParams.get('id') &&
+        readUrl?.searchParams.get('select') === 'state,updated_at' &&
+        [...readUrl.searchParams.keys()].length === 3 &&
+        item.sequence > after && item.finished < before &&
+        item.response?.status >= 200 && item.response?.status < 300 &&
+        [origin, '*'].includes(item.response?.allowOrigin) && !item.failure;
+    });
+    const unsafeSnapshot = [...attempts.values()].some(item => item !== attempt &&
+      item.documentId === reload.oldDocumentId && item.sequence < reload.navigationCommit &&
+      (item.failure || item.method !== 'GET' &&
+        !(item.response?.status >= 200 && item.response?.status < 300 && item.finished) ||
+        item.request && !(item.response?.status >= 200 && item.response?.status < 300 &&
+          [origin, '*'].includes(item.response?.allowOrigin) && item.finished)));
+    const unsafeAccount = [...accountRequests.values()].some(item =>
+      item.sequence < reload.navigationCommit &&
+      (item.failure || !(item.status >= 200 && item.status < 300 &&
+        [origin, '*'].includes(item.allowOrigin) && item.finished)));
+    if (!workspaceRead || !acknowledgedRead(reload.oldDocumentId, 0, reload.navigationStart) ||
+        !acknowledgedRead(reload.finalDocumentId, reload.navigationCommit, reload.boundaryEnd) ||
+        unsafeSnapshot || unsafeAccount || runtimeErrors.length) return null;
+    return { id, url: url.href, documentId: attempt.documentId, reason: 'webkit-unissued-presentation-fetch' };
+  }
   if (reload.kind === 'signout') {
     const queryNames = [...url.searchParams.keys()].filter(name => name !== ATTEMPT_PARAM);
     const workspaceRead = attempt.method === 'GET' && queryNames.length === 2 &&
@@ -230,12 +264,13 @@ export async function installAccountEntryReloadEvidence(page, { origin, record, 
     stack: error.stack, sequence: next() }));
 
   const withExpectedReload = async (action, { expectedFinal = 'account-ready' } = {}) => {
-    if (!['account-ready', 'signed-out'].includes(expectedFinal)) throw new Error('Unknown account-entry reload target');
+    if (!['account-ready', 'signed-out', 'account-gate'].includes(expectedFinal)) throw new Error('Unknown account-entry reload target');
     if (activeReload) throw new Error('Nested account-entry reload');
     const oldDocumentId = await page.evaluate(() => window.__qaAccountEntryDocumentId);
     const reload = { oldDocumentId, boundaryStart: next(), navigationStart: null,
       navigationCommit: null, finalDocumentId: null, finalReady: false };
     if (expectedFinal === 'signed-out') reload.kind = 'signout';
+    if (expectedFinal === 'account-gate') reload.kind = 'presentation';
     activeReload = reload;
     try {
       await action();
@@ -252,13 +287,17 @@ export async function installAccountEntryReloadEvidence(page, { origin, record, 
         .toBe(true);
       await page.waitForLoadState('load');
       reload.finalDocumentId = await page.evaluate(() => window.__qaAccountEntryDocumentId);
-      if (expectedFinal === 'signed-out') {
+      if (expectedFinal === 'signed-out' || expectedFinal === 'account-gate') {
         await expect(page.locator('#public-account-auth-gate form[data-mode=login]')).toBeVisible({ timeout: 20000 });
         expect(await page.evaluate(() => localStorage.getItem('settle-friends-account-session'))).toBeNull();
       } else {
         await expect(page.getByRole('heading', { name: 'מה סוגרים היום?', exact: true })).toBeVisible({ timeout: 20000 });
         await expect(page.getByText('אירוע בדיקת החשבון', { exact: true })).toBeVisible({ timeout: 20000 });
       }
+      if (expectedFinal === 'account-gate') await expect.poll(() =>
+        [...attempts.values()].some(item => item.documentId === reload.finalDocumentId &&
+          item.method === 'GET' && item.response?.status === 200 && item.finished &&
+          [origin, '*'].includes(item.response?.allowOrigin)), { timeout: 20000 }).toBe(true);
       reload.finalReady = true;
       reload.boundaryEnd = next();
       expect(reload.navigationStart).toBeGreaterThan(reload.boundaryStart);

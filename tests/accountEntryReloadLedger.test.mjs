@@ -182,6 +182,59 @@ test('sign-out diagnostic still rejects missing logout, pending writes and real 
   }
 });
 
+function presentationNavigationLedger() {
+  const fixture = ledger({ boundaryStart: 220, navigationStart: 239, navigationCommit: 242, boundaryEnd: 270 });
+  fixture.context.reloads[0].kind = 'presentation';
+  fixture.context.attempts.clear();
+  fixture.context.accountRequests.clear();
+  const read = (id, documentId, sequence, finished) => ({
+    id, documentId, method: 'GET', sequence, finished,
+    url: `${ORIGIN}${PATH}?id=eq.space-synthetic&select=state%2Cupdated_at&__qa_account_attempt=${id}`,
+    request: { sequence: sequence + 1 }, response: { status: 200, allowOrigin: '*' }
+  });
+  // The first load completed before the test deliberately opened a second document.
+  fixture.context.attempts.set('old-read', read('old-read', 'old-document', 200, 205));
+  fixture.context.attempts.set('new-read', read('new-read', 'new-document', 250, 255));
+  const error = addUnissuedSnapshot(fixture, {
+    id: 'ipad-presentation-read', sequence: 238, errorSequence: 240, method: 'GET',
+    query: 'id=eq.space-synthetic&select=state%2Cupdated_at'
+  });
+  fixture.context.attempts.delete('prior-ipad-presentation-read');
+  return { fixture, error };
+}
+
+test('iPad presentation trace: an unissued old-document read during deliberate navigation is diagnostic', () => {
+  const { fixture, error } = presentationNavigationLedger();
+  const diagnostics = assertAccountEntryReloadLedger(fixture.record, fixture.context);
+  assert.equal(diagnostics.length, 1);
+  assert.equal(diagnostics[0].raw, error);
+  assert.equal(diagnostics[0].reason, 'webkit-unissued-presentation-fetch');
+});
+
+test('presentation navigation still rejects actual CORS failures and missing read proof', () => {
+  for (const mutation of [
+    fixture => fixture.context.reloads[0].finalReady = false,
+    fixture => fixture.context.attempts.delete('old-read'),
+    fixture => fixture.context.attempts.delete('new-read'),
+    fixture => { fixture.context.attempts.get('old-read').response.allowOrigin = null; },
+    fixture => { fixture.context.attempts.get('new-read').response.allowOrigin = null; },
+    fixture => { fixture.context.attempts.get('ipad-presentation-read').request = { sequence: 239 }; },
+    fixture => { fixture.context.attempts.get('ipad-presentation-read').request = { sequence: 239, method: 'OPTIONS' }; },
+    fixture => { fixture.context.attempts.get('ipad-presentation-read').documentId = 'new-document'; },
+    fixture => { fixture.record.pageErrors[0].sequence = 243; },
+    fixture => { fixture.context.attempts.set('pending-write', {
+      id: 'pending-write', documentId: 'old-document', method: 'PATCH', sequence: 230,
+      url: `${ORIGIN}${PATH}?id=eq.space-synthetic&__qa_account_attempt=pending-write`
+    }); },
+    fixture => { fixture.context.accountRequests.set('failed-account', { sequence: 230, status: 503 }); },
+    fixture => { fixture.record.runtimeErrors.push({ message: 'actual JavaScript error' }); }
+  ]) {
+    const { fixture } = presentationNavigationLedger();
+    mutation(fixture);
+    assert.throws(() => assertAccountEntryReloadLedger(fixture.record, fixture.context));
+  }
+});
+
 test('real failures and missing causal proof stay failures', () => {
   const create = () => ledger({ boundaryStart: 249, navigationStart: 291, navigationCommit: 293, boundaryEnd: 540 });
   for (const mutation of [
