@@ -7,6 +7,7 @@ import {acceptanceRunProvenance} from './run-provenance.mjs';
 import {fontContractContextExpression,hasAuthoredFontContract,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
 import {launchForOwnedOrientation} from './orientation.mjs';
 import {launchColdFontCase,restoreColdPages} from './cold-configuration.mjs';
+import {measureEventInlineReadability} from './inline-readability.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/pages');mkdirSync(out,{recursive:true});
 const provenance=acceptanceRunProvenance(),originalScale=adb(['shell','settings','get','system','font_scale']).trim(),originalRotation=adb(['shell','settings','get','system','user_rotation']).trim();
 const targets={home:['.product-brand-copy strong','.product-home-screen .top .brand h1','.home-create-event-action'],event:['.product-brand-copy strong','.event-overview-header h1','.event-header-action-label','.expense-row strong','.event-workspace-tab strong'],notes:['.product-brand-copy strong','[data-screen-kind="event-notes"] h1','.event-note-title-line strong','.event-note-preview','.event-workspace-tab strong'],profile:['.product-brand-copy strong','[data-screen-kind="profile"] h1','.profile-identity-copy strong']};
@@ -60,12 +61,17 @@ async function sample(scale,orientation,screen){
   await page.evaluate('document.fonts.ready.then(()=>true)');
   const fontContract={...(await page.evaluate(fontContractContextExpression)),scale};
   const fontContractRules=await actualAuthoredFontRules(page,targets[screen].filter(hasAuthoredFontContract));
+  const inlineReadability=screen==='event'?await page.evaluate(`(${measureEventInlineReadability})()`):null;
   const rows=await page.evaluate(textMeasurementExpression(targets[screen]));
   const referenceHome=screen==='home'?await page.evaluate(referenceHomeExpression):null;
-  const state=await page.evaluate(inspectExpression),disclosure=screen==='notes'?await noteDisclosure(rows,scale,orientation):null;samples.push({scale,orientation,screen,rows,state,disclosure,referenceHome,fontContract,fontContractRules});
+  const state=await page.evaluate(inspectExpression),disclosure=screen==='notes'?await noteDisclosure(rows,scale,orientation):null;samples.push({scale,orientation,screen,rows,state,disclosure,referenceHome,fontContract,fontContractRules,inlineReadability});
   screenshot(resolve(out,`${orientation}-${screen}-scale-${scale}.png`));
   const prefix=`${scale}/${orientation}/${screen}`;
   checks.push({name:prefix+': no horizontal overflow',ok:state.dimensions.appWidth<=state.dimensions.width+1&&state.dimensions.rootWidth<=state.dimensions.width+1});
+  if(inlineReadability){
+    checks.push({name:prefix+': event action words remain whole within their buttons',ok:inlineReadability.wholeActionWords});
+    checks.push({name:prefix+': balance amount and currency remain one complete line',ok:inlineReadability.wholeAmount});
+  }
   if(screen==='home'&&scale===1&&orientation==='portrait')checks.push({name:prefix+': accepted 4.57 home composition from actual Native viewport/pointer readbacks',ok:referenceHome?.text==='מה סוגרים היום?'&&referenceHome.lineCount===1&&!referenceHome.eyebrowVisible&&referenceHome.actionFits&&referenceHome.actionHeight>=44&&Math.abs(referenceHome.actionCenter-referenceHome.heroCenter)<=3&&referenceHome.actionTop<referenceHome.heroBottom&&referenceHome.actionBottom>referenceHome.heroBottom&&referenceHome.viewport.width===fontContract.width&&referenceHome.viewport.height===fontContract.height&&referenceHome.pointer.coarse===fontContract.pointerCoarse&&referenceHome.pointer.fine===fontContract.pointerFine&&referenceHome.textPreference===fontContract.dynamicType});
   if(screen==='notes')checks.push({name:prefix+': full note title/body retained, reachable and scaled in disclosure',ok:disclosure.ok});
   for(const selector of targets[screen]){

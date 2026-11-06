@@ -21908,6 +21908,57 @@ html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind=
   }
 }
 
+/* Android text zoom enlarges glyphs without enlarging rem layout thresholds.
+   Let each complete utility control choose a new row from its intrinsic text
+   width instead of squeezing a word into a fraction of the old three columns. */
+@media (max-width: 720px) {
+  html.dynamic-type-android.dynamic-type-extra-large.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"] > .top.event-overview-header .hero-actions.event-header-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  html.dynamic-type-android.dynamic-type-extra-large.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"] > .top.event-overview-header .hero-actions .event-header-utility-button {
+    flex: 1 1 8.5rem !important;
+    width: auto !important;
+    min-width: min-content !important;
+    height: auto !important;
+  }
+  html.dynamic-type-android.dynamic-type-extra-large.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"] > .top.event-overview-header .hero-actions > [data-action="open-event-participants"] {
+    flex-basis: 100% !important;
+  }
+  html.dynamic-type-android.dynamic-type-extra-large.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"] > .top.event-overview-header .event-header-action-label {
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+}
+
+/* A currency amount is one readable unit. Wrap the copy/value groups before
+   shrinking their content, including when Android leaves rem queries at 16px. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance {
+  flex-wrap: wrap !important;
+  /* Exceptionally long tokens retain their font and can pan inside the focused
+     card with touch or arrow keys, without widening the document. */
+  overflow-x: auto !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-copy {
+  flex: 1 1 12rem !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value {
+  flex: 0 0 auto !important;
+  width: max-content !important;
+  min-width: max-content !important;
+  max-width: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value .font-num {
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+
 /* Approved expense disclosure: clear shared-participant role and adaptive menu. */
 html.ledger-workspace-v1.design-coherence-v1 body #app .screen[data-screen-kind="event"] .expense-row-main > strong {
   display: inline-flex !important;

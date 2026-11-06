@@ -6,6 +6,8 @@ import measureExpenseAmount from "./helpers/expenseAmountPresentation.mjs";
 import measureEventActionDock from "./helpers/eventActionDock.mjs";
 import measureExpenseDisclosure from "./helpers/expenseDisclosure.mjs";
 import measureEventMain from "./helpers/eventMainPresentation.mjs";
+import { applyAndroidTextMetrics } from "./helpers/androidTextMetrics.mjs";
+import { measureEventInlineReadability } from "../scripts/qa/android-native-isolated/inline-readability.mjs";
 import { expect, test } from "@playwright/test";
 import { openTypographyHome } from "./helpers/typographyReadiness.mjs";
 
@@ -110,9 +112,26 @@ async function assertTappable(page, locator, label) {
 
 const LARGE_ACTION_DOCK_TEST = "long expense totals reflow without pushing or wrapping the action label";
 const READ_ONLY_EVENT_COPY_TEST = "open permission-restricted events and notes never claim the event is closed";
+const NATIVE_ACTION_WORDS_TEST = "Android font-only enlargement keeps event action words whole";
+const NATIVE_BALANCE_UNIT_TEST = "Android font-only enlargement keeps the complete balance currency amount together";
+const NATIVE_LONG_BALANCE_TEST = "long signed currency balances remain keyboard-scrollable without page overflow";
 
 test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
   const scenarioState = structuredClone(state);
+  if ([NATIVE_ACTION_WORDS_TEST, NATIVE_BALANCE_UNIT_TEST, NATIVE_LONG_BALANCE_TEST].includes(testInfo.title)) {
+    scenarioState.participants.push({id: 'native-readability-third', displayName: 'בודק שלישי', kind: 'guest'});
+    const event = scenarioState.events[0];
+    event.name = 'אירוע בדיקת Android';
+    event.eventType = 'standard';
+    event.participantIds.push('native-readability-third');
+    event.expenses = [
+      {...event.expenses[0], name:'הוצאה עם שני משלמים', total:12000,
+        payers:[{participantId:OWNER, amount:7000},{participantId:PEER, amount:5000}],
+        sharedByParticipantIds:[...event.participantIds]},
+      {...event.expenses[0], id:'native-readability-second-expense', total:12000,
+        payers:[{participantId:OWNER, amount:12000}], sharedByParticipantIds:[...event.participantIds]}
+    ];
+  }
   if(testInfo.title===READ_ONLY_EVENT_COPY_TEST) {
     scenarioState.events[0].adminsCanEditOnly=true;
     scenarioState.events[0].adminIds=[PEER];
@@ -677,6 +696,94 @@ test('two note-editor closes before the first Back settles never reopen either e
 
 // These assertions cover the rendered failure, including the actual numeric
 // glyphs. Growing only the card wrapper must not satisfy text enlargement.
+for (const [title, field] of [[NATIVE_ACTION_WORDS_TEST, 'wholeActionWords'], [NATIVE_BALANCE_UNIT_TEST, 'wholeAmount']]) {
+  test(title, async ({ page }, testInfo) => {
+    for (const scale of [2, 1.5, 1]) {
+      for (const width of [411, 393, 320]) {
+        await page.setViewportSize({width, height:866});
+        await openTypographyHome(page);
+        await openEvent(page, OPEN_EVENT);
+        await page.evaluate(() => document.fonts.ready);
+        await page.evaluate(applyAndroidTextMetrics, scale);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const result = await page.evaluate(measureEventInlineReadability);
+        const label = `${width}px/font-only-${scale}`;
+        await testInfo.attach(label, {body:Buffer.from(JSON.stringify(result, null, 2)), contentType:'application/json'});
+        if (width === 411 && scale === 2) {
+          await page.locator(field === 'wholeAmount' ? '.event-personal-balance' : '.event-header-actions').scrollIntoViewIfNeeded();
+          await page.screenshot({path:testInfo.outputPath(`${field}-411-scale-2.png`)});
+        }
+        expect(result.labels.map(label => label.text), label).toEqual(['משתתפים','שיתוף','הגדרות']);
+        expect(result.amount.text, label).toMatch(/110\.00/u);
+        for (const action of result.labels) {
+          expect(action.fontSize, label+' authored font scale').toBeCloseTo(14*scale, 1);
+          expect(action.box.width, label+' action touch width').toBeGreaterThanOrEqual(43.99);
+          expect(action.box.height, label+' action touch height').toBeGreaterThanOrEqual(43.99);
+        }
+        expect(result.amount.fontSize, label+' numeric font scale').toBeCloseTo(20*scale, 1);
+        expect(result[field], `${label}: ${JSON.stringify(result)}`).toBe(true);
+        expect(result.noHorizontalOverflow, label).toBe(true);
+      }
+    }
+    // Real application navigation remains on the same event and preserves the
+    // two financial records; these display-only actions do not write expenses.
+    const financialState = () => page.evaluate(() => JSON.parse(localStorage.getItem('settle-friends-state'))
+      .events.find(event => event.id === 'event-platform-coherence-open').expenses);
+    const before = await financialState();
+    await assertTappable(page, page.locator('.event-personal-balance'), 'complete balance link');
+    await page.locator('.event-personal-balance').click();
+    await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+    await page.locator('[data-action="back-to-event"]:visible').first().click();
+    await expect(page.locator(`[data-screen-kind="event"][data-event-id="${OPEN_EVENT}"]`)).toBeVisible();
+    expect(await financialState()).toEqual(before);
+  });
+}
+
+test(NATIVE_LONG_BALANCE_TEST, async ({page}, testInfo) => {
+  for (const amountText of ['-CHF999999.99', 'US$999999999.99', '-₪999999999999.99']) {
+    await page.setViewportSize({width:320, height:866});
+    await openTypographyHome(page);
+    await openEvent(page, OPEN_EVENT);
+    await page.evaluate(async ({amountText, eventId}) => {
+      const {renderEventPersonalBalanceView} = await import('/src/ui/eventFinancialCards.mjs');
+      document.querySelector('.event-personal-balance').outerHTML = renderEventPersonalBalanceView({
+        eventId, direction:'debt', amountText, counterpartLabel:'מול משתתפי האירוע'
+      });
+    }, {amountText,eventId:OPEN_EVENT});
+    await page.evaluate(applyAndroidTextMetrics, 2);
+    const result = await page.evaluate(measureEventInlineReadability);
+    await testInfo.attach(amountText, {body:Buffer.from(JSON.stringify(result)),contentType:'application/json'});
+    expect(result.amount.text).toBe(amountText);
+    expect(result.amount.fontSize).toBe(40);
+    expect(result.wholeAmount).toBe(true);
+    expect(result.noHorizontalOverflow).toBe(true);
+    const card = page.locator('.event-personal-balance');
+    await expect(card).toHaveAttribute('aria-label', new RegExp(amountText.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+    const overflow = await card.evaluate(node => node.scrollWidth > node.clientWidth + 1);
+    if (overflow) {
+      await card.focus();
+      const before = await card.evaluate(node => node.scrollLeft);
+      await page.keyboard.press('ArrowLeft');
+      await expect.poll(() => card.evaluate(node => node.scrollLeft)).not.toBe(before);
+      const ends = await card.evaluate(node => {
+        const token=node.querySelector('.font-num'), text=token.firstChild;
+        const visible = index => {
+          const range=document.createRange();range.setStart(text,index);range.setEnd(text,index+1);
+          const r=range.getBoundingClientRect(),box=node.getBoundingClientRect();
+          return r.left>=box.left&&r.right<=box.right;
+        };
+        const results=[];
+        for (const edge of [0,-node.scrollWidth,node.scrollWidth]) {
+          node.scrollLeft=edge;results.push({first:visible(0),last:visible(text.length-1)});
+        }
+        return results;
+      });
+      expect(ends.some(end => end.first)).toBe(true);
+      expect(ends.some(end => end.last)).toBe(true);
+    }
+  }
+});
+
 test("event balance and expense total stay explained, aligned and scalable", async ({ page }) => {
   for (const enlarged of [false, true]) {
     await openTypographyHome(page, { path: enlarged ? "/?dynamic-type-preview=32" : "/" });
