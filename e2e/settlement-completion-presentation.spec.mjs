@@ -52,7 +52,9 @@ for(const c of [{name:"normal",root:16,w:393,h:852},{name:"enlarged",root:32,w:3
   const primary=dialog.getByRole("button",{name:"חזרה לאירועים",exact:true}),secondary=dialog.getByRole("button",{name:"הישאר בסיכום",exact:true});
   await reachable(primary);await reachable(secondary);await secondary.focus();await secondary.press("Tab");await expect(primary).toBeFocused();await primary.press("Shift+Tab");await expect(secondary).toBeFocused();
   await secondary.click();await expect(dialog).toBeHidden();await expect(page.locator(".settlement-hero")).toContainText("הכול שולם");expect(current(cloud).expenses).toEqual(expenses);expect(!!current(cloud).archivedAt).toBe(false);
-  await cloud.reload();await page.locator('[data-action="open-event"][data-event-id="'+eventId+'"]').click();await page.getByRole("button",{name:"פתיחת הסיכום: מי מעביר למי",exact:true}).click();await expect(page.locator('.transfer-row[data-transfer-status="paid"]')).toHaveCount(2);await expect(page.locator(".settlement-celebration-dialog")).toHaveCount(0);expect(current(cloud).expenses).toEqual(expenses);expect(cloud.errors).toEqual([]);
+  await cloud.reload();await page.locator('[data-action="open-event"][data-event-id="'+eventId+'"]').click();await page.getByRole("button",{name:"פתיחת הסיכום: מי מעביר למי",exact:true}).click();await expect(page.locator('.transfer-row[data-transfer-status="paid"]')).toHaveCount(2);await expect(page.locator(".settlement-celebration-dialog")).toHaveCount(0);expect(current(cloud).expenses).toEqual(expenses);
+  if(cloud.diagnostics.length)await test.info().attach("personal-pins-reload-diagnostics",{contentType:"application/json",body:JSON.stringify(cloud.diagnostics)});
+  expect(cloud.errors).toEqual([]);
  });
 }
 test("completion returns to events without archiving the paid event",async({page,baseURL})=>{
