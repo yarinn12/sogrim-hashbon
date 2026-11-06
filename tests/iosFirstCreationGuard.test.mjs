@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {existsSync,mkdtempSync,mkdirSync,readFileSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
+import {existsSync,mkdtempSync,mkdirSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
 import {dirname,join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -181,8 +181,9 @@ test('source guard requires the exact checksummed first-creation receipt before 
  assert.equal(guard.verifyCheckout(fakeGit,appText,{...context(),APPLE_TEAM_ID:'MA9S4L7WKS'}).sourceCommit,guard.RELEASE_SOURCE);
 });
 test('actual CLI writes GET evidence on acceptance and rejects a changed push before any GET',()=>{
- const root=mkdtempSync(join(tmpdir(),'ios-first-creation-'));
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'ios-first-creation-')));
  try{
+  assert.equal(root,realpathSync(root),'CLI fixture must use its canonical owned temporary root');
   const temporary=join(root,'runner-temp');mkdirSync(temporary);
   const fixture=join(root,'fixture.json'),eventFile=join(root,'event.json'),loader=join(root,'mock-fetch.mjs'),calls=join(root,'calls.jsonl');
   writeFileSync(fixture,JSON.stringify({run:run(),workflow:workflow()}));
@@ -222,6 +223,30 @@ test('actual CLI writes GET evidence on acceptance and rejects a changed push be
   assert.deepEqual(JSON.parse(readFileSync(join(rejected,'github-get-responses.json'))),[]);
   assert.equal(readFileSync(calls,'utf8'),recorded);assert.ok(existsSync(join(accepted,'first-creation-receipt.json')));
  }finally{assert.equal(dirname(realpathSync(root)),realpathSync(tmpdir()));rmSync(root,{recursive:true,force:true});}
+});
+
+test('actual CLI acceptance survives an aliased operating-system temporary directory without relaxing output ownership',()=>{
+ const root=realpathSync(mkdtempSync(join(tmpdir(),'ios-first-creation-alias-')));
+ try{
+  const target=join(root,'canonical');mkdirSync(target);
+  const alias=process.platform==='win32'?target.toUpperCase():join(root,'alias');
+  if(process.platform!=='win32')symlinkSync(target,alias,'dir');
+  // Windows needs no junction privilege: use a real case alias with the native
+  // canonicalizer in the isolated child to reproduce macOS /var -> /private/var.
+  const canonical=process.platform==='win32'?realpathSync.native:realpathSync;
+  assert.notEqual(alias,canonical(alias));assert.equal(canonical(alias),target);
+  const loader=join(root,'canonical-realpath.mjs');
+  writeFileSync(loader,"import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';if(process.platform==='win32'){const create=fs.mkdtempSync;fs.mkdtempSync=(...args)=>create(...args).toUpperCase();fs.realpathSync=fs.realpathSync.native;syncBuiltinESMExports();}\n");
+  const file=fileURLToPath(import.meta.url);
+  const childEnv={...process.env,TEMP:alias,TMP:alias,TMPDIR:alias,NODE_OPTIONS:'--import='+pathToFileURL(loader).href};
+  delete childEnv.NODE_TEST_CONTEXT; // Start an independent standard Node test runner.
+  const child=spawnSync(process.execPath,['--test','--test-name-pattern=^actual CLI writes GET evidence on acceptance and rejects a changed push before any GET$',file],
+   {env:childEnv,encoding:'utf8',windowsHide:true,timeout:10000});
+  assert.equal(child.error,undefined);assert.equal(child.status,0,child.stdout+'\n'+child.stderr);
+  assert.ok(child.stdout.includes('actual CLI writes GET evidence on acceptance and rejects a changed push before any GET'),child.stdout+'\n'+child.stderr);
+ }finally{
+  assert.equal(dirname(root),realpathSync(tmpdir()));rmSync(root,{recursive:true,force:true});
+ }
 });
 
 
