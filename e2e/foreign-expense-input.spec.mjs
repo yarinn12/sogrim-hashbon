@@ -42,9 +42,10 @@ async function completeExpense(page, { amount = "10", converted = "₪35.00" } =
   return page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state")).events[0].expenses[0]);
 }
 
-async function selectSourceCurrency(page, currency) {
+async function selectSourceCurrency(page, currency, { openDetails = true } = {}) {
   await page.locator('[data-choice-select-action="expense-source-currency"]').click();
   await page.locator(`.app-choice-option[data-choice-value="${currency}"]`).click();
+  if (!openDetails) return;
   const details = page.locator("details.expense-fx-details");
   if (await details.count() && await details.getAttribute("open") === null) await details.locator("summary").click();
 }
@@ -97,8 +98,9 @@ test("automatic Open Access rate previews and saves a locked snapshot; edit reta
 
 test("an unavailable automatic rate permits an explicit personal rate", async ({ page }) => {
   await page.route("**/v6/latest/USD", route => route.abort());
-  await selectSourceCurrency(page, "USD");
+  await selectSourceCurrency(page, "USD", { openDetails: false });
   await expect(page.locator('.expense-fx-preview')).toContainText("אפשר להזין שער אישי");
+  await expect(page.locator('details.expense-fx-details')).toHaveAttribute('open', '');
   await page.locator('[data-action="expense-fx-manual"]').click();
   await page.locator('[data-action="expense-fx-rate"]').fill("3.5");
   const expense = await completeExpense(page);
@@ -109,8 +111,9 @@ test("an unavailable automatic rate permits an explicit personal rate", async ({
 
 test("a three-decimal source amount keeps its precision while the event ledger stays two-decimal", async ({ page }) => {
   await page.route("**/v6/latest/JOD", route => route.abort());
-  await selectSourceCurrency(page, "JOD");
+  await selectSourceCurrency(page, "JOD", { openDetails: false });
   await expect(page.locator('.expense-fx-preview')).toContainText("אפשר להזין שער אישי");
+  await expect(page.locator('details.expense-fx-details')).toHaveAttribute('open', '');
   await page.locator('[data-action="expense-fx-manual"]').click();
   await page.locator('[data-action="expense-fx-rate"]').fill("5");
   const expense = await completeExpense(page, { amount: "1.234", converted: "₪6.17" });
