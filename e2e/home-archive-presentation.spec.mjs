@@ -41,7 +41,8 @@ test('[regression] tall event row uses its visible action glyph for a physical c
 
 test('[regression] archive action realigns after a late scroll restores its covered center',async({page})=>{
  await page.setViewportSize({width:568,height:360});
- await page.setContent(`<style>body{margin:0}.before{height:500px}.after{height:700px}#archive{display:block;margin-left:21px;width:261px;height:92px;scroll-margin-block:0 300px}.product-route-controls{position:fixed;left:136px;top:10px;z-index:3}.product-route-controls button{width:48px;height:48px}nav{position:fixed;left:104px;bottom:14px;width:360px;height:150px;background:#dde5e3;z-index:2}</style><div class="before"></div><button id="archive" onclick="window.archiveClicks=(window.archiveClicks||0)+1">ארכיון</button><div class="after"></div><div class="product-route-controls"><button>נגישות</button></div><nav aria-label="ניווט ראשי"></nav>`);
+ await page.setContent(`<meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}.before{height:500px}.after{height:700px}#archive{display:block;margin-left:21px;width:261px;height:92px;scroll-margin-block:0 300px}.product-route-controls{position:fixed;left:136px;top:10px;z-index:3}.product-route-controls button{width:48px;height:48px}nav{position:fixed;left:104px;bottom:14px;width:360px;height:150px;background:#dde5e3;z-index:2}</style><div class="before"></div><button id="archive" onclick="window.archiveClicks=(window.archiveClicks||0)+1">ארכיון</button><div class="after"></div><div class="product-route-controls"><button>נגישות</button></div><nav aria-label="ניווט ראשי"></nav>`);
+ expect(await page.evaluate(()=>({width:innerWidth,height:innerHeight}))).toEqual({width:568,height:360});
  await page.evaluate(()=>{
   const action=document.querySelector('#archive');let coveredScroll;
   window.archiveRestores=0;
@@ -62,7 +63,8 @@ test('[regression] archive action realigns after a late scroll restores its cove
 
 test('[negative control] archive reach rejects a permanently covered center',async({page})=>{
  await page.setViewportSize({width:568,height:360});
- await page.setContent('<style>body{margin:0}#archive{margin:100px 21px;width:261px;height:92px}nav{position:fixed;bottom:0;height:150px;width:100%}.foreign-overlay{position:fixed;inset:0;background:#fff;z-index:100}</style><button id="archive">ארכיון</button><nav aria-label="ניווט ראשי"></nav><div class="foreign-overlay"></div>');
+ await page.setContent('<meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}#archive{margin:100px 21px;width:261px;height:92px}nav{position:fixed;bottom:0;height:150px;width:100%}.foreign-overlay{position:fixed;inset:0;background:#fff;z-index:100}</style><button id="archive">ארכיון</button><nav aria-label="ניווט ראשי"></nav><div class="foreign-overlay"></div>');
+ expect(await page.evaluate(()=>({width:innerWidth,height:innerHeight}))).toEqual({width:568,height:360});
  await expect(homeArchiveReach(page,page.locator('#archive'))).rejects.toThrow(/Timeout 8000ms exceeded/);
 });
 test('[regression] private pin copy agrees with acknowledged account storage',async({page})=>{
