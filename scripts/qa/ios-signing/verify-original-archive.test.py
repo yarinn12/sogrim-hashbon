@@ -204,4 +204,45 @@ class ZipEnvelopeTests(unittest.TestCase):
         raw,pins=self.archive();folder=MemoryFolder({'envelope.json':b'preserve'})
         self.assertRaises(ValueError,encryption.extract_components,raw,folder,pins);self.assertEqual(folder.files,{'envelope.json':b'preserve'})
 
+class CommonWwwReceiptTests(unittest.TestCase):
+    def scenario(self):
+        files,envelope,origin,live,pins=bundle()
+        sha=guard.verify_bundle(files,envelope,origin,live,pins)
+        receipt={'sourceCommit':pins['application']['sourceSha'],'sourceTree':pins['application']['sourceTree'],
+            'ipaSha256':sha,'rebuilt':False,'signatureReverified':True,'everyOriginalWebAssetMatches':True,
+            'everyOriginalWebAssetMatchesCanonicalGitBuild':True,'originalSourceInputsMatchCurrentGit':True,
+            'firstCreationVerified':True,'appleUploadPerformed':False}
+        return json.loads(files['web-assets.json']),receipt,pins
+    def test_verified_original_package_exports_complete_hashes_with_bound_source_and_ipa(self):
+        assets,receipt,pins=self.scenario();out=guard.common_www_receipt(assets,receipt,pins)
+        self.assertEqual(out['commonWwwAssetSha256'],assets['www']);self.assertEqual(out['commonWwwFileCount'],1)
+        core={'schemaVersion':1,'sourceCommit':receipt['sourceCommit'],'sourceTree':receipt['sourceTree'],
+            'ipaSha256':receipt['ipaSha256'],'www':assets['www']}
+        self.assertEqual(out['commonWwwManifestSha256'],hashlib.sha256(json.dumps(core,sort_keys=True,separators=(',',':')).encode()).hexdigest())
+    def test_original_signed_or_canonical_source_mismatch_is_rejected(self):
+        for where,key in [('assets','sourceCommit'),('assets','sourceTree'),('receipt','sourceCommit'),('receipt','sourceTree'),('receipt','ipaSha256')]:
+            with self.subTest(where=where,key=key):
+                a,r,p=self.scenario();(a if where=='assets'else r)[key]='9'*len((a if where=='assets'else r)[key])
+                self.assertRaises(ValueError,guard.common_www_receipt,a,r,p)
+    def test_changed_or_empty_common_assets_are_rejected(self):
+        for change in [lambda a:a['www'].update({'extra.js':'a'*64}),lambda a:a.update(www={}),lambda a:a['canonicalGit'].update(sourceTree='9'*40)]:
+            a,r,p=self.scenario();change(a);self.assertRaises(ValueError,guard.common_www_receipt,a,r,p)
+    def test_unsafe_asset_names_cannot_export_unreviewed_data_paths(self):
+        for name in ['../secret','/absolute','a//b','a/./b','a/../b','a\\b','https://foreign.invalid/x','owner@example.invalid']:
+            with self.subTest(name=name):
+                a,r,p=self.scenario();a['www']={name:'a'*64};a['canonicalGit']['www']=dict(a['www']);self.assertRaises(ValueError,guard.common_www_receipt,a,r,p)
+    def test_digest_fields_cannot_contain_cleartext_or_noncanonical_values(self):
+        for value in ['owner@example.invalid','0'*64,'A'*64,'x'*64,1,None]:
+            with self.subTest(value=value):
+                a,r,p=self.scenario();a['www']={'index.html':value};a['canonicalGit']['www']=dict(a['www']);self.assertRaises(ValueError,guard.common_www_receipt,a,r,p)
+    def test_all_original_signature_and_phase_flags_are_strict_booleans(self):
+        for name in ['signatureReverified','everyOriginalWebAssetMatches','everyOriginalWebAssetMatchesCanonicalGitBuild','originalSourceInputsMatchCurrentGit','firstCreationVerified','rebuilt','appleUploadPerformed']:
+            for value in [None,1,0,'true']:
+                with self.subTest(name=name,value=value):
+                    a,r,p=self.scenario();r[name]=value;self.assertRaises(ValueError,guard.common_www_receipt,a,r,p)
+    def test_manifest_projection_omits_unrelated_metadata_and_private_fields(self):
+        a,r,p=self.scenario();a['email']='never-export@example.invalid';r['snapshot']={'name':'Private tester','email':'never-export@example.invalid'}
+        out=guard.common_www_receipt(a,r,p);self.assertEqual(set(out),{'commonWwwProofScope','commonWwwAssetSha256','commonWwwFileCount','commonWwwManifestSha256'})
+        self.assertNotIn('@',json.dumps(out));self.assertNotIn('Private tester',json.dumps(out))
+
 if __name__=='__main__':unittest.main()

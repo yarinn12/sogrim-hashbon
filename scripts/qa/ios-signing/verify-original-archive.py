@@ -1,4 +1,4 @@
-import hashlib,importlib.util,json,os,pathlib,plistlib,subprocess,sys,tarfile,tempfile,zipfile
+import hashlib,importlib.util,json,os,pathlib,plistlib,re,subprocess,sys,tarfile,tempfile,zipfile
 from intake_bindings import (require,require_bindings,json_read,validate_origin,validate_first_creation,
     exact_fields,integer,digest,CI_PATHS,SIGNING_REF,VERSION,BUILD)
 FILES={'SogrimHashbon.ipa','release-manifest.json','artifact-verification.json','source-ci-only.json','source-before-build.json','source-after-export.json','web-assets.json','Package.resolved'}
@@ -79,6 +79,31 @@ def verify_identity(root,envelope,origin,pins=None):
     return verify_bundle({name:(directory/name).read_bytes() for name in FILES},envelope,origin,
         json_read((directory/'live-ci-before-download.json').read_text(encoding='utf-8')),pins)
 
+def common_www_receipt(expected,verified,pins=None):
+    """Export only typed hashes after the original signed IPA was reverified."""
+    pins=require_bindings(pins);a,s=pins['application'],pins['signing']
+    for record in (expected,verified):
+        exact_fields(record,{'sourceCommit':a['sourceSha'],'sourceTree':a['sourceTree']},'Common WWW source mismatch')
+    require(verified.get('ipaSha256')==s['ipaSha256'],'Common WWW original IPA mismatch')
+    for name in ('signatureReverified','everyOriginalWebAssetMatches','everyOriginalWebAssetMatchesCanonicalGitBuild',
+                 'originalSourceInputsMatchCurrentGit','firstCreationVerified'):
+        require(verified.get(name) is True,'Original signed WWW proof incomplete')
+    require(verified.get('rebuilt') is False and verified.get('appleUploadPerformed') is False,'Original package phase required')
+    canonical=expected.get('canonicalGit',{});assets=expected.get('www')
+    exact_fields(canonical,{'sourceCommit':a['sourceSha'],'sourceTree':a['sourceTree']},'Common WWW canonical source mismatch')
+    require(canonical.get('independentCanonicalBuild') is True and canonical.get('allArchiveBytesMatchGitBlobs') is True
+            and integer(canonical.get('gitInputCount')) and canonical['gitInputCount']>500,'Complete canonical WWW proof required')
+    require(type(assets) is dict and 0<len(assets)<=10000 and canonical.get('www')==assets,'Exact nonempty canonical WWW map required')
+    for path,value in assets.items():
+        require(type(path) is str and len(path)<=1024 and re.fullmatch(r'[A-Za-z0-9._/-]+',path)
+                and all(part and part not in ('.','..') for part in path.split('/')),'Unsafe public asset path')
+        require(digest(value,64),'Asset digest must be a SHA256')
+    assets=dict(sorted(assets.items()))
+    core={'schemaVersion':1,'sourceCommit':a['sourceSha'],'sourceTree':a['sourceTree'],'ipaSha256':s['ipaSha256'],'www':assets}
+    raw=json.dumps(core,sort_keys=True,separators=(',',':')).encode('utf-8')
+    return {'commonWwwProofScope':'ORIGINAL_SIGNED_IPA_WWW_ONLY','commonWwwAssetSha256':assets,
+            'commonWwwFileCount':len(assets),'commonWwwManifestSha256':hashlib.sha256(raw).hexdigest()}
+
 def main():
     pins=require_bindings();root=pathlib.Path.cwd();directory=root/'build/ios'
     envelope=json_read((directory/'original-encrypted/envelope.json').read_text(encoding='utf-8'))
@@ -103,6 +128,7 @@ def main():
         'rebuilt':False,'signatureReverified':True,'profile':profile_proof,'everyOriginalWebAssetMatches':True,
         'everyOriginalWebAssetMatchesCanonicalGitBuild':True,'originalSourceInputsMatchCurrentGit':True,
         'firstCreationVerified':True,'appleUploadPerformed':False}
+    receipt.update(common_www_receipt(expected,receipt,pins))
     (directory/'original-artifact-before-upload.json').write_text(json.dumps(receipt,indent=2)+'\n',encoding='utf-8')
     print('Original Nov5 firstCreation/source receipts, IPA, assets, signature and profile verified; no rebuilding.')
 if __name__=='__main__':main()
