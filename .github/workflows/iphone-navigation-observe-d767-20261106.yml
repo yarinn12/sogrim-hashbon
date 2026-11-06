@@ -1,0 +1,100 @@
+name: Original d767 iPhone navigation observation
+
+on:
+  push:
+    branches: [codex/iphone-navigation-observe-d767-20261106]
+
+permissions:
+  contents: read
+
+jobs:
+  observe-original-cohort:
+    if: ${{ github.event.created && github.run_number == 1 && github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: '1'
+      EXPECTED_SOURCE: d7675a31fffa93699a1de65c9f786ab1ff619e30
+      PW_QA_PORT: '4186'
+    steps:
+      - name: Checkout reviewed observation tools
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: tools
+          persist-credentials: false
+      - name: Checkout unchanged failed application source
+        uses: actions/checkout@v6
+        with:
+          ref: d7675a31fffa93699a1de65c9f786ab1ff619e30
+          path: app
+          persist-credentials: false
+      - name: Require exact original source and a first branch creation
+        working-directory: app
+        run: |
+          test "$(git rev-parse HEAD)" = d7675a31fffa93699a1de65c9f786ab1ff619e30
+          test "$(git rev-parse HEAD^{tree})" = ce1ba6f3413f65e42612d82084dc40573b789486
+          test -z "$(git status --porcelain)"
+          mkdir -p "$GITHUB_WORKSPACE/evidence"
+          git rev-parse HEAD HEAD^{tree} > "$GITHUB_WORKSPACE/evidence/original-source.txt"
+          printf '%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$GITHUB_WORKSPACE/evidence/diagnostic-origin.txt"
+      - name: Use the original Node release
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.22.2'
+      - name: Install original locked dependencies
+        working-directory: app
+        run: npm ci
+      - name: Verify observation-only HTTP controls
+        run: node --test tools/scripts/qa/iphone-nav-observe/server.test.mjs tools/scripts/qa/iphone-nav-observe/verify-plan.test.mjs
+      - name: Prefer official HTTPS APT mirrors on the ephemeral Ubuntu runner
+        working-directory: app
+        run: |
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_OS,RUNNER_ARCH,RUNNER_ENVIRONMENT \
+            "$(command -v node)" scripts/qa/prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24
+      - name: Install original Playwright browsers
+        working-directory: app
+        run: npx playwright install --with-deps chromium webkit
+      - name: Verify identical original shard6 cohort before execution
+        working-directory: app
+        env:
+          SOGRIM_DIAGNOSTIC_APP_DIR: ${{ github.workspace }}/app
+          SOGRIM_DIAGNOSTIC_HTTP_LOG: ${{ github.workspace }}/evidence/server-events.jsonl
+        run: |
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/evidence/original-plan.json" \
+            npx playwright test --list --project=iphone-webkit --shard=6/8 --reporter=json
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/evidence/observed-plan.json" \
+            npx playwright test --list --config "$GITHUB_WORKSPACE/tools/scripts/qa/iphone-nav-observe/config.mjs" --project=iphone-webkit --shard=6/8 --reporter=json
+          node "$GITHUB_WORKSPACE/tools/scripts/qa/iphone-nav-observe/verify-plan.mjs" \
+            "$GITHUB_WORKSPACE/evidence/original-plan.json" "$GITHUB_WORKSPACE/evidence/observed-plan.json" "$GITHUB_WORKSPACE/evidence/cohort-proof.json"
+      - name: Observe the full unchanged original cohort once
+        working-directory: app
+        env:
+          SOGRIM_DIAGNOSTIC_APP_DIR: ${{ github.workspace }}/app
+          SOGRIM_DIAGNOSTIC_HTTP_LOG: ${{ github.workspace }}/evidence/server-events.jsonl
+          DEBUG: pw:browser
+        shell: bash
+        run: |
+          set -o pipefail
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$GITHUB_WORKSPACE/evidence/results.json" \
+            npx playwright test --config "$GITHUB_WORKSPACE/tools/scripts/qa/iphone-nav-observe/config.mjs" \
+              --project=iphone-webkit --shard=6/8 --retries=0 --workers=1 \
+              --reporter=list,html,json --output="$GITHUB_WORKSPACE/evidence/test-results" \
+              2>&1 | tee "$GITHUB_WORKSPACE/evidence/browser-output.log"
+      - name: Retain original source identity and diagnostic limits
+        if: ${{ !cancelled() }}
+        working-directory: app
+        run: |
+          git diff --exit-code
+          git rev-parse HEAD HEAD^{tree} > "$GITHUB_WORKSPACE/evidence/source-after.txt"
+          printf '%s\n' 'OBSERVATION_ONLY; NO_NATIVE_OR_RELEASE_ACCEPTANCE; NO_KEYS_OR_STORE_ACCESS' > "$GITHUB_WORKSPACE/evidence/scope.txt"
+      - name: Preserve diagnostic evidence regardless of test result
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: iphone-navigation-observe-d767-${{ github.run_id }}
+          path: |
+            evidence/
+            app/playwright-report/
+          if-no-files-found: error
+          retention-days: 7
