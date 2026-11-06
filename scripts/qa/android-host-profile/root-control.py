@@ -187,10 +187,21 @@ def validate_config(config,path):
     # The environment is reconstructed by the nonprivileged controller from
     # fixed values. Forbid credential/config injection even if config is corrupt.
     checked_profiler_environment(config['environment'],root)
+    checked_target_environment(config,root)
+    for key in ['HOME','TMPDIR','XDG_CONFIG_HOME','XDG_CACHE_HOME','ANDROID_AVD_HOME','ANDROID_USER_HOME','ANDROID_EMULATOR_HOME']:
+        require(pathlib.Path(config['environment'][key]).resolve().is_relative_to(root),'Operational environment path escapes private root')
+    return root
+
+def checked_target_environment(config,root):
     base_environment=operational_environment(root)
     target_environment=config['targetEnvironment'];extra=set(target_environment)-set(base_environment)
-    require(extra <= {'LD_LIBRARY_PATH','ANDROID_EMULATOR_LAUNCHER_DIR'},'Unexpected target environment keys')
+    require(extra <= {'LD_LIBRARY_PATH','ANDROID_EMULATOR_LAUNCHER_DIR','ANDROID_EMULATOR_WRAPPER_PID','MESA_RGB_VISUAL'},'Unexpected target environment keys')
+    if config['target']['kind']=='emulator' and target_environment.get('LC_ALL')=='C':base_environment['LC_ALL']='C'
     checked_environment({key:target_environment.get(key) for key in base_environment},base_environment)
+    if 'ANDROID_EMULATOR_WRAPPER_PID' in extra:
+        require(target_environment['ANDROID_EMULATOR_WRAPPER_PID']==str(config['target']['pid']),'SDK wrapper PID differs from the owned emulator')
+    if 'MESA_RGB_VISUAL' in extra:
+        require(target_environment['MESA_RGB_VISUAL']=='TrueColor 24','Unexpected SDK visual selector')
     emulator_root=pathlib.Path('/usr/local/lib/android/sdk/emulator').resolve()
     if extra:
         require(config['target']['kind']=='emulator','Synthetic fixture cannot add loader environment')
@@ -198,9 +209,6 @@ def validate_config(config,path):
         require(value and pathlib.Path(value).is_absolute() and pathlib.Path(value).resolve().is_relative_to(emulator_root),'Foreign emulator library search path')
     if 'ANDROID_EMULATOR_LAUNCHER_DIR' in extra:
         require(pathlib.Path(target_environment['ANDROID_EMULATOR_LAUNCHER_DIR']).resolve()==emulator_root,'Foreign emulator launcher directory')
-    for key in ['HOME','TMPDIR','XDG_CONFIG_HOME','XDG_CACHE_HOME','ANDROID_AVD_HOME','ANDROID_USER_HOME','ANDROID_EMULATOR_HOME']:
-        require(pathlib.Path(config['environment'][key]).resolve().is_relative_to(root),'Operational environment path escapes private root')
-    return root
 
 def stop_owned_fixture(lease,path):
     require(sys.platform=='linux' and hasattr(os,'pidfd_open') and hasattr(signal,'pidfd_send_signal'),'Require Linux pidfd fixture cleanup')

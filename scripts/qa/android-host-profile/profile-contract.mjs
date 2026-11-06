@@ -21,17 +21,22 @@ export function requireCleanEnvironment(actual,expected){
   for(const key of Object.keys(expected))assert.ok(actual[key]===expected[key],'Unexpected operational environment value: '+key);
   return {verified:true,keys:Object.keys(expected).sort(),secretValuesLogged:false};
 }
-export function emulatorEnvironment(actual,base,sdk,{realpath=realpathSync}={}){
-  // Only the SDK launcher may add these two operational loader values. They
-  // cannot inject arbitrary search paths or become profiler environment input.
+export function emulatorEnvironment(actual,base,sdk,{realpath=realpathSync,pid}={}){
+  // SDK launcher source also sets its own PID, a fixed visual selector and C
+  // locale before exec. These narrowly checked values never reach the profiler.
   const extras=Object.keys(actual).filter(key=>!Object.hasOwn(base,key));
-  assert.ok(extras.every(key=>['LD_LIBRARY_PATH','ANDROID_EMULATOR_LAUNCHER_DIR'].includes(key)),'Unexpected emulator environment keys');
-  requireCleanEnvironment(Object.fromEntries(Object.keys(base).map(key=>[key,actual[key]])),base);
+  const allowed=['LD_LIBRARY_PATH','ANDROID_EMULATOR_LAUNCHER_DIR','ANDROID_EMULATOR_WRAPPER_PID','MESA_RGB_VISUAL'];
+  const safeNames=extras.filter(key=>!allowed.includes(key)).map(key=>/^[A-Z_][A-Z0-9_]{0,63}$/.test(key)?key:'<nonstandard>');
+  assert.ok(safeNames.length===0,'Unexpected emulator environment keys: '+JSON.stringify(safeNames));
+  const operational={...base};if(actual.LC_ALL==='C')operational.LC_ALL='C';
+  requireCleanEnvironment(Object.fromEntries(Object.keys(base).map(key=>[key,actual[key]])),operational);
+  if(actual.ANDROID_EMULATOR_WRAPPER_PID!==undefined){assert.ok(Number.isSafeInteger(pid)&&pid>1,'Require owned emulator PID');assert.ok(actual.ANDROID_EMULATOR_WRAPPER_PID===String(pid),'SDK wrapper PID differs from the owned emulator');}
+  if(actual.MESA_RGB_VISUAL!==undefined)assert.ok(actual.MESA_RGB_VISUAL==='TrueColor 24','Unexpected SDK visual selector');
   const root=realpath(join(sdk,'emulator'));
   const contained=value=>{assert.ok(typeof value==='string'&&value.length>0&&!/[\0\r\n]/.test(value)&&isAbsolute(value),'Unsafe SDK loader path');const r=relative(root,realpath(value));assert.ok(r===''||(!r.startsWith('..')&&!isAbsolute(r)),'SDK loader path escapes emulator');};
   if(actual.LD_LIBRARY_PATH!==undefined){assert.equal(typeof actual.LD_LIBRARY_PATH,'string');for(const value of actual.LD_LIBRARY_PATH.split(delimiter))contained(value);}
   if(actual.ANDROID_EMULATOR_LAUNCHER_DIR!==undefined){contained(actual.ANDROID_EMULATOR_LAUNCHER_DIR);assert.equal(realpath(actual.ANDROID_EMULATOR_LAUNCHER_DIR),root);}
-  return {...base,...Object.fromEntries(extras.map(key=>[key,actual[key]]))};
+  return {...operational,...Object.fromEntries(extras.map(key=>[key,actual[key]]))};
 }
 export function parseEnviron(bytes){
   const result=Object.create(null);for(const line of bytes.toString('utf8').split('\0').filter(Boolean)){const at=line.indexOf('=');assert.ok(at>0,'Malformed environment');const key=line.slice(0,at);assert.ok(!Object.hasOwn(result,key),'Duplicate environment key');result[key]=line.slice(at+1);}return result;

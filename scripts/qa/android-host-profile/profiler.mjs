@@ -46,7 +46,7 @@ function targetReceipt(owner,kind,expectedEnv){
   const before=kind==='emulator'?readOwner(owner):liveIdentity(owner),exe=readlinkSync('/proc/'+owner.pid+'/exe');
   const actualCommand=readFileSync('/proc/'+owner.pid+'/cmdline','utf8').split('\0').filter(Boolean);
   const actualEnv=parseEnviron(readFileSync('/proc/'+owner.pid+'/environ'));
-  const targetEnv=kind==='emulator'?emulatorEnvironment(actualEnv,expectedEnv,expectedEnv.ANDROID_HOME):expectedEnv;
+  const targetEnv=kind==='emulator'?emulatorEnvironment(actualEnv,expectedEnv,expectedEnv.ANDROID_HOME,{pid:owner.pid}):expectedEnv;
   const environment=requireCleanEnvironment(actualEnv,targetEnv);
   const result={kind,pid:owner.pid,startTicks:owner.startTicks,exe,exeSha256:sha(readFileSync(exe)),command:actualCommand,environment,targetEnvironment:targetEnv};
   if(kind==='emulator')readOwner(owner);else liveIdentity(before);return result;

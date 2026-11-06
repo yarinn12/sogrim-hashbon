@@ -143,3 +143,24 @@ SDK boundary, actual temporary RSA key-pair validation and existing-key refusal.
 OLD reproduces the recorded missing-temp failure; FINAL completes that boundary.
 All original APK/SDK/renderer/workload/deadlines remain unchanged. This separate
 first-created workflow still needs actual cloud acceptance; it is not a release.
+
+The env run42313212890 passed ADB key preparation, boot, network isolation,
+launcher preparation, pre-health, renderer verification and trace startup. It
+stopped before the original workload because the emulator's initial environment
+had SDK-added keys outside the original two-loader-key model. Unknown values
+were not logged. This is not an application or ANR acceptance result.
+
+Official launcher source (main-emulator.cpp, emu-master-dev) explicitly sets
+ANDROID_EMULATOR_WRAPPER_PID to its own PID, MESA_RGB_VISUAL to `TrueColor 24`,
+and LC_ALL to C. These source-documented operational values
+now have narrow validation: wrapper PID must equal the owned emulator PID,
+visual selector must match exactly, and only C or the original C.UTF-8 locale
+is allowed for the emulator. Profiler/fixture environments keep their original
+strict locale. Existing SDK loader paths stay confined to the verified SDK.
+The privileged helper independently repeats these checks. Any other key is
+rejected; error metadata includes only bounded key names, never their values.
+The source-derived regression reproduces the rejected SDK additions and checks
+foreign PID, changed visual/locale, credentials and preload rejection. It is not
+a capture of the original process environment or proof of binary/source identity.
+All sampling, original workload and time limits stay unchanged.
+Source: https://android.googlesource.com/platform/external/qemu/+/emu-master-dev/android/emulator/main-emulator.cpp
