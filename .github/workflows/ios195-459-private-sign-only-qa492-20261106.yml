@@ -3,7 +3,7 @@ run-name: iOS signed artifact 4.59 (195) from 690ae90372ad02ec81f98142d3677fa70d
 
 on:
   push:
-    branches: [codex/ios195-459-private-tools-20261105]
+    branches: [codex/ios195-459-signing-qa492-20261106]
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build-export-verify-private:
-    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios195-459-private-tools-20261105' && github.workflow_ref == 'yarinn12/sogrim-hashbon/.github/workflows/ios195-459-private-sign-only-20261105.yml@refs/heads/codex/ios195-459-private-tools-20261105' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios195-459-signing-qa492-20261106' && github.workflow_ref == 'yarinn12/sogrim-hashbon/.github/workflows/ios195-459-private-sign-only-qa492-20261106.yml@refs/heads/codex/ios195-459-signing-qa492-20261106' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
     runs-on: macos-26
     timeout-minutes: 75
     defaults:
@@ -59,7 +59,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node "$GITHUB_WORKSPACE/release-bootstrap/scripts/qa/ios-signing/first-creation-guard.mjs" --output "$RUNNER_TEMP/ios195-first-creation-20261105"
+        run: node "$GITHUB_WORKSPACE/release-bootstrap/scripts/qa/ios-signing/first-creation-guard.mjs" --output "$RUNNER_TEMP/ios195-first-creation-qa492-20261106"
 
       - name: Validate mandatory frozen source and release inputs
         working-directory: ${{ github.workspace }}

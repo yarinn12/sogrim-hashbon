@@ -11,7 +11,7 @@ import {CONTRACT as C,githubJsonGet,validateCreationContext,verifyFirstCreation,
 
 const clone=value=>structuredClone(value);
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8').replaceAll('\r\n','\n');
-const next=read('../.github/workflows/ios195-459-private-sign-only-20261105.yml');
+const next=read('../.github/workflows/ios195-459-private-sign-only-qa492-20261106.yml');
 const old=JSON.parse(read('./fixtures/ios195-first-creation-old.json'));
 const input=name=>new RegExp('^      '+name+': "([^"]+)"$','m').exec(next)?.[1];
 const sha='2a62c846ed397b93dd68fe0363da0dd148ca9a8e';
@@ -49,7 +49,9 @@ const hash=data=>createHash('sha256').update(data).digest('hex');
 test('OLD iOS condition rejects creation counter3; FINAL accepts only creation with two complete current-only histories',async()=>{
  const github={repository:C.repository,ref:branchRef,workflow_ref:context().GITHUB_WORKFLOW_REF,event_name:'push',event:event(),run_attempt:1,run_number:old.runNumber};
  assert.equal(old.runNumber,3);assert.equal(old.runAttempt,1);
- assert.equal(runInNewContext(old.jobIf,{github}),false);
+ const legacyGithub={...github,ref:'refs/heads/'+old.branch};
+ assert.equal(runInNewContext(old.jobIf,{github:legacyGithub}),false);
+ assert.equal(runInNewContext(old.jobIf,{github:{...legacyGithub,run_number:1}}),true);
  assert.equal(runInNewContext(expression(next),{github}),true);
  const mock=api(),receipt=await verifyFirstCreation(context(),event(),mock.get);
  assert.equal(receipt.ready,true);assert.equal(receipt.runNumberCounterOnly,3);assert.equal(receipt.priorRetainedRuns,0);
