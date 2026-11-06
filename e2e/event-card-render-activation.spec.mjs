@@ -1,23 +1,36 @@
 import {test, expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
+import {openTypographyHome} from './helpers/typographyReadiness.mjs';
 
 const fixture = readFileSync(new URL('./fixtures/eventActivityBootstrap.js', import.meta.url), 'utf8');
 test.use({serviceWorkers: 'block'});
 
 for (const release of ['original action', 'sibling action']) test(`a same-account home refresh preserves only the original event activation: ${release}`, async ({page}) => {
-  const errors = [];
+  const errors = [], external = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1'
-    ? route.continue() : route.abort());
+    ? route.continue() : (external.push(route.request().url()), route.abort()));
   await page.addInitScript({content: fixture});
   await page.setViewportSize({width: 852, height: 393});
-  await page.goto('/?review=1&requests=accepted&reward=inactive&dynamic-type-preview=32');
+  await openTypographyHome(page, {path: '/?review=1&requests=accepted&reward=inactive&dynamic-type-preview=32'});
   const card = page.locator('.product-home-screen [data-action="open-event"][data-event-id="friend-weekend"]');
-  await card.scrollIntoViewIfNeeded();
   await expect(card).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
-  const box = await card.boundingBox();
-  const point = {x: box.x + box.width / 2, y: Math.max(1, box.y) + Math.min(box.height / 2, 35)};
+  let point;
+  await expect.poll(async () => {
+    point = await page.evaluate(async () => {
+      const selector = '.product-home-screen [data-action="open-event"][data-event-id="friend-weekend"]';
+      const node = document.querySelector(selector);
+      if (!node) return null;
+      node.scrollIntoView({block: 'center', behavior: 'instant'});
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (!node.isConnected || document.querySelector(selector) !== node) return null;
+      const box = node.getBoundingClientRect();
+      const point = {x: box.x + box.width / 2, y: Math.max(1, box.y) + Math.min(box.height / 2, 35)};
+      return node.contains(document.elementFromPoint(point.x, point.y)) ? point : null;
+    });
+    return Boolean(point);
+  }).toBe(true);
   await page.mouse.move(point.x, point.y);
   await page.mouse.down();
   const evidence = await page.evaluate(() => {
@@ -46,4 +59,5 @@ for (const release of ['original action', 'sibling action']) test(`a same-accoun
   if (release === 'original action') await expect(page.locator('.screen [data-action="open-event-settings"]')).toBeVisible();
   else await expect(page.locator('.event-status-menu')).toHaveCount(0);
   expect(errors).toEqual([]);
+  expect(external).toEqual([]);
 });
