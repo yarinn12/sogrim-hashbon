@@ -64,6 +64,9 @@ test('account entry reload evidence: an identified unissued snapshot fetch is re
       catch (error) { return { name: error.name, message: error.message }; }
     } };
   });
+  // The CI event followed a completed request to this same endpoint. Prove
+  // the synthetic endpoint works before replacing the old document.
+  const snapshotUrl = accountEntryAuthOrigin + '/rest/v1/app_snapshots?id=eq.space-account-entry&select=updated_at';
   let release, started;
   const held = new Promise(resolve => { release = resolve; });
   const navigationStarted = new Promise(resolve => { started = resolve; });
@@ -76,9 +79,10 @@ test('account entry reload evidence: an identified unissued snapshot fetch is re
   let probe;
   try {
     await fixture.reloadEvidence.withExpectedReload(async () => {
+      expect(await old.evaluate((value, url) => value.run(url), snapshotUrl)).toEqual({ status: 200 });
       const click = gate.getByRole('button', { name: 'התחבר', exact: true }).click();
       await navigationStarted;
-      probe = await old.evaluate((value, url) => value.run(url), accountEntryAuthOrigin + '/rest/v1/app_snapshots?id=eq.space-account-entry&select=updated_at');
+      probe = await old.evaluate((value, url) => value.run(url), snapshotUrl);
       release();
       await click;
     });
@@ -96,4 +100,49 @@ test('account entry reload evidence: an identified unissued snapshot fetch is re
   expect(attempt.request).toBeUndefined();
   expect(attempt.response).toBeUndefined();
   expect(attempt.failure).toBeUndefined();
+});
+
+test('account entry sign-out reload: an unissued workspace read is identified only after logout', async ({ page, baseURL }) => {
+  const fixture = await prepareAccountEntry(page, baseURL, { authenticated: true, incompleteUsername: true });
+  const gate = await openAccountEntry(page, { mode: 'complete' });
+  const old = await page.evaluateHandle(async () => {
+    const { fetchWithTimeout } = await import('/src/data/fetchTimeout.mjs');
+    return { run: async url => {
+      try { return { status: (await fetchWithTimeout(fetch, url)).status }; }
+      catch (error) { return { name: error.name, message: error.message }; }
+    } };
+  });
+  let release, started;
+  const held = new Promise(resolve => { release = resolve; });
+  const navigationStarted = new Promise(resolve => { started = resolve; });
+  await page.route(url => url.origin === new URL(baseURL).origin && url.pathname === '/', async route => {
+    if (!route.request().isNavigationRequest()) return route.fallback();
+    started();
+    await held;
+    await route.fallback();
+  });
+  let probe;
+  try {
+    await fixture.reloadEvidence.withExpectedReload(async () => {
+      const click = gate.locator('[data-account-action=signout]').click();
+      await navigationStarted;
+      probe = await old.evaluate((value, url) => value.run(url),
+        accountEntryAuthOrigin + '/rest/v1/app_snapshots?id=eq.space-account-entry&select=state%2Cupdated_at');
+      release();
+      await click;
+    }, { expectedFinal: 'signed-out' });
+  } finally { release(); }
+  expect(probe).toMatchObject({ name: 'TypeError' });
+  expect(fixture.record.pageErrors).toHaveLength(1);
+  expectNoExternalFailures(fixture);
+  expect(fixture.record.reloadDiagnostics).toHaveLength(1);
+  expect(fixture.record.reloadDiagnostics[0].reason).toBe('webkit-unissued-signout-fetch');
+  expect(fixture.record.reloadDiagnostics[0].raw).toBe(fixture.record.pageErrors[0]);
+  const attempt = fixture.reloadEvidence.attempts.get(fixture.record.reloadDiagnostics[0].id);
+  expect(attempt.request).toBeUndefined();
+  expect(attempt.response).toBeUndefined();
+  expect(attempt.failure).toBeUndefined();
+  expect([...fixture.reloadEvidence.accountRequests.values()]).toContainEqual(expect.objectContaining({
+    path: '/auth/v1/logout', method: 'POST', status: 200, allowOrigin: '*'
+  }));
 });

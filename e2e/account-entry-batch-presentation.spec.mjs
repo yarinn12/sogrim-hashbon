@@ -135,7 +135,11 @@ test('account entry: incomplete name requires both identity fields and submits e
 test('account entry: known full name is preserved in a hidden field and another account can be chosen', async ({ page, baseURL }) => {
   const fixture = await prepareAccountEntry(page, baseURL, { authenticated: true, incompleteUsername: true }), gate = await openAccountEntry(page, { mode: 'complete', size: 32, width: 320, height: 568 });
   await expect(gate.locator('input[name=displayName]')).toHaveAttribute('type', 'hidden');await expect(gate.locator('input[name=displayName]')).toHaveValue('נועם לוי');await expect(gate.locator('input[name=username]')).toBeFocused();await assertAccountLayout(gate, 32);
-  await gate.locator('[data-account-action=signout]').click();await expect(gate.locator('form')).toHaveAttribute('data-mode', 'login');expect(await page.evaluate(() => localStorage.getItem('settle-friends-account-session'))).toBeNull();expectNoExternalFailures(fixture);
+  await fixture.reloadEvidence.withExpectedReload(
+    () => gate.locator('[data-account-action=signout]').click(),
+    { expectedFinal: 'signed-out' }
+  );
+  await expect(gate.locator('form')).toHaveAttribute('data-mode', 'login');expect(await page.evaluate(() => localStorage.getItem('settle-friends-account-session'))).toBeNull();expectNoExternalFailures(fixture);
 });
 
 test('account entry regression: username collision remains clear and preserves the typed completion fields', async ({ page, baseURL }) => {
