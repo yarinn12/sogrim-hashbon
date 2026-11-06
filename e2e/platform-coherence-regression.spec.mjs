@@ -1106,7 +1106,47 @@ for(const root of [16,20,32]) {
   for(const width of [320,393,411]) {
    await page.setViewportSize({width,height:852});
    await page.evaluate(()=>document.fonts.ready);
-   const result=await page.evaluate(measureExpenseName),context=`name${width}px/root${root}`;
+   const nameInput=dialog.locator('[data-action="expense-name"]'),draftName=`שם לבדיקה ${width}`;
+   await nameInput.fill(draftName);
+   await expect(nameInput).toHaveValue(draftName);
+   const compact=await page.evaluate(()=>{
+    const root=document.documentElement,wasOpen=root.classList.contains('app-software-keyboard-open');
+    root.classList.add('app-software-keyboard-open');
+    try {
+     const modal=document.querySelector('.expense-step-modal[data-expense-step="name"]');
+     const title=modal.querySelector('.expense-modal-step-header h2'),input=modal.querySelector('[data-action="expense-name"]');
+     const style=getComputedStyle(title),bounds=title.getBoundingClientRect(),range=document.createRange();
+     const inputBounds=input.getBoundingClientRect(),modalBounds=modal.getBoundingClientRect();
+     range.selectNodeContents(title);
+     const glyphs=[...range.getClientRects()].filter(rect=>rect.width>0&&rect.height>0);
+     let background=title;
+     while(background){
+      const color=getComputedStyle(background).backgroundColor;
+      if(!color.startsWith('rgba(')||Number.parseFloat(color.match(/[\d.]+(?=\))$/)?.[0]??0)>=1) break;
+      background=background.parentElement;
+     }
+     const channel=value=>[...value.matchAll(/[\d.]+/g)].slice(0,3).map(match=>Number(match[0]));
+     const luminance=value=>channel(value).map(n=>n/255).map(n=>n<=.04045?n/12.92:((n+.055)/1.055)**2.4).reduce((sum,n,index)=>sum+n*[.2126,.7152,.0722][index],0);
+     const foreground=luminance(style.color),backdrop=luminance(background?getComputedStyle(background).backgroundColor:'rgb(255, 255, 255)');
+     return {contrast:(Math.max(foreground,backdrop)+.05)/(Math.min(foreground,backdrop)+.05),
+      titleFits:glyphs.every(rect=>rect.left>=bounds.left-1&&rect.right<=bounds.right+1&&rect.top>=bounds.top-1&&rect.bottom<=bounds.bottom+1),
+      titleBackground:style.backgroundImage,inputValue:input.value,
+      inputReachable:inputBounds.width>=44&&inputBounds.height>=44&&inputBounds.left>=modalBounds.left-1&&inputBounds.right<=modalBounds.right+1};
+    } finally {root.classList.toggle('app-software-keyboard-open',wasOpen);}
+   });
+   const context=`name${width}px/root${root}`;
+   expect(compact.contrast,context+' keyboard-open title contrast').toBeGreaterThanOrEqual(4.5);
+   expect(compact.titleFits,context+' keyboard-open title fits').toBe(true);
+   expect(compact.titleBackground,context+' keyboard-open title has no gradient').toBe('none');
+   expect(compact.inputValue,context+' keyboard-open input keeps typed text').toBe(draftName);
+   expect(compact.inputReachable,context+' keyboard-open input remains usable').toBe(true);
+   await nameInput.fill('');
+   await expect(nameInput).toHaveValue('');
+   await dialog.locator('.expense-modal-step-header h2').click();
+   await expect(page.locator('html')).not.toHaveClass(/app-software-keyboard-open/);
+   await expect(dialog.locator('.expense-modal-step-header h2')).toHaveCSS('color','rgb(255, 255, 255)');
+   await expect(dialog.locator('.expense-modal-step-header h2')).toHaveCSS('background-image',/linear-gradient/);
+   const result=await page.evaluate(measureExpenseName);
    expect(result.root,context).toBe(root);
    expect(result.placeholderFont,context+' placeholder must grow with actual input').toBeCloseTo(result.inputFont,1);
    expect(result.titleColor,context).toBe('rgb(255, 255, 255)');
