@@ -19,7 +19,9 @@ DEVICE="com.apple.CoreSimulator.SimDeviceType.iPhone-16"
 class CalibrationTests(unittest.TestCase):
     def setUp(self):
         tmp=tempfile.TemporaryDirectory(prefix="cal-");self.addCleanup(tmp.cleanup)
-        self.root=Path(tmp.name);self.out=self.root/"evidence";self.out.mkdir()
+        # macOS temporary parents may be aliases (/var -> /private/var).
+        # Canonicalize only the synthetic fixture; runtime tool checks stay strict.
+        self.root=Path(tmp.name).resolve(strict=True);self.out=self.root/"evidence";self.out.mkdir()
         self.uid=self.root.stat().st_uid
         for target,kwargs in (("native_host_preflight.os.getuid",dict(return_value=self.uid,create=True)),
                               ("native_host_preflight.host_identity",dict(return_value="a"*64)),
@@ -76,6 +78,38 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(r["context"]["sourceSha"],SHA)
         loaded=cal.load_calibration(path,self.owner_path,self.manifest,SHA,TREE,UDID)
         self.assertEqual(loaded,r)
+
+    def test_temporary_parent_alias_is_canonical_before_tool_validation(self):
+        fixture_root=self.root/"temporary-parent-boundary";fixture_root.mkdir()
+        alias_parent=fixture_root/"alias";alias_parent.mkdir()
+        # Controlled symlink boundary, without requiring Windows symlink privileges:
+        # real filesystem lookup of alias/.. reaches fixture_root, while the guard
+        # observes alias as a symlink ancestor. safe_path/tool_identity are real.
+        temporary=SimpleNamespace(name=str(alias_parent/".."),cleanup=lambda:None)
+        real_is_symlink=Path.is_symlink
+        probe=CalibrationTests("test_valid_same_job_host_observation_is_bound_and_loads")
+        try:
+            with patch("tempfile.TemporaryDirectory",return_value=temporary), \
+                 patch.object(Path,"is_symlink",autospec=True,
+                              side_effect=lambda path:path==alias_parent or real_is_symlink(path)):
+                probe.setUp()
+                report=probe.run_probe()
+                self.assertTrue(report["verified"],report)
+                self.assertEqual(probe.root,fixture_root)
+                self.assertEqual(len(probe.commands),3)
+                self.assertEqual(report["tool"]["path"],str(probe.tool))
+        finally:
+            probe.doCleanups()
+
+    def test_symlink_tool_ancestor_is_still_rejected(self):
+        tool_parent=self.root/"Xcode.app"
+        real_is_symlink=Path.is_symlink
+        with patch.object(Path,"is_symlink",autospec=True,
+                          side_effect=lambda path:path==tool_parent or real_is_symlink(path)):
+            report=self.run_probe()
+        self.assert_unverified(report)
+        self.assertEqual(report["reason"],"symlink-evidence")
+        self.assertEqual(self.commands,[["/usr/bin/xcrun","--find","simctl"]])
 
     def test_state_three_without_cli_booted_observation_is_rejected(self):
         self.row["state"]="Shutdown"
