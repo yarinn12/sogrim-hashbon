@@ -683,6 +683,7 @@ const eventPressGesture = createEventPressGesture({
   moveTolerance: EVENT_LONG_PRESS_MOVE_TOLERANCE_PX,
   timeOrigin: () => performance.timeOrigin
 });
+let eventLongPressScope = null;
 let eventLongPressTarget = null;
 let suppressedEventOpenId = "";
 let suppressEventOpenUntil = 0;
@@ -1144,6 +1145,7 @@ function commitRenderedScreen(html) {
     ?.remove();
 
   app.innerHTML = nextMarkup;
+  restoreEventPressAfterRender(screenChanged);
   lastCommittedScreenMarkup = nextMarkup;
   publishNotificationNavigationState();
   syncNoticeLifecycleAfterRender();
@@ -10782,6 +10784,7 @@ function handleEventLongPressStart(event) {
 
   cancelEventLongPress();
   eventPressGesture.start(event, target, event.target.closest('[data-action="open-event"]'));
+  eventLongPressScope = {participantId: state.currentParticipantId, screenKey: `${screen.name}:${screen.eventId ?? ""}`};
   eventLongPressTarget = target;
   target.classList.add("is-long-pressing");
 }
@@ -10794,6 +10797,36 @@ function cancelEventLongPress() {
   eventPressGesture.cancel();
   eventLongPressTarget?.classList.remove("is-long-pressing");
   eventLongPressTarget = null;
+  eventLongPressScope = null;
+}
+
+function restoreEventPressAfterRender(screenChanged) {
+  if (!eventLongPressTarget) return;
+  const eventId = eventLongPressTarget.dataset.eventId;
+  // A same-view background refresh may replace the pressed card before UP.
+  // Keep its original input timing only while the account, route and event
+  // still identify the same action. Removed rows and changed contexts cancel.
+  if (screenChanged || !eventPressScopeIsCurrent() || !getEvent(eventId)) {
+    cancelEventLongPress();
+    return;
+  }
+  const card = [...app.querySelectorAll('[data-long-press-event="true"][data-event-id]')]
+    .find(node => node.dataset.eventId === eventId);
+  const activation = card?.querySelector('[data-action="open-event"]');
+  if (!activation || activation.dataset.eventId !== eventId ||
+      !eventPressGesture.retarget(eventLongPressTarget, card, activation)) {
+    cancelEventLongPress();
+    return;
+  }
+  eventLongPressTarget.classList.remove("is-long-pressing");
+  eventLongPressTarget = card;
+  card.classList.add("is-long-pressing");
+}
+
+function eventPressScopeIsCurrent() {
+  return eventLongPressScope && !eventDialog && !eventStatusMenu && !importantActionDialog &&
+    eventLongPressScope.participantId === state.currentParticipantId &&
+    eventLongPressScope.screenKey === `${screen.name}:${screen.eventId ?? ""}`;
 }
 
 function handleEventPressPointerDown(event) {
@@ -10815,6 +10848,10 @@ function handleEventLongPressCancel(event) {
 }
 
 function handleEventLongPressEnd(event) {
+  if (eventLongPressTarget && !eventPressScopeIsCurrent()) {
+    cancelEventLongPress();
+    return;
+  }
   const result = eventPressGesture.finish(event, target => target.isConnected && app.contains(target));
   if (!result) return;
   cancelEventLongPress();

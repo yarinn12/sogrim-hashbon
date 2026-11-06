@@ -49,6 +49,13 @@ export function createEventPressGesture({ holdMs = 560, moveTolerance = 12, time
       active = null;
       return true;
     },
+    retarget(previousTarget, target, activationTarget) {
+      if (!active || active.cancelled || !active.activationTarget || active.target !== previousTarget || !target || !activationTarget) return false;
+      active.target = target;
+      active.activationTarget = activationTarget;
+      active.retargeted = true;
+      return true;
+    },
     finish(event, targetAvailable) {
       if (!active || event.pointerId !== active.pointerId) return null;
       const press = active;
@@ -60,7 +67,7 @@ export function createEventPressGesture({ holdMs = 560, moveTolerance = 12, time
         target: press.target,
         activationTarget: press.activationTarget,
         duration,
-        kind: press.cancelled || !targetAvailable(press.target) || (press.activationTarget && !targetAvailable(press.activationTarget)) ? 'cancel' : duration !== null && duration >= holdMs ? 'hold' : 'tap'
+        kind: press.cancelled || !targetAvailable(press.target) || (press.activationTarget && !targetAvailable(press.activationTarget)) || (press.retargeted && !press.activationTarget.contains?.(event.target)) ? 'cancel' : duration !== null && duration >= holdMs ? 'hold' : 'tap'
       };
     },
     isTouchContext(event) {

@@ -15,10 +15,15 @@ function harness({pauseTimers = false} = {}) {
   const pending = [];
   const effects = {opened: 0, archived: 0};
   let context;
-  const card = {dataset:{eventId:'qa-event'},isConnected:true,classList:{add(){},remove(){}},click(){throw new Error('The article wrapper is not the event activation button');}};
+  const makeCard = eventId => ({dataset:{eventId},isConnected:true,classList:{add(){},remove(){}},
+    contains(node){return node === this || node?.cardOwner === this;},
+    querySelector(){return this.activation;},
+    click(){throw new Error('The article wrapper is not the event activation button');}});
+  let card = makeCard('qa-event');
   function element(action = 'open-event') {
     const node = {
-      dataset: {action, eventId: 'qa-event'}, isConnected: true, disabled: false,
+      dataset: {action, eventId: card.dataset.eventId}, isConnected: true, disabled: false,
+      cardOwner: card, contains(other){return other === node;},
       classList: {add() {}, remove() {}},
       closest(selector) {
         if (selector === '[data-action]') return node;
@@ -32,6 +37,7 @@ function harness({pauseTimers = false} = {}) {
     return node;
   }
   const row = element();
+  card.activation = row;
   const register = surface => (type, fn, options) => {
     const handlers = listeners[surface].get(type) || [];
     handlers.push({fn, capture: options === true || options?.capture});
@@ -43,19 +49,20 @@ function harness({pauseTimers = false} = {}) {
     performance: {now: () => clock, timeOrigin: 1792010000000},
     window: {setTimeout(fn, ms) { const id = ++timerId; timers.set(id, {at: clock + ms, fn}); return id; }, clearTimeout(id) { timers.delete(id); }},
     document: {addEventListener: register('document')},
-    app: {addEventListener: register('app'), contains: node => node.isConnected, querySelector: () => ({focus() {}})},
+    app: {addEventListener: register('app'), contains: node => node.isConnected,
+      querySelectorAll: () => [card], querySelector: () => ({focus() {}})},
     getEvent: id => id === 'qa-event' ? {id, name: 'Synthetic event'} : null,
     rememberDialogReturnFocus() {}, activateDialog() {}, isEditableTextTarget: target => target.editable === true,
     flushScheduledBrowserHistoryReplacement() {}, closeOpenTransientMenus() {}, dismissTransientBackdrop: () => false,
     rememberRecentEvent() { effects.opened++; }, requestResumeSyncAfterPaint() {},
     isEventPersonallyArchived: () => false, setEventPersonallyArchived() { effects.archived++; }, closeDialogWithHistory() {},
     runAppInteraction(fn, event) { pending.push(Promise.resolve(fn(event))); },
-    render() {}, screen: {name: 'home'}, notice: '', expenseDraft: null, joinEventDraft: null, eventDialog: null, editingGroupDraft: null,
+    render() {}, state: {currentParticipantId: 'qa-owner'}, screen: {name: 'home'}, notice: '', expenseDraft: null, joinEventDraft: null, eventDialog: null, editingGroupDraft: null,
     eventStatusMenu: null, importantActionDialog: null
   });
   const first = Math.min(...['let eventLongPressTimer', 'let eventLongPressTarget', 'const eventPressGesture'].map(marker => source.indexOf(marker)).filter(i => i >= 0));
   const globals = source.slice(first, source.indexOf('let eventWorkspaceSwipe', first));
-  const names = ['handleEventLongPressStart', 'handleEventLongPressMove', 'cancelEventLongPress', 'handleEventLongPressEnd', 'handleEventLongPressCancel', 'handleEventPressPointerDown', 'consumeEventPressClick', 'handleEventContextMenu', 'openEventStatusMenu', 'handleClickSafely', 'handleClick'];
+  const names = ['handleEventLongPressStart', 'handleEventLongPressMove', 'cancelEventLongPress', 'restoreEventPressAfterRender', 'eventPressScopeIsCurrent', 'handleEventLongPressEnd', 'handleEventLongPressCancel', 'handleEventPressPointerDown', 'consumeEventPressClick', 'handleEventContextMenu', 'openEventStatusMenu', 'handleClickSafely', 'handleClick'];
   const dialogActions = source.match(/const DIALOG_OPEN_ACTIONS = new Set\(\[[^]*?\]\);/)[0];
   vm.runInContext('const EVENT_LONG_PRESS_DELAY_MS=560, EVENT_LONG_PRESS_MOVE_TOLERANCE_PX=12;\n' + dialogActions + '\n' + globals + '\n' + names.map(functionSource).filter(Boolean).join('\n'), context);
   for (const line of source.split('\n').filter(line => /^\s*(app|document)\.addEventListener\(/.test(line) && /EventLongPress|EventContextMenu|EventPressClick|EventPressPointerDown/.test(line))) vm.runInContext(line, context);
@@ -74,6 +81,18 @@ function harness({pauseTimers = false} = {}) {
   }
   return {
     row, element, effects, dispatch,
+    changeContext(kind) {
+      if (kind === 'account') context.state.currentParticipantId = 'other-owner';
+      if (kind === 'screen') context.screen.name = 'people';
+    },
+    replaceCard({eventId = 'qa-event', screenChanged = false, accountChanged = false, dialog = false} = {}) {
+      card.isConnected = false; card.activation.isConnected = false;
+      card = makeCard(eventId); card.activation = element();
+      if (accountChanged) context.state.currentParticipantId = 'other-owner';
+      if (dialog) context.eventDialog = {kind: 'share'};
+      context.restoreEventPressAfterRender?.(screenChanged);
+      return card.activation;
+    },
     advance(to) {
       if (!pauseTimers) for (;;) {
         const next = [...timers].filter(([, t]) => t.at <= to).sort((a, b) => a[1].at - b[1].at)[0];
@@ -193,4 +212,59 @@ test('touch contextmenu followed by cancellation never activates an event or men
   h.advance(800);h.dispatch('pointerdown',{timeStamp:800});h.advance(881);
   h.dispatch('pointerup',{timeStamp:881});h.dispatch('click');await h.flush();
   assert.equal(h.screen(),'event');assert.equal(h.effects.opened,1);
+});
+
+test('same-account same-route card replacement preserves exactly one short activation', async () => {
+  const h = harness(); h.dispatch('pointerdown', {timeStamp: 0});
+  const replacement = h.replaceCard();
+  h.advance(81); h.dispatch('pointerup', {target: replacement, timeStamp: 81});
+  h.dispatch('click', {target: replacement}); await h.flush();
+  assert.equal(h.screen(), 'event'); assert.equal(h.effects.opened, 1); assert.equal(h.menu(), null);
+});
+
+test('retargeted real hold retains its original duration and opens only the menu', async () => {
+  const h = harness(); h.dispatch('pointerdown', {timeStamp: 0});
+  const replacement = h.replaceCard();
+  h.advance(560); h.dispatch('pointerup', {target: replacement, timeStamp: 560});
+  h.dispatch('click', {target: replacement}); await h.flush();
+  assert.ok(h.menu()); assert.equal(h.effects.opened, 0);
+});
+
+for (const [name, options] of [['removed row', {eventId: 'other-event'}], ['changed screen', {screenChanged: true}], ['changed account', {accountChanged: true}], ['new dialog', {dialog: true}]]) {
+  test(`card replacement still cancels after ${name}`, async () => {
+    const h = harness(); h.dispatch('pointerdown', {timeStamp: 0});
+    const replacement = h.replaceCard(options);
+    h.advance(81); h.dispatch('pointerup', {target: replacement, timeStamp: 81});
+    h.dispatch('click', {target: replacement}); await h.flush();
+    assert.equal(h.effects.opened, 0); assert.equal(h.menu(), null);
+  });
+}
+
+test('card refresh does not revive a scrolling gesture or release on another target', async () => {
+  for (const moved of [true, false]) {
+    const h = harness(); h.dispatch('pointerdown', {timeStamp: 0});
+    if (moved) h.dispatch('pointermove', {clientX: 63});
+    const replacement = h.replaceCard();
+    const releaseTarget = moved ? replacement : h.element('event-status-select');
+    h.advance(81); h.dispatch('pointerup', {target: releaseTarget, timeStamp: 81});
+    h.dispatch('click', {target: releaseTarget}); await h.flush();
+    assert.equal(h.effects.opened, 0); assert.equal(h.menu(), null);
+  }
+});
+
+test('the real render commit restores a press immediately after replacing markup', () => {
+  assert.match(functionSource('commitRenderedScreen'), /app\.innerHTML = nextMarkup;\s*restoreEventPressAfterRender\(screenChanged\);/);
+});
+
+for (const kind of ['account', 'screen']) test(`release rejects changed ${kind} even without a render`, async () => {
+  const h = harness(); h.dispatch('pointerdown', {timeStamp: 0}); h.changeContext(kind);
+  h.advance(81); h.dispatch('pointerup', {timeStamp: 81}); h.dispatch('click'); await h.flush();
+  assert.equal(h.effects.opened, 0); assert.equal(h.menu(), null);
+});
+
+test('retargeting never upgrades a non-activation card press into an event button', () => {
+  const gesture = createEventPressGesture(), before = {}, after = {}, activation = {};
+  gesture.start({pointerId: 1, timeStamp: 0, clientX: 0, clientY: 0}, before, null);
+  assert.equal(gesture.retarget(before, after, activation), false);
+  assert.equal(gesture.finish({pointerId: 1, timeStamp: 81, target: activation}, () => false).kind, 'cancel');
 });

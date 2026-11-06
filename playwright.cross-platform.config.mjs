@@ -32,6 +32,7 @@ const journeys = [
   "e2e/event-departure-presentation.spec.mjs",
   "e2e/event-editing-presentation.spec.mjs",
   "e2e/event-activity-presentation.spec.mjs",
+  "e2e/event-card-render-activation.spec.mjs",
   "e2e/event-rounding-presentation.spec.mjs",
   "e2e/event-repayment-presentation.spec.mjs",
   "e2e/event-currency-presentation.spec.mjs",
