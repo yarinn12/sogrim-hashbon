@@ -22624,13 +22624,14 @@ function reactivateDialogAfterRender(selector, focusSelector = "", scrollTop = 0
     focusSelector = "";
   }
   const renderedDialog = app.querySelector(selector);
-  activateDialog(selector);
+  activateDialog(selector, focusSelector);
   requestAnimationFrame(() => {
     const dialog = app.querySelector(selector);
     if (!dialog || dialog !== renderedDialog) return;
-    // Validation and async rerenders must not undo a newer field selection.
-    if (document.activeElement !== dialog && dialog.contains(document.activeElement)) return;
     const focusTarget = focusSelector ? dialog.querySelector(focusSelector) : null;
+    // Validation and async rerenders must not undo a newer field selection.
+    if (document.activeElement !== dialog && document.activeElement !== focusTarget &&
+      dialog.contains(document.activeElement)) return;
     focusTarget?.closest("details")?.setAttribute("open", "");
     dialog.scrollTop = Math.max(0, scrollTop);
     focusTarget?.focus({ preventScroll: true });

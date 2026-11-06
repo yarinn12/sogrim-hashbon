@@ -30,6 +30,45 @@ for(const root of [16,20,32]){
   expect(await page.evaluate(()=>window.__notesMedia.calls)).toEqual(['takePhoto','chooseFromGallery']);expect(fallback).toBe(0);expect(cloud.state().events[0].expenses[0]).toEqual(before);await controlFits(save);expect(cloud.errors).toEqual([]);
  });
 }
+test('[regression] rejected notes focus the alert before deferred frames and preserve a newer field choice',async({page,baseURL},info)=>{
+ const{cloud,modal,notes,save,open}=await setup(page,baseURL,20),before=cloud.state().events[0].expenses[0];
+ const draft='טיוטה ותמונה בבקרת מיקוד השגיאה';
+ await notes.fill(draft);await upload(page,modal);
+ const image=await modal.locator('.expense-attachment-preview').getAttribute('src');
+ await page.evaluate(()=>{
+  const request=window.requestAnimationFrame,cancel=window.cancelAnimationFrame,held=new Map();let id=-1;
+  window.requestAnimationFrame=callback=>{const handle=id--;held.set(handle,callback);return handle;};
+  window.cancelAnimationFrame=handle=>{if(!held.delete(handle))cancel.call(window,handle);};
+  window.__notesFocusFrames={held,release(){
+   window.requestAnimationFrame=request;window.cancelAnimationFrame=cancel;
+   for(const callback of held.values())request.call(window,callback);
+   held.clear();delete window.__notesFocusFrames;
+  }};
+ });
+ try{
+  cloud.setWriteFailure(true);await save.click();await expect(save).toBeEnabled();
+  const error=modal.locator('#expense-form-error');
+  await expect(error).toContainText('ההוצאה לא נשמרה');await expect(error).toHaveAttribute('role','alert');
+  await expect(notes).toHaveValue(draft);await expect(modal.locator('.expense-attachment-preview')).toHaveAttribute('src',image);
+  expect(cloud.state().events[0].expenses[0]).toEqual(before);
+  const focus=await page.evaluate(()=>({heldFrames:window.__notesFocusFrames.held.size,active:{tag:document.activeElement.tagName,id:document.activeElement.id,action:document.activeElement.dataset.action},alertFocused:document.activeElement===document.querySelector('.expense-notes-modal #expense-form-error')}));
+  expect(focus.heldFrames).toBeGreaterThan(0);
+  await info.attach('rejected-notes-focus-before-deferred-frames',{body:JSON.stringify(focus),contentType:'application/json'});
+  await expect(error).toBeFocused();
+  await notes.click();await expect(notes).toBeFocused();
+  await page.evaluate(()=>window.__notesFocusFrames.release());
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  await expect(notes).toBeFocused();await expect(notes).toHaveValue(draft);
+  await controlFits(save);cloud.setWriteFailure(false);const count=cloud.writes.length;
+  await save.click();await expect(modal).toBeHidden();await expect.poll(()=>cloud.state().events[0].expenses[0].notes).toBe(draft);
+  expect(cloud.writes.length).toBeGreaterThan(count);
+  const after=cloud.state().events[0].expenses[0];sameFinancialFields(after,before);expect(after.attachmentImage).toBe(image);
+  expect(cloud.writes.at(-1).state.events[0].expenses[0]).toEqual(after);
+  await cloud.reload();await page.locator('[data-action="open-event"][data-event-id="notes-event"]').click();await open();
+  await expect(notes).toHaveValue(draft);await expect(modal.locator('.expense-attachment-preview')).toHaveAttribute('src',image);expect(cloud.errors).toEqual([]);
+ }finally{await page.evaluate(()=>window.__notesFocusFrames?.release());}
+});
+
 test('notes image removal remains clickable after reopen in a short viewport',async({page,baseURL})=>{
  const{cloud,modal,notes,save,open}=await setup(page,baseURL,20,390),before=cloud.state().events[0].expenses[0];await notes.fill('תמונה לשמירה');await upload(page,modal);await save.click();await expect(modal).toBeHidden();await expect.poll(()=>cloud.state().events[0].expenses[0].notes).toBe('תמונה לשמירה');await open();
  // Anchoring can move the lower Remove button between pointerdown and pointerup.
