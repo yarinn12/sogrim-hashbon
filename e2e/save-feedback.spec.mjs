@@ -33,10 +33,11 @@ async function assertQuietParticipantRoster(page, testInfo, phase) {
   await page.screenshot({ path: testInfo.outputPath(`participant-roster-${phase}.png`), animations: "disabled" });
 }
 // Synthetic backend only: actual app controls, local durable outbox and status UI.
-for (const { status, restart = false, delayedDialogFrame = false, offline = false, permissionContext = false } of [
+for (const { status, restart = false, delayedDialogFrame = false, offline = false, permissionContext = false, knownPermissionFailure = false } of [
   ...[403, 503, "delayed-success", "transient-recovery", "partial-create", "partial-edit", "partial-delete"].map(status => ({ status })),
   ...[503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status, restart: true })),
   { status: "partial-create", restart: true, permissionContext: true },
+  { status: "partial-create", restart: true, permissionContext: true, knownPermissionFailure: true },
   ...["receipt-edit", "receipt-delete", "pending-next-fails", "pending-next-recovers"].map(status => ({ status })),
   { status: "pending-next-recovers", delayedDialogFrame: true },
   { status: 503, offline: true }
@@ -48,7 +49,7 @@ const pendingFollowup = String(status).startsWith("pending-next-");
 const includeSecondEvent = pendingFollowup || permissionContext;
 const quietRecovery = ["delayed-success", "transient-recovery"].includes(status);
 const testName = permissionContext ? "permission summary identifies the pending event, opens it, and clears only after acknowledgement" : pendingFollowup ? `note ${status} keeps earlier pending work covered by the next event save` : receiptConflict ? `new note ${status} conflict keeps the published identity on retry` : restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`;
-test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async ({ page, browserName }, testInfo) => {
+test(`${knownPermissionFailure ? "pre-blocked permission: " : ""}${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async ({ page, browserName }, testInfo) => {
   let writeStatus = 200, secondSharedStatus = permissionContext ? 403 : 200, canonicalAttempts = 0, personalConflicts = 0;
   let competingNoteId = "";
   const origin = "https://egress-cache-test.supabase.co";
@@ -288,16 +289,47 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
   const eventButton = page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first();
   await expect(eventButton).toBeVisible();
   if (permissionContext) {
+    let pendingForStaleSave = permissionPending;
+    if (knownPermissionFailure) {
+      // Make the CI ordering explicit: an earlier real RPC has already returned
+      // 403 before the stale bootstrap save and its request marker are measured.
+      const blocked = await page.evaluate(async ({ permissionPending, spaceId }) => {
+        const { loadSharedState, waitForRecoveredEventIndexPersistence,
+          flushPendingSharedState, pendingSharedSyncStatus } = await import("/src/data/localStore.mjs");
+        await loadSharedState();
+        await waitForRecoveredEventIndexPersistence();
+        localStorage.setItem(`settle-friends-pending-sync:${spaceId}`, JSON.stringify(permissionPending));
+        // Join any existing single-flight boot reconciliation before asking for
+        // the explicit manual attempt whose completed 403 is the precondition.
+        await flushPendingSharedState({ automatic: true });
+        await flushPendingSharedState({ automatic: false });
+        return { status: pendingSharedSyncStatus({ includeFailureKind: true }),
+          pending: JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)) };
+      }, { permissionPending, spaceId });
+      expect(blocked.status.pending).toBe(true);
+      expect(blocked.status.failureKind).toBe("permission");
+      expect(blocked.status.pendingEventIds).toContain(secondEventId);
+      expect(canonicalRequests.filter(request => request.p_snapshot_id === secondSharedId).length).toBeGreaterThan(0);
+      pendingForStaleSave = blocked.pending;
+    }
     // Reproduce the stale bootstrap snapshot deterministically. This calls the
     // same store module already used by the app, with the real isolated RPC
     // transport and authenticated fixture; no production handler is replaced.
     const firstRequest = canonicalRequests.length;
     await page.evaluate(async ({ initialState, permissionPending, spaceId }) => {
       localStorage.setItem(`settle-friends-pending-sync:${spaceId}`, JSON.stringify(permissionPending));
-      const { saveSharedState } = await import("/src/data/localStore.mjs");
+      const { saveSharedState, flushPendingSharedState } = await import("/src/data/localStore.mjs");
       await saveSharedState(initialState, { awaitCloud: true });
-    }, { initialState, permissionPending, spaceId });
+      // Unchanged 403 payloads are deliberately held by ordinary saves. This
+      // assertion inspects a fresh final RPC, so request an explicit manual try.
+      await flushPendingSharedState({ automatic: false });
+    }, { initialState, permissionPending: pendingForStaleSave, spaceId });
     const siblingRequests = canonicalRequests.slice(firstRequest).filter(request => request.p_snapshot_id === secondSharedId);
+    await testInfo.attach("permission-setup-rpcs", { contentType: "application/json", body: JSON.stringify({
+      knownPermissionFailure, firstRequest,
+      beforeMarker: canonicalRequests.slice(0, firstRequest).filter(request => request.p_snapshot_id === secondSharedId),
+      afterMarker: siblingRequests
+    }) });
     expect(siblingRequests.length).toBeGreaterThan(0);
     expect(siblingRequests.every(request => request.p_state.events[0].notes.some(note => note.id === "pending-permission-note")), "a stale bootstrap must preserve the pending note in every final RPC payload").toBe(true);
   }
@@ -556,6 +588,19 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
       expect(secondShared.state.events[0].notes.filter(note => note.id === "pending-permission-note")).toHaveLength(1);
       expect(personal.state.events.find(event => event.id === secondEventId).notes
         .filter(note => note.id === "pending-permission-note")).toHaveLength(1);
+      const siblingRequests = canonicalRequests.filter(request => request.p_snapshot_id === secondSharedId);
+      expect(siblingRequests.length).toBeGreaterThan(0);
+      expect(siblingRequests.every(request => {
+        const event = request.p_state.events.find(event => event.id === secondEventId);
+        const notes = event?.notes.filter(note => note.id === "pending-permission-note");
+        return notes?.length === 1 && notes[0].body === "שינוי שממתין להרשאה" &&
+          !event.deletedNotes?.some(note => note.id === "pending-permission-note");
+      }), "every final sibling RPC must preserve the pending note once, without a deletion").toBe(true);
+      await testInfo.attach("permission-final-rpcs", { contentType: "application/json", body: JSON.stringify({
+        knownPermissionFailure, requests: siblingRequests,
+        acknowledgedWrites: canonicalWrites.filter(write => write.snapshotId === secondSharedId),
+        outboxAfterAcknowledgement: await page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)
+      }) });
     }
     await testInfo.attach("restart-recovery", { contentType: "application/json", body: JSON.stringify({
       status, project: testInfo.project.name, noteId: intent.id,
