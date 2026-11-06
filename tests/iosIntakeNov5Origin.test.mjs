@@ -40,7 +40,7 @@ function reads(f){
  return {records,read:path=>path.endsWith('/SogrimHashbon.ipa')?Buffer.from(f.ipaBase64,'base64'):Buffer.from(JSON.stringify(records[path.split('/').at(-1)]))};
 }
 test('real source/tool preparation is separate from explicit synthetic artifact fixtures',()=>{
- assert.equal(INTAKE_BINDINGS.application.sourceSha,'8bdcd884aa916c528eff19fa3279c72ca481e575');assert.equal(INTAKE_BINDINGS.signing.toolsSha,'d78bc8f9df753c85058f337e3026807d74bb3770');
+ assert.equal(INTAKE_BINDINGS.application.sourceSha,'d7675a31fffa93699a1de65c9f786ab1ff619e30');assert.equal(INTAKE_BINDINGS.signing.toolsSha,'92487917127910582eb552ea989a305930adf3a0');
  if(JSON.stringify(INTAKE_BINDINGS).includes('PENDING'))assert.throws(()=>requireBoundIntakePins(),/PENDING/);else requireBoundIntakePins();assert.doesNotThrow(()=>requireBoundIntakePins(fixture().pins));
 });
 for(const key of ['runId','artifactId','runNumber','jobId','artifactSize','ipaSize','ciphertextSize','zipSha256','ipaSha256','ciphertextSha256'])
