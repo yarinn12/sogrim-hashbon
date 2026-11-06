@@ -153,7 +153,9 @@ async function shareChecks(page,cloud){
  expect(finances(cloud)).toEqual(before);
 }
 async function geometry(page,root){
- const g=await page.locator(".settlement-screen").evaluate(e=>{
+ const g=await page.evaluate(()=>{
+  const e=document.querySelector('.settlement-screen[data-event-view="summary"]');
+  if(!e||!e.isConnected)throw new Error('Current settlement summary is not connected');
   const problems=[],amounts=[];
   for(const x of e.querySelectorAll(".settlement-hero-amount .font-num,.settlement-featured-amount .font-num")){
    const range=document.createRange();range.selectNodeContents(x);const rs=[...range.getClientRects()].filter(r=>r.width&&r.height),p=x.closest("strong").getBoundingClientRect();
@@ -170,9 +172,45 @@ async function geometry(page,root){
   return {amounts,problems,targets,overflow:document.documentElement.scrollWidth>document.documentElement.clientWidth};
  });
  expect(g.overflow).toBe(false);expect(g.problems).toEqual([]);
+ expect(g.targets).toHaveLength(2);
  for(const a of g.amounts){expect(a.font).toBe(root*1.75);expect(a.oneLine&&a.fits&&a.right).toBe(true);}
  for(const t of g.targets){expect(t.w).toBeGreaterThanOrEqual(44);expect(t.h).toBeGreaterThanOrEqual(44);}
 }
+test('closed summary geometry reads the current screen after a background render replaces its node',async({page,baseURL})=>{
+ const cloud=await setup(page,baseURL,{root:20,w:411,payer:false});
+ for(const transfer of event(cloud).transfers){
+  await page.locator('.transfer-row [data-action="mark-paid"][data-transfer-id="'+transfer.id+'"]').click();
+  await expect.poll(()=>event(cloud).transfers.find(item=>item.id===transfer.id)?.status).toBe('paid');
+  await dismiss(page);
+ }
+ await page.getByRole('button',{name:'הישאר בסיכום',exact:true}).click();
+ await expect.poll(()=>cloud.writes.at(-1)?.state.events[0].transfers.every(transfer=>transfer.status==='paid')).toBe(true);
+ await expect(page.locator('.settlement-hero-amount')).toHaveCount(0);
+ const stale=await page.locator('.settlement-screen').elementHandle();
+ expect(stale).toBeTruthy();
+ await page.evaluate(()=>document.dispatchEvent(new CustomEvent('settle-friends:notice',{detail:{message:'רענון מבוקר בזמן מדידת סיכום'}})));
+ await expect.poll(()=>stale.evaluate(element=>element.isConnected)).toBe(false);
+ const staleWidths=await stale.evaluate(element=>[...element.querySelectorAll('.settlement-debt-share > summary,.settlement-debt-preview > summary')].map(summary=>summary.getBoundingClientRect().width));
+ expect(staleWidths).toEqual([0,0]);
+ await expect(page.locator('.settlement-debt-share > summary')).toBeVisible();
+ await expect(page.locator('.settlement-debt-preview > summary')).toBeVisible();
+ const pageWithStaleLocator={
+  locator(selector){
+   expect(selector).toBe('.settlement-screen');
+   return {evaluate:expression=>stale.evaluate(expression)};
+  },
+  evaluate:expression=>page.evaluate(expression)
+ };
+ await geometry(pageWithStaleLocator,20);
+ expect(cloud.errors).toEqual([]);
+});
+test('closed summary geometry still rejects a missing or zero-width touch target',async({page,baseURL})=>{
+ await setup(page,baseURL,{root:20,w:411,payer:false});
+ await page.evaluate(()=>document.querySelector('.settlement-debt-preview > summary').style.setProperty('display','none','important'));
+ await expect(geometry(page,20)).rejects.toThrow(/44/);
+ await page.evaluate(()=>document.querySelector('.settlement-debt-preview > summary').remove());
+ await expect(geometry(page,20)).rejects.toThrow(/2/);
+});
 for(const c of [{root:16,w:393},{root:20,w:411},{root:32,w:320}])for(const payer of [false,true]){
  test("closed debts preview, exact sharing, payment undo and reload root "+c.root+" payer="+payer,async({page,baseURL},info)=>{
   const cloud=await setup(page,baseURL,{...c,payer}),before=finances(cloud);
