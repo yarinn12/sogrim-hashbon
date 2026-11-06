@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import { openTypographyHome } from "./helpers/typographyReadiness.mjs";
+import {waitForStaticVisualGeometry} from './helpers/staticVisualGeometry.mjs';
 
 test.use({ serviceWorkers: "block" });
 
@@ -294,6 +295,7 @@ test("geometry across tablet and desktop breakpoints preserves screen and hero p
       await expect(root, `${viewport.width}px: desktop shell follows viewport resize`)
         .not.toHaveClass(/\bresponsive-tablet-shell\b/);
     }
+    await waitForStaticVisualGeometry(page.locator('.screen[data-screen-kind="home"]'));
     const home = await page.locator('.screen[data-screen-kind="home"]').evaluate(screen => {
       const hero = screen.querySelector(':scope > .top');
       const action = screen.querySelector('.home-create-event-action');
@@ -307,6 +309,7 @@ test("geometry across tablet and desktop breakpoints preserves screen and hero p
         documentWidth: document.documentElement.scrollWidth };
     });
     await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+    await waitForStaticVisualGeometry(page.locator('.screen[data-screen-kind="event"]'));
     const event = await page.locator('.screen[data-screen-kind="event"]').evaluate(screen => {
       const hero = screen.querySelector('.event-overview-header');
       const tabs = [...screen.querySelectorAll('.event-workspace-tab')];
