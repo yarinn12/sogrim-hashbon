@@ -122,6 +122,7 @@ const CACHE_FILES = [
   "/src/ui/primaryNavigationState.mjs",
   "/src/ui/dynamicTypeNavigation.mjs",
   "/src/ui/eventPressGesture.mjs",
+  "/src/ui/pointerRenderRecovery.mjs",
   "/src/domain/stateIdentity.mjs",
   "/src/domain/personalEventPinMerge.mjs",
   "/src/accountSessionResume.mjs",
