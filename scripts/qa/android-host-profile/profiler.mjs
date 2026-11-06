@@ -53,6 +53,10 @@ function targetReceipt(owner,kind,expectedEnv){
 function privilege(context,mode,configPath,{timeout=30000}={}){
   return command('/usr/bin/sudo',['-n','--','/usr/bin/python3','-I','-B',join(here,'root-control.py'),mode,configPath],context.environment,{timeout});
 }
+export function queryKernelInfo(context,tool,configPath,{timeout=PROFILE.startupMs,execute=command}={}){
+  assert.equal(tool.tool,'/usr/bin/bpftrace','Only the pinned official profiler');
+  return execute('/usr/bin/sudo',['-n','--','/usr/bin/python3','-I','-B',join(here,'root-control.py'),'info',configPath],context.environment,{timeout});
+}
 export async function startProfile(context,tool,owner,output,{kind='emulator',onHandle=()=>{}}={}){
   mkdirSync(output,{recursive:true});const token=randomBytes(8).toString('hex'),programPath=join(context.root,'profile-'+token+'.bt'),dataPath=join(context.root,'profile-'+token+'.txt'),ticketPath=join(context.root,'profile-'+token+'-owner.json'),configPath=join(context.root,'profile-'+token+'-config.json');
   const target=targetReceipt(owner,kind,context.childEnv),program=buildProfileProgram(owner,tool.clockTicks),scope=requireProfileProgram(program,owner,tool.clockTicks);
@@ -66,7 +70,7 @@ export async function startProfile(context,tool,owner,output,{kind='emulator',on
   const until=performance.now()+PROFILE.startupMs;
   try{
   if(kind==='synthetic-preflight'){
-    const info=command(tool.tool,['--info'],context.environment,{timeout:Math.max(1,Math.ceil(until-performance.now()))});save(join(output,'kernel-bpf-info.json'),{...info,scope:'Nonprivileged feature report; actual privileged compile/attach/scope proof below is mandatory'});requireCommand(info,'BPF/kernel feature query');
+    const info=queryKernelInfo(context,tool,configPath,{timeout:Math.max(1,Math.ceil(until-performance.now()))});save(join(output,'kernel-bpf-info.json'),{...info,scope:'Guarded privileged metadata query only; actual compile/attach/scope preflight remains mandatory'});requireCommand(info,'BPF/kernel feature query');
   }
   liveIdentity(owner);const stdout=openSync(join(output,'profiler-launch.stdout.log'),'wx',0o600),stderr=openSync(join(output,'profiler.stderr.log'),'wx',0o600);
   let child;try{child=cp.spawn('/usr/bin/sudo',['-n','--','/usr/bin/python3','-I','-B',join(here,'root-control.py'),'start',configPath],{env:context.environment,stdio:['ignore',stdout,stderr],windowsHide:true});handle.child=child;}finally{closeSync(stdout);closeSync(stderr);}

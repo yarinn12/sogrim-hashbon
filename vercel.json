@@ -11,7 +11,8 @@
       "codex/platform-visual-candidate-20261014": false,
       "codex/ios475-observer-footprint-abba-20261016": false,
       "codex/android-asg-qa-coverage-20261015": false,
-      "codex/android-host-profile-2d4-20261106": false
+      "codex/android-host-profile-2d4-20261106": false,
+      "codex/android-host-profile-info-2d4-20261107": false
     }
   },
   "builds": [

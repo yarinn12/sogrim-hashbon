@@ -87,6 +87,20 @@ def exec_profiler(config,execve=None,clock_ticks=None):
     (os.execve if execve is None else execve)(config['tool'],config['command'],config['environment'])
     raise AssertionError('exec returned')
 
+def require_profile_command(config):
+    require(config['tool']=='/usr/bin/bpftrace','Only the pinned official profiler')
+    expected=[config['tool'],'-B','line','-kk','-p',str(config['target']['pid']),'-o',config['output'],config['program']]
+    require(config['command']==expected,'Unapproved profiler arguments')
+
+def exec_info(config,execve=None,clock_ticks=None):
+    # Metadata only, but keep the same independent program/config/target guards.
+    # Never accept arbitrary privileged argv or silently use non-root metadata.
+    validate_program(config,os.sysconf('SC_CLK_TCK') if clock_ticks is None else clock_ticks)
+    require_profile_command(config)
+    check_target(config)
+    (os.execve if execve is None else execve)(config['tool'],[config['tool'],'--info'],config['environment'])
+    raise AssertionError('exec returned')
+
 def read_environment(pid):
     entries=pathlib.Path(f'/proc/{pid}/environ').read_bytes().split(b'\0')
     result={}
@@ -193,10 +207,11 @@ def run(mode,path):
         print(json.dumps(stop_owned_fixture(config,path)))
         return
     validate_config(config,path)
+    if mode=='info':
+        exec_info(config)
     if mode=='start':
         check_target(config)
-        expected=[config['tool'],'-B','line','-kk','-p',str(config['target']['pid']),'-o',config['output'],config['program']]
-        require(config['command']==expected,'Unapproved profiler arguments')
+        require_profile_command(config)
         ticket={**identity(os.getpid()),'nonce':config['nonce'],'toolSha256':config['toolSha256'],'programSha256':config['programSha256']}
         fd=os.open(config['ticket'],os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
         with os.fdopen(fd,'w') as stream:
@@ -237,7 +252,7 @@ def run(mode,path):
 
 if __name__=='__main__':
     try:
-        require(len(sys.argv)==3 and sys.argv[1] in ['start','inspect','stop','stop-owned-fixture'],'Unexpected privileged invocation')
+        require(len(sys.argv)==3 and sys.argv[1] in ['start','inspect','stop','info','stop-owned-fixture'],'Unexpected privileged invocation')
         run(sys.argv[1],sys.argv[2])
     except Exception as error:
         # Never dump environment/config values or command output on failure.

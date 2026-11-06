@@ -86,5 +86,40 @@ class RootBodyControls(unittest.TestCase):
         with patch.object(root,'validate_config'),patch.object(root.os,'pidfd_open',lambda *args:events.append('pidfd'),create=True),patch.object(root.signal,'pidfd_send_signal',lambda *args:events.append('SIGNAL'),create=True):
             with self.assertRaises(FileNotFoundError):root.run('stop',str(config))
         self.assertEqual(events,[])
+    def info_config(self):
+        config=self.config(self.good);config['output']='/owned/profile.txt'
+        config['command']=[config['tool'],'-B','line','-kk','-p','1234','-o',config['output'],config['program']]
+        config['environment']={'PATH':'/fixed','BPFTRACE_STACK_MODE':'raw'}
+        return config
+    def test_info_exec_uses_only_fixed_metadata_argv_and_the_exact_guarded_environment(self):
+        config=self.info_config();calls=[]
+        with patch.object(root,'check_target',return_value=self.target) as checked:
+            with self.assertRaisesRegex(AssertionError,'exec returned'):
+                root.exec_info(config,execve=lambda *args:calls.append(args),clock_ticks=100)
+        checked.assert_called_once_with(config)
+        self.assertEqual(calls,[(config['tool'],[config['tool'],'--info'],config['environment'])])
+    def test_info_corrupt_body_with_matching_hash_never_executes_or_reads_target(self):
+        config=self.info_config();self.path.write_text(self.good.replace('/pid == 1234/','/1/'),encoding='utf-8');config['programSha256']=hashlib.sha256(self.path.read_bytes()).hexdigest();calls=[]
+        with patch.object(root,'check_target',side_effect=AssertionError('No target read after invalid config')):
+            with self.assertRaisesRegex(RuntimeError,'Unapproved probe body'):
+                root.exec_info(config,execve=lambda *args:calls.append(args),clock_ticks=100)
+        self.assertEqual(calls,[])
+    def test_info_foreign_tool_or_injected_command_never_executes(self):
+        for change in [{'tool':'/private/profiler'},{'command':['/usr/bin/bpftrace','--info','-e','bad']}]:
+            config={**self.info_config(),**change};calls=[]
+            with self.subTest(change=change),patch.object(root,'check_target',side_effect=AssertionError('No target read after invalid argv')):
+                with self.assertRaises(RuntimeError):root.exec_info(config,execve=lambda *args:calls.append(args),clock_ticks=100)
+            self.assertEqual(calls,[])
+    def test_info_reused_target_birth_never_executes(self):
+        config=self.info_config();calls=[]
+        with patch.object(root,'identity',return_value={'pid':1234,'startTicks':'1000'}):
+            with self.assertRaisesRegex(RuntimeError,'reused process identity'):
+                root.exec_info(config,execve=lambda *args:calls.append(args),clock_ticks=100)
+        self.assertEqual(calls,[])
+    def test_info_cli_keeps_full_existing_config_validation_before_exec(self):
+        path=pathlib.Path(self.temp.name)/'info.json';path.write_text(json.dumps(self.info_config()),encoding='utf-8')
+        with patch.object(root,'validate_config',side_effect=RuntimeError('Invalid executable SHA/environment/config')) as validated,patch.object(root,'exec_info') as execute:
+            with self.assertRaisesRegex(RuntimeError,'Invalid executable SHA/environment/config'):root.run('info',str(path))
+        validated.assert_called_once();execute.assert_not_called()
 
 if __name__=='__main__': unittest.main()

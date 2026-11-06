@@ -34,7 +34,8 @@ Children get a fixed operational environment and a fresh private HOME/config,
 cache, temp and Android home. Tokens, provider headers, NODE_OPTIONS and private
 configuration are not inherited by the emulator, fixture or profiler. The SDK
 launcher may add only verified loader directories inside its emulator root.
-Privileged actions are isolated Python start/inspect/stop operations for the
+Privileged actions are isolated Python start/inspect/stop operations and one
+fixed-argv `info` metadata query for the
 verified profiler. There is no shell, sysctl, setcap or numeric-PID signal
 fallback. A pidfd is acquired before final identity checks. Startup handles and
 the independent fixture lease survive errors before READY/inspect; unverified
@@ -76,3 +77,16 @@ application exoneration, Native acceptance or release acceptance is claimed.
 Run local focused controls with `node --test tests/androidHostProfile.test.mjs`.
 Three Python suites execute inside Node wrappers and must not be double-counted.
 The normal `npm test` inventory includes the wrapper and all these controls.
+
+The original f101 run42303711330 stopped before any emulator or sampling:
+nonprivileged bpftrace0.20.2 `--info` returned exit1 because it requires root.
+That is a metadata invocation defect, not evidence of unavailable kernel/BPF
+support. This new `codex/android-host-profile-info-2d4-20261107` branch routes only
+that query through the existing guarded root helper, with fixed argv
+`[/usr/bin/bpftrace, --info]`, the same tool SHA/environment/config/target checks
+and the original startup budget. The exit-zero requirement and mandatory actual
+scope preflight remain. The recorded failure is a normal-suite regression
+fixture. No scope, workload, renderer, system setting or acceptance gate changes.
+The original workflow file is inherited unchanged and matches only its consumed
+old branch. The new workflow has a separate path/identity so its first run must
+also be number1/attempt1. No new first push or cloud execution is yet authorized.
