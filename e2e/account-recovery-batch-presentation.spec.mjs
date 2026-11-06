@@ -74,7 +74,18 @@ test('account recovery: Enter submits the actual request form once',async({page,
  const f=await prepareAccountEntry(page,baseURL),gate=await request(page);await gate.locator('input[name=email]').press('Enter');await expect(gate).toHaveAttribute('data-account-recovery-screen','reset-sent');expect(f.record.recover).toHaveLength(1);expect(f.record.recover[0].payload).toEqual({email:accountEntryEmail});expectNoExternalFailures(f);
 });
 test('account recovery: orientation changes preserve the editable draft and sent recipient at enlarged text',async({page,baseURL})=>{
- const f=await prepareAccountEntry(page,baseURL),gate=await request(page,{size:32,width:320,height:568});await gate.locator('input[name=email]').fill('long.synthetic.address.for.review@example.test');await page.setViewportSize({width:844,height:390});await assertAccountLayout(gate,32);await expect(gate.locator('input[name=email]')).toHaveValue('long.synthetic.address.for.review@example.test');await send(gate);await page.setViewportSize({width:320,height:568});await expect(gate).toHaveAttribute('data-account-recovery-screen','reset-sent');await expect(gate.locator('.account-flow-recipient p')).toHaveText('long.synthetic.address.for.review@example.test');await assertAccountLayout(gate,32);expectNoExternalFailures(f);
+ const f=await prepareAccountEntry(page,baseURL),gate=await request(page,{size:32,width:320,height:568});
+ const email=gate.locator('input[name=email]'),draft='long.synthetic.address.for.review@example.test';
+ // In the original trace the old email had returned before the viewport changed.
+ // Establish and assert the edited draft before testing orientation.
+ await email.press('ControlOrMeta+A');await email.press('Backspace');
+ await email.pressSequentially(draft);await expect(email).toHaveValue(draft);
+ await page.setViewportSize({width:844,height:390});await assertAccountLayout(gate,32);
+ await expect(email).toHaveValue(draft);
+ await send(gate);await page.setViewportSize({width:320,height:568});
+ await expect(gate).toHaveAttribute('data-account-recovery-screen','reset-sent');
+ await expect(gate.locator('.account-flow-recipient p')).toHaveText(draft);
+ await assertAccountLayout(gate,32);expectNoExternalFailures(f);
 });
 
 for(const size of[16,32])test(`account recovery: safe areas and all four screens reflow at ${size}px`,async({page,baseURL})=>{
