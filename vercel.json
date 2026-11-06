@@ -3,6 +3,7 @@
   "version": 2,
   "git": {
     "deploymentEnabled": {
+      "codex/android-transport-diagnostic-d767-20261106": false,
       "codex/test-release-459-20261104": false,
       "codex/unified-release-4-58-20261012": false,
       "codex/shared-event-reference-20261013": false,
