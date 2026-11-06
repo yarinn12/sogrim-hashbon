@@ -23,14 +23,21 @@ export async function captureLoadedSdk(context,inventory,baseline,{
   assert.ok(typeof rawExe==='string'&&!rawExe.endsWith(' (deleted)'),'Missing/deleted owned executable');
   assert.ok(typeof rawMaps==='string'&&rawMaps.trim(),'Missing owned process maps');
   const executable=real(rawExe);assert.ok(executable.startsWith(prefix),'Owned executable redirects outside SDK emulator');
-  const mappings=new Map();
+  const mappings=new Map(),nonEmulatorSdkDataMappings=[];
   for(const row of rawMaps.split(/\r?\n/).filter(Boolean)){
     const parsed=row.match(/^[\da-f]+-[\da-f]+\s+([rwxps-]{4})\s+[\da-f]+\s+\S+\s+(\d+)(?:\s+(.*))?$/i);
     assert.ok(parsed,'Malformed process maps row');
     const path=(parsed[3]||'').replace(/\\([0-7]{3})/g,(_,octal)=>String.fromCharCode(parseInt(octal,8)));
     if(!path.startsWith(sdk+'/'))continue;
-    assert.ok(path.startsWith(prefix)&&!path.endsWith(' (deleted)'),'SDK mapping is outside emulator scope or deleted');
-    const resolved=real(path);assert.ok(resolved.startsWith(prefix),'SDK mapping redirects outside emulator root');
+    assert.ok(!path.endsWith(' (deleted)'),'SDK mapping is deleted');
+    const resolved=real(path);
+    if(!path.startsWith(prefix)){
+      assert.ok(resolved.startsWith(sdk+'/'),'SDK data mapping redirects outside SDK root');
+      assert.ok(!parsed[1].includes('x')&&!elfHeader(resolved).equals(Buffer.from([0x7f,0x45,0x4c,0x46])),'SDK ELF/executable mapping is outside emulator coverage');
+      nonEmulatorSdkDataMappings.push({path:path.slice(sdk.length+1),resolvedPath:resolved.slice(sdk.length+1),inode:parsed[2],executableMapping:false,binaryIdentityCoverage:false});
+      continue;
+    }
+    assert.ok(resolved.startsWith(prefix),'SDK mapping redirects outside emulator root');
     const prior=mappings.get(resolved);if(prior)assert.equal(prior.inode,parsed[2],'Conflicting mapped SDK inode');
     mappings.set(resolved,{path,resolved,inode:parsed[2],executable:(prior?.executable||false)||parsed[1].includes('x')});
   }
@@ -53,7 +60,7 @@ export async function captureLoadedSdk(context,inventory,baseline,{
   }
   assert.ok(files.some(file=>file.path===executable.slice(sdk.length+1)),'Executable ELF not covered');
   const ownerAfter=owner(context);
-  return {atUtc:new Date().toISOString(),ownerBefore,ownerAfter,executable:executable.slice(sdk.length+1),files,nonElfMappings,
+  return {atUtc:new Date().toISOString(),ownerBefore,ownerAfter,executable:executable.slice(sdk.length+1),files,nonElfMappings,nonEmulatorSdkDataMappings,
     rawExe,rawMaps,mapsSha256:digest(rawMaps),exeReadlinkSha256:digest(rawExe),durationMs:performance.now()-began,
     coverage:'postboot-observed-sdk-elf-mappings',lifetimeLoadedModuleCoverageProven:false,historicalBinaryComparison:false,verified:true};
 }

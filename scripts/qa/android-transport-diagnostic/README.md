@@ -47,8 +47,12 @@ reads of /proc/PID/exe and maps. Raw snapshots are retained before coverage chec
 Every observed SDK executable/ELF mapping must resolve inside the emulator SDK,
 have the same mapped inode as the file hashed, and match both the preboot inventory
 and A1 byte hashes. Missing maps/exe, redirected paths or missing coverage invalidate
-the arm. System modules outside the SDK are not added to this comparison. These
-are observed postboot mappings, not a claim of lifetime module coverage or
+the arm. System modules outside the SDK are not added to this comparison.
+Non-executable, non-ELF SDK mappings outside emulator/ (such as guest image data)
+are retained separately with binaryIdentityCoverage=false, without requiring
+membership in the emulator ELF inventory. SDK ELF or executable mappings outside
+emulator/ remain invalid; emulator paths redirected outside that root are rejected.
+These are observed postboot mappings, not a claim of lifetime module coverage or
 historical binary identity.
 
 Run A1/ASG, B1/Pipe, A2/ASG once each, sequentially on the same job/runner VM,

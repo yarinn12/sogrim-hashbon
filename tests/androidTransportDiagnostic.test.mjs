@@ -220,6 +220,22 @@ test('owned postboot exe/maps bind actual SDK ELF files to the A1 inventory',asy
   const r=await captureLoadedSdk(context,binaries(),binaries(),{...options,owner:()=>{reads++;return {pid:444,startTicks:'100'};},onSnapshot:s=>{snapshot=s;}});
   assert.equal(reads,3);assert.equal(r.verified,true);assert.equal(r.files.length,2);assert.equal(r.historicalBinaryComparison,false);assert.equal(r.lifetimeLoadedModuleCoverageProven,false);assert.ok(snapshot.rawMaps.includes('/lib/system.so'));
 });
+test('non-executable non-ELF guest image mappings are retained outside emulator binary coverage',async()=>{
+  const {context,options}=loadedFixture(),image='/synthetic-sdk/system-images/android-36.1/google_apis_playstore/x86_64/system.img';
+  const maps=options.read()+'4000-5000 rw-p 00000000 00:01 7 '+image+'\n';let hashes=0,snapshot;
+  const r=await captureLoadedSdk(context,binaries(),binaries(),{...options,read:()=>maps,elfHeader:path=>path===image?Buffer.from('DATA'):options.elfHeader(path),fileHash:async path=>{assert.notEqual(path,image);hashes++;return options.fileHash(path);},onSnapshot:s=>{snapshot=s;}});
+  assert.equal(r.verified,true);assert.equal(r.files.length,2);assert.equal(hashes,2);
+  assert.deepEqual(r.nonEmulatorSdkDataMappings,[{path:image.slice(context.sdk.length+1),resolvedPath:image.slice(context.sdk.length+1),inode:'7',executableMapping:false,binaryIdentityCoverage:false}]);
+  assert.equal(snapshot.rawMaps,maps);assert.equal(r.rawMaps,maps);
+});
+test('SDK ELF or executable mappings outside emulator coverage remain invalid',async()=>{
+  const image='/synthetic-sdk/system-images/android-36.1/google_apis_playstore/x86_64/system.img';
+  for(const [permissions,isElf] of [['r--p',true],['r-xp',false],['r-xp',true]]){
+    const {context,options}=loadedFixture(),maps=options.read()+`4000-5000 ${permissions} 00000000 00:01 7 ${image}\n`;let hashes=0,snapshot;
+    await assert.rejects(captureLoadedSdk(context,binaries(),binaries(),{...options,read:()=>maps,elfHeader:path=>path===image&&!isElf?Buffer.from('DATA'):options.elfHeader(path),fileHash:async path=>{hashes++;return options.fileHash(path);},onSnapshot:s=>{snapshot=s;}}),/outside emulator/);
+    assert.equal(hashes,0);assert.equal(snapshot.rawMaps,maps);
+  }
+});
 test('loaded SDK identity rejects absent maps/exe, missing ELF coverage and redirected paths',async()=>{
   for(const change of [o=>{o.read=()=>'';},o=>{o.link=()=>'/foreign/emulator';},o=>{o.real=p=>p.includes('libsynthetic')?'/foreign/library.so':p;},o=>{o.fileHash=async()=> 'b'.repeat(64);},o=>{o.info=()=>({size:32n,ino:2n,isFile:()=>true});},o=>{o.read=()=>{throw Error('maps unavailable');};}]){
     const {context,options}=loadedFixture();change(options);await assert.rejects(captureLoadedSdk(context,binaries(),binaries(),options));
