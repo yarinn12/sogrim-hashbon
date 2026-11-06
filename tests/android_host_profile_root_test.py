@@ -126,6 +126,15 @@ class RootBodyControls(unittest.TestCase):
         with patch.object(root,'validate_config',side_effect=RuntimeError('Invalid executable SHA/environment/config')) as validated,patch.object(root,'exec_info') as execute:
             with self.assertRaisesRegex(RuntimeError,'Invalid executable SHA/environment/config'):root.run('info',str(path))
         validated.assert_called_once();execute.assert_not_called()
+    def test_sdk_target_environment_accepts_only_exact_owned_operational_additions(self):
+        env={**root.operational_environment('/owned'),'LC_ALL':'C','ANDROID_EMULATOR_WRAPPER_PID':'1234','MESA_RGB_VISUAL':'TrueColor 24'}
+        config={'target':{'kind':'emulator','pid':1234},'targetEnvironment':env}
+        root.checked_target_environment(config,'/owned')
+        for patch in [{'LC_ALL':'SYNTHETIC_SECRET'},{'ANDROID_EMULATOR_WRAPPER_PID':'9999'},{'MESA_RGB_VISUAL':'other'},{'GITHUB_TOKEN':'SYNTHETIC_SECRET'},{'LD_PRELOAD':'SYNTHETIC_SECRET'}]:
+            with self.subTest(keys=list(patch)),self.assertRaises(RuntimeError) as failed:
+                root.checked_target_environment({**config,'targetEnvironment':{**env,**patch}},'/owned')
+            self.assertNotIn('SYNTHETIC_SECRET',str(failed.exception))
+        with self.assertRaises(RuntimeError):root.checked_target_environment({**config,'target':{'kind':'synthetic-preflight','pid':1234}},'/owned')
     def stdout_config(self):
         return {**self.info_config(),'runnerUid':1001,'outputIdentity':{'device':'66305','inode':'987654'}}
     def output_stat(self,**changes):
