@@ -5,6 +5,10 @@ import hashlib
 import os
 import plistlib
 import sys
+import inspect
+import subprocess
+import native_stall_monitor as monitor
+from native_host_preflight import CalibrationError
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,7 +34,7 @@ class NativeStallMonitorTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="m-", dir=os.environ.get("IOS_MONITOR_TEST_TMP"))
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        self.device = self.root / "Devices" / UDID
+        self.device = self.root / "Library/Developer/CoreSimulator/Devices" / UDID
         self.app = self.device / "data/Containers/Bundle/Application/APP/App.app"
         self.data = self.device / "data/Containers/Data/Application/DATA"
         self.documents = self.data / "Documents"
@@ -41,7 +45,7 @@ class NativeStallMonitorTests(unittest.TestCase):
         self.executable.write_bytes(b"fake Mach-O")
         self.manifest = self.root / "package-manifest.json"
         self.manifest.write_text(json.dumps({"sourceSha": SHA, "sourceTree": TREE}))
-        self.process = ProcessIdentity(29725, os.getuid() if hasattr(os, "getuid") else 501,
+        self.process = ProcessIdentity(29725, os.getuid() if hasattr(os, "getuid") else self.executable.stat().st_uid,
                                        "Sun Oct 11 04:06:31 2026", str(self.executable), 1791691591)
 
     def journal(self, text=None, session=SESSION, mtime=1791691609.5):
@@ -407,6 +411,217 @@ class NativeStallMonitorTests(unittest.TestCase):
         self.assertEqual([sample["phase"] for sample in report["samples"]],
                          ["startup-not-ready", "startup-not-ready"])
         self.assertEqual([sample["elapsedSeconds"] for sample in report["samples"]], [23, 23])
+
+
+class HostIdentityMonitorTests(unittest.TestCase):
+    """Synthetic host files; actual macOS CLI/format validation is separate."""
+    def setUp(self):
+        NativeStallMonitorTests.setUp(self)
+        env = patch.dict(os.environ, {"GITHUB_RUN_ID":"123", "GITHUB_RUN_ATTEMPT":"1", "GITHUB_JOB":"native-parity"})
+        env.start(); self.addCleanup(env.stop)
+        host = patch("native_stall_monitor.host_identity", return_value="a"*64, create=True)
+        host.start(); self.addCleanup(host.stop)
+    journal = NativeStallMonitorTests.journal
+    startup_journal = NativeStallMonitorTests.startup_journal
+    def host_fixture(self):
+        (self.device / "device.plist").write_bytes(plistlib.dumps({"UDID": UDID, "state": 3}))
+        self.startup_journal()
+        self.startup = self.documents / f"native-parity-startup-{SESSION}.log"
+        self.startup_rows = [dict(event="capacitorDidLoad-enter", sequence=1, processId=self.process.pid,
+                                  session=SESSION, sourceSha=SHA, sourceTree=TREE, time=1791691599.0)]
+        self.write_startup()
+        stat = (self.device / "device.plist").stat()
+        self.calibration = dict(verified=True,context=dict(sourceSha=SHA,sourceTree=TREE,udid=UDID,
+            hostIdentity="a"*64,runId="123",runAttempt="1",job="native-parity"),
+            localDevice=dict(udid=UDID,observedState=3,inode=stat.st_ino,device=stat.st_dev,uid=self.process.uid))
+        return assess_journal(self.documents, SHA, TREE, 1791691590, 1791691623)
+
+    def write_startup(self):
+        self.startup.write_text("".join(json.dumps(row) + "\n" for row in self.startup_rows))
+        os.utime(self.startup, (1791691622, 1791691622))
+
+    def host_target(self, assessment=None, **changes):
+        args = dict(assessment=assessment or self.host_fixture(), app_container=self.app, data_container=self.data,
+                    udid=UDID, bundle_id=BUNDLE, manifest_path=self.manifest, expected_sha=SHA, expected_tree=TREE,
+                    process_rows=[self.process], own_uid=self.process.uid, device_root=self.device,
+                    run_started=1791691590, now=1791691623, calibration=self.calibration)
+        args.update(changes)
+        # Allows the explicit OLD V2 control to exercise behavior, not an import error.
+        if "calibration" not in inspect.signature(monitor.verify_local_target).parameters:
+            args.pop("calibration",None)
+        return monitor.verify_local_target(**args)
+
+    def test_host_identity_requires_all_independent_local_evidence(self):
+        self.assertEqual(self.host_target(), self.process)
+
+    def test_foreign_and_ambiguous_host_processes_are_rejected(self):
+        candidate = self.host_fixture()
+        foreign = ProcessIdentity(42, self.process.uid, self.process.started, "/foreign/App", self.process.start_epoch)
+        wrong_uid = ProcessIdentity(self.process.pid, self.process.uid + 1, self.process.started,
+                                    self.process.command, self.process.start_epoch)
+        reused = ProcessIdentity(self.process.pid, self.process.uid, "new launch", self.process.command, 1791691620)
+        for rows in ([], [foreign], [self.process, self.process], [wrong_uid], [reused]):
+            with self.subTest(rows=rows), self.assertRaises(MonitorUnavailable):
+                self.host_target(candidate, process_rows=rows)
+
+    def test_missing_or_foreign_local_device_state_is_rejected(self):
+        candidate = self.host_fixture()
+        path = self.device / "device.plist"
+        for device in ({"UDID": "0" * 36, "state": 3}, {"UDID": UDID, "state": 2},
+                       {"UDID": UDID, "state": "3"}, {"UDID": UDID, "state": True}, {}):
+            path.write_bytes(plistlib.dumps(device))
+            with self.subTest(device=device), self.assertRaises(MonitorUnavailable): self.host_target(candidate)
+        path.unlink()
+        with self.assertRaises(MonitorUnavailable): self.host_target(candidate)
+
+    def test_wrong_device_file_owner_and_symlink_are_rejected(self):
+        candidate = self.host_fixture()
+        with self.assertRaises(MonitorUnavailable): self.host_target(candidate, own_uid=self.process.uid + 1)
+        path = self.device / "device.plist"
+        with patch.object(Path, "is_symlink", autospec=True, side_effect=lambda p: p == path):
+            with self.assertRaises(MonitorUnavailable): self.host_target(candidate)
+
+    def test_foreign_cached_bundle_data_or_manifest_is_rejected(self):
+        candidate = self.host_fixture()
+        for changes in ({"app_container": self.root / "foreign/App.app"},
+                        {"data_container": self.root / "foreign/data"}, {"bundle_id": "another.app"},
+                        {"device_root": self.root / "another-device"}, {"expected_tree": "b" * 40}):
+            with self.subTest(changes=changes), self.assertRaises(MonitorUnavailable): self.host_target(candidate, **changes)
+        self.manifest.write_text(json.dumps({"sourceSha": "a" * 40, "sourceTree": TREE}))
+        with self.assertRaises(MonitorUnavailable): self.host_target(candidate)
+
+    def test_journal_pid_is_evidence_not_an_authorized_sample_argument(self):
+        candidate = self.host_fixture()
+        for pid in (42, True, "29725", 0):
+            self.startup_rows[0]["processId"] = pid
+            self.write_startup()
+            with self.subTest(pid=pid), self.assertRaises(MonitorUnavailable): self.host_target(candidate)
+        self.startup_rows[0]["processId"] = self.process.pid
+        self.startup_rows.append(dict(self.startup_rows[0], processId=self.process.pid + 1))
+        self.write_startup()
+        with self.assertRaises(MonitorUnavailable): self.host_target(candidate)
+
+    def test_startup_source_session_and_time_are_bound_to_current_phase(self):
+        for change in ({"sourceSha": "a" * 40}, {"sourceTree": "b" * 40},
+                       {"event": "web-stage"}, {"sequence": 2},
+                       {"session": "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB"},
+                       {"time": 1791691580}, {"time": 1791691630}):
+            candidate = self.host_fixture()
+            self.startup_rows[0].update(change)
+            self.write_startup()
+            with self.subTest(change=change), self.assertRaises(MonitorUnavailable): self.host_target(candidate)
+        candidate = self.host_fixture()
+        os.utime(self.startup, (1791691580, 1791691580))
+        with self.assertRaises(MonitorUnavailable): self.host_target(candidate)
+
+    def test_missing_partial_and_symlink_startup_are_rejected(self):
+        candidate = self.host_fixture()
+        self.startup.write_text('{"processId":29725')
+        with self.assertRaises(MonitorUnavailable): self.host_target(candidate)
+        self.write_startup()
+        with patch.object(Path, "is_symlink", autospec=True, side_effect=lambda p: p == self.startup):
+            with self.assertRaises(MonitorUnavailable): self.host_target(candidate)
+        self.startup.unlink()
+        with self.assertRaises(MonitorUnavailable): self.host_target(candidate)
+
+    def test_phase_ending_between_detection_and_host_proof_stops_sampling(self):
+        candidate = self.host_fixture()
+        self.startup_journal(ended=True)
+        with self.assertRaisesRegex(MonitorUnavailable, "host-phase-or-session-changed"):
+            self.host_target(candidate)
+
+    def observe_with_hung_revalidation(self, process_rows=None, hang=True, calibrated=True):
+        self.host_fixture()
+        output = self.root / "host-proof-observer"
+        output.mkdir(exist_ok=True)
+        stop = output / "stop"
+        args = SimpleNamespace(output_dir=output, stop_file=stop, source_sha=SHA,
+                               source_tree=TREE, udid=UDID, bundle_id=BUNDLE, manifest=self.manifest,
+                               calibration=self.root / "calibration.json", ownership=self.root / "owner.json")
+        clock = SimpleNamespace(now=0.0, wall_calls=0)
+        def wall_time():
+            clock.wall_calls += 1
+            return 1791691590 if clock.wall_calls == 1 else 1791691623
+        def sleep(seconds):
+            clock.now += seconds
+            if clock.now >= 7: stop.touch()
+        owner = self
+        class Probe:
+            calls = 0
+            device_calls = 0
+            def containers(_self):
+                _self.calls += 1
+                if _self.calls == 1 or not hang: return owner.app, owner.data
+                # Simulates the original revalidation RPC consuming its unchanged
+                # eight-second budget. No subprocess or real sleep is performed.
+                clock.now += 8
+                raise subprocess.TimeoutExpired(["xcrun", "simctl", "get_app_container"], 8)
+            def devices(_self):
+                _self.device_calls += 1
+                return [{"udid": UDID, "state": "Booted"}]
+            def processes(_self): return [owner.process] if process_rows is None else process_rows
+        probe = Probe()
+        with patch("native_stall_monitor.time.monotonic", side_effect=lambda: clock.now), \
+             patch("native_stall_monitor.time.time", side_effect=wall_time), \
+             patch("native_stall_monitor.time.sleep", side_effect=sleep), \
+             patch("native_stall_monitor.os.getuid", return_value=self.process.uid, create=True), \
+             patch.object(Path, "home", return_value=self.root), \
+             patch("native_stall_monitor.load_calibration", return_value=self.calibration,
+                   side_effect=None if calibrated else CalibrationError("unverified-preflight")) as loader, \
+             patch("native_stall_monitor.capture_sample", return_value={"exit": 0}) as sampler:
+            report = run_observer(args, probe=probe, system_name="Darwin")
+        return report, sampler, probe
+
+    def test_hung_container_revalidation_still_collects_owned_diagnostics(self):
+        report, sampler, probe = self.observe_with_hung_revalidation()
+        self.assertEqual(sampler.call_count, 2, report)
+        self.assertEqual(probe.calls, 1)
+        self.assertEqual(probe.device_calls, 0)
+        self.assertEqual(report["containerState"], "host-verified")
+        self.assertEqual(report["status"], "sampled")
+        self.assertEqual([call.args[1] for call in sampler.call_args_list], [self.process, self.process])
+        self.assertTrue(all(row["result"] == "verified" and row["pid"] == self.process.pid
+                            and row["wallSeconds"] >= 0 for row in report["identityChecks"]))
+        self.assertTrue(all(row["phase"] == "startup-not-ready" for row in report["samples"]))
+
+    def test_hung_container_does_not_allow_foreign_or_ambiguous_process_sample(self):
+        for rows in ([], [self.process, self.process]):
+            with self.subTest(count=len(rows)):
+                report, sampler, probe = self.observe_with_hung_revalidation(rows)
+                sampler.assert_not_called()
+                self.assertEqual(probe.calls, 1)
+                self.assertEqual(report["status"], "unavailable")
+                self.assertTrue(all(row["result"] == "rejected" for row in report["identityChecks"]))
+                for path in (self.root / "host-proof-observer").iterdir(): path.unlink()
+
+    def test_missing_calibration_cannot_authorize_local_state_three(self):
+        candidate=self.host_fixture()
+        with self.assertRaises(MonitorUnavailable):self.host_target(candidate,calibration=None)
+
+    def test_failed_preflight_keeps_original_live_verification(self):
+        report,sampler,probe=self.observe_with_hung_revalidation(hang=False,calibrated=False)
+        self.assertEqual(sampler.call_count,2)
+        self.assertEqual(probe.calls,3)
+        self.assertEqual(probe.device_calls,2)
+        self.assertFalse(report["hostCalibration"]["verified"])
+        self.assertTrue(report["hostCalibration"]["legacyVerificationRequired"])
+        self.assertTrue(all(row["method"]=="legacy-live-simctl-proof" for row in report["identityChecks"]))
+
+    def test_failed_preflight_and_hung_legacy_verifier_never_sample(self):
+        report,sampler,probe=self.observe_with_hung_revalidation(hang=True,calibrated=False)
+        sampler.assert_not_called()
+        self.assertEqual(probe.calls,2)
+        self.assertEqual(report["containerState"],"lookup-failed")
+        self.assertTrue(report["hostCalibration"]["legacyVerificationRequired"])
+
+    def test_foreign_calibration_context_never_authorizes_host_identity(self):
+        candidate=self.host_fixture()
+        for field,value in (("runId","999"),("runAttempt","2"),("job","other-job"),
+                            ("hostIdentity","b"*64),("sourceSha","a"*40),("sourceTree","b"*40),
+                            ("udid","00000000-0000-0000-0000-000000000000")):
+            receipt=dict(self.calibration,context=dict(self.calibration["context"],**{field:value}))
+            with self.subTest(field=field),self.assertRaises(MonitorUnavailable):
+                self.host_target(candidate,calibration=receipt)
 
 
 if __name__ == "__main__":

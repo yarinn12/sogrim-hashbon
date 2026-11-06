@@ -18,6 +18,7 @@ import time
 import traceback
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from native_host_preflight import CalibrationError, host_identity, load_calibration
 
 
 MAX_BYTES = 64 * 1024 * 1024
@@ -202,6 +203,97 @@ def verify_target(*, udid, bundle_id, manifest_path, expected_sha, expected_tree
     return process
 
 
+def verify_local_target(*, assessment, app_container, data_container, udid, bundle_id,
+                        manifest_path, expected_sha, expected_tree, process_rows,
+                        own_uid, device_root, run_started, now, prior_identity=None,
+                        process_scan=None, calibration=None):
+    """Revalidate a previously resolved container pair using bounded host evidence.
+
+    No caller-supplied PID is trusted. A fresh paired native startup journal binds
+    the session/source to a unique UID/start/executable from the host process scan.
+    device.plist is local CoreSimulator evidence, not a stable public API: an
+    unknown layout/state fails closed. Initial simctl resolution is still required.
+    """
+    ctx = calibration.get("context", {}) if isinstance(calibration, dict) else {}
+    if (not isinstance(calibration, dict) or calibration.get("verified") is not True
+            or ctx.get("sourceSha") != expected_sha or ctx.get("sourceTree") != expected_tree
+            or ctx.get("udid") != udid.upper() or ctx.get("hostIdentity") != host_identity()
+            or any(ctx.get(key) != os.environ.get(env) for key, env in
+                   (("runId", "GITHUB_RUN_ID"), ("runAttempt", "GITHUB_RUN_ATTEMPT"), ("job", "GITHUB_JOB")))):
+        raise MonitorUnavailable("host-route-not-calibrated-for-current-context")
+    root = Path(device_root).absolute()
+    if not UDID.fullmatch(udid) or root.name.upper() != udid.upper():
+        raise MonitorUnavailable("host-device-root-mismatch")
+    device_path = _safe_child(root / "device.plist", root)
+    if not device_path.is_file() or device_path.stat().st_uid != own_uid:
+        raise MonitorUnavailable("host-device-file-not-owned")
+    try:
+        if device_path.stat().st_size > MAX_BYTES:
+            raise MonitorUnavailable("host-device-over-limit")
+        with device_path.open("rb") as stream:
+            device_bytes = stream.read(MAX_BYTES + 1)
+        if len(device_bytes) > MAX_BYTES:
+            raise MonitorUnavailable("host-device-over-limit")
+        device = plistlib.loads(device_bytes)
+    except (OSError, ValueError) as error:
+        raise MonitorUnavailable("host-device-unreadable") from error
+    # CoreSimulator currently persists Booted as integer 3. Do not coerce bools,
+    # strings or future/unknown representations into a successful identity proof.
+    if (not isinstance(device, dict) or str(device.get("UDID", "")).upper() != udid.upper()
+            or type(device.get("state")) is not int or device["state"] != 3):
+        raise MonitorUnavailable("host-device-not-booted-or-mismatched")
+    local = calibration.get("localDevice", {})
+    device_stat = device_path.stat()
+    if (local.get("udid") != udid.upper() or local.get("observedState") != device["state"]
+            or local.get("inode") != device_stat.st_ino or local.get("device") != device_stat.st_dev
+            or local.get("uid") != own_uid):
+        raise MonitorUnavailable("host-calibration-device-mismatch")
+    data = _safe_child(data_container, root)
+    fresh = assess_journal(data / "Documents", expected_sha, expected_tree, run_started, now)
+    if (not fresh.eligible or fresh.session != assessment.session or fresh.phase != assessment.phase
+            or fresh.journal_path != assessment.journal_path or fresh.first_time != assessment.first_time):
+        raise MonitorUnavailable("host-phase-or-session-changed")
+    if not UDID.fullmatch(fresh.session):
+        raise MonitorUnavailable("host-session-invalid")
+    startup = _safe_child(data / "Documents" / f"native-parity-startup-{fresh.session}.log", data / "Documents")
+    if not startup.is_file() or startup.stat().st_size > MAX_BYTES or startup.stat().st_mtime < run_started:
+        raise MonitorUnavailable("host-startup-unavailable-or-stale")
+    try:
+        with startup.open("rb") as stream:
+            raw = stream.read(MAX_BYTES + 1)
+        if len(raw) > MAX_BYTES:
+            raise MonitorUnavailable("host-startup-over-limit")
+        lines = raw.splitlines() if raw.endswith(b"\n") else raw.splitlines()[:-1]
+        rows = [json.loads(line) for line in lines]
+    except (OSError, ValueError, UnicodeError) as error:
+        raise MonitorUnavailable("host-startup-invalid") from error
+    if not rows or any(not isinstance(row, dict) for row in rows):
+        raise MonitorUnavailable("host-startup-invalid")
+    if any(row.get("sourceSha") != expected_sha or row.get("sourceTree") != expected_tree
+           or str(row.get("session", "")).upper() != fresh.session for row in rows):
+        raise MonitorUnavailable("host-startup-source-or-session-mismatch")
+    if rows[0].get("event") != "capacitorDidLoad-enter" or rows[0].get("sequence") != 1:
+        raise MonitorUnavailable("host-startup-origin-mismatch")
+    times = [row.get("time") for row in rows]
+    if (any(type(t) not in (int, float) or not math.isfinite(t) for t in times)
+            or times[0] < run_started or times[-1] > now + 2
+            or any(b < a for a, b in zip(times, times[1:])) or times[0] > fresh.first_time + 2):
+        raise MonitorUnavailable("host-startup-time-mismatch")
+    pids = [row.get("processId") for row in rows]
+    if any(type(pid) is not int or pid <= 0 for pid in pids) or len(set(pids)) != 1:
+        raise MonitorUnavailable("host-startup-pid-ambiguous")
+    identity = verify_target(udid=udid, bundle_id=bundle_id, manifest_path=manifest_path,
+        expected_sha=expected_sha, expected_tree=expected_tree,
+        device_rows=[{"udid": device["UDID"], "state": "Booted"}],
+        app_container=app_container, data_container=data, process_rows=process_rows,
+        journal_path=fresh.journal_path, own_uid=own_uid, device_root=root,
+        journal_first_time=min(fresh.first_time, times[0]), prior_identity=prior_identity,
+        process_scan=process_scan)
+    if identity.pid != pids[0]:
+        raise MonitorUnavailable("host-startup-pid-mismatch")
+    return identity
+
+
 class DarwinProbe:
     def __init__(self, udid, bundle_id):
         self.udid, self.bundle_id = udid, bundle_id
@@ -295,7 +387,8 @@ def run_observer(args, probe=None, system_name=None):
     report = {"sourceSha": args.source_sha, "sourceTree": args.source_tree,
               "udid": args.udid, "bundleId": args.bundle_id, "startedWall": time.time(),
               "status": "unavailable", "lastReason": "not-started", "containerState": "unresolved",
-              "samples": [], "errors": [], "diagnostics": []}
+              "samples": [], "errors": [], "diagnostics": [], "identityChecks": [],
+              "hostCalibration": {"verified": False, "reason": "not-checked", "legacyVerificationRequired": True}}
     start = time.monotonic()
     start_cpu = time.process_time()
     run_started = report["startedWall"]
@@ -339,26 +432,56 @@ def run_observer(args, probe=None, system_name=None):
                 key = assessment.session + ":" + assessment.phase
                 if sampled.get(key, 0) < 2 and time.monotonic() - last_sample_at.get(key, 0) >= 2:
                     container_state = "resolved"
+                    identity_started = time.monotonic()
+                    identity_finished = None
+                    identity = None
                     try:
-                        try:
-                            current_containers = probe.containers()
-                        except (OSError, subprocess.SubprocessError, MonitorUnavailable):
-                            container_state = "lookup-failed"
+                        calibration = None
+                        calibration_reason = "missing-calibration"
+                        if getattr(args, "calibration", None) and getattr(args, "ownership", None):
+                            try:
+                                calibration = load_calibration(args.calibration, args.ownership, args.manifest,
+                                                               args.source_sha, args.source_tree, args.udid)
+                            except (CalibrationError, OSError, ValueError, KeyError, TypeError) as error:
+                                calibration_reason = str(error)[:120]
+                        report["hostCalibration"] = {"verified": calibration is not None,
+                            "reason": "verified-current-job-host" if calibration else calibration_reason,
+                            "legacyVerificationRequired": calibration is None}
+                        if calibration is not None:
+                            container_state = "host-check-failed"
                             report["containerState"] = container_state
-                            raise
-                        if current_containers != cached:
-                            container_state = "changed"
+                            identity = verify_local_target(assessment=assessment,
+                                udid=args.udid, bundle_id=args.bundle_id,
+                                manifest_path=args.manifest, expected_sha=args.source_sha, expected_tree=args.source_tree,
+                                app_container=app, data_container=data, process_rows=probe.processes(),
+                                own_uid=os.getuid(), device_root=Path.home() / "Library/Developer/CoreSimulator/Devices" / args.udid,
+                                run_started=run_started, now=time.time(), prior_identity=identities.get(key),
+                                process_scan=getattr(probe, "last_process_scan", None), calibration=calibration)
+                            container_state = "host-verified"
+                        else:
+                            # No calibration is permission to skip the original live proof.
+                            # This is the original6410 ownership route, including its timeouts.
+                            try:
+                                current_containers = probe.containers()
+                            except (OSError, subprocess.SubprocessError, MonitorUnavailable):
+                                container_state = "lookup-failed"
+                                report["containerState"] = container_state
+                                raise
+                            if current_containers != cached:
+                                container_state = "changed"
+                                report["containerState"] = container_state
+                                raise MonitorUnavailable("container-changed")
+                            container_state = "stable"
                             report["containerState"] = container_state
-                            raise MonitorUnavailable("container-changed")
-                        container_state = "stable"
+                            identity = verify_target(udid=args.udid, bundle_id=args.bundle_id,
+                                manifest_path=args.manifest, expected_sha=args.source_sha, expected_tree=args.source_tree,
+                                device_rows=probe.devices(), app_container=app, data_container=data,
+                                process_rows=probe.processes(), journal_path=assessment.journal_path,
+                                own_uid=os.getuid(), device_root=Path.home() / "Library/Developer/CoreSimulator/Devices" / args.udid,
+                                journal_first_time=assessment.first_time, prior_identity=identities.get(key),
+                                process_scan=getattr(probe, "last_process_scan", None))
+                        identity_finished = time.monotonic()
                         report["containerState"] = container_state
-                        identity = verify_target(udid=args.udid, bundle_id=args.bundle_id,
-                            manifest_path=args.manifest, expected_sha=args.source_sha, expected_tree=args.source_tree,
-                            device_rows=probe.devices(), app_container=app, data_container=data,
-                            process_rows=probe.processes(), journal_path=assessment.journal_path,
-                            own_uid=os.getuid(), device_root=Path.home() / "Library/Developer/CoreSimulator/Devices" / args.udid,
-                            journal_first_time=assessment.first_time, prior_identity=identities.get(key),
-                            process_scan=getattr(probe, "last_process_scan", None))
                         identities[key] = identity
                         owned_key = key + f":{identity.pid}:{identity.started}"
                         if sampled.get(owned_key, 0) < 2:
@@ -383,6 +506,15 @@ def run_observer(args, probe=None, system_name=None):
                             report["errors"].append(message)
                         report["status"] = "unavailable"
                         last_sample_at[key] = time.monotonic()
+                    finally:
+                        if len(report["identityChecks"]) < 32:
+                            report["identityChecks"].append({
+                                "method": "calibrated-local-host-proof" if calibration else "legacy-live-simctl-proof", "session": assessment.session,
+                                "phase": assessment.phase, "result": "verified" if identity else "rejected",
+                                "pid": identity.pid if identity else None,
+                                "wallSeconds": (identity_finished if identity_finished is not None else time.monotonic()) - identity_started,
+                                "appPathDigest": hashlib.sha256(str(app).encode("utf8")).hexdigest(),
+                                "dataPathDigest": hashlib.sha256(str(data).encode("utf8")).hexdigest()})
             time.sleep(0.5)
         if time.monotonic() - start >= MAX_SECONDS:
             report["lastReason"] = "observer-time-limit"
@@ -408,6 +540,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for option in ("udid", "bundle-id", "manifest", "source-sha", "source-tree", "output-dir", "stop-file"):
         parser.add_argument("--" + option, required=True)
+    parser.add_argument("--calibration")
+    parser.add_argument("--ownership")
     run_observer(parser.parse_args())
 
 

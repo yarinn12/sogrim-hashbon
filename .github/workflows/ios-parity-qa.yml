@@ -61,6 +61,7 @@ jobs:
           npm ci
           python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/test_validation.py" > build/native-parity/validator-controls.log 2>&1
           python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/test_native_stall_monitor.py" > build/native-parity/monitor-controls.log 2>&1
+          python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/test_native_host_preflight.py" > build/native-parity/host-preflight-controls.log 2>&1
           node "$GITHUB_WORKSPACE/scripts/qa/ios-parity/build-www.mjs" > build/native-parity/bundle.log 2>&1
           npx cap sync ios
           node scripts/finalize-native-projects.mjs
@@ -70,12 +71,22 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' > build/native-parity/simulator.env
-          import json, subprocess
+          import json, os, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, os.environ["GITHUB_WORKSPACE"] + "/scripts/qa/ios-parity")
+          from native_host_preflight import CalibrationError, make_ownership
           runtimes=json.loads(subprocess.check_output(['xcrun','simctl','list','runtimes','-j']))['runtimes']
           runtime=sorted([row for row in runtimes if row.get('isAvailable') and '.iOS-' in row['identifier']],key=lambda row:tuple(int(v) for v in row['version'].split('.')))[-1]
           devices=json.loads(subprocess.check_output(['xcrun','simctl','list','devicetypes','-j']))['devicetypes']
           device=next(row for name in ['iPhone 16','iPhone 15'] for row in devices if row['name']==name)
           udid=subprocess.check_output(['xcrun','simctl','create','Capacitor parity QA',device['identifier'],runtime['identifier']],text=True).strip()
+          # This receipt is emitted immediately from this job's create result.
+          try:
+              owner=make_ownership(Path('build/native-parity/package-manifest.json'),udid,runtime['identifier'],device['identifier'])
+              with Path('build/native-parity/owned-simulator.json').open('x',encoding='utf8') as receipt:
+                  json.dump(owner,receipt,sort_keys=True)
+          except (CalibrationError,OSError,ValueError,KeyError,TypeError):
+              print('::warning::Simulator ownership receipt unavailable; host diagnostics remain unverified',file=sys.stderr)
           print('PROBE_UDID='+udid)
           print('PROBE_IOS='+runtime['version'])
           print('PROBE_DEVICE='+device['name'].replace(' ','_'))
@@ -118,12 +129,21 @@ jobs:
             local mode="$1"
             local out="build/native-parity/$mode"
             mkdir -p "$out"
+            # Diagnostic only: failure keeps the observer's original live verifier.
+            if ! python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/native_host_preflight.py" \
+              --manifest build/native-parity/package-manifest.json \
+              --ownership build/native-parity/owned-simulator.json \
+              --source-sha "$APP_SHA" --source-tree "$(git rev-parse 'HEAD^{tree}')" --udid "$PROBE_UDID" \
+              > "$out/host-calibration.json"; then
+              echo "::warning::Host diagnostic route unverified; original live ownership verification remains required" >&2
+            fi
             local observer_dir="" observer_pid="" test_status
             observer_dir="$(mktemp -d "$out/observer.XXXXXX")" || echo "::warning::Diagnostic observer output unavailable" >&2
             if [[ -n "$observer_dir" ]]; then
               python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/native_stall_monitor.py" \
                 --udid "$PROBE_UDID" --bundle-id com.sogrimhashbon.app \
                 --manifest build/native-parity/package-manifest.json \
+                --ownership build/native-parity/owned-simulator.json --calibration "$out/host-calibration.json" \
                 --source-sha "$APP_SHA" --source-tree "$(git rev-parse 'HEAD^{tree}')" \
                 --output-dir "$observer_dir" --stop-file "$observer_dir/stop" \
                 > "$observer_dir/observer.log" 2>&1 &
