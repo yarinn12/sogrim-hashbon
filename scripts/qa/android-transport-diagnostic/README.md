@@ -14,8 +14,16 @@ The application is7d6e13f5/tree06410366. Original QA tools were actually the PR
 merge17c28d3f, whose entire tree is byte-identical to7d6. The original tools-source
 file and job log establish that identity. Both commits are pinned separately.
 The original artifact13501922018/ZIP2ad57bb8 and APK1f874e10 are reused without
-building or re-signing. Every public asset/font, the Debug signer a548cfb5, exact
-SDK files, source tree and2030 raw tracked files must match before boot.
+building or re-signing. Every public asset/font, the Debug signer a548cfb5, four
+SDK metadata/configuration file hashes and declared versions, the source tree
+and2030 raw tracked files must match before boot.
+
+SDK comparison has a specific limit: `verify-sdk` hashes four metadata/configuration
+files and reads their declared emulator/image versions. The transport schema is
+hashed separately. `readOwner` verifies the SDK executable path, full command,
+PID and startTicks; it does not hash the emulator/QEMU executable. Original
+emulator/QEMU binary hashes were not captured and are not compared. These checks
+do not establish byte-for-byte identity of those executables to the original run.
 
 The only treatment is `hw.gltransport=asg` versus `pipe`. The SDK schema hash,
 actual boot/config/guest readbacks, SwiftShader selection, DMA capabilities and
@@ -34,7 +42,7 @@ stop before B1 as inconclusive. There is no retry-until-pass.
 
 All original QA scripts and app files remain unchanged. A host-side Node preload
 audits ADB subprocess calls before/after delegation using actual PID/startTicks,
-the full emulator command, exact SDK binary and serial. It preserves the original
+the full emulator command, SDK executable path and serial. It preserves the original
 command options, exit, signal and binary stdout. It records measured guard timing
 separately from command duration. Both arms receive identical instrumentation;
 if that instrumentation prevents baseline reproduction, the result is inconclusive.
