@@ -740,6 +740,7 @@ document.addEventListener("pointerdown", handlePaymentPointerDown, true);
 document.addEventListener("pointermove", event => paymentPressRecovery.move(event), true);
 document.addEventListener("pointerup", event => paymentPressRecovery.finish(event), true);
 document.addEventListener("pointercancel", event => paymentPressRecovery.cancel(event), true);
+document.addEventListener("wheel", () => paymentPressRecovery.cancel(), {capture: true, passive: true});
 document.addEventListener("contextmenu", () => paymentPressRecovery.cancel(), true);
 document.addEventListener("click", consumePaymentCompatibilityClick, true);
 window.addEventListener("blur", () => paymentPressRecovery.cancel());
