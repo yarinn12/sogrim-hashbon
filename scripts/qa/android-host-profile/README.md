@@ -42,8 +42,8 @@ the independent fixture lease survive errors before READY/inspect; unverified
 cleanup is a failure and never authorizes another workload.
 
 Bounds: 49Hz, 65,536 map keys, 20 minute capture, shared 30s profiler startup and
-15s stop budgets. Three raw streams have kernel-enforced 64MiB limits each,
-below the 256MiB total raw budget; hitting a limit is a failure. These bounds do
+15s stop budgets. Raw stdout and stderr have kernel-enforced 64MiB limits each,
+below the unchanged 256MiB total raw budget; hitting a limit is a failure. These bounds do
 not extend any original Native deadline. Raw output, command failures, parse
 errors, explicit loss messages and unknowns are retained. Missing loss counters
 are null, not zero. Full unwind, loss-free capture and lifetime mapping coverage
@@ -90,3 +90,37 @@ fixture. No scope, workload, renderer, system setting or acceptance gate changes
 The original workflow file is inherited unchanged and matches only its consumed
 old branch. The new workflow has a separate path/identity so its first run must
 also be number1/attempt1. No new first push or cloud execution is yet authorized.
+
+The subsequent24c run42306800042 passed privileged `--info`, then stopped at the
+unchanged30s startup bound before any emulator or CPU-work preflight. Its77byte
+raw file contained READY and STOPPED together at close; sample count was0.
+The exact official0.20.2 source selects an independent `std::ofstream` for `-o`,
+while `-B line` only calls `setvbuf(stdout,...)`. The printf callback calls
+`message(...,false)`, whose TextOutput path writes without endl/flush. A short
+READY can remain buffered in the separate file until process exit. Original
+artifacts and failures remain preserved; actual READY emission time was not
+measured. Sources: [main](https://raw.githubusercontent.com/bpftrace/bpftrace/v0.20.2/src/main.cpp),
+[printf callback](https://raw.githubusercontent.com/bpftrace/bpftrace/v0.20.2/src/bpftrace.cpp),
+[TextOutput](https://raw.githubusercontent.com/bpftrace/bpftrace/v0.20.2/src/output.cpp).
+
+This new `codex/android-host-profile-stdout-2d4-20261107` branch removes only `-o`
+and inherits the existing private output file as bpftrace stdout. Before exec,
+the root helper requires FD1 and the path to match the pinned device/inode,
+runner ownership,0600 mode and regular-file type, requires writable/non-CLOEXEC
+flags, then rechecks the path. The binding is retained in the existing owner
+ticket and independently checked again immediately before exec. Info/inspect/
+stop retain their bounded metadata pipes. No shell or generic output fallback.
+
+The normal regression drives the actual command/stdout-opening helpers through
+an owned synthetic child that models those upstream buffering semantics. OLD
+fails because READY is invisible while the child lives; FINAL observes READY
+before exit and retains raw records after owned close. This is a source-backed
+I/O model, not execution of the real C++ bpftrace binary or BPF on Windows. FD
+negative controls reject wrong device/inode, owner/mode/type, swapped path,
+read-only/CLOEXEC descriptors and the old separate-ofstream argv before exec.
+
+The existing startup/fixture/stop/capture budgets, actual future-pthread/busy-fork
+scope preflight, original APK/SDK/ASG/SwiftShader and full Native workload remain
+unchanged. The third workflow path has its own first run1/attempt1; both consumed
+workflow files remain unchanged and match only their old branches. No new cloud
+or first push is authorized before Root verifies the frozen local handoff.

@@ -1,4 +1,5 @@
-import contextlib, hashlib, importlib.util, io, json, pathlib, sys, tempfile, unittest
+import contextlib, hashlib, importlib.util, io, json, os, pathlib, stat, sys, tempfile, unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 path=pathlib.Path(__file__).resolve().parents[1]/'scripts/qa/android-host-profile/root-control.py'
 spec=importlib.util.spec_from_file_location('host_profile_root',path)
@@ -7,6 +8,10 @@ NODE_PROGRAM=json.loads(sys.stdin.read())['nodeProgram']
 
 class RootBodyControls(unittest.TestCase):
     def setUp(self):
+        # These are synthetic Linux FD-flag controls on Windows, where Python
+        # omits O_ACCMODE. The real CLI still requires Linux/fcntl; no fallback.
+        if not hasattr(root.os,'O_ACCMODE'):
+            access_mask=patch.object(root.os,'O_ACCMODE',3,create=True);access_mask.start();self.addCleanup(access_mask.stop)
         self.temp=tempfile.TemporaryDirectory(prefix='host-profile-root-')
         self.path=pathlib.Path(self.temp.name)/'profile.bt'
         self.target={'pid':1234,'startTicks':'999'}
@@ -88,7 +93,7 @@ class RootBodyControls(unittest.TestCase):
         self.assertEqual(events,[])
     def info_config(self):
         config=self.config(self.good);config['output']='/owned/profile.txt'
-        config['command']=[config['tool'],'-B','line','-kk','-p','1234','-o',config['output'],config['program']]
+        config['command']=[config['tool'],'-B','line','-kk','-p','1234',config['program']]
         config['environment']={'PATH':'/fixed','BPFTRACE_STACK_MODE':'raw'}
         return config
     def test_info_exec_uses_only_fixed_metadata_argv_and_the_exact_guarded_environment(self):
@@ -121,5 +126,49 @@ class RootBodyControls(unittest.TestCase):
         with patch.object(root,'validate_config',side_effect=RuntimeError('Invalid executable SHA/environment/config')) as validated,patch.object(root,'exec_info') as execute:
             with self.assertRaisesRegex(RuntimeError,'Invalid executable SHA/environment/config'):root.run('info',str(path))
         validated.assert_called_once();execute.assert_not_called()
+    def stdout_config(self):
+        return {**self.info_config(),'runnerUid':1001,'outputIdentity':{'device':'66305','inode':'987654'}}
+    def output_stat(self,**changes):
+        return SimpleNamespace(**{'st_mode':stat.S_IFREG|0o600,'st_uid':1001,'st_dev':66305,'st_ino':987654,**changes})
+    def fd_flags(self,flags=None,descriptor_flags=0):
+        return SimpleNamespace(F_GETFL=3,F_GETFD=1,FD_CLOEXEC=1,fcntl=lambda fd,kind: (os.O_WRONLY|os.O_APPEND if flags is None else flags) if kind==3 else descriptor_flags)
+    def test_stdout_binding_reports_exact_private_inode_device_and_writable_inherited_fd(self):
+        config=self.stdout_config();good=self.output_stat()
+        with patch.object(root.pathlib.Path,'lstat',return_value=good),patch.object(root.os,'fstat',return_value=good),patch.object(root,'fcntl',self.fd_flags()):result=root.require_output_fd(config)
+        self.assertEqual(result,{'verified':True,'fd':1,'path':config['output'],'device':'66305','inode':'987654','ownerUid':1001,'mode':'0600','writable':True,'closeOnExec':False})
+    def test_wrong_stdout_device_or_inode_never_executes(self):
+        for bad in [self.output_stat(st_dev=2),self.output_stat(st_ino=2)]:
+            config=self.stdout_config();calls=[]
+            with patch.object(root.pathlib.Path,'lstat',return_value=self.output_stat()),patch.object(root.os,'fstat',return_value=bad):
+                with self.assertRaisesRegex(RuntimeError,'pinned identity'):root.exec_profiler(config,execve=lambda *args:calls.append(args),clock_ticks=100)
+            self.assertEqual(calls,[])
+    def test_foreign_owner_loose_mode_symlink_or_pipe_never_executes(self):
+        for bad in [self.output_stat(st_uid=0),self.output_stat(st_mode=stat.S_IFREG|0o644),self.output_stat(st_mode=stat.S_IFLNK|0o600),self.output_stat(st_mode=stat.S_IFIFO|0o600)]:
+            for where in ['path','fd']:
+                calls=[];config=self.stdout_config()
+                with self.subTest(where=where,mode=bad.st_mode,uid=bad.st_uid),patch.object(root.pathlib.Path,'lstat',return_value=bad if where=='path' else self.output_stat()),patch.object(root.os,'fstat',return_value=bad if where=='fd' else self.output_stat()):
+                    with self.assertRaises(RuntimeError):root.exec_profiler(config,execve=lambda *args:calls.append(args),clock_ticks=100)
+                self.assertEqual(calls,[])
+    def test_readonly_or_close_on_exec_stdout_never_executes(self):
+        for flags in [self.fd_flags(flags=os.O_RDONLY),self.fd_flags(descriptor_flags=1)]:
+            calls=[];config=self.stdout_config()
+            with patch.object(root.pathlib.Path,'lstat',return_value=self.output_stat()),patch.object(root.os,'fstat',return_value=self.output_stat()),patch.object(root,'fcntl',flags):
+                with self.assertRaises(RuntimeError):root.exec_profiler(config,execve=lambda *args:calls.append(args),clock_ticks=100)
+            self.assertEqual(calls,[])
+    def test_output_path_swapped_after_fd_check_never_executes(self):
+        calls=[];config=self.stdout_config()
+        with patch.object(root.pathlib.Path,'lstat',side_effect=[self.output_stat(),self.output_stat(st_ino=2)]),patch.object(root.os,'fstat',return_value=self.output_stat()),patch.object(root,'fcntl',self.fd_flags()):
+            with self.assertRaisesRegex(RuntimeError,'pinned identity'):root.exec_profiler(config,execve=lambda *args:calls.append(args),clock_ticks=100)
+        self.assertEqual(calls,[])
+    def test_valid_profiler_exec_keeps_exact_argv_after_verified_stdout_binding(self):
+        calls=[];config=self.stdout_config()
+        with patch.object(root.pathlib.Path,'lstat',return_value=self.output_stat()),patch.object(root.os,'fstat',return_value=self.output_stat()),patch.object(root,'fcntl',self.fd_flags()):
+            with self.assertRaisesRegex(AssertionError,'exec returned'):root.exec_profiler(config,execve=lambda *args:calls.append(args),clock_ticks=100)
+        self.assertEqual(calls,[(config['tool'],config['command'],config['environment'])]);self.assertNotIn('-o',calls[0][1])
+    def test_separate_ofstream_argv_is_rejected_before_fd_read_or_exec(self):
+        config=self.stdout_config();config['command']=config['command'][:-1]+['-o',config['output'],config['program']];calls=[]
+        with patch.object(root.os,'fstat',side_effect=AssertionError('Bad argv must fail before FD reads')):
+            with self.assertRaisesRegex(RuntimeError,'Unapproved profiler arguments'):root.exec_profiler(config,execve=lambda *args:calls.append(args),clock_ticks=100)
+        self.assertEqual(calls,[])
 
 if __name__=='__main__': unittest.main()

@@ -8,6 +8,7 @@ import {PROFILE,childEnvironment,profilerEnvironment,requireCleanEnvironment,emu
 import {parseProcStat} from '../android-native-isolated/trace-diagnostics.mjs';
 import {withStartupCleanup} from './startup-lifecycle.mjs';
 import {readOwner} from './owned.mjs';
+import {profileCommand,openProfileStdout,profileOutputIdentity} from './stdio.mjs';
 const here=dirname(fileURLToPath(import.meta.url));
 const save=(p,v)=>writeFileSync(p,JSON.stringify(v,null,2)+'\n');
 const sha=b=>createHash('sha256').update(b).digest('hex');
@@ -61,8 +62,8 @@ export async function startProfile(context,tool,owner,output,{kind='emulator',on
   mkdirSync(output,{recursive:true});const token=randomBytes(8).toString('hex'),programPath=join(context.root,'profile-'+token+'.bt'),dataPath=join(context.root,'profile-'+token+'.txt'),ticketPath=join(context.root,'profile-'+token+'-owner.json'),configPath=join(context.root,'profile-'+token+'-config.json');
   const target=targetReceipt(owner,kind,context.childEnv),program=buildProfileProgram(owner,tool.clockTicks),scope=requireProfileProgram(program,owner,tool.clockTicks);
   writeFileSync(programPath,program,{flag:'wx',mode:0o600});writeFileSync(dataPath,'',{flag:'wx',mode:0o600});
-  const argv=[tool.tool,'-B','line','-kk','-p',String(owner.pid),'-o',dataPath,programPath];
-  const config={version:1,root:context.root,nonce:context.nonce,runnerUid:context.runnerUid,runnerGid:context.runnerGid,target,targetEnvironment:target.targetEnvironment,tool:tool.tool,toolSha256:tool.toolSha256,environment:context.environment,program:programPath,programSha256:sha(Buffer.from(program)),output:dataPath,ticket:ticketPath,command:argv};
+  const argv=profileCommand(tool,owner,dataPath,programPath);
+  const config={version:1,root:context.root,nonce:context.nonce,runnerUid:context.runnerUid,runnerGid:context.runnerGid,target,targetEnvironment:target.targetEnvironment,tool:tool.tool,toolSha256:tool.toolSha256,environment:context.environment,program:programPath,programSha256:sha(Buffer.from(program)),output:dataPath,outputIdentity:profileOutputIdentity(dataPath),ticket:ticketPath,command:argv};
   save(configPath,config);copyFileSync(programPath,join(output,'profile.bt'));save(join(output,'launch-configuration.json'),config);save(join(output,'scope-contract.json'),scope);
   // Publish the cleanup handle before metadata, spawn, READY or inspect can fail.
   const handle={context,tool,owner,output,kind,configPath,dataPath,ticketPath,child:null,scope,startedAtUtc:new Date().toISOString(),startedMonotonicNs:process.hrtime.bigint().toString(),launchError:null,ownershipVerified:false,stopRequested:false,scopeErrors:[]};
@@ -72,7 +73,7 @@ export async function startProfile(context,tool,owner,output,{kind='emulator',on
   if(kind==='synthetic-preflight'){
     const info=queryKernelInfo(context,tool,configPath,{timeout:Math.max(1,Math.ceil(until-performance.now()))});save(join(output,'kernel-bpf-info.json'),{...info,scope:'Guarded privileged metadata query only; actual compile/attach/scope preflight remains mandatory'});requireCommand(info,'BPF/kernel feature query');
   }
-  liveIdentity(owner);const stdout=openSync(join(output,'profiler-launch.stdout.log'),'wx',0o600),stderr=openSync(join(output,'profiler.stderr.log'),'wx',0o600);
+  liveIdentity(owner);const stdout=openProfileStdout(output,dataPath),stderr=openSync(join(output,'profiler.stderr.log'),'wx',0o600);
   let child;try{child=cp.spawn('/usr/bin/sudo',['-n','--','/usr/bin/python3','-I','-B',join(here,'root-control.py'),'start',configPath],{env:context.environment,stdio:['ignore',stdout,stderr],windowsHide:true});handle.child=child;}finally{closeSync(stdout);closeSync(stderr);}
   child.once('error',error=>{handle.launchError=error.message;});
   while(performance.now()<until){

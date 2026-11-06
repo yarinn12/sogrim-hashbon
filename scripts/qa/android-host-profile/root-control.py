@@ -13,6 +13,10 @@ try:
     import resource
 except ImportError:
     resource=None  # Importable for pure guard tests on Windows; CLI stays Linux-only.
+try:
+    import fcntl
+except ImportError:
+    fcntl=None  # Pure identity tests import on Windows; real CLI requires Linux.
 import signal
 import stat
 import sys
@@ -84,13 +88,39 @@ def exec_profiler(config,execve=None,clock_ticks=None):
     # Independent privileged validation of the full body, not just a digest
     # supplied beside the program. Changing BOTH program and config hash fails.
     validate_program(config,os.sysconf('SC_CLK_TCK') if clock_ticks is None else clock_ticks)
+    require_profile_command(config)
+    require_output_fd(config)
     (os.execve if execve is None else execve)(config['tool'],config['command'],config['environment'])
     raise AssertionError('exec returned')
 
 def require_profile_command(config):
     require(config['tool']=='/usr/bin/bpftrace','Only the pinned official profiler')
-    expected=[config['tool'],'-B','line','-kk','-p',str(config['target']['pid']),'-o',config['output'],config['program']]
+    expected=[config['tool'],'-B','line','-kk','-p',str(config['target']['pid']),config['program']]
     require(config['command']==expected,'Unapproved profiler arguments')
+
+def output_file_identity(config,info):
+    require(stat.S_ISREG(info.st_mode),'Profile output must be a regular file, never a symlink or pipe')
+    require(info.st_uid==config['runnerUid'] and stat.S_IMODE(info.st_mode)==0o600,'Profile output ownership/mode differs')
+    expected=config['outputIdentity']
+    require(str(info.st_dev)==expected['device'] and str(info.st_ino)==expected['inode'],'Profile output device/inode differs from pinned identity')
+    return {'device':str(info.st_dev),'inode':str(info.st_ino)}
+
+def validate_output_path(config):
+    info=pathlib.Path(config['output']).lstat()
+    output_file_identity(config,info)
+    return info
+
+def require_output_fd(config):
+    before=validate_output_path(config);actual=os.fstat(1)
+    output_file_identity(config,actual)
+    require((before.st_dev,before.st_ino)==(actual.st_dev,actual.st_ino),'Inherited stdout differs from private output path')
+    require(fcntl is not None,'Require Linux stdout FD flags; no unverified output fallback')
+    flags=fcntl.fcntl(1,fcntl.F_GETFL)
+    require(flags&os.O_ACCMODE in [os.O_WRONLY,os.O_RDWR],'Profile stdout is not writable')
+    require(not fcntl.fcntl(1,fcntl.F_GETFD)&fcntl.FD_CLOEXEC,'Profile stdout would close on exec')
+    after=validate_output_path(config)
+    require((before.st_dev,before.st_ino)==(after.st_dev,after.st_ino),'Private output path changed before exec')
+    return {'verified':True,'fd':1,'path':config['output'],**output_file_identity(config,actual),'ownerUid':actual.st_uid,'mode':'0600','writable':True,'closeOnExec':False}
 
 def exec_info(config,execve=None,clock_ticks=None):
     # Metadata only, but keep the same independent program/config/target guards.
@@ -137,6 +167,7 @@ def validate_config(config,path):
     confined(root,path)
     for key in ['program','output','ticket']:
         confined(root,config[key],existing=key!='ticket')
+    validate_output_path(config)
     require(config['tool']=='/usr/bin/bpftrace' and os.path.realpath(config['tool'])==config['tool'],'Only official bpftrace executable')
     info=os.stat(config['tool']);require(info.st_uid==0 and not info.st_mode&0o022,'Profiler binary is writable outside root')
     require(digest(config['tool'])==config['toolSha256'],'Profiler executable identity changed')
@@ -212,13 +243,14 @@ def run(mode,path):
     if mode=='start':
         check_target(config)
         require_profile_command(config)
-        ticket={**identity(os.getpid()),'nonce':config['nonce'],'toolSha256':config['toolSha256'],'programSha256':config['programSha256']}
+        stdout_binding=require_output_fd(config)
+        ticket={**identity(os.getpid()),'nonce':config['nonce'],'toolSha256':config['toolSha256'],'programSha256':config['programSha256'],'stdoutBinding':stdout_binding}
         fd=os.open(config['ticket'],os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
         with os.fdopen(fd,'w') as stream:
             os.fchown(stream.fileno(),config['runnerUid'],config['runnerGid']);json.dump(ticket,stream);stream.write('\n')
         os.umask(0o077)
-        # Three raw streams (trace output, launcher stdout, stderr) each have a
-        # kernel-enforced64MiB file bound: <=192MiB, below the256MiB raw budget.
+        # Raw stdout and stderr each have the same kernel-enforced64MiB file
+        # bound: <=128MiB, below the unchanged256MiB raw budget.
         # A limit hit remains a technical failure/partial artifact, never green.
         resource.setrlimit(resource.RLIMIT_FSIZE,(67108864,67108864))
         resource.setrlimit(resource.RLIMIT_CORE,(0,0))
