@@ -58,7 +58,10 @@ test('invitation choices preserve destinations, return focus and private draft e
   await page.locator('[data-action="event-guest-name"]').fill('שם לבדיקה');
   await page.locator('[data-action="event-participant-add-view-back"]').press('Enter');
   await expect(modal.locator('[data-participant-view="friends"]')).toBeFocused();
-  await modal.evaluate(e=>{e.scrollTop=0;e.focus()});await page.keyboard.press('Tab');
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  await modal.evaluate(e=>{e.scrollTop=0;e.focus()});
+  await expect(modal).toBeFocused();
+  await page.keyboard.press('Tab');
   expect(await page.evaluate(()=>{const e=document.activeElement,s=getComputedStyle(e);return !!e.closest('.event-modal-header-actions')&&(parseFloat(s.outlineWidth)>0||s.boxShadow!=='none')})).toBe(true);
   await page.getByRole('button',{name:'חזרה למסך הקודם',exact:true}).press('Enter');await expect(modal).toHaveCount(0);
   await page.locator('[data-action="open-event-participant-add"][data-event-id="friend-weekend"]').click();
