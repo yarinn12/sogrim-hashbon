@@ -5,13 +5,13 @@ import {fileURLToPath} from 'node:url';
 
 export const CONTRACT=Object.freeze({
  repository:'yarinn12/sogrim-hashbon',repositoryId:1247836328,version:'4.59',build:'195',
- signingBranch:'codex/ios195-459-private-tools-20261105',
- signingPath:'.github/workflows/ios195-459-private-sign-only-20261105.yml',
+ signingBranch:'codex/ios195-459-signing-qa492-20261106',
+ signingPath:'.github/workflows/ios195-459-private-sign-only-qa492-20261106.yml',
  signingName:'iOS195 4.59 private signed artifact only',
  intakeBranch:'codex/ios195-459-private-intake-20261105',
  intakePath:'.github/workflows/ios195-459-private-intake-only-20261105.yml',
  artifactName:'sogrim-ios-4.59-195-encrypted',
- producerVerifierSha256:'a6ba0870cf45e50af2cc7cfb7561e87ef4c965d32768b221ed3946c056afe12d'
+ producerVerifierSha256:'f179c7771bbf059e1fa57949158117501ec98c33c671682033eb2df3776cff3a'
 });
 const freeze=value=>{for(const item of Object.values(value??{}))if(item&&typeof item==='object')freeze(item);return Object.freeze(value);};
 export const INTAKE_BINDINGS=freeze(JSON.parse(readFileSync(new URL('./intake-bindings.json',import.meta.url),'utf8')));
