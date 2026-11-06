@@ -31,8 +31,17 @@ export async function openRestaurantBill(page,view='method',{width=393,height=85
 export const restaurantState=page=>page.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-state:friend-invitation-space')));
 export const restaurantMoney=state=>state.events.map(e=>({id:e.id,currency:e.currency,expenses:e.expenses,transfers:e.transfers}));
 export async function restaurantReach(page,locator){
- await locator.evaluate(e=>{e.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});const d=e.closest('.expense-modal'),r=e.getBoundingClientRect(),box=d.getBoundingClientRect(),nav=d.parentElement.querySelector('[aria-label="ניווט ראשי"]').getBoundingClientRect(),bottom=Math.min(box.bottom,nav.top);if(r.top<box.top)d.scrollTop+=r.top-box.top-4;else if(r.bottom>bottom)d.scrollTop+=r.bottom-bottom+4;return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))});
- await expect.poll(()=>locator.evaluate(e=>{const r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return hit===e||e.contains(hit)})).toBe(true);
+ // Measure after the scroll is painted. A queued browser scroll can restore
+ // the old covered position; realign fresh geometry within the same deadline.
+ await locator.evaluate(e=>{e.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))});
+ await expect.poll(()=>locator.evaluate(async e=>{
+  const d=e.closest('.expense-modal'),r=e.getBoundingClientRect(),box=d.getBoundingClientRect(),nav=d.parentElement.querySelector('[aria-label="ניווט ראשי"]').getBoundingClientRect(),bottom=Math.min(box.bottom,nav.top);
+  const delta=r.top<box.top?r.top-box.top-4:r.bottom>bottom?r.bottom-bottom+4:0;
+  if(delta)d.scrollTo({top:d.scrollTop+delta,behavior:'instant'});
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  const current=e.getBoundingClientRect(),hit=document.elementFromPoint(current.x+current.width/2,current.y+current.height/2);
+  return hit===e||e.contains(hit);
+ })).toBe(true);
  const r=await locator.boundingBox(),nav=await page.getByRole('navigation',{name:'ניווט ראשי',exact:true}).boundingBox();
  // Firefox may return 43.999996 for a 44px target; keep hundredth-pixel precision.
  expect(Math.round(r.width*100)/100).toBeGreaterThanOrEqual(44);expect(Math.round(r.height*100)/100).toBeGreaterThanOrEqual(44);

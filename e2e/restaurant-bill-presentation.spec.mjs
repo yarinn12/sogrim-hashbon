@@ -28,6 +28,40 @@ for(const[name,options]of[['normal',{}],['enlarged',{width:320,root:32}],['lands
   expect(restaurantMoney(await restaurantState(page))).toEqual(before);
  }
 });
+test('[regression] restaurant reach realigns after a queued scroll covers the dish description',async({page})=>{
+ const d=await openRestaurantBill(page,'items',{width:320,height:390,system:true}),before=restaurantMoney(await restaurantState(page));
+ const description=d.locator('.quick-item-description-details summary').nth(1);
+ const wasOpen=await description.locator('..').evaluate(e=>e.open);
+ await description.evaluate(async e=>{
+  const modal=e.closest('.expense-modal'),nav=modal.parentElement.querySelector('[aria-label="ניווט ראשי"]');
+  // Reproduce the original trace's covered position, followed by a queued
+  // restoration after the helper scrolls. No product or financial state changes.
+  modal.scrollTop+=e.getBoundingClientRect().top-nav.getBoundingClientRect().top-12;
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  const covered=modal.scrollTop;
+  window.__restaurantReachRestores=0;
+  modal.addEventListener('scroll',()=>{
+   const r=e.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+   if((hit===e||e.contains(hit))&&!window.__restaurantReachRestores){
+    window.__restaurantReachRestores++;
+    requestAnimationFrame(()=>modal.scrollTo({top:covered,behavior:'instant'}));
+   }
+  });
+ });
+ await restaurantClick(page,description);
+ expect(await page.evaluate(()=>window.__restaurantReachRestores)).toBe(1);
+ await expect(description.locator('..')).toHaveJSProperty('open',!wasOpen);
+ await expect(d.locator('[data-action="quick-item-amount"][data-index="1"]')).toHaveValue('30');
+ expect(restaurantMoney(await restaurantState(page))).toEqual(before);
+});
+
+test('[negative control] restaurant reach rejects a permanently covered center',async({page})=>{
+ await page.setViewportSize({width:320,height:390});
+ await page.setContent('<meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}.expense-modal{height:226px;overflow:auto}button{display:block;margin:400px 30px;width:260px;height:90px}nav{position:fixed;top:226px;width:100%;height:150px}.foreign-overlay{position:fixed;inset:0;background:white;z-index:100}</style><section><div class="expense-modal"><button id="description">תיאור המנה</button></div><nav aria-label="ניווט ראשי"></nav></section><div class="foreign-overlay"></div>');
+ expect(await page.evaluate(()=>({width:innerWidth,height:innerHeight}))).toEqual({width:320,height:390});
+ await expect(restaurantReach(page,page.locator('#description'))).rejects.toThrow(/Timeout 8000ms exceeded/);
+});
+
 test('dish split totals, remove and progress preserve the draft',async({page})=>{
  const d=await openRestaurantBill(page,'review',{width:320,root:32}),before=restaurantMoney(await restaurantState(page));
  await expect(d.locator('.quick-split-list .amount')).toHaveText(['₪100.00','₪10.00','₪10.00']);
