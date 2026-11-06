@@ -2,12 +2,14 @@ import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
 import {installSyntheticSystemText} from './helpers/accessibilityPresentation.mjs';
 import {geometry,finish} from './helpers/eventSettingsOverviewPresentation.mjs';
+import {openHeldRenderedHome,requireHeldHomeReadiness} from './helpers/heldHomeReadinessControl.mjs';
 const fixture=readFileSync(new URL('./fixtures/eventSettingsOverviewBootstrap.js',import.meta.url),'utf8'),evidence=new WeakMap();
 test.use({serviceWorkers:'block'});
 test.beforeEach(async({page})=>{const r={errors:[],external:[]};evidence.set(page,r);page.on('pageerror',e=>r.errors.push(e.message));await page.route('**/*',q=>new URL(q.request().url()).hostname==='127.0.0.1'?q.continue():(r.external.push(q.request().url()),q.abort()));await page.addInitScript({content:fixture})});
+requireHeldHomeReadiness(test);
 test.afterEach(async({page})=>{await finish({page,...evidence.get(page)})});
 async function start(page,{width=393,height=852,root=16,query=''}={}){
- await page.setViewportSize({width,height});await page.goto('/?review=1&requests=accepted&reward=inactive'+(root>16?'&dynamic-type-preview='+root:'')+query);
+ await page.setViewportSize({width,height});await openHeldRenderedHome(page,{path:'/?review=1&requests=accepted&reward=inactive'+(root>16?'&dynamic-type-preview='+root:'')+query});
  await page.locator('.product-home-screen .event-list [data-action="open-event"][data-event-id="friend-weekend"]').click();await page.locator('.screen [data-action="open-event-settings"]').click();
  const menu=page.locator('.event-settings-modal');await expect(menu).toBeVisible();await page.evaluate(()=>document.fonts.ready);await expect.poll(()=>page.evaluate(()=>document.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime)&&a.playState==='running').length)).toBe(0);
  await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));await expect(menu.locator('.event-modal-header-actions button').first()).toBeInViewport({ratio:1});return{page,menu,root,...evidence.get(page)};
