@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 import {waitForStaticVisualGeometry} from './helpers/staticVisualGeometry.mjs';
 
 test('final geometry waits for finite route transforms without rounding target dimensions',async({page})=>{
-  await page.setContent('<section id="route"><button style="box-sizing:border-box;width:100px;height:44px">פעולה</button></section>');
+  await page.setContent('<meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0}</style><section id="route"><button style="box-sizing:border-box;width:100px;height:44px">פעולה</button></section>');
   const route=page.locator('#route'),button=route.locator('button');
   await route.evaluate(element=>{
     const animation=element.animate([{transform:'scale(.99)'},{transform:'scale(1)'}],{duration:400,fill:'none'});
@@ -19,7 +19,7 @@ test('final geometry waits for finite route transforms without rounding target d
 });
 
 test('static geometry preserves an undersized target instead of rounding or resizing it',async({page})=>{
-  await page.setContent('<section id="route"><button style="box-sizing:border-box;width:100px;height:43.5px">פעולה</button></section>');
+  await page.setContent('<meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0}</style><section id="route"><button style="box-sizing:border-box;width:100px;height:43.5px">פעולה</button></section>');
   const route=page.locator('#route');
   await waitForStaticVisualGeometry(route);
   const after=await route.locator('button').boundingBox();

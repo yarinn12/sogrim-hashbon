@@ -276,6 +276,20 @@ test("wide 1280 by 400 layout keeps its desktop hierarchy for the actual pointer
   expect(heading.eyebrowVisible, "desktop retains its desktop secondary label").toBe(true);
 });
 
+test('event utility target remains at least44px at a fractional rendered position',async({page},info)=>{
+  await page.setViewportSize({width:1024,height:400});
+  await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+  const screen=page.locator('.screen[data-screen-kind="event"]');
+  await waitForStaticVisualGeometry(screen);
+  const button=screen.locator('.event-header-utility-button').nth(1);
+  await button.evaluate(e=>e.style.setProperty('transform',`translateY(${127.3204116821289-e.getBoundingClientRect().top}px)`));
+  await waitForStaticVisualGeometry(screen);
+  const metric=await button.evaluate(e=>({rect:e.getBoundingClientRect().toJSON(),minimum:getComputedStyle(e).minHeight}));
+  await info.attach('fractional-utility-target',{body:JSON.stringify(metric),contentType:'application/json'});
+  expect(metric.rect.width).toBeGreaterThanOrEqual(44);
+  expect(metric.rect.height).toBeGreaterThanOrEqual(44);
+});
+
 test("geometry across tablet and desktop breakpoints preserves screen and hero proportions", async ({ page }, testInfo) => {
   const samples = [];
   for (const viewport of [

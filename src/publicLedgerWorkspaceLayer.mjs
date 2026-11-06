@@ -21769,7 +21769,8 @@ gap: 4px !important;
 
 html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
 flex-direction: row !important;
-  min-height: 44px !important;
+  /* Preserve the44px rendered minimum at fractional compositor positions. */
+  min-height: 45px !important;
   padding: 4px 0 !important;
   gap: 6px !important;
 }
