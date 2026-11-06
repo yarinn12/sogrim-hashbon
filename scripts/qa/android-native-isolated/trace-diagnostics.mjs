@@ -3,7 +3,7 @@ import {mkdirSync,readFileSync,writeFileSync,appendFileSync,readdirSync,existsSy
 import {resolve,join,basename} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {createHash,randomBytes} from 'node:crypto';
-import {HOST_COHORT_CONTRACT,classifyHostCohort,recordHostCohortInventory as recordHostInventory,requireHostCohortCoverage as requireHostInventoryCoverage} from './cohort-observation-coverage.mjs';
+import {HOST_COHORT_CONTRACT,classifyHostCohort,isTaskGoneCode,recordHostCohortInventory as recordHostInventory,requireHostCohortCoverage as requireHostInventoryCoverage} from './cohort-observation-coverage.mjs';
 import {DIAGNOSTIC_CONTRACT,diagnosticMetadata,requireDiagnosticMetadata,ownedHostStopRequest,verifyOwnedHostStop,addHostObservationError,addHostWindowError,setHostObservationStatus,verifyHostObservationStatus} from './diagnostic-contract.mjs';
 export {recordHostInventory,requireHostInventoryCoverage};
 
@@ -101,7 +101,7 @@ export function sampleOwnedHost(options,deps={}){
   }
   const terminal=inventory();
   for(const tid of before)if(!afterDiscovery.includes(tid)||!afterFinal.includes(tid)){
-    const thread=threads.find(t=>t.pid===tid),gap=unavailable.find(g=>g.tid===tid&&g.field==='stat'&&g.phase==='initial'&&g.code==='ENOENT');
+    const thread=threads.find(t=>t.pid===tid),gap=unavailable.find(g=>g.tid===tid&&g.field==='stat'&&g.phase==='initial'&&isTaskGoneCode(g.code));
     if(!thread&&gap&&!afterDiscovery.includes(tid)&&!afterFinal.includes(tid))lifecycle.push({tid,kind:'unobserved-exit',startTicks:null,identity:null,counters:null});
     else lifecycle.push({tid,kind:'exited-during-sample',startTicks:thread?.startTicks??null});
   }

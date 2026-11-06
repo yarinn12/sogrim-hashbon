@@ -3,6 +3,9 @@ const fields=['userTicks','systemTicks','runNs','runQueueWaitNs','timeslices'];
 const scheduling=fields.slice(2),numeric=value=>typeof value==='string'&&/^\d+$/.test(value);
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const key=(owner,tid,start)=>`${owner.pid}:${owner.startTicks}:${tid}:${start}`;
+// procfs may report ESRCH after opening a file for a task that then exits.
+// The inventories/identity rules below still require observed terminal absence.
+export function isTaskGoneCode(code){return code==='ENOENT'||code==='ESRCH';}
 
 // Classify observations, not whole thread lifetimes. An absent terminal TID
 // never receives an invented closing identity or a fabricated final counter.
@@ -65,18 +68,18 @@ export function classifyHostCohort(sample){
       continue;
     }
     if(!observed.includes(gap.tid)||!['stat','schedstat','wchan','identity-after','identity-final'].includes(gap.field))issue('malformed-read-gap',gap.tid,gap.field,gap.code);
-    if(gap.code!=='ENOENT')issue('non-exit-read-error',gap.tid,gap.field,gap.code);
+    if(!isTaskGoneCode(gap.code))issue('non-exit-read-error',gap.tid,gap.field,gap.code);
     else{
       if(terminal.has(gap.tid))issue('live-read-gap',gap.tid,gap.field,gap.code);
       const phase=gap.field==='identity-final'?'closing':gap.phase;
       const later=phase==='initial'?[discovery,final,terminal]:phase==='newborn'?[final,terminal]:phase==='closing'?[terminal]:null;
       if(!later)issue('missing-read-phase',gap.tid,gap.field);
-      else if(later.some(ids=>ids.has(gap.tid)))issue('reappeared-after-enoent',gap.tid,gap.field);
+      else if(later.some(ids=>ids.has(gap.tid)))issue('reappeared-after-'+gap.code.toLowerCase(),gap.tid,gap.field);
       const record=records.get(gap.tid),post=afterIds.has(gap.tid),close=closing.has(gap.tid);
       const laterRead=gap.field==='stat'?!!record||post||close:
         gap.field==='schedstat'?!!record&&Object.hasOwn(record,'wchan')||post||close:
         gap.field==='wchan'?post||close:gap.field==='identity-after'?post||close:close;
-      if(laterRead)issue('read-succeeded-after-enoent',gap.tid,gap.field);
+      if(laterRead)issue('read-succeeded-after-'+gap.code.toLowerCase(),gap.tid,gap.field);
     }
   }
   for(const tid of observed){
@@ -93,7 +96,7 @@ export function classifyHostCohort(sample){
       continue;
     }
     const record=records.get(tid),post=afterIds.get(tid),close=closing.get(tid),gaps=gapsByTid.get(tid)||[];
-    const hasGap=field=>gaps.some(gap=>gap.field===field&&gap.code==='ENOENT');
+    const hasGap=field=>gaps.some(gap=>gap.field===field&&isTaskGoneCode(gap.code));
     const events=sample.lifecycle.filter(event=>event.tid===tid&&!event.kind.startsWith('tid-reused'));
     const expectedEvents=[];
     if(before.has(tid)&&(!discovery.has(tid)||!final.has(tid))){
