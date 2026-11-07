@@ -135,6 +135,17 @@ class RootBodyControls(unittest.TestCase):
                 root.checked_target_environment({**config,'targetEnvironment':{**env,**patch}},'/owned')
             self.assertNotIn('SYNTHETIC_SECRET',str(failed.exception))
         with self.assertRaises(RuntimeError):root.checked_target_environment({**config,'target':{'kind':'synthetic-preflight','pid':1234}},'/owned')
+    def test_runtime_directory_is_independently_reconstructed_and_global_defaults_are_rejected(self):
+        base='/owned';env={**root.operational_environment(base),'XDG_RUNTIME_DIR':base+'/runtime','ANDROID_EMULATOR_DISCOVERY_DIR':base+'/runtime'}
+        config={'target':{'kind':'emulator','pid':1234},'targetEnvironment':env}
+        root.checked_target_environment(config,base)
+        self.assertEqual(root.operational_environment(base)['XDG_RUNTIME_DIR'],base+'/runtime')
+        self.assertEqual(root.operational_environment(base)['ANDROID_EMULATOR_DISCOVERY_DIR'],base+'/runtime')
+        for key in ['XDG_RUNTIME_DIR','ANDROID_EMULATOR_DISCOVERY_DIR']:
+            for value in ['/tmp','/run/user/1001','/foreign','SYNTHETIC_SECRET']:
+                with self.subTest(key=key,value=value),self.assertRaises(RuntimeError) as failed:
+                    root.checked_target_environment({**config,'targetEnvironment':{**env,key:value}},base)
+                self.assertNotIn('SYNTHETIC_SECRET',str(failed.exception))
     def stdout_config(self):
         return {**self.info_config(),'runnerUid':1001,'outputIdentity':{'device':'66305','inode':'987654'}}
     def output_stat(self,**changes):

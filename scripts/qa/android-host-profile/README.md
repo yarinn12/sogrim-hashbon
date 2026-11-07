@@ -164,3 +164,20 @@ foreign PID, changed visual/locale, credentials and preload rejection. It is not
 a capture of the original process environment or proof of binary/source identity.
 All sampling, original workload and time limits stay unchanged.
 Source: https://android.googlesource.com/platform/external/qemu/+/emu-master-dev/android/emulator/main-emulator.cpp
+
+
+The SDK-env run42315456906 stopped before original font/acceptance/geometry
+workload execution with an unexpected XDG_RUNTIME_DIR key. Only its key name was
+recorded; its original value was not captured. This was not an app acceptance.
+
+Official emu-main-dev launcher source supplies XDG_RUNTIME_DIR only when absent.
+On Linux, when it is already set, it also sets ANDROID_EMULATOR_DISCOVERY_DIR to
+that same value. Construct both keys explicitly as private-root/runtime and
+create that directory with mode0700. Do not accept /tmp or inherited user config.
+The privileged helper independently reconstructs the same paths and confines
+them to the private root. All unknown keys and changed values remain rejected.
+Node and privileged-helper regressions reproduce OLD rejection and check FINAL
+acceptance plus rejection of global/foreign runtime and discovery directories.
+This is a source-derived model, not proof of exact installed binary/source
+correspondence. Original app/APK/SDK/renderer/workload/time limits stay unchanged.
+Source: https://android.googlesource.com/platform/external/qemu/+/refs/heads/emu-main-dev/android/emulator/main-emulator.cpp

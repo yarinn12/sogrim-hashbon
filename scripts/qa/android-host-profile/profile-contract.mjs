@@ -6,10 +6,10 @@ const fixedPath='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
 const paths=(value,label)=>{assert.equal(typeof value,'string');assert.ok(isAbsolute(value),label+' must be absolute');assert.ok(!/[\0\r\n]/.test(value),'Unsafe path');return resolve(value);};
 export function childEnvironment({sdk,avdHome,home,temp}){
   sdk=paths(sdk,'SDK');avdHome=paths(avdHome,'AVD home');home=paths(home,'Private home');temp=paths(temp,'Private temp');
-  const androidHome=join(dirname(home),'android-native-home');
+  const androidHome=join(dirname(home),'android-native-home'),runtime=join(dirname(home),'runtime');
   // Build from explicit operational values; never spread process.env. Private
   // home/config paths prevent implicit reads of the runner's private config.
-  return {PATH:fixedPath,HOME:home,TMPDIR:temp,XDG_CONFIG_HOME:join(home,'config'),XDG_CACHE_HOME:join(home,'cache'),LANG:'C.UTF-8',LC_ALL:'C.UTF-8',TZ:'UTC',
+  return {PATH:fixedPath,HOME:home,TMPDIR:temp,XDG_CONFIG_HOME:join(home,'config'),XDG_CACHE_HOME:join(home,'cache'),XDG_RUNTIME_DIR:runtime,ANDROID_EMULATOR_DISCOVERY_DIR:runtime,LANG:'C.UTF-8',LC_ALL:'C.UTF-8',TZ:'UTC',
     SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD:'1',ANDROID_HOME:sdk,ANDROID_SDK_ROOT:sdk,ANDROID_AVD_HOME:avdHome,ANDROID_USER_HOME:androidHome,ANDROID_EMULATOR_HOME:androidHome,
     ADB_VENDOR_KEYS:join(androidHome,'adbkey'),ANDROID_ADB_SERVER_PORT:'5037',ADB_SERVER_SOCKET:'tcp:5037'};
 }

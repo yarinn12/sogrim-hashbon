@@ -25,7 +25,7 @@ export function createProfileRoot({runnerTemp,runId,sdk}){
   assert.equal(process.platform,'linux');assert.equal(process.arch,'x64');assert.match(String(runId),/^\d+$/);
   assert.equal(resolve(runnerTemp),'/home/runner/work/_temp','Unexpected standard-runner temp root');
   const nonce=randomBytes(16).toString('hex'),root=join(runnerTemp,'android-host-profile-'+runId+'-'+nonce);
-  mkdirSync(root,{mode:0o700});for(const name of ['home','home/config','home/cache','temp','avds'])mkdirSync(join(root,name),{mode:0o700});
+  mkdirSync(root,{mode:0o700});for(const name of ['home','home/config','home/cache','runtime','temp','avds'])mkdirSync(join(root,name),{mode:0o700});
   const options={sdk,avdHome:join(root,'avds'),home:join(root,'home'),temp:join(root,'temp')};
   return {root,nonce,options,environment:profilerEnvironment(options),childEnv:childEnvironment(options),runnerUid:process.getuid(),runnerGid:process.getgid()};
 }

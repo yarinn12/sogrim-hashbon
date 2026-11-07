@@ -59,7 +59,7 @@ def checked_environment(actual,expected):
 
 def operational_environment(root):
     root=str(root);home=root+'/home';android_home=root+'/android-native-home'
-    return {'PATH':'/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin','HOME':home,'TMPDIR':root+'/temp','XDG_CONFIG_HOME':home+'/config','XDG_CACHE_HOME':home+'/cache','LANG':'C.UTF-8','LC_ALL':'C.UTF-8','TZ':'UTC','SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD':'1','ANDROID_HOME':'/usr/local/lib/android/sdk','ANDROID_SDK_ROOT':'/usr/local/lib/android/sdk','ANDROID_AVD_HOME':root+'/avds','ANDROID_USER_HOME':android_home,'ANDROID_EMULATOR_HOME':android_home,'ADB_VENDOR_KEYS':android_home+'/adbkey','ANDROID_ADB_SERVER_PORT':'5037','ADB_SERVER_SOCKET':'tcp:5037'}
+    return {'PATH':'/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin','HOME':home,'TMPDIR':root+'/temp','XDG_CONFIG_HOME':home+'/config','XDG_CACHE_HOME':home+'/cache','XDG_RUNTIME_DIR':root+'/runtime','ANDROID_EMULATOR_DISCOVERY_DIR':root+'/runtime','LANG':'C.UTF-8','LC_ALL':'C.UTF-8','TZ':'UTC','SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD':'1','ANDROID_HOME':'/usr/local/lib/android/sdk','ANDROID_SDK_ROOT':'/usr/local/lib/android/sdk','ANDROID_AVD_HOME':root+'/avds','ANDROID_USER_HOME':android_home,'ANDROID_EMULATOR_HOME':android_home,'ADB_VENDOR_KEYS':android_home+'/adbkey','ANDROID_ADB_SERVER_PORT':'5037','ADB_SERVER_SOCKET':'tcp:5037'}
 
 def checked_profiler_environment(actual,root):
     expected={**operational_environment(root),'BPFTRACE_BTF':'/sys/kernel/btf/vmlinux','BPFTRACE_MAX_MAP_KEYS':'65536','BPFTRACE_LOG_SIZE':'1048576','BPFTRACE_STACK_MODE':'raw'}
@@ -188,7 +188,7 @@ def validate_config(config,path):
     # fixed values. Forbid credential/config injection even if config is corrupt.
     checked_profiler_environment(config['environment'],root)
     checked_target_environment(config,root)
-    for key in ['HOME','TMPDIR','XDG_CONFIG_HOME','XDG_CACHE_HOME','ANDROID_AVD_HOME','ANDROID_USER_HOME','ANDROID_EMULATOR_HOME']:
+    for key in ['HOME','TMPDIR','XDG_CONFIG_HOME','XDG_CACHE_HOME','XDG_RUNTIME_DIR','ANDROID_EMULATOR_DISCOVERY_DIR','ANDROID_AVD_HOME','ANDROID_USER_HOME','ANDROID_EMULATOR_HOME']:
         require(pathlib.Path(config['environment'][key]).resolve().is_relative_to(root),'Operational environment path escapes private root')
     return root
 

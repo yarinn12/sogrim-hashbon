@@ -132,7 +132,7 @@ test('only the exact first branch-creation event may run the diagnostic',()=>{
   for(const patch of [{created:false},{before:'b'.repeat(40)},{forced:true}])assert.throws(()=>requireInvocation(env,{...event,...patch}));assert.throws(()=>requireInvocation({...env,GITHUB_RUN_ATTEMPT:'2'},event));
 });
 test('workflow and deployment gates retain explicit diagnostic-only first creation and official tool dependency',()=>{
-  const workflow=readFileSync(new URL('../.github/workflows/android-host-profile-sdk-env-2d4.yml',import.meta.url),'utf8'),vercel=JSON.parse(readFileSync(new URL('../vercel.json',import.meta.url)));
+  const workflow=readFileSync(new URL('../.github/workflows/android-host-profile-runtime-2d4.yml',import.meta.url),'utf8'),vercel=JSON.parse(readFileSync(new URL('../vercel.json',import.meta.url)));
   assert.equal(vercel.git.deploymentEnabled[BRANCH],false);assert.match(workflow,/timeout-minutes: 45/);assert.match(workflow,/runs-on: ubuntu-24\.04/);assert.match(workflow,/github\.event\.created == true/);assert.match(workflow,/github\.run_attempt == 1/);assert.match(workflow,/github\.run_number == 1/);assert.doesNotMatch(workflow,/workflow_dispatch|workflow_call|pull_request|contents: write|actions: write/);
   assert.match(workflow,/apt-get install --yes --no-install-recommends bpftrace/);assert.match(workflow,/ulimit -c 0/);assert.doesNotMatch(workflow,/swangle|sysctl|setcap|sudo perf|--unsafe/);
   const runner=readFileSync(new URL('../scripts/qa/android-host-profile/runner.mjs',import.meta.url),'utf8');assert.ok(runner.indexOf('runScopePreflight(profileContext')<runner.indexOf("cp.spawn(join(sdk,'emulator/emulator')"));assert.match(runner,/env:profileContext\.childEnv/);assert.doesNotMatch(runner,/\.\.\.env,ANDROID_QA_SOURCE/);
