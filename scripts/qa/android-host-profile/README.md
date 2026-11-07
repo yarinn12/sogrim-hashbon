@@ -181,3 +181,15 @@ acceptance plus rejection of global/foreign runtime and discovery directories.
 This is a source-derived model, not proof of exact installed binary/source
 correspondence. Original app/APK/SDK/renderer/workload/time limits stay unchanged.
 Source: https://android.googlesource.com/platform/external/qemu/+/refs/heads/emu-main-dev/android/emulator/main-emulator.cpp
+
+The original runtime run42317759888 completed all app checks without a target
+ANR, but its profiler result failed. bpftrace printed failed/empty user stacks
+inline as `@samples[second, tid, ]: count`; the parser only recognized multiline
+stacks. Preserve these rows and their weights as unknown instead of discarding
+the entire parsed profile. The normal regression uses selected verbatim records
+from that original raw stream and also checks CRLF and malformed/oversized maps.
+Unparsed data, helper warnings, missing drop counters and incomplete unwinds keep
+their original failure/partial semantics. This parser correction is not an
+accepted cloud profile, Native acceptance or an ANR fix. Removing parsed spans
+uses forward gaps so processing the preserved stream does not repeatedly copy
+the unchanged warning prefix. No new sampling or process-memory access is added.

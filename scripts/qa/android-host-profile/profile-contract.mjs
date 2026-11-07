@@ -74,14 +74,16 @@ export function requireProfileProgram(program,owner,clockTicks){
 export function parseProfileOutput(text,owner){
   assert.equal(typeof text,'string');assert.ok(text.includes(`SOGRIM_PROFILE_READY ${owner.pid} ${owner.startTicks}`),'Profiler did not acknowledge exact target');
   const rows=[],consumed=[];
-  const pattern=/^@samples\[(\d+),\s*(\d+),\s*\n([\s\S]*?)\]:\s*(\d+)\s*$/gm;
+  // bpftrace also prints a failed/empty user stack inline: [second, tid, ]: n.
+  // Preserve its weight as unknown; warnings and technical health stay separate.
+  const pattern=/^@samples\[(\d+),\s*(\d+),[ \t]*(?:\r?\n([\s\S]*?))?\]:[ \t]*(\d+)[ \t]*\r?$/gm;
   for(const match of text.matchAll(pattern)){
-    const frames=match[3].split(/\r?\n/).map(s=>s.trim()).filter(Boolean);assert.ok(frames.length<=32,'Unexpected frame depth');
+    const frames=(match[3]??'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);assert.ok(frames.length<=32,'Unexpected frame depth');
     assert.ok(frames.every(frame=>/^(?:0x)?[a-fA-F0-9]+$/.test(frame)||/^\[unknown\]$/.test(frame)),'Unexpected raw address output; preserve as partial');
     const count=Number(match[4]),tid=Number(match[2]);assert.ok(Number.isSafeInteger(count)&&count>0&&Number.isSafeInteger(tid)&&tid>1);
     rows.push({monotonicSecond:match[1],tid,frames:frames.map(f=>f==='[unknown]'?null:'0x'+f.replace(/^0x/,'')),count});consumed.push([match.index,match.index+match[0].length]);
   }
-  let remaining=text;for(const [a,b]of consumed.toReversed())remaining=remaining.slice(0,a)+remaining.slice(b);
+  const gaps=[];let end=0;for(const [a,b]of consumed){gaps.push(text.slice(end,a));end=b;}gaps.push(text.slice(end));const remaining=gaps.join('');
   assert.ok(!/^@/m.test(remaining),'Unparsed profile map data');
   const unknown=rows.filter(r=>r.frames.length===0||r.frames.some(f=>!f));
   return {rows,totalSamples:rows.reduce((s,r)=>s+r.count,0),stopped:text.includes('SOGRIM_PROFILE_STOPPED'),deadlineReached:text.includes('SOGRIM_PROFILE_DEADLINE'),unknownFrameRows:unknown.length,unknownStackSamples:unknown.reduce((s,r)=>s+r.count,0),rawUserStackBytes:false,unwindCompletenessProven:false,symbolsComplete:false,causalAttributionProven:false};
