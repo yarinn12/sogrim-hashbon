@@ -137,6 +137,21 @@ class NativeStallMonitorTests(unittest.TestCase):
                 self.assertEqual(details["pathDigest"], hashlib.sha256(str(self.executable).encode()).hexdigest())
                 self.assertNotIn(str(self.executable), json.dumps(details))
 
+    def test_zero_exact_candidates_report_counts_without_exposing_process_commands(self):
+        path = self.journal()
+        commands = ["/foreign/App.app/App", "/foreign/Other.app/App", "/foreign/Other.app/Other"]
+        rows = [ProcessIdentity(50 + index, self.process.uid, "start", command, 1791691591)
+                for index, command in enumerate(commands)]
+        with self.assertRaises(MonitorUnavailable) as caught:
+            self.target(path, process_rows=rows)
+        details = caught.exception.details
+        self.assertEqual(details["candidateCount"], 0)
+        self.assertEqual(details["processRows"], 3)
+        self.assertEqual(details["basenameMatches"], 2)
+        self.assertEqual(details["appBundleSuffixMatches"], 1)
+        for command in commands:
+            self.assertNotIn(command, json.dumps(details))
+
     def test_pid_parser_metadata_is_preserved_in_identity_diagnostics(self):
         path = self.journal()
         with self.assertRaises(MonitorUnavailable) as caught:
@@ -283,6 +298,8 @@ class NativeStallMonitorTests(unittest.TestCase):
                     if clock.now >= 3: stop.touch()
                 details = {"candidateCount": count, "parserFailures": 2, "commandLength": 500,
                            "pathDigest": hashlib.sha256(str(self.executable).encode()).hexdigest()}
+                if count == 0:
+                    details.update(processRows=3, basenameMatches=2, appBundleSuffixMatches=1)
                 with patch("native_stall_monitor.assess_journal", return_value=candidate), \
                      patch("native_stall_monitor.verify_target",
                            side_effect=MonitorUnavailable("app-pid-not-unique", details)), \
@@ -299,6 +316,10 @@ class NativeStallMonitorTests(unittest.TestCase):
                 self.assertEqual(report["diagnostics"][0]["parserFailures"], 2)
                 self.assertEqual(report["diagnostics"][0]["commandLength"], 500)
                 self.assertEqual(report["diagnostics"][0]["pathDigest"], details["pathDigest"])
+                if count == 0:
+                    self.assertEqual({key: report["diagnostics"][0][key] for key in
+                                      ("processRows", "basenameMatches", "appBundleSuffixMatches")},
+                                     {"processRows": 3, "basenameMatches": 2, "appBundleSuffixMatches": 1})
                 self.assertEqual(json.loads((output / "monitor-report.json").read_text())["diagnostics"],
                                  report["diagnostics"])
 
@@ -322,6 +343,48 @@ class NativeStallMonitorTests(unittest.TestCase):
         self.assertEqual(report["containerState"], "unresolved")
         self.assertEqual(report["diagnostics"],
                          [{"reason": "container-unavailable", "containerState": "lookup-failed"}])
+
+    def test_container_failures_then_resolution_record_bounded_timing_and_first_decode(self):
+        self.startup_journal(last_time=1791691602.0, phase="missing")
+        output = self.root / "observer-event-timing"
+        output.mkdir()
+        stop = output / "stop"
+        args = SimpleNamespace(output_dir=output, stop_file=stop, source_sha=SHA,
+                               source_tree=TREE, udid=UDID, bundle_id=BUNDLE, manifest=self.manifest)
+        clock = SimpleNamespace(now=0.0, wall_calls=0)
+        def wall_time():
+            clock.wall_calls += 1
+            return 1791691590.0 if clock.wall_calls == 1 else 1791691612.0 + clock.now
+        def sleep(seconds):
+            clock.now += seconds
+            if clock.now >= 1.5: stop.touch()
+        owner = self
+        class Probe:
+            calls = 0
+            def containers(_self):
+                _self.calls += 1
+                if _self.calls <= 2: raise MonitorUnavailable("synthetic-container-failure")
+                return owner.app, owner.data
+            def devices(_self): raise AssertionError("no identity command before eligibility")
+            def processes(_self): raise AssertionError("no process scan before eligibility")
+        probe = Probe()
+        with patch("native_stall_monitor.time.monotonic", side_effect=lambda: clock.now), \
+             patch("native_stall_monitor.time.time", side_effect=wall_time), \
+             patch("native_stall_monitor.time.sleep", side_effect=sleep), \
+             patch("native_stall_monitor.capture_sample") as sampler:
+            report = run_observer(args, probe=probe, system_name="Darwin")
+        sampler.assert_not_called()
+        self.assertEqual(probe.calls, 3)
+        self.assertEqual(report["containerState"], "resolved")
+        self.assertEqual(report["containerResolution"]["attempts"], 3)
+        self.assertEqual(report["containerResolution"]["failures"], 2)
+        self.assertEqual(report["containerResolution"]["firstAttemptStartedWall"], 1791691612.0)
+        self.assertEqual(report["containerResolution"]["lastAttemptFinishedWall"], 1791691613.0)
+        self.assertEqual(report["containerResolution"]["resolvedWall"], 1791691613.0)
+        self.assertEqual(report["journalFirstDecoded"], {"session": SESSION,
+                         "eventWall": 1791691602.0, "observedWall": 1791691613.0})
+        self.assertLessEqual(len(report["diagnostics"]), 32)
+        self.assertEqual(report["identityChecks"], [])
 
     def test_sample_command_is_bounded_and_rechecks_owned_process(self):
         class Probe:
@@ -582,6 +645,7 @@ class HostIdentityMonitorTests(unittest.TestCase):
         self.assertEqual([call.args[1] for call in sampler.call_args_list], [self.process, self.process])
         self.assertTrue(all(row["result"] == "verified" and row["pid"] == self.process.pid
                             and row["wallSeconds"] >= 0 for row in report["identityChecks"]))
+        self.assertTrue(all(row["startedWall"] <= row["finishedWall"] for row in report["identityChecks"]))
         self.assertTrue(all(row["phase"] == "startup-not-ready" for row in report["samples"]))
 
     def test_hung_container_does_not_allow_foreign_or_ambiguous_process_sample(self):
@@ -592,6 +656,7 @@ class HostIdentityMonitorTests(unittest.TestCase):
                 self.assertEqual(probe.calls, 1)
                 self.assertEqual(report["status"], "unavailable")
                 self.assertTrue(all(row["result"] == "rejected" for row in report["identityChecks"]))
+                self.assertTrue(all(row["startedWall"] <= row["finishedWall"] for row in report["identityChecks"]))
                 for path in (self.root / "host-proof-observer").iterdir(): path.unlink()
 
     def test_missing_calibration_cannot_authorize_local_state_three(self):

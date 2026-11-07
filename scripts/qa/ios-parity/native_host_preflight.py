@@ -196,28 +196,48 @@ def run_preflight(manifest_path, ownership_path, sha, tree, udid, command=None, 
     command = command or bounded_command
     start = clock(); deadline = start + BUDGET_SECONDS
     report = dict(schemaVersion=1, verified=False, newHostRouteVerified=False,
-                  legacyVerificationRequired=True, budgetSeconds=BUDGET_SECONDS)
+                  legacyVerificationRequired=True, budgetSeconds=BUDGET_SECONDS,
+                  stageTimings=[])
+    active_stage = None
+    deadline_stage = None
+    def measured(name, operation):
+        nonlocal active_stage, deadline_stage
+        active_stage = name  # Only fixed names from this function enter the report.
+        began = clock()
+        try:
+            return operation()
+        finally:
+            finished = clock()
+            report["stageTimings"].append({"stage": name,
+                "elapsedSeconds": min(BUDGET_SECONDS, max(0.0, finished - began))})
+            if deadline_stage is None and (began >= deadline or finished >= deadline):
+                deadline_stage = name
     try:
-        ctx = context(manifest_path, sha, tree, udid, deadline, clock)
-        owner, owner_sha = read_ownership(ownership_path, manifest_path, ctx, deadline, clock)
-        tool_path = command(["/usr/bin/xcrun", "--find", "simctl"], deadline, clock).decode("utf8").strip()
-        tool = tool_identity(tool_path, deadline, clock)
+        ctx = measured("context", lambda: context(manifest_path, sha, tree, udid, deadline, clock))
+        owner, owner_sha = measured("ownership", lambda: read_ownership(
+            ownership_path, manifest_path, ctx, deadline, clock))
+        tool_path = measured("xcrun-find", lambda: command(
+            ["/usr/bin/xcrun", "--find", "simctl"], deadline, clock).decode("utf8").strip())
+        tool = measured("hash-tool-first", lambda: tool_identity(tool_path, deadline, clock))
         query = [tool["path"], "list", "devices", "-j", ctx["udid"]]
-        first = device_observation(command(query, deadline, clock), owner, ctx)
-        local = local_observation(ctx, deadline, clock)
-        second = device_observation(command(query, deadline, clock), owner, ctx)
-        if local != local_observation(ctx, deadline, clock): raise CalibrationError("local-snapshot-changed")
-        if tool != tool_identity(tool_path, deadline, clock): raise CalibrationError("simctl-tool-changed")
-        check_time(deadline, clock)
+        first = measured("device-query-first", lambda: device_observation(command(query, deadline, clock), owner, ctx))
+        local = measured("read-plist-first", lambda: local_observation(ctx, deadline, clock))
+        second = measured("device-query-second", lambda: device_observation(command(query, deadline, clock), owner, ctx))
+        if local != measured("read-plist-second", lambda: local_observation(ctx, deadline, clock)):
+            raise CalibrationError("local-snapshot-changed")
+        if tool != measured("hash-tool-second", lambda: tool_identity(tool_path, deadline, clock)):
+            raise CalibrationError("simctl-tool-changed")
+        measured("final-check", lambda: check_time(deadline, clock))
         report.update(verified=True, newHostRouteVerified=True, legacyVerificationRequired=False,
                       context=ctx, ownershipSha256=owner_sha, tool=tool, localDevice=local,
                       cliObservations=[first, second], calibratedWall=time.time(), reason="same-job-host-observed-booted")
     except (CalibrationError, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         report["reason"] = str(error) if isinstance(error, CalibrationError) else type(error).__name__
+        report["failedStage"] = active_stage
     report["elapsedSeconds"] = clock() - start
     if report["elapsedSeconds"] >= BUDGET_SECONDS:
         report.update(verified=False, newHostRouteVerified=False, legacyVerificationRequired=True,
-                      reason="preflight-deadline-exceeded")
+                      reason="preflight-deadline-exceeded", failedStage=deadline_stage or active_stage)
     return report
 
 def load_calibration(calibration_path, ownership_path, manifest_path, sha, tree, udid):

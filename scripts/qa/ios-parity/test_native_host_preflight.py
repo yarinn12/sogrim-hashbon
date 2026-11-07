@@ -72,6 +72,11 @@ class CalibrationTests(unittest.TestCase):
     def test_valid_same_job_host_observation_is_bound_and_loads(self):
         path,r=self.receipt()
         self.assertEqual(len(self.commands),3)
+        self.assertEqual([row["stage"] for row in r["stageTimings"]], [
+            "context", "ownership", "xcrun-find", "hash-tool-first", "device-query-first",
+            "read-plist-first", "device-query-second", "read-plist-second", "hash-tool-second", "final-check"])
+        self.assertTrue(all(0 <= row["elapsedSeconds"] <= 8 for row in r["stageTimings"]))
+        self.assertNotIn("failedStage",r)
         self.assertLess(r["elapsedSeconds"],8)
         self.assertEqual(r["localDevice"]["observedState"],3)
         self.assertEqual([v["state"] for v in r["cliObservations"]],["Booted","Booted"])
@@ -167,7 +172,48 @@ class CalibrationTests(unittest.TestCase):
         self.on_query=lambda count:setattr(self.clock,"now",8.01) if count==2 else None
         report=self.run_probe();self.assert_unverified(report)
         self.assertEqual(report["reason"],"preflight-deadline-exceeded")
+        self.assertEqual(report["failedStage"],"device-query-second")
+        self.assertLessEqual(len(report["stageTimings"]),10)
+        self.assertTrue(all(0 <= row["elapsedSeconds"] <= 8 for row in report["stageTimings"]))
         self.assertEqual(self.query_count,2)
+
+    def test_failed_stage_distinguishes_find_hash_query_and_plist_without_more_commands(self):
+        cases = [
+            ("xcrun-find", "command", 1),
+            ("hash-tool-first", "tool_identity", 1),
+            ("device-query-first", "command", 2),
+            ("read-plist-first", "local_observation", 2),
+            ("device-query-second", "command", 3),
+            ("read-plist-second", "local_observation", 3),
+            ("hash-tool-second", "tool_identity", 3),
+        ]
+        for expected, target, commands in cases:
+            with self.subTest(stage=expected):
+                self.clock.now=0;self.commands=[];self.query_count=0
+                if target == "command":
+                    def failing_command(args,deadline,clock):
+                        if len(self.commands) + 1 == commands:
+                            self.commands.append(args);self.clock.now += 8.01
+                            raise cal.CalibrationError("preflight-deadline-exceeded")
+                        return self.command(args,deadline,clock)
+                    report=self.run_probe(command=failing_command)
+                else:
+                    original=getattr(cal,target)
+                    calls=[]
+                    def failing_helper(*args,**kwargs):
+                        calls.append(1)
+                        if len(self.commands) == commands:
+                            raise cal.CalibrationError("synthetic-failure")
+                        return original(*args,**kwargs)
+                    with patch.object(cal,target,side_effect=failing_helper):
+                        report=self.run_probe()
+                self.assert_unverified(report)
+                self.assertEqual(report["failedStage"],expected)
+                self.assertEqual(len(self.commands),commands)
+                self.assertLessEqual(len(report["stageTimings"]),10)
+                if target == "command":
+                    self.assertEqual(report["stageTimings"][-1]["elapsedSeconds"],8)
+                self.assertNotIn(str(self.root),json.dumps(report["stageTimings"]))
 
     def test_output_cap_and_foreign_tool_are_rejected(self):
         def oversized(args,deadline,clock):

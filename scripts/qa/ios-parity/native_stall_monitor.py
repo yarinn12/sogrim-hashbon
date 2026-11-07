@@ -48,6 +48,7 @@ class Assessment:
     journal_path: Path | None = None
     first_time: float = 0.0
     elapsed_seconds: float = 0.0
+    first_decoded_time: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -116,10 +117,12 @@ def assess_journal(documents, source_sha, source_tree, run_started, now):
         return Assessment(False, "invalid-time", session=session, journal_path=path)
     if times[0] < run_started or times[-1] > now + 2 or any(b < a for a, b in zip(times, times[1:])):
         return Assessment(False, "stale-or-invalid-time", session=session, journal_path=path)
+    first_decoded_time = next((row["time"] for row in rows if row.get("event") == "decoded"), 0.0)
     profile_seen = any(row.get("event") == "captureReceived" and row.get("phase") == "profile" for row in rows)
     ended = any(row.get("phase") in {"keyboard-amount", "keyboard-name", "error", "saved", "resumed", "restored"} for row in rows)
     if ended:
-        return Assessment(False, "phase-ended", session=session, journal_path=path, first_time=times[0])
+        return Assessment(False, "phase-ended", session=session, journal_path=path,
+                          first_time=times[0], first_decoded_time=first_decoded_time)
     if not profile_seen:
         appeared = next((row["time"] for row in rows if row.get("event") == "viewDidAppear"), None)
         still_starting = any(row.get("event") == "decoded" and row.get("phase") in {"starting", "missing"}
@@ -132,12 +135,18 @@ def assess_journal(documents, source_sha, source_tree, run_started, now):
             return Assessment(elapsed > STARTUP_SECONDS,
                               "startup-not-ready" if elapsed > STARTUP_SECONDS else "startup-under-threshold",
                               session=session, phase="startup-not-ready", journal_path=path,
-                              first_time=times[0], elapsed_seconds=elapsed)
-        return Assessment(False, "before-profile", session=session, journal_path=path, first_time=times[0])
+                              first_time=times[0], elapsed_seconds=elapsed,
+                              first_decoded_time=first_decoded_time)
+        return Assessment(False, "before-profile", session=session, journal_path=path,
+                          first_time=times[0], first_decoded_time=first_decoded_time)
     gap = now - times[-1]
     if gap <= GAP_SECONDS:
-        return Assessment(False, "no-gap", session=session, phase="profile-to-keyboard", gap_seconds=gap, journal_path=path, first_time=times[0])
-    return Assessment(True, "gap", session=session, phase="profile-to-keyboard", gap_seconds=gap, journal_path=path, first_time=times[0])
+        return Assessment(False, "no-gap", session=session, phase="profile-to-keyboard",
+                          gap_seconds=gap, journal_path=path, first_time=times[0],
+                          first_decoded_time=first_decoded_time)
+    return Assessment(True, "gap", session=session, phase="profile-to-keyboard",
+                      gap_seconds=gap, journal_path=path, first_time=times[0],
+                      first_decoded_time=first_decoded_time)
 
 
 def verify_target(*, udid, bundle_id, manifest_path, expected_sha, expected_tree,
@@ -191,6 +200,12 @@ def verify_target(*, udid, bundle_id, manifest_path, expected_sha, expected_tree
                "parserFailures": scan.get("parserFailures", 0),
                "commandLength": scan.get("commandLength", max((len(row.command) for row in process_rows), default=0)),
                "pathDigest": hashlib.sha256(str(executable).encode("utf8")).hexdigest()}
+    if not matching:
+        basename = re.compile(r"/" + re.escape(executable_name) + r"(?:\s|$)")
+        bundle_suffix = re.compile(r"/" + re.escape(app.name) + r"/" + re.escape(executable_name) + r"(?:\s|$)")
+        details.update(processRows=len(process_rows),
+                       basenameMatches=sum(bool(basename.search(row.command)) for row in process_rows),
+                       appBundleSuffixMatches=sum(bool(bundle_suffix.search(row.command)) for row in process_rows))
     if len(matching) != 1:
         raise MonitorUnavailable("app-pid-not-unique", details)
     process = matching[0]
@@ -388,6 +403,11 @@ def run_observer(args, probe=None, system_name=None):
               "udid": args.udid, "bundleId": args.bundle_id, "startedWall": time.time(),
               "status": "unavailable", "lastReason": "not-started", "containerState": "unresolved",
               "samples": [], "errors": [], "diagnostics": [], "identityChecks": [],
+               "containerResolution": {"attempts": 0, "failures": 0,
+                   "firstAttemptStartedWall": None, "lastAttemptStartedWall": None,
+                   "lastAttemptFinishedWall": None, "firstFailureFinishedWall": None,
+                   "lastFailureFinishedWall": None, "resolvedWall": None},
+               "journalFirstDecoded": None,
               "hostCalibration": {"verified": False, "reason": "not-checked", "legacyVerificationRequired": True}}
     start = time.monotonic()
     start_cpu = time.process_time()
@@ -400,7 +420,8 @@ def run_observer(args, probe=None, system_name=None):
                        elapsedSeconds=assessment.elapsed_seconds)
         if details:
             row.update({key: details[key] for key in
-                        ("candidateCount", "parserFailures", "commandLength", "pathDigest")
+                        ("candidateCount", "parserFailures", "commandLength", "pathDigest",
+                         "processRows", "basenameMatches", "appBundleSuffixMatches")
                         if key in details})
         if row not in report["diagnostics"] and len(report["diagnostics"]) < 32:
             report["diagnostics"].append(row)
@@ -417,22 +438,41 @@ def run_observer(args, probe=None, system_name=None):
             if Path(args.stop_file).exists():
                 break
             if cached is None:
+                resolution = report["containerResolution"]
+                attempted_wall = time.time()
+                resolution["attempts"] += 1
+                if resolution["firstAttemptStartedWall"] is None:
+                    resolution["firstAttemptStartedWall"] = attempted_wall
+                resolution["lastAttemptStartedWall"] = attempted_wall
                 try:
                     cached = probe.containers()
+                    resolved_wall = time.time()
+                    resolution["lastAttemptFinishedWall"] = resolved_wall
+                    resolution["resolvedWall"] = resolved_wall
                     report["containerState"] = "resolved"
                 except (OSError, subprocess.SubprocessError, MonitorUnavailable) as error:
+                    failed_wall = time.time()
+                    resolution["failures"] += 1
+                    resolution["lastAttemptFinishedWall"] = failed_wall
+                    if resolution["firstFailureFinishedWall"] is None:
+                        resolution["firstFailureFinishedWall"] = failed_wall
+                    resolution["lastFailureFinishedWall"] = failed_wall
                     report["lastReason"] = f"container-unavailable:{error}"
                     record_diagnostic("container-unavailable", "lookup-failed")
                     time.sleep(0.5)
                     continue
             app, data = cached
             assessment = assess_journal(data / "Documents", args.source_sha, args.source_tree, run_started, time.time())
+            if assessment.first_decoded_time and report["journalFirstDecoded"] is None:
+                report["journalFirstDecoded"] = {"session": assessment.session,
+                    "eventWall": assessment.first_decoded_time, "observedWall": time.time()}
             report["lastReason"] = assessment.reason
             if assessment.eligible:
                 key = assessment.session + ":" + assessment.phase
                 if sampled.get(key, 0) < 2 and time.monotonic() - last_sample_at.get(key, 0) >= 2:
                     container_state = "resolved"
                     identity_started = time.monotonic()
+                    identity_started_wall = time.time()
                     identity_finished = None
                     identity = None
                     try:
@@ -508,11 +548,13 @@ def run_observer(args, probe=None, system_name=None):
                         last_sample_at[key] = time.monotonic()
                     finally:
                         if len(report["identityChecks"]) < 32:
+                            identity_finished_wall = time.time()
                             report["identityChecks"].append({
                                 "method": "calibrated-local-host-proof" if calibration else "legacy-live-simctl-proof", "session": assessment.session,
                                 "phase": assessment.phase, "result": "verified" if identity else "rejected",
                                 "pid": identity.pid if identity else None,
                                 "wallSeconds": (identity_finished if identity_finished is not None else time.monotonic()) - identity_started,
+                                 "startedWall": identity_started_wall, "finishedWall": identity_finished_wall,
                                 "appPathDigest": hashlib.sha256(str(app).encode("utf8")).hexdigest(),
                                 "dataPathDigest": hashlib.sha256(str(data).encode("utf8")).hexdigest()})
             time.sleep(0.5)
