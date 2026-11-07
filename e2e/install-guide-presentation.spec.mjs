@@ -1,6 +1,6 @@
 import {test,expect} from "@playwright/test";
 import {readFileSync} from "node:fs";
-import {geometry,hit,stable} from "./helpers/installGuidePresentation.mjs";
+import {geometry,hit,stable,readable} from "./helpers/installGuidePresentation.mjs";
 import {installSyntheticSystemText} from "./helpers/accessibilityPresentation.mjs";
 const fixture=readFileSync(new URL("./fixtures/profileRewardBootstrap.js",import.meta.url),"utf8"),evidence=new WeakMap();
 test.use({serviceWorkers:"block"});
@@ -58,4 +58,69 @@ test("installation entry remains pointer reachable between the fixed header and 
   const geometry=await entry.evaluate(e=>{const b=e.getBoundingClientRect(),header=document.querySelector('.product-app-identity').getBoundingClientRect(),nav=document.querySelector('.product-app-nav').getBoundingClientRect(),hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return{top:b.top,bottom:b.bottom,headerBottom:header.bottom,navTop:nav.top,reachable:!!hit&&(e===hit||e.contains(hit))}});
   expect(geometry.reachable).toBe(true);expect(geometry.top).toBeGreaterThanOrEqual(geometry.headerBottom-1);expect(geometry.bottom).toBeLessThanOrEqual(geometry.navTop+1);
   await entry.click();await expect(page.locator('.install-app-dialog')).toBeVisible();await page.keyboard.press('Escape');await returned(page);
+});
+
+test("installation description remains readable when dialog motion ends during row inspection",async({page})=>{
+  await page.setViewportSize({width:393,height:852});await open(page,true,16);
+  const description=page.locator(".install-app-description");
+  const initial=await description.evaluate(e=>{
+    const dialog=e.closest(".install-app-dialog");
+    // The production entrance starts at 12px; 24px makes the stale glyph point reliably miss in Windows WebKit.
+    const animation=dialog.animate([{transform:"translateY(24px) scale(.99)"},{transform:"none"}],{duration:1000,fill:"both"});
+    animation.pause();animation.currentTime=0;
+    const descriptor=Object.getOwnPropertyDescriptor(Element.prototype,"scrollTop");
+    Object.defineProperty(dialog,"scrollTop",{configurable:true,get(){return descriptor.get.call(this)},set(value){
+      descriptor.set.call(this,value);window.__installMotionScrolled=true;animation.finish();
+    }});
+    window.__installMotionAnimation=animation;
+    return new DOMMatrixReadOnly(getComputedStyle(dialog).transform).m42;
+  });
+  expect(initial).toBeGreaterThan(20);
+  await readable(description);
+  expect(await description.evaluate(e=>{
+    const range=document.createRange();range.selectNodeContents(e);
+    const rect=range.getBoundingClientRect(),hit=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);
+    return window.__installMotionScrolled && window.__installMotionAnimation.playState==="finished" && (hit===e||e.contains(hit));
+  })).toBe(true);
+});
+
+test("installation description rejects text covered by a persistent overlay",async({page})=>{
+  await page.setViewportSize({width:393,height:852});await open(page,true,16);
+  const description=page.locator(".install-app-description");
+  await description.evaluate(e=>{
+    const rect=e.getBoundingClientRect(),blocker=document.createElement("div");
+    blocker.style.cssText=`position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;z-index:2147483647;pointer-events:auto`;
+    blocker.dataset.installReadabilityBlocker="";document.body.append(blocker);
+  });
+  await expect(readable(description)).rejects.toThrow();
+  expect(await description.evaluate(e=>{
+    const rect=e.getBoundingClientRect(),hit=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);
+    return hit?.hasAttribute("data-install-readability-blocker");
+  })).toBe(true);
+});
+
+test("installation description rejects a new covered line after the initial row count",async({page})=>{
+  await page.setViewportSize({width:393,height:852});await open(page,true,16);
+  const description=page.locator(".install-app-description");
+  await description.evaluate(e=>{
+    const dialog=e.closest(".install-app-dialog"),descriptor=Object.getOwnPropertyDescriptor(Element.prototype,"scrollTop");
+    Object.defineProperty(dialog,"scrollTop",{configurable:true,get(){return descriptor.get.call(this)},set(value){
+      descriptor.set.call(this,value);
+      if(window.__installAddedRow)return;
+      window.__installAddedRow=true;
+      e.append(document.createElement("br"),"שורה חדשה שאסור להחמיץ");
+      const text=e.lastChild,range=document.createRange();range.selectNodeContents(text);
+      const rect=range.getBoundingClientRect(),blocker=document.createElement("div");
+      blocker.dataset.installNewRowBlocker="";
+      blocker.style.cssText=`position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;z-index:2147483647;pointer-events:auto`;
+      document.body.append(blocker);
+    }});
+  });
+  await expect(readable(description)).rejects.toThrow();
+  expect(await description.evaluate(e=>{
+    if(!window.__installAddedRow)return false;
+    const text=e.lastChild,range=document.createRange();range.selectNodeContents(text);
+    const rect=range.getBoundingClientRect(),hit=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);
+    return hit?.hasAttribute("data-install-new-row-blocker");
+  })).toBe(true);
 });

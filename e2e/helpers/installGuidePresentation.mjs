@@ -22,7 +22,7 @@ async function hit(l, click = true) {
   }
 }
 async function readable(l) {
-  const lines = await l.evaluate((e) => {
+  const inspect = (e, { index, scroll = false, expectedCount }) => {
     const d = e.closest(".install-app-dialog"), walker = document.createTreeWalker(e, NodeFilter.SHOW_TEXT), rows = /* @__PURE__ */ new Map();
     let n;
     while (n = walker.nextNode()) for (let i = 0; i < n.length; i++) {
@@ -35,18 +35,24 @@ async function readable(l) {
         rows.set(key, { top: y, h: b.height, left: Math.min(old?.left ?? b.left, b.left), right: Math.max(old?.right ?? b.right, b.right) });
       }
     }
-    return [...rows.values()];
-  });
-  expect(lines.length).toBeGreaterThan(0);
-  for (const line of lines) {
-    await l.evaluate((e, l2) => {
-      const d = e.closest(".install-app-dialog"), r = d.getBoundingClientRect();
-      d.scrollTop += l2.top - d.scrollTop - r.top - (d.clientHeight - l2.h) / 2;
-    }, line);
-    await expect.poll(() => l.evaluate((e, l2) => {
-      const d = e.closest(".install-app-dialog"), b = d.getBoundingClientRect(), y = l2.top - d.scrollTop, hit2 = document.elementFromPoint((l2.left + l2.right) / 2, y + l2.h / 2);
-      return y >= b.top - 1 && y + l2.h <= b.bottom + 1 && !!hit2 && (e === hit2 || e.contains(hit2) || hit2.matches("input") && getComputedStyle(hit2).opacity === "0" && e.closest("label")?.contains(hit2));
-    }, line)).toBe(true);
+    const lines = [...rows.values()];
+    if (index < 0) return lines.length;
+    if (lines.length !== expectedCount) return false;
+    const line = lines[index];
+    if (!line) return false;
+    const box = d.getBoundingClientRect();
+    if (scroll) {
+      d.scrollTop += line.top - d.scrollTop - box.top - (d.clientHeight - line.h) / 2;
+      return true;
+    }
+    const y = line.top - d.scrollTop, hit2 = document.elementFromPoint((line.left + line.right) / 2, y + line.h / 2);
+    return y >= box.top - 1 && y + line.h <= box.bottom + 1 && !!hit2 && (e === hit2 || e.contains(hit2) || hit2.matches("input") && getComputedStyle(hit2).opacity === "0" && e.closest("label")?.contains(hit2));
+  };
+  const count = await l.evaluate(inspect, { index: -1 });
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index++) {
+    await l.evaluate(inspect, { index, scroll: true, expectedCount: count });
+    await expect.poll(() => l.evaluate(inspect, { index, expectedCount: count })).toBe(true);
   }
 }
 
