@@ -19,13 +19,21 @@ function node(classes = "", attributes = {}) {
     querySelector: () => null,
     querySelectorAll: () => [],
     closest(selector) { return selector === "[data-event-id]" && attributes["data-event-id"] ? element : null; },
-    matches(selector) { return selector === "button:disabled" ? attributes.disabled === true : selector === "summary" && tokens.has("summary"); }
+    matches(selector) {
+      if (selector === "button:disabled") return attributes.disabled === true;
+      if (selector === "summary") return tokens.has("summary");
+      if (selector === ".expense-route-backdrop, .event-modal-backdrop[data-event-route-dialog='true']") {
+        return tokens.has("expense-route-backdrop") ||
+          (tokens.has("event-modal-backdrop") && attributes["data-event-route-dialog"] === "true");
+      }
+      return false;
+    }
   };
   return element;
 }
 
 function harness() {
-  const h = { rows: [], busy: [], details: [], money: [], calls: [], frames: [], reduced: false, queries: 0, screenReads: 0 };
+  const h = { rows: [], busy: [], details: [], money: [], calls: [], frames: [], reduced: false, queries: 0, screenReads: 0, dialog: null };
   h.screen = node("screen", { "data-screen-kind": "event", "data-event-id": "event-a" });
   h.hero = null;
   const root = node();
@@ -36,6 +44,7 @@ function harness() {
       h.queries += 1;
       if (selector === "#app > .screen") { h.screenReads += 1; return h.screen; }
       if (selector === ".product-home-screen .top") return h.hero;
+      if (selector.startsWith(".expense-modal-backdrop,")) return h.dialog;
       return null;
     },
     querySelectorAll(selector) {
@@ -65,6 +74,32 @@ function harness() {
   vm.runInContext(source.replace(/\nstartMotionPolish\(\);\s*$/, ""), h.context);
   h.frame = () => { const pending = h.frames.splice(0); pending.forEach((callback) => callback()); };
   return h;
+}
+
+for (const route of [
+  { name: "participant route", className: "event-modal-backdrop event-participant-route-backdrop", eventRoute: true, moves: false },
+  { name: "event task route", className: "event-modal-backdrop", eventRoute: true, moves: false },
+  { name: "expense route", className: "expense-modal-backdrop expense-route-backdrop", eventRoute: false, moves: false },
+  { name: "ordinary dialog", className: "event-modal-backdrop", eventRoute: false, moves: true }
+]) {
+  test(`${route.name} keeps its intended entrance motion`, () => {
+    const h = harness();
+    const panel = node("event-modal");
+    const backdrop = node(route.className, route.eventRoute ? { "data-event-route-dialog": "true" } : {});
+    backdrop.querySelector = () => panel;
+
+    h.dialog = backdrop;
+    h.context.animateDialogOpen();
+    const keyframes = h.calls.find(call => call.target === panel)?.keyframes;
+    assert.ok(keyframes, "the panel still receives its entrance animation");
+    assert.deepEqual([...keyframes.opacity], [0.94, 1]);
+    assert.equal(Object.hasOwn(keyframes, "y"), route.moves);
+    assert.equal(Object.hasOwn(keyframes, "scale"), route.moves);
+    if (route.moves) {
+      assert.deepEqual([...keyframes.y], [12, 0]);
+      assert.deepEqual([...keyframes.scale], [0.99, 1]);
+    }
+  });
 }
 
 test("unchanged busy controls do not rewrite their class on every enhancement", () => {

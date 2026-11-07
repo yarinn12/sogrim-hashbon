@@ -290,6 +290,29 @@ function missingAvatarImageColumn(error) {
     message.includes("column");
 }
 
+// Resolving an invitation must never call the friendship mutation RPC.
+export async function resolveFriendInvitation(config, friendCode, fetchImpl = fetch) {
+  if (!friendNetworkAvailable(config)) throw new Error("Sign in is required");
+  const code = normalizeFriendCode(friendCode);
+  if (!code) return { status:"unavailable" };
+  const payload = await callFriendRpc(config, "resolve_friend_invitation", { p_friend_code:code }, fetchImpl);
+  if (["self", "unavailable"].includes(payload?.status)) return { status:payload.status };
+  const profile = payload?.profile;
+  const targetId = normalizeAccountUserId(profile?.user_id);
+  const friendshipId = normalizeAccountUserId(payload?.friendship_id);
+  if (payload?.status !== "ready" || !targetId || targetId === config.storage.account.userId ||
+      !["new", "incoming", "outgoing", "accepted"].includes(payload.relationship) ||
+      (payload.relationship !== "new" && !friendshipId) || !String(profile?.display_name ?? "").trim()) {
+    throw new Error("Invalid friend invitation response");
+  }
+  return {
+    status:"ready", relationship:payload.relationship, friendshipId,
+    profile:{ user_id:targetId, display_name:String(profile.display_name).trim(),
+      username:String(profile.username ?? "").replace(/^@+/, ""),
+      avatar_preset:String(profile.avatar_preset ?? ""), avatar_image:normalizeAvatarImage(profile.avatar_image) }
+  };
+}
+
 export async function requestFriendship(
   config,
   friendCode,

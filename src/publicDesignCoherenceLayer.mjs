@@ -46,6 +46,12 @@ const CSS = `
     letter-spacing: 0 !important;
   }
 
+  /* Blink leaves some nested labels at auto when only body sets this property. */
+  html.design-coherence-v1 body,
+  html.design-coherence-v1 body #app * {
+    text-rendering: geometricPrecision !important;
+  }
+
   html.design-coherence-v1 .font-num,
   html.design-coherence-v1 .font-num *,
   html.design-coherence-v1 .currency-input-badge {
@@ -2080,7 +2086,7 @@ const CSS = `
 
   html.design-coherence-v1 .event-participant-primary-actions {
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 9px !important;
     margin: 0 !important;
   }
@@ -3131,7 +3137,7 @@ const CSS = `
     color: var(--app-muted) !important;
     background: transparent !important;
     box-shadow: none !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 600 !important;
     line-height: 1.35 !important;
   }
@@ -3152,7 +3158,7 @@ const CSS = `
     .settlement-hero-title-row h2 {
     margin: 0 0 3px !important;
     color: var(--app-ink) !important;
-    font-size: clamp(19px, 5.2vw, 22px) !important;
+    font-size: clamp(1.1875rem, 5.2vw, 1.375rem) !important;
     font-weight: 650 !important;
     line-height: 1.22 !important;
   }
@@ -3163,7 +3169,7 @@ const CSS = `
     .settlement-hero-title-row .muted {
     margin: 0 !important;
     color: var(--app-muted) !important;
-    font-size: 12px !important;
+    font-size: var(--dynamic-text-12, 12px) !important;
     font-weight: 500 !important;
     line-height: 1.4 !important;
   }
@@ -4052,7 +4058,7 @@ const CSS = `
       .screen[data-screen-kind="event"]
       > .event-overview-header
       h1 {
-      font-size: 28px !important;
+      font-size: var(--dynamic-text-28, 28px) !important;
       line-height: 1.08 !important;
     }
 
@@ -4297,22 +4303,20 @@ const CSS = `
   }
 
   /* Close-event confirmation follows the same white/green floating feedback language. */
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-backdrop {
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-backdrop {
     position: fixed !important;
     inset: 0 !important;
     z-index: 240 !important;
     display: grid !important;
     place-items: center !important;
     box-sizing: border-box !important;
-    padding:
-      calc(16px + env(safe-area-inset-top))
-      14px
-      calc(104px + env(safe-area-inset-bottom)) !important;
+    padding: calc(16px + env(safe-area-inset-top)) 14px calc(var(--settlement-close-nav-space) + 24px + env(safe-area-inset-bottom)) !important;
     background: rgba(7, 27, 24, 0.14) !important;
     pointer-events: auto !important;
+    --settlement-close-nav-space: var(--dynamic-type-bottom-nav-block, 82px);
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation {
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation {
     width: min(520px, calc(100vw - 28px)) !important;
     max-width: calc(100vw - 28px) !important;
     display: grid !important;
@@ -4320,10 +4324,10 @@ const CSS = `
     grid-auto-rows: max-content !important;
     align-content: start !important;
     min-height: 0 !important;
-    max-height: calc(100dvh - 120px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
-    gap: 12px !important;
+    max-height: calc(100dvh - var(--settlement-close-nav-space) - 40px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+    gap: 20px !important;
     box-sizing: border-box !important;
-    padding: 14px !important;
+    padding: 20px !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
     overscroll-behavior: contain !important;
@@ -4331,11 +4335,10 @@ const CSS = `
     border-radius: var(--app-radius-panel) !important;
     color: var(--app-ink) !important;
     background: #fbfefd !important;
-    box-shadow:
-      0 22px 52px rgba(7, 27, 24, 0.22),
-      0 4px 14px rgba(7, 27, 24, 0.1) !important;
+    box-shadow: 0 12px 32px rgba(7,27,24,.16), 0 2px 8px rgba(7,27,24,.08) !important;
     outline: none !important;
     pointer-events: auto !important;
+    scroll-padding-block: 16px !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-heading {
@@ -4369,12 +4372,13 @@ const CSS = `
     font-weight: 600 !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-copy h2 {
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-copy h2 {
     margin: 0 !important;
     color: var(--app-ink) !important;
-    font-size: 18px !important;
+    font-size: 1.25rem !important;
     font-weight: 650 !important;
     line-height: 1.3 !important;
+    overflow-wrap: anywhere !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-dismiss {
@@ -4392,31 +4396,71 @@ const CSS = `
     box-shadow: none !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation > p {
-    margin: 0 !important;
-    color: var(--app-muted) !important;
-    font-size: 13px !important;
-    line-height: 1.55 !important;
-    text-align: start !important;
-  }
-
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation > p strong {
-    display: block !important;
-    margin-bottom: 4px !important;
-    color: var(--app-ink) !important;
-  }
-
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-actions {
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-actions {
     display: grid !important;
-    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr) !important;
+    grid-template-columns: repeat(auto-fit,minmax(min(100%,8rem),1fr)) !important;
     gap: 10px !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-actions > button {
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-actions > button {
     width: 100% !important;
     min-width: 0 !important;
-    min-height: 50px !important;
+    min-height: 48px !important;
+    height: auto !important;
+    padding: 10px 14px !important;
+    font-size: .9375rem !important;
+    font-weight: 650 !important;
+    line-height: 1.5 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    margin: 0 !important;
   }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-copy h2:focus {
+    outline: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-body {
+    display: grid !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-body p {
+    margin: 0 !important;
+    text-align: start !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-body .settlement-close-transfer-summary {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: baseline !important;
+    gap: .25em .4em !important;
+    color: var(--app-ink) !important;
+    font-size: 1rem !important;
+    font-weight: 650 !important;
+    line-height: 1.5 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-transfer-summary :is(span,bdi) {
+    font: inherit !important;
+    max-width: 100% !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-close-confirmation-body #settlement-close-confirmation-description {
+    color: var(--app-muted) !important;
+    font-size: .9375rem !important;
+    font-weight: 400 !important;
+    line-height: 1.55 !important;
+  }
+
+  @media (max-width: 360px) {
+    html.design-coherence-v1.ledger-workspace-v1.circle-design-v1.dynamic-type-preview body #app .settlement-close-confirmation-backdrop {
+      --settlement-close-nav-space: var(--dynamic-type-bottom-nav-block, 148px);
+    }
+  }
+
 
   /* Destructive event settings keep the same quiet white task surfaces as the
      rest of the app; danger is communicated by the action, not a tinted page. */
@@ -4586,7 +4630,7 @@ const CSS = `
   html.design-coherence-v1.ledger-workspace-v1 body #app
     .profile-edit-screen .profile-identity-entry .profile-identity-copy > strong {
     color: var(--app-muted) !important;
-    font-size: 13px !important;
+    font-size: var(--dynamic-text-13, 13px) !important;
     font-weight: 500 !important;
   }
 
@@ -4674,6 +4718,213 @@ const CSS = `
     html.design-coherence-v1.ledger-workspace-v1 body #app
       .profile-edit-screen .profile-avatar-source-grid {
       grid-template-columns: minmax(0, 1fr) !important;
+    }
+  }
+
+  /* Scale shared page headings with the user's text size while keeping the
+     event name and first task together on a narrow phone. */
+  @media (orientation: portrait) and (max-width: 720px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top {
+      min-height: 0 !important;
+      margin-block: 8px 12px !important;
+      padding: 12px 18px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .brand {
+      min-width: 0 !important;
+      display: grid !important;
+      gap: 4px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top h1 {
+      width: 100% !important;
+      max-width: none !important;
+      margin-block: 0 !important;
+      font-size: 1.5rem !important;
+      line-height: 1.15 !important;
+      text-wrap: wrap !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .eyebrow {
+      display: none !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen.product-home-screen[data-screen-kind="home"] > .top {
+      margin-block-end: 0 !important;
+      padding-block-end: 32px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .muted {
+      font-size: 0.875rem !important;
+      line-height: 1.3 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab {
+      min-height: 44px !important;
+      flex-direction: column !important;
+      gap: 3px !important;
+      padding: 6px !important;
+      font-size: 0.875rem !important;
+      line-height: 1.2 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab strong {
+      font-size: inherit !important;
+      line-height: inherit !important;
+      white-space: nowrap !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-intro {
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-intro > [data-action="new-event-note"] {
+      order: -1 !important;
+      align-self: stretch !important;
+      min-height: 44px !important;
+      padding: 8px 16px !important;
+      line-height: 1.2 !important;
+    }
+  }
+
+  /* A phone turned sideways has tablet width but very little usable height.
+     Keep the task above the fixed navigation, with the same touch targets. */
+  @media (orientation: landscape) and (max-height: 450px) and (max-width: 1024px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] {
+      width: 100% !important;
+      max-width: 960px !important;
+      padding-inline: 16px !important;
+      padding-left: max(16px, env(safe-area-inset-left)) !important;
+      padding-right: max(16px, env(safe-area-inset-right)) !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .product-app-identity {
+      min-height: calc(56px + env(safe-area-inset-top)) !important;
+      padding-block: calc(6px + env(safe-area-inset-top)) 6px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top {
+      min-height: 0 !important;
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) !important;
+      align-items: center !important;
+      gap: 6px !important;
+      margin-block: 6px 12px !important;
+      padding: 6px 16px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .brand {
+      min-width: 0 !important;
+      display: grid !important;
+      gap: 4px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top :is(h1, .muted, .eyebrow) {
+      margin-block: 0 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top h1 {
+      font-size: 1.25rem !important;
+      line-height: 1.15 !important;
+      max-width: none !important;
+      width: 100% !important;
+      text-wrap: wrap !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .eyebrow,
+    html.design-coherence-v1.ledger-workspace-v1 body #app .product-home-screen > .top .muted {
+      display: none !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .muted {
+      font-size: 0.75rem !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .hero-actions {
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      margin: 0 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .hero-actions button {
+      min-height: 44px !important;
+      flex-direction: row !important;
+      gap: 6px !important;
+      padding: 6px 8px !important;
+      font-size: 0.75rem !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen.product-home-screen[data-screen-kind="home"] > .top {
+      margin-block-end: 0 !important;
+      padding-block-end: 32px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .home-benefit-actions {
+      align-items: start !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .home-benefit-actions .home-quick-action {
+      min-height: 60px !important;
+      padding-block: 8px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab {
+      min-height: 44px !important;
+      padding-block: 6px !important;
+      font-size: 0.875rem !important;
+      line-height: 1.2 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab strong {
+      font-size: inherit !important;
+      line-height: inherit !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-modal-step-header {
+      padding-block: 6px !important;
+      margin-block-end: 0 !important;
+      padding-left: max(16px, env(safe-area-inset-left)) !important;
+      padding-right: max(16px, env(safe-area-inset-right)) !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-modal-step-header .eyebrow {
+      display: none !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-modal-step-header h2 {
+      margin-block: 4px 0 !important;
+      font-size: 1.25rem !important;
+      line-height: 1.2 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-flow-progress {
+      padding-block-start: 6px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-body {
+      padding-block: 8px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-total-field {
+      padding-block: 8px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-total-field input[data-action="expense-total"] {
+      min-height: 50px !important;
+      font-size: 2rem !important;
+      line-height: 1.1 !important;
+      padding-block: 4px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-total-field > span {
+      font-size: 0.75rem !important;
+      line-height: 1.25 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-modal-actions {
+      padding-block: 6px !important;
     }
   }
 

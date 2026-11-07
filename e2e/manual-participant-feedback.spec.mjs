@@ -61,7 +61,8 @@ test("adding names shows the selected roster immediately and keeps removal and d
   await input.fill(guestName);
   await page.locator('[data-action="new-event-add-guest"]').click();
   await expect(list).toContainText(guestName);
-  await expect(page.locator("[data-new-event-participant-count]")).toContainText("2");
+  // The approved subview omits the redundant count caption; inspect its real rows.
+  await expect(list.locator(".new-event-selected-participant")).toHaveCount(2);
   await expect(input).toHaveValue("");
   await expect(input).toBeFocused();
   await input.fill(guestName);
@@ -75,6 +76,7 @@ test("adding names shows the selected roster immediately and keeps removal and d
   await expect(list).toContainText(guestName);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   await page.locator('[data-action="close-new-event-participant-view"]').click();
+  await expect(page.locator("[data-new-event-participant-count]")).toContainText("2");
   await assertSavedRoster(page, [guestName]);
 });
 
@@ -157,7 +159,8 @@ test("the single save action fills its footer on narrow screens and does not cov
   await lastRow.click();
   await expect(page.locator('[data-action="confirm-important-action"]')).toBeVisible();
   await page.locator('[data-action="confirm-important-action"]').click();
-  await expect(page.locator("[data-new-event-participant-count]")).toContainText("6");
+  await expect(page.locator(".new-event-selected-participant-list .new-event-selected-participant")).toHaveCount(6);
   await save.click();
+  await expect(page.locator("[data-new-event-participant-count]")).toContainText("6");
   await expect(page.locator('[data-action="create-event"]')).toBeVisible();
 });

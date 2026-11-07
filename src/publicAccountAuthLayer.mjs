@@ -1,3 +1,11 @@
+import { renderAccountRecoveryView } from "./ui/accountRecoveryPresentation.mjs";
+import { renderAccountEntryView } from "./ui/accountEntryPresentation.mjs";
+import { renderAccountCompletionView } from "./ui/accountCompletionPresentation.mjs";
+import { renderAccountPasswordResetView } from "./ui/accountPasswordResetPresentation.mjs";
+import { renderAccountDeletionConfirmationView } from "./ui/accountDeletionPresentation.mjs";
+import { renderFeedbackFormView, renderFeedbackSuccessView } from "./ui/feedbackPagePresentation.mjs";
+import { createFeedbackDraft, feedbackRequestIsCurrent } from "./domain/feedbackDraft.mjs";
+import { renderProfileAccountControlsView, renderProfileAdPrivacyControlView } from "./ui/profileAccountPresentation.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 
 import {
@@ -101,10 +109,11 @@ const ACCOUNT_DELETED_MARKER = "settle-friends-account-deleted";
 const ACCOUNT_NOTICE_MARKER = "settle-friends-account-notice";
 const SKIP_NEXT_SPLASH_MARKER = "settle-friends-skip-next-splash";
 const APP_NOTICE_EVENT = "settle-friends:notice";
+const APP_CONTENT_READY_EVENT = "settle-friends:app-content-ready";
+const ACCOUNT_NOTICE_REQUEST_EVENT = "settle-friends:account-notice-request";
 const ACCOUNT_SETUP_TIMEOUT_MS = 12_000;
 const STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS = 2_500;
 const ACCOUNT_DELETE_HISTORY_KEY = "settleFriendsAccountDelete";
-const ACCOUNT_FEEDBACK_HISTORY_KEY = "settleFriendsAccountFeedback";
 const NATIVE_BACK_EVENT = "settle-friends:native-back";
 const ACCOUNT_REFRESH_MARGIN_SECONDS = 5 * 60;
 const ACCOUNT_REFRESH_RETRY_MS = 60_000;
@@ -127,11 +136,12 @@ let accountDeleteReturnFocus = null;
 let accountDeleteHistoryActive = false;
 let accountDeleteHistoryClosing = false;
 let accountFeedbackBusy = false;
-let accountFeedbackReturnFocus = null;
-let accountFeedbackHistoryActive = false;
-let accountFeedbackHistoryClosing = false;
+let accountFeedbackDraft = createFeedbackDraft();
+let accountFeedbackRequestSequence = 0;
+const accountFeedbackMounts = new WeakMap();
 let accountRefreshTimer = null;
 let accountRefreshPromise = null;
+let accountRefreshOwner = null;
 let accountRefreshGeneration = 0;
 let accountProfileUpdateQueue = null;
 let accountConfigRetryTimer = null;
@@ -141,6 +151,8 @@ let accountConfigRetryPromise = null;
 // than taking the cold-start cache shortcut and revealing the previous screen.
 let accountSignInPending = false;
 let accountSyncReloadScheduled = false;
+let appContentReady = false;
+let pendingAccountNoticeDeliveryTimer = null;
 let nativeGoogleLoginPromise = null;
 let webGoogleScriptPromise = null;
 let webGoogleInitializationPromise = null;
@@ -169,15 +181,21 @@ setupAccountAuth()
   .catch(handleAccountSetupFailure)
   .finally(() => window.clearTimeout(accountSetupTimeoutId));
 document.addEventListener("click", handleAccountClick);
+document.addEventListener("settle-friends:screen-rendered", enhanceAccountFeedbackPage);
+document.addEventListener(APP_CONTENT_READY_EVENT, () => {
+  appContentReady = true;
+  deliverPendingAccountNotice();
+});
+document.addEventListener(ACCOUNT_NOTICE_REQUEST_EVENT, (event) => {
+  rememberAccountNotice(event.detail?.message);
+  if (appContentReady) deliverPendingAccountNotice();
+});
 document.addEventListener("change", handleAccountChange);
 document.addEventListener("keydown", handleAccountGateKeydown);
 document.addEventListener("keydown", handleAccountDeletionKeydown);
-document.addEventListener("keydown", handleAccountFeedbackKeydown);
 window.addEventListener("popstate", handleAccountDeletionHistoryBack, true);
-window.addEventListener("popstate", handleAccountFeedbackHistoryBack, true);
 window.addEventListener(NATIVE_BACK_EVENT, handleAccountGateNativeBack, true);
 window.addEventListener(NATIVE_BACK_EVENT, handleAccountDeletionNativeBack, true);
-window.addEventListener(NATIVE_BACK_EVENT, handleAccountFeedbackNativeBack, true);
 window.addEventListener("online", refreshAccountSessionIfNeeded);
 window.addEventListener("storage", handleAccountSessionStorageSync);
 document.addEventListener("visibilitychange", () => {
@@ -447,8 +465,14 @@ function isLocalDevelopmentOrigin() {
 
 async function restoreAccountSession(
   session,
-  { previousSession = null, expectedEmail = "" } = {}
+  { previousSession = null, expectedEmail = "", isCurrent = null } = {}
 ) {
+  const assertCurrent = () => {
+    if (isCurrent !== null && (typeof isCurrent !== "function" || isCurrent() !== true)) {
+      throw Object.assign(new Error("Account session changed during restoration"), { code: "STALE_ACCOUNT" });
+    }
+  };
+  assertCurrent();
   let nextSession = session;
   if (isExpiring(session)) {
     nextSession = await refreshAccountSession(
@@ -458,6 +482,7 @@ async function restoreAccountSession(
       { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
     );
   }
+  assertCurrent();
   // User metadata can be repaired server-side while an installed PWA still
   // holds an older session object. Always refresh the authenticated user so a
   // corrected workspace becomes active without requiring sign-out.
@@ -467,6 +492,10 @@ async function restoreAccountSession(
     globalThis.fetch,
     { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
   );
+  assertCurrent();
+  if (isCurrent !== null && session?.user?.id && user?.id !== session.user.id) {
+    throw Object.assign(new Error("Restored user differs from the owning account"), { code: "ACCOUNT_USER_MISMATCH" });
+  }
   nextSession = { ...nextSession, user };
   const normalizedExpectedEmail = String(expectedEmail).trim().toLowerCase();
   const normalizedSessionEmail = String(nextSession?.user?.email ?? "")
@@ -482,30 +511,42 @@ async function restoreAccountSession(
     error.status = 403;
     throw error;
   }
+  assertCurrent();
   const switchedAccount = clearPreviousAccountAfterSwitch(
     previousSession,
-    nextSession
+    nextSession,
+    isCurrent
   );
+  assertCurrent();
   nextSession = await ensureAccountWorkspace(runtimeConfig, nextSession, {
-    requestTimeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS
+    requestTimeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS, isCurrent
   });
+  assertCurrent();
   if (switchedAccount) {
     publishAccountSessionSync(nextSession, { reason: "switching" });
   }
+  assertCurrent();
   return saveAccountSession(nextSession);
 }
 
-function clearPreviousAccountAfterSwitch(previousSession, nextSession) {
+function clearPreviousAccountAfterSwitch(previousSession, nextSession, isCurrent = null) {
+  const assertCurrent = () => {
+    if (isCurrent !== null && (typeof isCurrent !== "function" || isCurrent() !== true)) {
+      throw Object.assign(new Error("Account session changed before clearing the previous account"), { code: "STALE_ACCOUNT" });
+    }
+  };
   const previousUserId = String(previousSession?.user?.id ?? "").trim();
   const nextUserId = String(nextSession?.user?.id ?? "").trim();
   if (!previousUserId || !nextUserId || previousUserId === nextUserId) {
     return false;
   }
 
+  assertCurrent();
   clearLocalAccountData(
     getActiveCloudSpaceId(runtimeConfig),
     previousUserId
   );
+  assertCurrent();
   clearAccountWorkspace(previousSession.user);
   return true;
 }
@@ -738,7 +779,6 @@ async function connectAccountToApp(
   document.querySelector("#app")?.removeAttribute("inert");
   markAccountAuthReady();
   publishAccountSessionSync(accountSession);
-  deliverPendingAccountNotice();
   saveRequest.catch(() => {});
 }
 
@@ -764,12 +804,26 @@ function rememberAccountNotice(message) {
 }
 
 function deliverPendingAccountNotice() {
+  if (!appContentReady || accountSyncReloadScheduled ||
+      document.documentElement.classList.contains("account-auth-locked") ||
+      pendingAccountNoticeDeliveryTimer !== null) return;
   const message = String(sessionValue(ACCOUNT_NOTICE_MARKER) ?? "").trim();
   if (!message) return;
-  removeSessionValue(ACCOUNT_NOTICE_MARKER);
-  window.setTimeout(() => {
+  const ownerUserId = accountSession?.user?.id ?? "";
+  pendingAccountNoticeDeliveryTimer = window.setTimeout(() => {
+    pendingAccountNoticeDeliveryTimer = null;
+    if (accountSession?.user?.id !== ownerUserId ||
+        loadStoredAccountSession()?.user?.id !== ownerUserId) {
+      removeSessionValue(ACCOUNT_NOTICE_MARKER);
+      return;
+    }
+    if (accountSyncReloadScheduled ||
+        document.documentElement.classList.contains("account-auth-locked")) return;
+    const latestMessage = String(sessionValue(ACCOUNT_NOTICE_MARKER) ?? "").trim();
+    if (!latestMessage) return;
+    removeSessionValue(ACCOUNT_NOTICE_MARKER);
     document.dispatchEvent(
-      new CustomEvent(APP_NOTICE_EVENT, { detail: { message } })
+      new CustomEvent(APP_NOTICE_EVENT, { detail: { message: latestMessage } })
     );
   }, 0);
 }
@@ -790,6 +844,7 @@ function handleAccountSessionStorageSync(event) {
   if (event.key === ACCOUNT_SESSION_STORAGE_KEY) {
     if (accountSyncReloadScheduled) return;
     if (currentUserId && currentUserId === storedUserId) {
+      if (isPendingAccountRestoreStorageClone(storedSession)) return;
       accountSession = storedSession;
       scheduleAccountSessionRefresh();
       return;
@@ -807,12 +862,26 @@ function handleAccountSessionStorageSync(event) {
   if (change.reason === "signed-in" && change.userId !== storedUserId) return;
 
   if (currentUserId && currentUserId === storedUserId) {
+    if (change.reason === "signed-in" && isPendingAccountRestoreStorageClone(storedSession)) return;
     accountSession = storedSession;
     scheduleAccountSessionRefresh();
     return;
   }
 
   lockForAccountSessionChange();
+}
+
+function isPendingAccountRestoreStorageClone(storedSession) {
+  const owner = accountRefreshOwner;
+  if (!accountRefreshPromise || !owner?.requiresRestore ||
+      owner.generation !== accountRefreshGeneration || owner.session !== accountSession ||
+      owner.backend !== JSON.stringify([
+        runtimeConfig?.storage?.url ?? "", runtimeConfig?.storage?.anonKey ?? ""
+      ])) return false;
+  // A storage read produces a new object even when nothing changed. Preserve
+  // the current restoration only for an identical complete session snapshot;
+  // different credentials, expiry or user metadata remain ownership changes.
+  return JSON.stringify(storedSession) === JSON.stringify(accountSession);
 }
 
 function resumeAccountLocally(session) {
@@ -876,56 +945,114 @@ function canResumeStoredSessionImmediately(session) {
 }
 
 async function reconcileResumedAccountSession(resumedSession) {
-  const requestGeneration = accountRefreshGeneration;
-  try {
-    let restoredSession;
+  return runAccountSessionRefresh(resumedSession, async (isCurrent, adoptSession, resumedSession) => {
     try {
-      restoredSession = await restoreAccountSession(resumedSession);
-    } catch (error) {
-      if (!isUnauthorizedAccountError(error) || !resumedSession.refresh_token) {
-        throw error;
+      let restoredSession;
+      try {
+        restoredSession = await restoreAccountSession(resumedSession, { isCurrent });
+      } catch (error) {
+        if (!isCurrent()) return null;
+        if (!isUnauthorizedAccountError(error) || !resumedSession.refresh_token) throw error;
+        const refreshedSession = await refreshAccountSession(
+          runtimeConfig, resumedSession, globalThis.fetch,
+          { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
+        );
+        if (!isCurrent()) return null;
+        if (!refreshedSession) throw error;
+        restoredSession = await restoreAccountSession(refreshedSession, { isCurrent });
       }
-      const refreshedSession = await refreshAccountSession(
-        runtimeConfig,
-        resumedSession,
-        globalThis.fetch,
-        { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
-      );
-      if (!refreshedSession) throw error;
-      restoredSession = await restoreAccountSession(refreshedSession);
+      if (!isCurrent()) return null;
+      const adopted = adoptSession(restoredSession);
+      if (!adopted || !isCurrent()) return null;
+      document.dispatchEvent(new Event("account-session-refreshed"));
+      if (!isCurrent()) return null;
+      scheduleAccountSessionRefresh();
+      if (!isCurrent()) return null;
+      publishAccountSessionSync(adopted);
+      return adopted;
+    } catch (error) {
+      if (!isCurrent()) return null;
+      // Preserve locally resumed data on workspace/network failures. Only an
+      // explicit credential rejection may end the currently owned session.
+      if (isTransientAccountError(error) || !isUnauthorizedAccountError(error)) {
+        scheduleAccountSessionRefresh(ACCOUNT_REFRESH_RETRY_MS);
+        return null;
+      }
+      clearAccountSession();
+      if (!isCurrent()) return null;
+      clearAccountRecoverySession();
+      if (!isCurrent()) return null;
+      lockForAccountSessionChange();
+      return null;
     }
+  }, true);
+}
 
-    if (
-      requestGeneration !== accountRefreshGeneration ||
-      accountSession !== resumedSession
-    ) {
-      return null;
+function runAccountSessionRefresh(session, work, requiresRestore = false) {
+  if (!session || accountSession !== session) return Promise.resolve(null);
+  const generation = accountRefreshGeneration;
+  const backend = JSON.stringify([
+    runtimeConfig?.storage?.url ?? "", runtimeConfig?.storage?.anonKey ?? ""
+  ]);
+  if (accountRefreshPromise && accountRefreshOwner?.generation === generation &&
+      accountRefreshOwner.session === session && accountRefreshOwner.backend === backend) {
+    const pending = accountRefreshPromise;
+    if (requiresRestore && !accountRefreshOwner.requiresRestore) {
+      // An active token rotation may have started during the local-ready event.
+      // Validate its adopted session afterwards without rotating the old token.
+      return pending.then(adopted => {
+        if (!adopted || accountRefreshGeneration !== generation || accountSession !== adopted ||
+            JSON.stringify([runtimeConfig?.storage?.url ?? "", runtimeConfig?.storage?.anonKey ?? ""]) !== backend) return null;
+        return runAccountSessionRefresh(adopted, work, true);
+      });
     }
-    accountSession = saveAccountSession(restoredSession);
-    document.dispatchEvent(new Event("account-session-refreshed"));
-    scheduleAccountSessionRefresh();
-    publishAccountSessionSync(accountSession);
-    return accountSession;
-  } catch (error) {
-    if (
-      requestGeneration !== accountRefreshGeneration ||
-      accountSession !== resumedSession
-    ) {
-      return null;
-    }
-    if (isTransientAccountError(error)) {
-      scheduleAccountSessionRefresh(ACCOUNT_REFRESH_RETRY_MS);
-      return null;
-    }
-    clearAccountSession();
-    clearAccountRecoverySession();
-    lockForAccountSessionChange();
-    return null;
+    return pending;
   }
+  const owner = { generation, session, backend, requiresRestore };
+  const isCurrent = () => accountRefreshOwner === owner && accountRefreshGeneration === generation &&
+    accountSession === owner.session && JSON.stringify([
+      runtimeConfig?.storage?.url ?? "", runtimeConfig?.storage?.anonKey ?? ""
+    ]) === backend;
+  const adoptSession = nextSession => {
+    if (!isCurrent()) return null;
+    if (owner.session?.user?.id && nextSession?.user?.id !== owner.session.user.id) {
+      throw Object.assign(new Error("Refreshed user differs from the owning account"), { code: "ACCOUNT_USER_MISMATCH" });
+    }
+    accountSession = saveAccountSession(nextSession);
+    owner.session = accountSession;
+    return accountSession;
+  };
+  // Register ownership before work can yield or publish a refreshed-session
+  // event. Both startup reconciliation and timer/cloud callers join this work.
+  let resolveRequest, rejectRequest;
+  const completion = new Promise((resolve, reject) => {
+    resolveRequest = resolve; rejectRequest = reject;
+  });
+  const request = completion.finally(() => {
+    if (accountRefreshOwner === owner && accountRefreshPromise === request) {
+      accountRefreshPromise = null;
+      accountRefreshOwner = null;
+    }
+  });
+  accountRefreshOwner = owner;
+  accountRefreshPromise = request;
+  try {
+    Promise.resolve(isCurrent() ? work(isCurrent, adoptSession, owner.session) : null)
+      .then(resolveRequest, rejectRequest);
+  } catch (error) {
+    rejectRequest(error);
+  }
+  return request;
 }
 
 function lockForAccountSessionChange() {
   if (accountSyncReloadScheduled) return;
+  appContentReady = false;
+  if (pendingAccountNoticeDeliveryTimer !== null) {
+    window.clearTimeout(pendingAccountNoticeDeliveryTimer);
+    pendingAccountNoticeDeliveryTimer = null;
+  }
+  removeSessionValue(ACCOUNT_NOTICE_MARKER);
   clearPendingInviteUrl();
   clearAccountReturnUrl();
   clearAccountOAuthFlows();
@@ -1040,16 +1167,6 @@ function renderAccountGate({
 
   const inviteContext = accountInviteContext();
   const inviteMarkup = accountInviteMarkup(inviteContext);
-  const heading = inviteContext
-    ? `מצטרפים ל־${escapeHtml(inviteContext.eventName)}`
-    : mode === "signup"
-      ? "יוצרים חשבון"
-      : "טוב שחזרת";
-  const headingDescription = inviteContext
-    ? "נכנסים או נרשמים, ומיד ממשיכים לאירוע שקיבלת."
-    : mode === "signup"
-      ? "שם מלא, שם משתמש ומייל שומרים את ההיסטוריה שלך ומאפשרים לחברים למצוא אותך."
-      : "נכנסים וממשיכים בדיוק מהמקום שבו עצרת.";
   const providerAvailable = googleEnabled || appleEnabled;
   const showEmailAuth =
     emailAuthExpanded ||
@@ -1057,124 +1174,32 @@ function renderAccountGate({
     mode === "signup" ||
     Boolean(message) ||
     Boolean(error);
-  const safeErrorFieldName = /^[a-zA-Z][\w-]*$/.test(errorFieldName)
-    ? errorFieldName
-    : "";
-  const fieldErrorAttributes = (fieldName) =>
-    safeErrorFieldName === fieldName
-      ? 'aria-invalid="true" aria-describedby="account-auth-feedback"'
-      : 'aria-invalid="false"';
   const gate = document.createElement("section");
   gate.id = GATE_ID;
-  gate.className = "account-auth-gate font-hebrew";
+  gate.className = "account-auth-gate font-hebrew account-entry-screen";
   gate.setAttribute("role", "main");
-  gate.innerHTML = `
-    <div class="account-auth-shell">
-      <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
-        <div>
-          <p class="eyebrow">סוגרים חשבון</p>
-          <h1>החשבון נשאר איתך</h1>
-          <p>האירועים, ההוצאות והחברים נשמרים בענן ומחכים לך בכל מכשיר.</p>
-        </div>
-        <ul>
-          <li>היסטוריה אישית שנשמרת בענן</li>
-          <li>כניסה מאובטחת ושמירת מידע בענן</li>
-          <li>קישורי הצטרפות ממשיכים לעבוד כרגיל</li>
-        </ul>
-      </section>
-
-      <section class="account-auth-form-panel">
-        ${inviteMarkup}
-        <div class="account-auth-heading">
-          <h2>${heading}</h2>
-          <p>${headingDescription}</p>
-        </div>
-
-        ${providerFeedback && error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
-
-        <div class="account-google-slot" data-google-auth-slot>
-          ${providerOptionsMarkup()}
-        </div>
-
-        ${
-          providerAvailable && mode === "login"
-            ? `<button
-                class="account-email-toggle"
-                type="button"
-                data-account-action="toggle-email"
-                aria-expanded="${showEmailAuth}"
-                aria-controls="account-email-auth"
-              >${showEmailAuth ? "חזרה לאפשרויות הכניסה" : "כניסה עם אימייל"}</button>`
-            : ""
-        }
-
-        <div id="account-email-auth" class="account-email-auth" ${showEmailAuth ? "" : "hidden"}>
-          <div class="account-auth-tabs" role="group" aria-label="כניסה או הרשמה">
-            <button type="button" data-account-mode="login" aria-pressed="${mode === "login"}" class="${mode === "login" ? "is-active" : ""}">התחברות</button>
-            ${emailDeliveryReady ? `<button type="button" data-account-mode="signup" aria-pressed="${mode === "signup"}" class="${mode === "signup" ? "is-active" : ""}">הרשמה</button>` : ""}
-          </div>
-
-          <form class="account-auth-form" data-account-form data-mode="${mode}" novalidate>
-            ${
-              mode === "signup"
-                ? `<label>
-                    <span>שם פרטי ושם משפחה</span>
-                    <input name="displayName" autocomplete="name" value="${escapeAttribute(values.displayName ?? "")}" ${fieldErrorAttributes("displayName")} required />
-                  </label>
-                  <label>
-                    <span>שם משתמש</span>
-                    <input name="username" dir="ltr" autocomplete="username" autocapitalize="none" spellcheck="false" value="${escapeAttribute(values.username ?? "")}" ${fieldErrorAttributes("username")} required />
-                  </label>`
-                : ""
-            }
-            <label>
-              <span>אימייל</span>
-              <input name="email" type="email" inputmode="email" autocomplete="email" spellcheck="false" value="${escapeAttribute(values.email ?? "")}" ${fieldErrorAttributes("email")} required />
-              ${mode === "signup" ? '<small class="account-auth-field-hint">נשלח קישור אימות לכתובת הזו. החשבון יופעל רק אחרי פתיחת הקישור.</small>' : ""}
-            </label>
-            <label>
-              <span>סיסמה</span>
-              <span class="account-password-input">
-                <input name="password" type="password" autocomplete="${mode === "signup" ? "new-password" : "current-password"}" minlength="8" ${fieldErrorAttributes("password")} required />
-                <button class="account-password-toggle" type="button" data-account-action="toggle-password" aria-label="הצג סיסמה" aria-pressed="false">${iconSvg("eye")}</button>
-              </span>
-            </label>
-            ${
-              mode === "login" && emailDeliveryReady
-                ? `<button class="account-forgot-button" type="button" data-account-action="forgot-password">שכחתי סיסמה</button>`
-                : ""
-            }
-            ${message ? `<p id="account-auth-feedback" class="account-auth-message" role="status">${escapeHtml(message)}</p>` : ""}
-            ${error && !providerFeedback ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
-            ${
-              showVerificationResend && emailDeliveryReady
-                ? `<button class="account-forgot-button" type="button" data-account-action="resend-verification">שלח שוב קישור אימות</button>`
-                : ""
-            }
-            <button class="primary-button account-auth-submit" type="submit">
-              ${
-                inviteContext
-                  ? mode === "signup"
-                    ? "צור חשבון והצטרף"
-                    : "התחבר והצטרף"
-                  : mode === "signup"
-                    ? "צור חשבון"
-                    : "התחבר"
-              }
-            </button>
-          </form>
-        </div>
-        <p class="account-auth-legal">בהמשך השימוש אתה מאשר את <a href="./terms.html">תנאי השימוש</a> ואת <a href="./privacy.html">מדיניות הפרטיות</a>.</p>
-        <p class="visually-hidden" data-account-auth-status role="status" aria-live="polite"></p>
-      </section>
-    </div>
-  `;
+  gate.innerHTML = renderAccountEntryView({
+    mode, emailDeliveryReady, hasInvite: Boolean(inviteContext),
+    inviteEventName: inviteContext?.eventName, providerAvailable, showEmailAuth,
+    message, error, providerFeedback, errorFieldName, showVerificationResend, values
+  }, {inviteMarkup, providerMarkup: providerOptionsMarkup()});
   document.body.append(gate);
   gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
   markAccountAuthReady();
   renderWebGoogleButton().catch(() => {});
-  if (showEmailAuth) focusAccountInput(gate);
+  if (message) focusAccountFeedback(gate);
+  else if (showEmailAuth) focusAccountInput(gate);
+}
+
+function focusAccountFeedback(gate) {
+  const feedback = gate?.querySelector("#account-auth-feedback");
+  if (!feedback) return;
+  feedback.setAttribute("tabindex", "-1");
+  window.requestAnimationFrame(() => {
+    if (!feedback.isConnected || document.getElementById(GATE_ID) !== gate) return;
+    feedback.focus({ preventScroll: true });
+    feedback.scrollIntoView({ block: "nearest" });
+  });
 }
 
 function renderAccountRecoveryGate({ connecting = false } = {}) {
@@ -1184,30 +1209,13 @@ function renderAccountRecoveryGate({ connecting = false } = {}) {
 
   const gate = document.createElement("section");
   gate.id = GATE_ID;
-  gate.className = "account-auth-gate";
   gate.setAttribute("role", "main");
   gate.setAttribute("aria-busy", String(connecting));
-  gate.innerHTML = `
-    <div class="account-auth-shell account-auth-shell-compact">
-      <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
-        <div>
-          <p class="eyebrow">סוגרים חשבון</p>
-          <h1>המידע שלך נשאר מוגן</h1>
-          <p>${accountSignInPending ? "עוד רגע והאירועים שלך כאן." : "לא נציג את האירועים לפני שהחיבור לחשבון הושלם."}</p>
-        </div>
-      </section>
-      <section class="account-auth-form-panel">
-        <div class="account-auth-heading">
-          <h2>${accountSignInPending ? "נכנסת בהצלחה" : "החיבור מתעכב"}</h2>
-          <p role="status" aria-live="polite">${connecting ? "פותחים את החשבון שלך…" : accountSignInPending ? "ההתחברות הצליחה. ננסה שוב לפתוח את החשבון בעוד רגע." : "כדאי לבדוק את החיבור לאינטרנט ולנסות שוב."}</p>
-        </div>
-        ${connecting ? "" : `<button class="primary-button account-auth-submit" type="button" data-account-retry>
-          נסה שוב
-        </button>`}
-      </section>
-    </div>
-  `;
+  gate.className = "account-auth-gate font-hebrew account-entry-screen account-recovery-screen";
+  gate.dataset.accountRecoveryScreen = "connection";
+  gate.innerHTML = renderAccountRecoveryView({
+    screen: "connection", connecting, signInPending: accountSignInPending
+  });
   document.body.append(gate);
   gate.querySelector("[data-account-retry]")?.addEventListener("click", retryAccountSetup);
   if (!connecting) scheduleAccountSetupRetry();
@@ -1265,42 +1273,12 @@ function renderAccountNameCompletionGate({
 
   const gate = document.createElement("section");
   gate.id = GATE_ID;
-  gate.className = "account-auth-gate font-hebrew";
+  gate.className = "account-auth-gate font-hebrew account-entry-screen";
   gate.setAttribute("role", "main");
-  gate.innerHTML = `
-    <div class="account-auth-shell account-auth-shell-compact">
-      <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
-        <div>
-          <p class="eyebrow">סוגרים חשבון</p>
-          <h1>${inviteContext ? "עוד רגע מצטרפים לאירוע" : "משלימים את החשבון"}</h1>
-          <p>${hasSavedFullName ? "נשאר לבחור שם משתמש חד־פעמי כדי שחברים יוכלו לזהות אותך." : "שם מלא ושם משתמש עוזרים לחברים לזהות ולמצוא אותך."}</p>
-        </div>
-      </section>
-      <section class="account-auth-form-panel">
-        <div class="account-auth-heading">
-          <h2>${hasSavedFullName ? "בחירת שם משתמש" : "איך לקרוא לך?"}</h2>
-          <p>${inviteContext ? "אחרי השמירה נמשיך אוטומטית לאירוע מהקישור." : "זהו שלב חד־פעמי, ואחריו ממשיכים לחשבון."}</p>
-        </div>
-        <form class="account-auth-form" data-account-form data-mode="complete-profile" novalidate>
-          ${hasSavedFullName
-            ? `<input name="displayName" type="hidden" value="${escapeAttribute(displayName)}" />`
-            : `<label>
-                <span>שם פרטי ושם משפחה</span>
-                <input name="displayName" autocomplete="name" value="${escapeAttribute(displayName)}" />
-              </label>`}
-          <label>
-            <span>שם משתמש</span>
-            <input name="username" dir="ltr" autocomplete="username" autocapitalize="none" spellcheck="false" value="${escapeAttribute(username)}" ${errorFieldName === "username" ? 'aria-invalid="true" aria-describedby="account-auth-feedback"' : ""} required />
-          </label>
-          ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
-          <button class="primary-button account-auth-submit" type="submit">שמור והמשך</button>
-        </form>
-        <button class="account-forgot-button" type="button" data-account-action="signout">כניסה עם חשבון אחר</button>
-        <p class="visually-hidden" data-account-auth-status role="status" aria-live="polite"></p>
-      </section>
-    </div>
-  `;
+  gate.innerHTML = renderAccountCompletionView({
+    displayName, username, error, errorFieldName, hasSavedFullName,
+    hasInvite: Boolean(inviteContext)
+  });
   document.body.append(gate);
   gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
   markAccountAuthReady();
@@ -1393,12 +1371,7 @@ async function handleAccountSubmit(event) {
         redirectTo: authRedirectUrl()
       });
       if (!result.session) {
-        renderAccountGate({
-          mode: "login",
-          message: "שלחנו אליך קישור לאישור המייל. אחרי האישור אפשר להתחבר.",
-          values: { email },
-          showVerificationResend: true
-        });
+        renderAccountRecoveryScreen({ screen: "verify", email });
         return;
       }
       accountSession = result.session;
@@ -1427,7 +1400,7 @@ async function handleAccountSubmit(event) {
       renderAccountRecoveryGate();
       return;
     }
-    if (accountSession?.user && accountProfileNeedsCompletion(error)) {
+    if (mode !== "complete-profile" && accountSession?.user && accountProfileNeedsCompletion(error)) {
       const accountProfile = accountProfileFromUser(accountSession.user);
       renderAccountNameCompletionGate({
         displayName: accountProfile?.displayName ?? "",
@@ -1469,6 +1442,10 @@ async function handleAccountSubmit(event) {
     const emailNotConfirmed = String(error?.message ?? "")
       .toLowerCase()
       .includes("email not confirmed");
+    if (emailNotConfirmed && runtimeConfig?.launch?.authEmailDeliveryReady === true) {
+      renderAccountRecoveryScreen({ screen: "verify", email });
+      return;
+    }
     renderAccountGate({
       mode,
       values: {
@@ -1539,6 +1516,99 @@ function accountFormValidationError(
   }
 
   return null;
+}
+
+function accountRecoveryEmail() {
+  return document.querySelector('[data-account-form] input[name="email"]')?.value
+    ?? document.getElementById(GATE_ID)?.dataset.accountRecoveryEmail ?? "";
+}
+
+function renderAccountRecoveryScreen({ screen, email = "", error = "", message = "", errorFieldName = "" }) {
+  document.querySelector(".public-profile-gate")?.remove();
+  document.getElementById(GATE_ID)?.remove();
+  document.querySelector("#app")?.setAttribute("inert", "");
+  const gate = document.createElement("section");
+  gate.id = GATE_ID;
+  gate.className = "account-auth-gate font-hebrew account-entry-screen account-recovery-screen";
+  gate.setAttribute("role", "main");
+  gate.dataset.accountRecoveryScreen = screen;
+  gate.dataset.accountRecoveryEmail = email;
+  gate.innerHTML = renderAccountRecoveryView({ screen, email, error, message, errorFieldName,
+    deliveryReady: runtimeConfig?.launch?.authEmailDeliveryReady === true
+  }, { inviteMarkup: accountInviteMarkup(accountInviteContext()) });
+  gate.querySelector("form")?.addEventListener("submit", handleAccountRecoverySubmit);
+  document.body.append(gate);
+  markAccountAuthReady();
+  if (errorFieldName) focusAccountInput(gate, { includeMobile: true, fieldName: errorFieldName });
+  else if (error || message) focusAccountFeedback(gate);
+  else requestAnimationFrame(() => {
+    if (!gate.isConnected || document.getElementById(GATE_ID) !== gate) return;
+    gate.querySelector("#account-recovery-title")?.focus({ preventScroll: true });
+  });
+}
+
+async function handleAccountRecoverySubmit(event) {
+  event.preventDefault();
+  await sendAccountPasswordReset();
+}
+
+async function sendAccountPasswordReset() {
+  if (authBusy || runtimeConfig?.launch?.authEmailDeliveryReady !== true) return;
+  const wasSent = document.getElementById(GATE_ID)?.dataset.accountRecoveryScreen === "reset-sent";
+  const enteredEmail = String(
+    accountRecoveryEmail()
+  ).trim().toLowerCase();
+  const email = normalizeAccountEmail(enteredEmail);
+  if (!email) {
+    renderAccountRecoveryScreen({
+      screen: "request",
+      error: enteredEmail
+        ? "כתובת האימייל אינה תקינה."
+        : "צריך להזין אימייל כדי לשלוח קישור לאיפוס הסיסמה.",
+      email: enteredEmail,
+      errorFieldName: "email"
+    });
+    return;
+  }
+  setAuthBusy(true);
+  try {
+    clearAccountRecoverySession();
+    rememberAccountReturnUrl();
+    const pkce = await createOAuthPkce();
+    const flowId = createAccountOAuthFlowId();
+    const flow = saveAccountOAuthFlow({
+      id: flowId,
+      verifier: pkce.verifier,
+      returnPath: accountReturnPath(),
+      purpose: ACCOUNT_RECOVERY_FLOW_PURPOSE,
+      email
+    });
+    if (!flow) throw new Error("Secure password recovery is unavailable");
+    try {
+      await requestPasswordReset(
+        runtimeConfig,
+        email,
+        authRedirectUrl(flowId)
+      );
+    } catch (error) {
+      clearAccountOAuthFlow(flowId);
+      throw error;
+    }
+    renderAccountRecoveryScreen({
+      screen: "reset-sent",
+      message: wasSent ? "נשלח קישור איפוס חדש. כדאי לבדוק גם בספאם." : "",
+      email
+    });
+  } catch (error) {
+    emitOperationFailure("auth", { screen: "auth", error });
+    renderAccountRecoveryScreen({
+      screen: wasSent ? "reset-sent" : "request",
+      error: accountAuthErrorMessage(error),
+      email
+    });
+  } finally {
+    setAuthBusy(false);
+  }
 }
 
 async function handleAccountClick(event) {
@@ -1648,73 +1718,26 @@ async function handleAccountClick(event) {
   }
 
   if (action === "forgot-password") {
-    const enteredEmail = String(
-      document.querySelector('[data-account-form] input[name="email"]')?.value ?? ""
-    ).trim().toLowerCase();
-    const email = normalizeAccountEmail(enteredEmail);
-    if (!email) {
-      renderAccountGate({
-        mode: "login",
-        error: enteredEmail
-          ? "כתובת האימייל אינה תקינה."
-          : "צריך להזין אימייל כדי לשלוח קישור לאיפוס הסיסמה.",
-        values: { email: enteredEmail }
-      });
-      focusAccountInput(document.getElementById(GATE_ID), {
-        includeMobile: true,
-        fieldName: "email"
-      });
-      return;
-    }
-    setAuthBusy(true);
-    try {
-      clearAccountRecoverySession();
-      rememberAccountReturnUrl();
-      const pkce = await createOAuthPkce();
-      const flowId = createAccountOAuthFlowId();
-      const flow = saveAccountOAuthFlow({
-        id: flowId,
-        verifier: pkce.verifier,
-        returnPath: accountReturnPath(),
-        purpose: ACCOUNT_RECOVERY_FLOW_PURPOSE,
-        email
-      });
-      if (!flow) throw new Error("Secure password recovery is unavailable");
-      try {
-        await requestPasswordReset(
-          runtimeConfig,
-          email,
-          authRedirectUrl(flowId)
-        );
-      } catch (error) {
-        clearAccountOAuthFlow(flowId);
-        throw error;
-      }
-      renderAccountGate({
-        mode: "login",
-        message: "שלחנו קישור לאיפוס הסיסמה. כדאי לבדוק גם בתיקיית הספאם.",
-        values: { email }
-      });
-    } catch (error) {
-      emitOperationFailure("auth", { screen: "auth", error });
-      renderAccountGate({
-        mode: "login",
-        error: accountAuthErrorMessage(error),
-        values: { email }
-      });
-      focusAccountInput(document.getElementById(GATE_ID), {
-        includeMobile: true,
-        fieldName: "email"
-      });
-    } finally {
-      setAuthBusy(false);
-    }
+    if (authBusy || runtimeConfig?.launch?.authEmailDeliveryReady !== true) return;
+    renderAccountRecoveryScreen({ screen: "request", email: accountRecoveryEmail() });
+    return;
+  }
+  if (action === "recovery-login") {
+    if (authBusy) return;
+    const email = accountRecoveryEmail();
+    emailAuthExpanded = true;
+    renderAccountGate({ mode: "login", values: { email } });
+    return;
+  }
+  if (action === "resend-password-reset") {
+    await sendAccountPasswordReset();
     return;
   }
 
   if (action === "resend-verification") {
+    if (authBusy || runtimeConfig?.launch?.authEmailDeliveryReady !== true) return;
     const enteredEmail = String(
-      document.querySelector('[data-account-form] input[name="email"]')?.value ?? ""
+      accountRecoveryEmail()
     ).trim().toLowerCase();
     const email = normalizeAccountEmail(enteredEmail);
     if (!email) {
@@ -1735,19 +1758,17 @@ async function handleAccountClick(event) {
     setAuthBusy(true);
     try {
       await resendSignupConfirmation(runtimeConfig, email, authRedirectUrl());
-      renderAccountGate({
-        mode: "login",
+      renderAccountRecoveryScreen({
+        screen: "verify",
         message: "שלחנו קישור אימות חדש. כדאי לבדוק גם בתיקיית הספאם.",
-        values: { email },
-        showVerificationResend: true
+        email
       });
     } catch (error) {
       emitOperationFailure("auth", { screen: "auth", error });
-      renderAccountGate({
-        mode: "login",
+      renderAccountRecoveryScreen({
+        screen: "verify",
         error: accountAuthErrorMessage(error),
-        values: { email },
-        showVerificationResend: true
+        email
       });
     } finally {
       setAuthBusy(false);
@@ -1807,18 +1828,20 @@ async function handleAccountClick(event) {
   }
 
   if (action === "feedback-open") {
-    renderAccountFeedbackDialog();
+    ensureAccountFeedbackDraft();
+    document.dispatchEvent(new Event("sogrim:feedback-open"));
     return;
   }
 
   if (action === "feedback-cancel" || action === "feedback-done") {
     if (accountFeedbackBusy) return;
-    closeAccountFeedbackDialog();
+    if (action === "feedback-done") accountFeedbackDraft = createFeedbackDraft(accountSession?.user?.id ?? "");
+    document.dispatchEvent(new Event("sogrim:feedback-close"));
     return;
   }
 
   if (action === "delete-account-open") {
-    renderAccountDeletionDialog();
+    renderAccountDeletionDialog(event.target.closest("[data-account-action]"));
     return;
   }
 
@@ -2217,6 +2240,14 @@ function handleAccountGateNativeBack(event) {
 }
 
 function collapseAccountEmailAuth() {
+  const recoveryGate = document.getElementById(GATE_ID);
+  if (["request", "reset-sent", "verify"].includes(recoveryGate?.dataset.accountRecoveryScreen)) {
+    if (authBusy) return false;
+    const email = accountRecoveryEmail();
+    emailAuthExpanded = true;
+    renderAccountGate({ mode: "login", values: { email } });
+    return true;
+  }
   if (
     !document.getElementById(GATE_ID) ||
     !emailAuthExpanded ||
@@ -2248,6 +2279,7 @@ function handleAccountChange(event) {
 }
 
 function enhanceAccountControls() {
+  enhanceAccountFeedbackPage();
   if (!accountSession?.user) return;
   const host =
     document.querySelector(".profile-summary") ??
@@ -2258,152 +2290,90 @@ function enhanceAccountControls() {
   const email = String(accountSession.user.email ?? "").trim();
   const adPrivacyControl =
     globalThis.Capacitor?.getPlatform?.() === "android"
-      ? `<button class="account-data-link" type="button" data-account-action="ad-privacy">העדפות פרסום</button>`
+      ? renderProfileAdPrivacyControlView(iconSvg)
       : "";
   host.insertAdjacentHTML(
     "beforeend",
-    `<details class="account-profile-controls" data-account-controls>
-      <summary class="account-profile-controls-summary">
-        <span class="account-profile-controls-summary-copy">
-          <strong>חשבון ותמיכה</strong>
-          <small>פרטיות, התקנה וניהול החשבון</small>
-        </span>
-        <span class="account-profile-controls-summary-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-      </summary>
-      <div class="account-profile-controls-body">
-        <span class="account-profile-email">${escapeHtml(email)}</span>
-        <button class="account-feedback-entry" type="button" data-account-action="feedback-open">
-          <span class="account-feedback-entry-icon" aria-hidden="true">
-            ${iconSvg("message")}
-          </span>
-          <span class="account-feedback-entry-copy">
-            <strong>משוב לבודקים</strong>
-            <small>תקלה, משהו שלא היה ברור או רעיון לשיפור</small>
-          </span>
-          <span class="account-feedback-entry-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-        </button>
-        <nav class="account-data-links" aria-label="מידע על החשבון">
-          <a href="./privacy.html" class="account-data-link">מדיניות פרטיות</a>
-          <a href="./terms.html" class="account-data-link">תנאי שימוש</a>
-          <a href="./accessibility.html" class="account-data-link">הצהרת נגישות</a>
-          <a href="./support.html" class="account-data-link">תמיכה</a>
-          ${adPrivacyControl}
-        </nav>
-        <div class="account-profile-actions">
-          <button class="secondary-button" type="button" data-account-action="signout">התנתק</button>
-        </div>
-        <div class="account-danger-zone">
-          <span class="account-danger-copy">
-            <strong>מחיקת חשבון</strong>
-            <small>החשבון והמידע האישי יימחקו לצמיתות.</small>
-          </span>
-          <button class="secondary-button account-delete-button" type="button" data-account-action="delete-account-open">מחק חשבון</button>
-        </div>
-      </div>
-    </details>`
+    renderProfileAccountControlsView({ email, adPrivacyControl, iconSvg })
   );
+  document.dispatchEvent(new Event("sogrim:account-controls-ready"));
 }
 
-function renderAccountFeedbackDialog() {
-  closeAccountFeedbackDialog({ fromHistory: true, restoreFocus: false });
-  accountFeedbackReturnFocus =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-  const dialog = document.createElement("section");
-  dialog.className = "account-feedback-backdrop";
-  dialog.dataset.accountFeedbackDialog = "true";
-  dialog.innerHTML = `
-    <div class="account-feedback-dialog" role="dialog" aria-modal="true" aria-labelledby="account-feedback-title" aria-describedby="account-feedback-description" tabindex="-1">
-      <header class="account-feedback-header">
-        <div>
-          <p class="eyebrow">עוזרים לנו להשתפר</p>
-          <h2 id="account-feedback-title">מה תרצה לספר לנו?</h2>
-          <p id="account-feedback-description">בחר נושא וכתוב בקצרה מה קרה. פרטי הגרסה יצורפו אוטומטית.</p>
-        </div>
-        <button class="account-feedback-close modal-close-button" type="button" data-account-action="feedback-cancel" aria-label="סגירת המשוב"><span class="modal-control-icon" aria-hidden="true">${iconSvg("x")}</span></button>
-      </header>
-      <form class="account-feedback-form" data-account-feedback-form novalidate>
-        <fieldset class="account-feedback-categories">
-          <legend>נושא המשוב</legend>
-          <label>
-            <input type="radio" name="category" value="bug" checked />
-            <span>תקלה</span>
-          </label>
-          <label>
-            <input type="radio" name="category" value="clarity" />
-            <span>לא היה ברור</span>
-          </label>
-          <label>
-            <input type="radio" name="category" value="idea" />
-            <span>רעיון</span>
-          </label>
-        </fieldset>
-        <label class="account-feedback-message">
-          <span>מה קרה?</span>
-          <textarea
-            name="message"
-            rows="6"
-            minlength="10"
-            maxlength="1200"
-            autocomplete="off"
-            placeholder="לדוגמה: לחצתי על הוספת הוצאה ולא היה לי ברור מה השלב הבא…"
-            required
-          ></textarea>
-          <small>אין צורך לצרף שמות, מספרי טלפון או מידע כספי.</small>
-        </label>
-        <p class="account-feedback-error" role="alert" data-account-feedback-error hidden></p>
-        <div class="account-feedback-actions">
-          <button class="secondary-button" type="button" data-account-action="feedback-cancel">ביטול</button>
-          <button class="primary-button" type="submit">שלח משוב</button>
-        </div>
-      </form>
-    </div>`;
-  document.body.append(dialog);
-  document.querySelector("#app")?.setAttribute("inert", "");
-  document.documentElement.classList.add("account-feedback-open");
-  pushAccountFeedbackHistoryState();
-  dialog
-    .querySelector("[data-account-feedback-form]")
-    ?.addEventListener("submit", handleAccountFeedbackSubmit);
-  dialog.querySelector("textarea")?.focus({ preventScroll: true });
+function ensureAccountFeedbackDraft() {
+  const ownerId = accountSession?.user?.id ?? "";
+  if (accountFeedbackDraft.ownerId !== ownerId) {
+    accountFeedbackDraft = createFeedbackDraft(ownerId);
+    accountFeedbackBusy = false;
+  }
+  return accountFeedbackDraft;
+}
+
+function rememberAccountFeedbackDraft(form) {
+  const draft = ensureAccountFeedbackDraft();
+  const values = new FormData(form);
+  draft.category = String(values.get("category") ?? "bug");
+  draft.message = String(values.get("message") ?? "");
+  return draft;
+}
+
+function enhanceAccountFeedbackPage() {
+  const panel = document.querySelector("[data-account-feedback-page]");
+  const draft = ensureAccountFeedbackDraft();
+  if (!panel || accountFeedbackMounts.get(panel) === draft) return;
+  panel.innerHTML = draft.status === "success"
+    ? renderFeedbackSuccessView()
+    : renderFeedbackFormView({ ...draft, busy: draft.status === "sending", signedIn: Boolean(draft.ownerId) });
+  accountFeedbackMounts.set(panel, draft);
+  const form = panel.querySelector("[data-account-feedback-form]");
+  if (!form) return;
+  form.addEventListener("input", () => rememberAccountFeedbackDraft(form));
+  form.addEventListener("change", () => rememberAccountFeedbackDraft(form));
+  form.addEventListener("submit", handleAccountFeedbackSubmit);
+}
+
+function updateAccountFeedbackPage() {
+  const panel = document.querySelector("[data-account-feedback-page]");
+  const draft = ensureAccountFeedbackDraft();
+  if (!panel || accountFeedbackMounts.get(panel) !== draft) return;
+  const form = panel.querySelector("[data-account-feedback-form]");
+  if (!form) return;
+  const error = form.querySelector("[data-account-feedback-error]");
+  error.hidden = !draft.error;
+  error.textContent = draft.error;
+  const textarea = form.querySelector("textarea");
+  if (draft.error) textarea.setAttribute("aria-invalid", "true");
+  else textarea.removeAttribute("aria-invalid");
+  if (accountFeedbackBusy) form.setAttribute("aria-busy", "true");
+  else form.removeAttribute("aria-busy");
+  form.querySelectorAll("button, input, textarea").forEach((element) => { element.disabled = accountFeedbackBusy; });
 }
 
 async function handleAccountFeedbackSubmit(event) {
   event.preventDefault();
-  if (accountFeedbackBusy) return;
-
   const form = event.currentTarget;
-  const values = new FormData(form);
-  const error = form.querySelector("[data-account-feedback-error]");
-  if (error) {
-    error.hidden = true;
-    error.textContent = "";
-  }
-  const message = String(values.get("message") ?? "").trim();
+  const draft = rememberAccountFeedbackDraft(form);
+  if (accountFeedbackBusy || !draft.ownerId) return;
+  const message = draft.message.trim();
+  draft.error = "";
   if (message.length < 10) {
-    if (error) {
-      error.hidden = false;
-      error.textContent = "כדאי לכתוב לפחות 10 תווים כדי שנוכל להבין מה קרה.";
-    }
+    draft.error = "כדאי לכתוב לפחות 10 תווים כדי שנוכל להבין מה קרה.";
+    updateAccountFeedbackPage();
     form.querySelector('textarea[name="message"]')?.focus({ preventScroll: true });
     return;
   }
+  const request = { draft, ownerId: draft.ownerId, id: ++accountFeedbackRequestSequence };
+  draft.submissionId = request.id;
+  const config = { ...runtimeConfig, storage: { ...runtimeConfig?.storage, account: { ...runtimeConfig?.storage?.account } } };
   setAccountFeedbackBusy(true);
-
   try {
-    await submitAppFeedback(runtimeConfig, {
-      category: values.get("category"),
-      message,
-      context: await accountFeedbackContext()
-    });
+    const context = await accountFeedbackContext();
+    if (!feedbackRequestIsCurrent(accountFeedbackDraft, request, accountSession?.user?.id)) return;
+    await submitAppFeedback(config, { category: draft.category, message, context });
+    if (!feedbackRequestIsCurrent(accountFeedbackDraft, request, accountSession?.user?.id)) return;
     renderAccountFeedbackSuccess();
   } catch {
-    if (error) {
-      error.hidden = false;
-      error.textContent =
-        "לא הצלחנו לשלוח כרגע. כדאי לבדוק את החיבור ולנסות שוב.";
-    }
+    if (!feedbackRequestIsCurrent(accountFeedbackDraft, request, accountSession?.user?.id)) return;
+    draft.error = "לא הצלחנו לשלוח כרגע. כדאי לבדוק את החיבור ולנסות שוב.";
     setAccountFeedbackBusy(false);
   }
 }
@@ -2430,103 +2400,16 @@ async function accountFeedbackContext() {
 }
 
 function renderAccountFeedbackSuccess() {
-  const dialog = document.querySelector(".account-feedback-dialog");
-  if (!dialog) return;
+  const draft = ensureAccountFeedbackDraft();
+  draft.status = "success";
+  draft.message = "";
+  draft.error = "";
   accountFeedbackBusy = false;
-  document.documentElement.classList.remove("account-feedback-busy");
-  dialog.innerHTML = `
-    <div class="account-feedback-success" role="status">
-      <span aria-hidden="true">✓</span>
-      <p class="eyebrow">המשוב נשלח</p>
-      <h2>תודה שעזרת לנו להשתפר</h2>
-      <p>קיבלנו את ההודעה יחד עם פרטי הגרסה. אין צורך לשלוח אותה שוב.</p>
-      <button class="primary-button" type="button" data-account-action="feedback-done">סיום</button>
-    </div>`;
-  dialog
-    .querySelector('[data-account-action="feedback-done"]')
-    ?.focus({ preventScroll: true });
-}
-
-function closeAccountFeedbackDialog({
-  fromHistory = false,
-  restoreFocus = true
-} = {}) {
-  const dialog = document.querySelector("[data-account-feedback-dialog]");
-  if (!dialog) return;
-  if (
-    !fromHistory &&
-    accountFeedbackHistoryActive &&
-    window.history?.back
-  ) {
-    if (accountFeedbackHistoryClosing) return;
-    accountFeedbackHistoryClosing = true;
-    window.history.back();
-    return;
-  }
-
-  accountFeedbackBusy = false;
-  accountFeedbackHistoryActive = false;
-  accountFeedbackHistoryClosing = false;
-  dialog.remove();
-  document.querySelector("#app")?.removeAttribute("inert");
-  document.documentElement.classList.remove(
-    "account-feedback-open",
-    "account-feedback-busy"
-  );
-  const returnTarget = accountFeedbackReturnFocus;
-  accountFeedbackReturnFocus = null;
-  if (restoreFocus) {
-    requestAnimationFrame(() => {
-      if (returnTarget?.isConnected) {
-        returnTarget.focus({ preventScroll: true });
-      }
-    });
-  }
-}
-
-function pushAccountFeedbackHistoryState() {
-  if (!window.history?.pushState) return;
-  try {
-    window.history.pushState(
-      {
-        ...(window.history.state ?? {}),
-        [ACCOUNT_FEEDBACK_HISTORY_KEY]: true
-      },
-      "",
-      window.location.href
-    );
-    accountFeedbackHistoryActive = true;
-  } catch {
-    accountFeedbackHistoryActive = false;
-  }
-}
-
-function handleAccountFeedbackHistoryBack(event) {
-  if (!accountFeedbackHistoryActive) return;
-  event.stopImmediatePropagation();
-  closeAccountFeedbackDialog({ fromHistory: true });
-}
-
-function handleAccountFeedbackNativeBack(event) {
-  if (!document.querySelector("[data-account-feedback-dialog]")) return;
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  closeAccountFeedbackDialog();
-}
-
-function handleAccountFeedbackKeydown(event) {
-  const dialog = document.querySelector(
-    '.account-feedback-dialog[role="dialog"]'
-  );
-  if (!dialog) return;
-
-  if (event.key === "Escape" && !accountFeedbackBusy) {
-    event.preventDefault();
-    closeAccountFeedbackDialog();
-    return;
-  }
-  if (event.key !== "Tab") return;
-  trapAccountDialogFocus(event, dialog);
+  const panel = document.querySelector("[data-account-feedback-page]");
+  if (!panel) return;
+  accountFeedbackMounts.delete(panel);
+  enhanceAccountFeedbackPage();
+  panel.querySelector('[data-account-action="feedback-done"]')?.focus({ preventScroll: true });
 }
 
 function trapAccountDialogFocus(event, dialog) {
@@ -2551,44 +2434,24 @@ function trapAccountDialogFocus(event, dialog) {
 
 function setAccountFeedbackBusy(value) {
   accountFeedbackBusy = value;
-  document.documentElement.classList.toggle("account-feedback-busy", value);
-  document
-    .querySelectorAll(
-      "[data-account-feedback-dialog] button, [data-account-feedback-dialog] input, [data-account-feedback-dialog] textarea"
-    )
-    .forEach((element) => {
-      element.disabled = value;
-    });
+  accountFeedbackDraft.status = value ? "sending" : "editing";
+  updateAccountFeedbackPage();
 }
 
-function renderAccountDeletionDialog() {
+function renderAccountDeletionDialog(returnFocusTarget = document.activeElement) {
   closeAccountDeletionDialog({ fromHistory: true, restoreFocus: false });
-  accountDeleteReturnFocus = document.activeElement instanceof HTMLElement
-    ? document.activeElement
+  accountDeleteReturnFocus = returnFocusTarget instanceof HTMLElement
+    ? returnFocusTarget
     : null;
   const dialog = document.createElement("section");
   dialog.className = "account-delete-backdrop";
   dialog.dataset.accountDeleteDialog = "true";
-  dialog.innerHTML = `
-    <div class="account-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="account-delete-title" aria-describedby="account-delete-description" tabindex="-1">
-      <p class="eyebrow">חשבון ופרטיות</p>
-      <h2 id="account-delete-title">למחוק את החשבון?</h2>
-      <p id="account-delete-description">החשבון, סביבת הענן והמידע האישי יימחקו לצמיתות. ברישומי הוצאות משותפים השם שלך יוחלף ב"משתמש שנמחק", כדי לא לפגוע בחישובים של חברים אחרים.</p>
-      <label class="account-delete-confirmation">
-        <input type="checkbox" name="deleteAccountConfirmation" data-account-delete-confirmation />
-        <span>אני מבין שהפעולה קבועה ואי אפשר לבטל אותה.</span>
-      </label>
-      <p class="account-delete-error" role="alert" data-account-delete-error hidden></p>
-      <div class="account-delete-actions">
-        <button class="secondary-button" type="button" data-account-action="delete-account-cancel">חזרה</button>
-        <button class="primary-button account-delete-confirm" type="button" data-account-action="delete-account-confirm" disabled>מחק את החשבון</button>
-      </div>
-    </div>`;
+  dialog.innerHTML = renderAccountDeletionConfirmationView();
   document.body.append(dialog);
   document.querySelector("#app")?.setAttribute("inert", "");
   document.documentElement.classList.add("account-delete-open");
   pushAccountDeletionHistoryState();
-  dialog.querySelector("[data-account-delete-confirmation]")?.focus();
+  dialog.querySelector(".account-delete-dialog")?.focus({ preventScroll: true });
 }
 
 function closeAccountDeletionDialog({
@@ -2702,45 +2565,9 @@ function renderPasswordResetGate(error = "") {
 
   const gate = document.createElement("section");
   gate.id = GATE_ID;
-  gate.className = "account-auth-gate";
+  gate.className = "account-auth-gate account-entry-screen";
   gate.setAttribute("role", "main");
-  gate.innerHTML = `
-    <div class="account-auth-shell account-auth-shell-compact">
-      <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
-        <div>
-          <p class="eyebrow">סוגרים חשבון</p>
-          <h1>בוחרים סיסמה חדשה</h1>
-          <p>אחרי השמירה נחזיר אותך ישר לחשבון שלך.</p>
-        </div>
-      </section>
-      <section class="account-auth-form-panel">
-        <div class="account-auth-heading">
-          <h2>איפוס סיסמה</h2>
-          <p>הסיסמה החדשה צריכה להכיל לפחות 8 תווים.</p>
-        </div>
-        <form class="account-auth-form" data-account-form data-mode="reset-password" novalidate>
-          <label>
-            <span>סיסמה חדשה</span>
-            <span class="account-password-input">
-              <input name="password" type="password" autocomplete="new-password" minlength="8" required />
-              <button class="account-password-toggle" type="button" data-account-action="toggle-password" aria-label="הצג סיסמה" aria-pressed="false">${iconSvg("eye")}</button>
-            </span>
-          </label>
-          <label>
-            <span>אימות סיסמה</span>
-            <span class="account-password-input">
-              <input name="passwordConfirmation" type="password" autocomplete="new-password" minlength="8" required />
-              <button class="account-password-toggle" type="button" data-account-action="toggle-password" aria-label="הצג סיסמה" aria-pressed="false">${iconSvg("eye")}</button>
-            </span>
-          </label>
-          ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
-          <button class="primary-button account-auth-submit" type="submit">שמור סיסמה</button>
-        </form>
-        <p class="visually-hidden" data-account-auth-status role="status" aria-live="polite"></p>
-      </section>
-    </div>
-  `;
+  gate.innerHTML = renderAccountPasswordResetView({error});
   document.body.append(gate);
   gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
   markAccountAuthReady();
@@ -2905,6 +2732,15 @@ function canResumeOffline(session, error) {
 function isUnauthorizedAccountError(error) {
   const status = Number(error?.status);
   if (status === 401) return true;
+  const authCode = String(error?.authCode ?? "").trim().toLowerCase();
+  if (
+    (status === 400 || status === 403) &&
+    [
+      "bad_jwt", "invalid_credentials", "refresh_token_already_used",
+      "refresh_token_not_found", "session_expired", "session_not_found",
+      "user_banned", "user_not_found"
+    ].includes(authCode)
+  ) return true;
   if (status !== 403) return false;
   const message = String(error?.message ?? "").toLowerCase();
   return (
@@ -3114,44 +2950,28 @@ function refreshAccountSessionIfNeeded() {
 }
 
 function refreshActiveAccountSession() {
-  if (accountRefreshPromise) return accountRefreshPromise;
-  if (!accountSession?.refresh_token || !runtimeConfig) {
-    return Promise.resolve(null);
-  }
-
+  if (!accountSession?.refresh_token || !runtimeConfig) return Promise.resolve(null);
   const previousSession = accountSession;
-  const requestGeneration = accountRefreshGeneration;
-  accountRefreshPromise = refreshAccountSession(runtimeConfig, previousSession)
-    .then((refreshedSession) => {
+  return runAccountSessionRefresh(previousSession, async (isCurrent, adoptSession) => {
+    try {
+      const refreshedSession = await refreshAccountSession(runtimeConfig, previousSession);
+      if (!isCurrent()) return null;
       if (!refreshedSession) throw new Error("Account refresh failed");
-      if (
-        requestGeneration !== accountRefreshGeneration ||
-        accountSession !== previousSession
-      ) {
-        return null;
-      }
-      accountSession = saveAccountSession({
-        ...refreshedSession,
-        user: refreshedSession.user ?? previousSession.user
+      const adopted = adoptSession({
+        ...refreshedSession, user: refreshedSession.user ?? previousSession.user
       });
+      if (!adopted || !isCurrent()) return null;
       document.dispatchEvent(new Event("account-session-refreshed"));
-      publishAccountSessionSync(accountSession);
+      if (!isCurrent()) return null;
+      publishAccountSessionSync(adopted);
+      if (!isCurrent()) return null;
       scheduleAccountSessionRefresh();
-      return accountSession;
-    })
-    .catch(() => {
-      if (
-        requestGeneration === accountRefreshGeneration &&
-        accountSession === previousSession
-      ) {
-        scheduleAccountSessionRefresh(ACCOUNT_REFRESH_RETRY_MS);
-      }
+      return adopted;
+    } catch {
+      if (isCurrent()) scheduleAccountSessionRefresh(ACCOUNT_REFRESH_RETRY_MS);
       return null;
-    })
-    .finally(() => {
-      accountRefreshPromise = null;
-    });
-  return accountRefreshPromise;
+    }
+  });
 }
 
 function setAuthBusy(value) {
@@ -3478,7 +3298,7 @@ function injectStyle() {
     }
 
     .account-google-button {
-      min-height: 48px;
+      min-height: 56px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -4205,8 +4025,7 @@ function injectStyle() {
       pointer-events: none;
     }
 
-    @media (max-width: 760px),
-      (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+    @media (max-width: 1366px) {
       .account-auth-gate {
         place-items: stretch;
         padding: 0;
@@ -4371,7 +4190,7 @@ function injectStyle() {
 
     /* iPad home-screen apps keep a readable form measure without collapsing
        the entire authentication experience into a phone-width strip. */
-    @media (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+    @media (min-width: 761px) and (max-width: 1366px) {
       .account-auth-gate {
         justify-items: center;
         padding-inline:
@@ -4384,6 +4203,96 @@ function injectStyle() {
         width: min(calc(100% - 32px), 760px);
       }
     }
+
+/* Approved shared account-entry presentation. Recovery, identity and provider logic stay above. */
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen {
+ display:block!important;inset:0!important;overflow:auto!important;padding:env(safe-area-inset-top) max(18px,env(safe-area-inset-right)) calc(36px + env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))!important;background:#f7f9fa!important;scroll-padding-block:20px!important;scroll-padding-block-end:calc(120px + env(safe-area-inset-bottom))!important;box-sizing:border-box!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-shell {
+ display:flex!important;flex-direction:column!important;gap:20px!important;width:min(100%,500px)!important;min-height:0!important;max-height:none!important;overflow:visible!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;margin:0 auto!important;padding:0!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-brand {
+ position:relative!important;display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:12px!important;min-height:76px!important;padding:12px 0 12px 56px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;isolation:auto!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-brand::before,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-brand::after {display:none!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-mark {
+ position:static!important;flex:0 0 44px!important;width:44px!important;height:44px!important;padding:0!important;border:0!important;border-radius:12px!important;box-shadow:none!important;background:transparent!important;transform:none!important;margin:0!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-mark img {width:44px!important;height:44px!important;display:block!important;object-fit:contain!important;border-radius:12px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-brand h1 {
+ display:block!important;max-width:none!important;margin:0!important;color:#162523!important;font-size:1.05rem!important;line-height:1.35!important;font-weight:800!important;letter-spacing:0!important;overflow-wrap:normal!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form-panel {
+ display:flex!important;flex-direction:column!important;align-content:initial!important;gap:20px!important;min-width:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-heading {
+ display:grid!important;gap:8px!important;margin:0 0 4px!important;padding:20px 22px!important;border:1px solid rgba(5,80,62,.1)!important;border-radius:24px!important;color:white!important;background:linear-gradient(112deg,#083e32,#126f56)!important;box-shadow:0 8px 24px rgba(14,95,74,.08)!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-heading h2 {
+ margin:0!important;color:#fff!important;font-size:1.5rem!important;line-height:1.3!important;font-weight:800!important;overflow-wrap:normal!important;word-break:normal!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-heading p {
+ margin:0!important;color:#e1f0e9!important;font-size:.9rem!important;line-height:1.55!important;overflow-wrap:normal!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-google-slot {display:grid!important;grid-auto-rows:1fr!important;gap:12px!important;margin:0!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-google-button,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-email-toggle,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit {
+ width:100%!important;min-height:52px!important;height:auto!important;min-width:0!important;padding:13px 16px!important;font-size:1rem!important;line-height:1.45!important;border-radius:14px!important;box-shadow:none!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important;gap:10px!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit {background:#075846!important;color:#fff!important;border:1px solid #075846!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-apple-button {padding:0!important;background:#000!important;border-radius:14px!important;min-height:56px!important;overflow:visible!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-apple-button-art {display:block!important;width:100%!important;max-width:375px!important;height:auto!important;max-height:none!important;object-fit:contain!important;border-radius:14px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-email-auth {display:grid!important;gap:20px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-email-auth[hidden] {display:none!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-tabs {display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:4px!important;padding:4px!important;border-radius:14px!important;margin:0!important;background:#eaf1ef!important;border:1px solid #dce5e2!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-tabs button {min-height:44px!important;min-width:0!important;height:auto!important;padding:10px 8px!important;line-height:1.4!important;font-size:1rem!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important;border-radius:10px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form {display:grid!important;gap:18px!important;margin:0!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form label {display:grid!important;gap:8px!important;min-width:0!important;margin:0!important;line-height:1.45!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form label>span:first-child {font-size:.95rem!important;line-height:1.45!important;font-weight:700!important;overflow-wrap:normal!important;word-break:normal!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form input:not([type="hidden"]) {
+ box-sizing:border-box!important;min-width:0!important;width:100%!important;height:auto!important;min-height:52px!important;padding:12px 14px!important;border-radius:12px!important;border:1px solid #cedbd5!important;background:#fff!important;color:#172a24!important;font-size:1rem!important;line-height:1.45!important;
+}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-password-input {position:relative!important;display:block!important;min-width:0!important;width:100%!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-password-input input {padding-left:58px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-password-toggle {position:absolute!important;inset-block:0!important;inset-inline-start:auto!important;left:5px!important;right:auto!important;display:grid!important;place-items:center!important;width:44px!important;min-height:44px!important;height:100%!important;padding:0!important;transform:none!important;background:transparent!important;color:#526b60!important;border-radius:8px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-password-toggle svg {width:21px!important;height:21px!important;flex:none!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-field-hint {display:block!important;font-size:.8rem!important;line-height:1.55!important;color:#53675e!important;overflow-wrap:normal!important;word-break:normal!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-forgot-button {align-self:flex-start!important;justify-self:start!important;min-height:44px!important;padding:8px 0!important;color:#195c49!important;font-size:.9rem!important;line-height:1.5!important;text-align:start!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-entry-alternative {display:flex!important;align-items:center!important;gap:14px!important;color:#66776e!important;margin:2px 0!important;font-size:.85rem!important;line-height:1.4!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-entry-alternative::before,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-entry-alternative::after {content:''!important;height:1px!important;flex:1!important;background:#dce5df!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-legal {margin:0!important;padding:4px 0 0!important;font-size:.8rem!important;line-height:1.75!important;color:#53675e!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-legal a {display:inline-block!important;line-height:1.75!important;color:#195c49!important;font-size:inherit!important;text-underline-offset:3px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-error,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-message {margin:0!important;padding:12px 14px!important;border-radius:12px!important;font-size:.95rem!important;line-height:1.6!important;white-space:normal!important;overflow-wrap:anywhere!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen input:focus-visible,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen button:focus-visible {outline:2px solid #14775c!important;outline-offset:3px!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-form input::placeholder {font-size:inherit!important;line-height:inherit!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen input[name="displayName"]::placeholder {opacity:0!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit::before,
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit::after {display:none!important;background:none!important;box-shadow:none!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-legal a {min-height:44px!important;box-sizing:border-box!important;padding-block:10px!important}
+
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-google-button {min-height:56px!important}
+
+/* The gate already owns the top safe area; this control is shell-relative. */
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .accessibility-entry-auth {inset-block-start:14px!important}
+/* Sketch overlay only: shared, already-approved account branding and controls. */
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-copy{margin:0!important;font-size:1rem!important;line-height:1.65!important;color:#20382f!important;overflow-wrap:anywhere!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-hint{margin:0!important;font-size:.875rem!important;line-height:1.6!important;color:#53675e!important;overflow-wrap:anywhere!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-recipient{display:grid!important;gap:6px!important;min-width:0!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-recipient>span{font-size:.875rem!important;line-height:1.6!important;color:#53675e!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-recipient>p{margin:0!important;font-size:1.0625rem!important;font-weight:600!important;line-height:1.5!important;text-align:right!important;unicode-bidi:isolate!important;overflow-wrap:anywhere!important;word-break:normal!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-secondary{display:flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;min-height:44px!important;width:100%!important;border:0!important;background:transparent!important;box-shadow:none!important;color:#195c49!important;font-size:.95rem!important;line-height:1.5!important;padding:8px!important;border-radius:10px!important;white-space:normal!important;overflow-wrap:anywhere!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-secondary>span{font:inherit!important;color:inherit!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-secondary svg{width:1.1rem!important;height:1.1rem!important;flex:none!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-feedback{margin:0!important;font-size:.95rem!important;line-height:1.6!important;color:#195c49!important;overflow-wrap:anywhere!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-feedback[role=alert]{color:#9c3030!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-recovery-screen .account-flow-feedback:empty{display:none!important}
+
+
   `;
   document.head.append(style);
 }

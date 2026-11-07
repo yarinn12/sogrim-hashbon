@@ -3,7 +3,7 @@ import {
   loadRuntimeConfig,
   pendingSharedSyncStatus
 } from "./data/localStore.mjs";
-import { iconSvg } from "./uiIcons.mjs";
+import { createSyncNoticePresentation, renderPendingSyncSummary } from "./ui/syncNoticePresentation.mjs";
 import { pendingSaveMessage } from "./domain/userNoticePolicy.mjs";
 
 const STYLE_ID = "public-sync-status-layer-style";
@@ -30,11 +30,12 @@ const ONLINE_MUTATION_ACTIONS = new Set([
 // a stale sync state must never turn a visible control into a no-op.
 const ONLINE_MUTATION_CHANGE_ACTIONS = new Set();
 
+const syncNoticeView = createSyncNoticePresentation();
 let currentStatus = "";
-const initialPendingStatus = pendingSharedSyncStatus();
+const initialPendingStatus = pendingSharedSyncStatus({ includeFailureKind: true });
 let pendingSync = initialPendingStatus.pending;
 let pendingEventIds = initialPendingStatus.pendingEventIds;
-let pendingFailureKind = "";
+let pendingFailureKind = initialPendingStatus.failureKind ?? "";
 let connectivityRevision = 0;
 let lastScreenSignature = screenSignature();
 let activeSaveScreenSignature = "";
@@ -63,11 +64,17 @@ if (navigator.onLine === false) void handleOffline();
 function handleSyncStatus(event) {
   const status = event.detail?.status ?? "";
   if (typeof event.detail?.pending === "boolean") {
-    pendingSync = event.detail.pending;
-    pendingFailureKind = pendingSync ? event.detail.failureKind ?? "" : "";
-    pendingEventIds = pendingSync
+    const nextEventIds = event.detail.pending
       ? (Array.isArray(event.detail.pendingEventIds) ? event.detail.pendingEventIds : null)
       : [];
+    const samePendingEvents = pendingSync && Array.isArray(pendingEventIds) &&
+      Array.isArray(nextEventIds) && pendingEventIds.length === nextEventIds.length &&
+      nextEventIds.every((id) => pendingEventIds.includes(id));
+    pendingSync = event.detail.pending;
+    pendingFailureKind = pendingSync
+      ? event.detail.failureKind ?? (samePendingEvents ? pendingFailureKind : "")
+      : "";
+    pendingEventIds = nextEventIds;
   }
   const currentScreenSignature = screenSignature();
 
@@ -106,7 +113,7 @@ function refreshPendingStatusFromStorage(event) {
 }
 
 function refreshPendingStatus() {
-  const pendingStatus = pendingSharedSyncStatus();
+  const pendingStatus = pendingSharedSyncStatus({ includeFailureKind: true });
   handleSyncStatus({ detail: {
     status: pendingStatus.pending ? "reconnecting" : "",
     ...pendingStatus
@@ -169,7 +176,7 @@ async function recoverOnlineMutationAccess() {
 
   showStatus("reconnecting");
   syncMutationControls();
-  reconnectPromise = flushPendingSharedState()
+  reconnectPromise = flushPendingSharedState({ automatic: true })
     .then(async (result) => {
       if (!result?.ok) {
         const config = await loadRuntimeConfig();
@@ -276,26 +283,7 @@ function showStatus(status) {
   currentStatus = status;
   const message = statusMessage(status);
 
-  let node = document.querySelector("[data-sync-status]");
-  if (!node) {
-    node = document.createElement("div");
-    node.className = "public-sync-status app-toast";
-    node.dataset.syncStatus = "";
-    node.setAttribute("role", "status");
-    node.setAttribute("aria-live", "polite");
-    node.setAttribute("aria-atomic", "true");
-    document.body.append(node);
-  }
-
-  node.className = `public-sync-status app-toast is-${status}`;
-  node.hidden = false;
-  node.innerHTML = `
-    <span class="app-toast-icon" aria-hidden="true">${iconSvg("bell")}</span>
-    <span class="app-toast-copy">${message}</span>
-    <button class="app-toast-close" type="button" data-sync-dismiss aria-label="סגירת ההודעה" title="סגירת ההודעה">
-      ${iconSvg("x")}
-    </button>
-  `;
+  syncNoticeView.render({ status, message });
   syncInlineStatusTargets();
 
 }
@@ -343,16 +331,28 @@ function syncInlineStatusTargets() {
     const eventId = target.dataset.syncEventId;
     const pendingHere = pendingSync && (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId));
     const message = pendingHere ? pendingSaveMessage(pendingFailureKind) : "";
-    if (target.textContent !== message) target.textContent = message;
+    if (target.dataset.syncAccountSummary !== undefined) {
+      renderAccountPendingSummary(target, message, pendingSharedSyncStatus({ includeFailureKind: true }));
+    } else if (target.textContent !== message) {
+      target.textContent = message;
+    }
     target.hidden = !message;
     const routeStatus = target.closest("[data-route-sync-status]");
     if (routeStatus) routeStatus.hidden = !message;
   });
 
   document.querySelectorAll("[data-inline-sync-retry]").forEach((button) => {
-    button.hidden = true;
+    const eventId = button.closest(".event-action-sync-wrap, [data-route-sync-status]")
+      ?.querySelector("[data-inline-sync-status]")?.dataset.syncEventId;
+    button.hidden = !(pendingSync && pendingSaveMessage(pendingFailureKind) &&
+      (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId)));
   });
   syncMutationControls();
+  syncNoticeView.place(currentStatus);
+}
+
+function renderAccountPendingSummary(target, message, failureDetails = {}) {
+  return renderPendingSyncSummary(target, message, { pendingEventIds, failureDetails });
 }
 
 function syncMutationControls() {
@@ -403,14 +403,14 @@ function syncMutationControls() {
 
 function statusMessage(status) {
   if (status === "conflict") {
-    return "המידע עודכן במכשיר אחר";
+    return pendingSaveMessage("conflict");
   }
 
   if (status === "unavailable") {
     return "הסנכרון מתעכב כרגע";
   }
 
-  return "אין רשת כרגע";
+  return "אין חיבור לאינטרנט כרגע. התחברו ונסו שוב.";
 }
 
 function injectStyles() {
@@ -446,6 +446,23 @@ function injectStyles() {
     }
 
     [data-inline-sync-status][hidden] { display: none !important; }
+    [data-sync-account-summary] .pending-sync-review {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      min-height: 44px;
+      padding: 6px 0;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    [data-sync-account-summary] .pending-sync-review:focus-visible {
+      outline: 2px solid currentColor;
+      outline-offset: 2px;
+    }
 
     .event-route-sync-status {
       display: flex;

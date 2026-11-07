@@ -1,9 +1,12 @@
+import { primaryNavigationNeedsTwoRows } from "./ui/dynamicTypeNavigation.mjs";
+
 const STYLE_ID = "public-dynamic-type-style";
 const ACTIVE_CLASS = "dynamic-type-active";
 const APPLE_CLASS = "dynamic-type-apple";
 const ANDROID_CLASS = "dynamic-type-android";
 const LARGE_CLASS = "dynamic-type-large";
 const EXTRA_LARGE_CLASS = "dynamic-type-extra-large";
+const APPLE_BODY_PROBE_ID = "apple-system-body-size-probe";
 
 export function classifyDynamicTypeSize(fontSize) {
   const size = Number.parseFloat(fontSize);
@@ -35,27 +38,86 @@ export function localPreviewSize(location = globalThis.location) {
   return Math.min(32, Math.max(19, requested));
 }
 
+function appleSystemBodyProbe(document) {
+  if (!document?.body) return null;
+  let probe = document.getElementById(APPLE_BODY_PROBE_ID);
+  if (probe) return probe;
+  probe = document.createElement("span");
+  probe.id = APPLE_BODY_PROBE_ID;
+  probe.setAttribute("aria-hidden", "true");
+  probe.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "inline-size:1em",
+    "block-size:1em",
+    "overflow:hidden",
+    "visibility:hidden",
+    "pointer-events:none",
+    "font:-apple-system-body"
+  ].join(";");
+  document.body.append(probe);
+  return probe;
+}
+
+function appleSystemBodySize(root) {
+  const probe = appleSystemBodyProbe(root.ownerDocument);
+  const size = Number.parseFloat(
+    probe && root.ownerDocument.defaultView?.getComputedStyle(probe).fontSize
+  );
+  return Number.isFinite(size) && size > 0 ? size : 17;
+}
+
 export function refreshDynamicType(root = globalThis.document?.documentElement) {
   if (!root) return "normal";
 
   const view = root.ownerDocument?.defaultView ?? globalThis.window;
-  const active = supportsAppleDynamicType(view);
-  root.classList.toggle(ACTIVE_CLASS, active);
-  root.classList.toggle(APPLE_CLASS, active);
+  const supported = supportsAppleDynamicType(view);
+  root.classList.toggle(APPLE_CLASS, supported);
   root.classList.remove(ANDROID_CLASS);
   root.style.removeProperty("--android-font-scale");
   root.classList.remove(LARGE_CLASS, EXTRA_LARGE_CLASS);
 
-  if (!active) {
+  if (!supported) {
+    root.classList.remove(ACTIVE_CLASS);
+    root.style.removeProperty("--apple-font-scale");
     root.dataset.dynamicType = "normal";
     return "normal";
   }
 
-  const level = classifyDynamicTypeSize(view.getComputedStyle(root).fontSize);
+  const systemBodySize = appleSystemBodySize(root);
+  const scale = systemBodySize / 17;
+  root.style.setProperty("--apple-font-scale", String(scale));
+  const active = scale > 1.01;
+  root.classList.toggle(ACTIVE_CLASS, active);
+  const level = active ? classifyDynamicTypeSize(16 * scale) : "normal";
   root.classList.toggle(LARGE_CLASS, level === "large");
   root.classList.toggle(EXTRA_LARGE_CLASS, level === "extra-large");
   root.dataset.dynamicType = level;
   return level;
+}
+
+export function watchAppleDynamicType(root = globalThis.document?.documentElement) {
+  const view = root?.ownerDocument?.defaultView;
+  if (
+    view?.Capacitor?.getPlatform?.() === "android" ||
+    !supportsAppleDynamicType(view) ||
+    !view.ResizeObserver
+  ) return null;
+  const probe = appleSystemBodyProbe(root.ownerDocument);
+  if (!probe) return null;
+  let pending = false;
+  const observer = new view.ResizeObserver(() => {
+    // Changing root typography can resize other observed controls. Apply it in
+    // the next frame, outside the current ResizeObserver delivery cycle.
+    if (pending) return;
+    pending = true;
+    view.requestAnimationFrame(() => {
+      pending = false;
+      refreshDynamicType(root);
+    });
+  });
+  observer.observe(probe);
+  return observer;
 }
 
 export async function refreshAndroidDynamicType(
@@ -77,6 +139,7 @@ export async function refreshAndroidDynamicType(
   root.classList.toggle(ACTIVE_CLASS, active);
   root.classList.toggle(ANDROID_CLASS, active);
   root.classList.remove(APPLE_CLASS, LARGE_CLASS, EXTRA_LARGE_CLASS);
+  root.style.removeProperty("--apple-font-scale");
   root.style.setProperty("--android-font-scale", String(scale));
   root.classList.toggle(LARGE_CLASS, level === "large");
   root.classList.toggle(EXTRA_LARGE_CLASS, level === "extra-large");
@@ -96,31 +159,47 @@ function injectDynamicTypeStyles(document) {
     }
 
     /*
-     * -apple-system-body carries the user's iOS Dynamic Type preference.
-     * The app keeps Rubik for Hebrew, while rem-based sizes inherit the
-     * accessible root size supplied by WebKit.
+     * The independent -apple-system-body probe carries the user's iOS text
+     * preference. A 17px system body maps to the app's 16px baseline, while
+     * enlarged preferences scale that baseline proportionally.
      */
-    html.${ACTIVE_CLASS}.${APPLE_CLASS} {
+    html.${APPLE_CLASS}:not(.dynamic-type-preview) {
       font: -apple-system-body;
+      font-size: calc(16px * var(--apple-font-scale, 1)) !important;
     }
 
-    html.${ACTIVE_CLASS} {
-      --dynamic-text-11: 0.647rem;
-      --dynamic-text-12: 0.706rem;
-      --dynamic-text-13: 0.765rem;
-      --dynamic-text-14: 0.824rem;
-      --dynamic-text-15: 0.882rem;
-      --dynamic-text-16: 0.941rem;
-      --dynamic-text-17: 1rem;
-      --dynamic-text-20: 1.176rem;
-      --dynamic-text-24: 1.412rem;
-      --dynamic-text-28: 1.647rem;
-      --dynamic-text-32: 1.882rem;
-      --dynamic-text-36: 2.118rem;
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview) {
+      --dynamic-text-10: 0.625rem;
+      --dynamic-text-11: 0.6875rem;
+      --dynamic-text-12: 0.75rem;
+      --dynamic-text-13: 0.8125rem;
+      --dynamic-text-14: 0.875rem;
+      --dynamic-text-15: 0.9375rem;
+      --dynamic-text-16: 1rem;
+      --dynamic-text-17: 1.0625rem;
+      --dynamic-text-19: 1.1875rem;
+      --dynamic-text-20: 1.25rem;
+      --dynamic-text-24: 1.5rem;
+      --dynamic-text-28: 1.75rem;
+      --dynamic-text-32: 2rem;
+      --dynamic-text-36: 2.25rem;
+    }
+
+    /* Reduced-motion layers shorten every transition to 1ms but leave its
+       default property as "all". Prevent a stale font-size frame both when
+       enlarged text turns on and when the preference returns to normal. */
+    @media (prefers-reduced-motion: reduce) {
+      html,
+      html body,
+      html #app,
+      html #app * {
+        transition-duration: 0s !important;
+      }
     }
 
     html.${ACTIVE_CLASS}.${ANDROID_CLASS} {
-      font-size: calc(16px * var(--android-font-scale, 1)) !important;
+      /* Android WebView text zoom already applies the OS font scale. */
+      font-size: 16px !important;
     }
 
     html.${ACTIVE_CLASS} body,
@@ -213,9 +292,382 @@ function injectDynamicTypeStyles(document) {
       line-height: 1.4 !important;
     }
 
+    /* This transfer explanation is 12px in the normal design. */
+    html.${ACTIVE_CLASS} #app .screen[data-event-view="summary"]
+      .settlement-stage-heading > div > small,
+    html.dynamic-type-preview #app .screen[data-event-view="summary"]
+      .settlement-stage-heading > div > small {
+      font-size: var(--dynamic-text-12, 0.75rem) !important;
+    }
+
     html.${ACTIVE_CLASS} #app .font-num,
     html.dynamic-type-preview #app .font-num {
       font-size: inherit !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+      body #app .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+        [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+      .product-brand-copy strong {
+      font-size: var(--dynamic-text-17, 17px) !important;
+    }
+
+    html:is(.${EXTRA_LARGE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-event-view="summary"]
+      .settlement-transfer-board .transfer-row .transfer-people {
+      grid-template-columns: minmax(0, 1fr) !important;
+      gap: 8px !important;
+    }
+
+    @media (max-width: 720px) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        > .product-app-identity {
+        display: block !important;
+        padding: calc(10px + env(safe-area-inset-top)) 12px 12px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-lockup {
+        width: 100% !important;
+        display: grid !important;
+        grid-template-columns: 40px 44px minmax(0, 1fr) !important;
+        gap: 8px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-mark {
+        grid-column: 1 !important;
+        grid-row: 1 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-header-profile-avatar {
+        grid-column: 2 !important;
+        grid-row: 1 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-copy {
+        grid-column: 1 / -1 !important;
+        grid-row: 2 !important;
+        text-align: center !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-copy strong {
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-header-utility-button {
+        height: auto !important;
+        min-height: 54px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-header-action-label {
+        max-width: 100% !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        text-align: center !important;
+        line-height: 1.2 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav > .event-workspace-notes {
+        grid-column: 1 / -1 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .event-workspace-tab strong {
+        white-space: nowrap !important;
+        overflow-wrap: normal !important;
+      }
+    }
+
+    @media (max-width: 360px) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+    }
+
+    /* Keep branding, the full event title, and the primary notes action in
+       document order while using less vertical chrome on narrow phones. */
+    @media (max-width: 480px) and (orientation: portrait) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen.event-notes-screen > .product-app-identity {
+        padding: calc(6px + env(safe-area-inset-top)) 8px 6px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen.event-notes-screen .product-brand-lockup {
+        align-items: center !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen.event-notes-screen > .top {
+        margin-block: 4px 0 !important;
+        padding-block: 4px !important;
+        gap: 6px !important;
+      }
+
+      /* Reserve ordinary document space for the primary Notes action. The
+         complete enlarged header can scroll; no floating action covers tabs
+         or a dialog, and there is no centering transform to retain on rotation. */
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen.event-notes-screen > .event-overview-header {
+        max-height: max(156px, calc(100dvh - var(--dynamic-type-bottom-nav-block, 82px) -
+          env(safe-area-inset-bottom) - max(14px, env(safe-area-inset-bottom)) - 270px)) !important;
+        overflow: hidden !important;
+        grid-template-rows: minmax(0, 1fr) max-content !important;
+        align-items: start !important;
+        align-content: start !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen.event-notes-screen > .event-overview-header > .brand {
+        min-height: 0 !important;
+        overflow: auto !important;
+        overscroll-behavior-y: contain !important;
+        align-self: stretch !important;
+        align-content: start !important;
+        grid-auto-rows: max-content !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-overview-header .event-header-actions {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+    }
+
+    /* On phone-width summaries, two complete utility labels fit beside each
+       other. Keep the third action on its own row so transfers follow the
+       primary answer without three stacked rows of secondary controls. */
+    @media (min-width: 375px) and (max-width: 480px) and (orientation: portrait) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen[data-event-view="summary"] > .event-overview-header .event-header-actions {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 6px !important;
+        margin-bottom: 0 !important;
+        padding: 4px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen[data-event-view="summary"] > .event-overview-header .event-header-actions
+        .event-header-utility-button {
+        min-height: 48px !important;
+      }
+
+      /* At AX sizes the longest word needs the full row; the two shorter
+         actions still share the next row without splitting their labels. */
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-overview-header .event-header-actions
+        > [data-action="open-event-participants"] {
+        grid-column: 1 / -1 !important;
+      }
+
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .screen[data-event-view="summary"] > .event-overview-header .event-header-actions
+        .event-header-utility-button {
+        padding-inline: 8px !important;
+      }
+    }
+
+    /* A short landscape phone has enough width for one header row and three
+       complete tab labels, but not enough height for the portrait stacking. */
+    @media (min-width: 600px) and (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .product-app-identity {
+        padding-block: calc(6px + env(safe-area-inset-top)) 6px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .product-brand-lockup {
+        align-items: center !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .product-brand-copy {
+        grid-column: 3 !important;
+        grid-row: 1 !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 12px !important;
+        text-align: start !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .product-brand-copy :is(strong, small) {
+        white-space: nowrap !important;
+        overflow-wrap: normal !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header {
+        margin-block: 0 !important;
+        padding-block: 4px !important;
+        gap: 4px !important;
+        min-height: 0 !important;
+      }
+
+      /* Spend the short viewport on complete text and touch targets rather
+         than portrait spacing. The utilities remain in the shared card. */
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .product-app-identity {
+        padding-block: env(safe-area-inset-top) 0 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header .event-header-meta {
+        margin-block: 0 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header .event-header-utility-button {
+        min-height: 44px !important;
+        padding-block: 2px !important;
+        flex-direction: row !important;
+      }
+
+      /* At OS accessibility sizes a complete multi-line title, metadata and
+         utilities cannot all fit in a short landscape viewport. Allow the
+         full card to scroll while its following workspace tabs stay visible;
+         retain the requested fonts, every word and all three real actions. */
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header {
+        max-height: calc(100dvh - 56px - env(safe-area-inset-top) -
+          var(--dynamic-type-bottom-nav-block, 82px) - env(safe-area-inset-bottom) -
+          max(14px, env(safe-area-inset-bottom)) - 70px) !important;
+        overflow: hidden !important;
+        grid-template-rows: minmax(0, 1fr) max-content !important;
+        align-items: start !important;
+        align-content: start !important;
+      }
+
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header > .brand {
+        min-height: 0 !important;
+        overflow: auto !important;
+        overscroll-behavior-y: contain !important;
+        align-self: stretch !important;
+        align-content: start !important;
+        grid-auto-rows: max-content !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        padding-block: 1px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav > .event-workspace-notes {
+        grid-column: auto !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field {
+        grid-template-columns: max-content minmax(0, 1fr) !important;
+        align-items: center !important;
+        gap: 8px !important;
+        padding: 6px 12px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field input {
+        min-width: 0 !important;
+        width: 100% !important;
+      }
+
+      /* The AX amount uses an 89px numeral at this scale. Its inherited
+         3.25rem minimum exceeds the short modal body; the 400px card also
+         leaves too little width to show all digits at that requested size. */
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field {
+        width: min(100%, 500px) !important;
+        padding-block: 2px !important;
+      }
+
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field input[data-action="expense-total"] {
+        height: max(72px, 2.75rem) !important;
+        min-height: max(72px, 2.75rem) !important;
+        line-height: 1 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-actions {
+        gap: 0 !important;
+        padding: 6px 14px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-actions .expense-step-next {
+        min-height: 56px !important;
+        padding: 8px 12px !important;
+        line-height: 1.2 !important;
+      }
+    }
+
+    /* A compact desktop viewport can scroll an event tab underneath the
+       fixed route controls; leave a visible landing zone for keyboard/touch. */
+    @media (max-width: 720px) and (max-height: 500px) {
+      html body #app .screen[data-screen-kind="event"] .event-workspace-tab {
+        scroll-margin-block-start: 80px !important;
+        scroll-margin-block-end: calc(96px + env(safe-area-inset-bottom)) !important;
+      }
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+      #app .event-share-route-backdrop .event-invite-link-actions {
+      grid-template-columns: minmax(0, 1fr) max-content !important;
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+      #app .event-share-route-backdrop [data-action="copy-invite"] {
+      min-width: max-content !important;
+      white-space: nowrap !important;
+      overflow-wrap: normal !important;
+      word-break: keep-all !important;
     }
 
     html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
@@ -291,6 +743,20 @@ function injectDynamicTypeStyles(document) {
       :where(button, input, select, textarea, summary, .primary-button, .secondary-button, .icon-button) {
       height: auto !important;
       min-height: max(48px, 2.85rem) !important;
+    }
+
+    /* The sign-in accessibility control has an icon only. Keep its enlarged
+       touch target round while text-bearing controls may grow vertically. */
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+      #public-account-auth-gate .accessibility-entry-auth {
+      width: 48px !important;
+      min-width: 48px !important;
+      max-width: 48px !important;
+      height: 48px !important;
+      min-height: 48px !important;
+      max-height: 48px !important;
+      padding: 0 !important;
+      aspect-ratio: 1 !important;
     }
 
     /* Icon-only overflow triggers keep a square hit target at enlarged text
@@ -456,9 +922,7 @@ function injectDynamicTypeStyles(document) {
       .product-app-nav {
       height: auto !important;
       max-height: none !important;
-      min-height: calc(
-        var(--dynamic-type-bottom-nav-block, 82px) + env(safe-area-inset-bottom)
-      ) !important;
+      min-height: calc(82px + env(safe-area-inset-bottom)) !important;
     }
 
     html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
@@ -495,7 +959,7 @@ function injectDynamicTypeStyles(document) {
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) {
         /* The bar may grow with its content, but must not reserve five text
            lines of empty space when its labels occupy a single line. */
-        --dynamic-type-bottom-nav-block: 82px;
+        --dynamic-type-bottom-nav-block: var(--dynamic-type-measured-nav-block, 82px);
         --dynamic-type-bottom-gap: max(28px, 2rem);
         --dynamic-type-screen-end-space: calc(
           var(--dynamic-type-bottom-nav-block) +
@@ -874,9 +1338,220 @@ function injectDynamicTypeStyles(document) {
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
       }
     }
+    /* Grow the glyphs themselves, not only their button wrappers. */
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+      body #app .product-app-nav .product-nav-button {
+      min-width: 0 !important;
+      padding-inline: 2px !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+      body #app .product-app-nav .product-nav-button > span:not(.product-nav-badge) {
+      font-size: var(--dynamic-text-12, 0.75rem) !important;
+      line-height: 1.2 !important;
+      max-width: none !important;
+      white-space: nowrap !important;
+      overflow-wrap: normal !important;
+    }
+
+    html.${NAV_STACKED_CLASS}.design-coherence-v1.ledger-workspace-v1
+      body #app .product-app-nav {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    /* A short landscape phone has enough horizontal room for four enlarged
+       labels. Give the measured nav that room before deciding to stack it;
+       two rows otherwise consume the space needed by event and expense forms. */
+    @media (min-width: 600px) and (max-width: 720px) and (orientation: landscape) and (max-height: 450px) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .product-app-nav {
+        width: min(520px, calc(100% - 24px)) !important;
+      }
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .product-home-screen .home-quick-actions {
+      --home-create-overlap: var(--dynamic-home-action-half, calc(0.6rem + 11px));
+    }
+
+    @media (min-width: 600px) and (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
+      /* Keep a real pixel between the enlarged hero copy and its edge action
+         after WebKit rounds the measured half-height to device pixels. */
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .product-home-screen .home-quick-actions {
+        --home-create-overlap: calc(var(--dynamic-home-action-half, calc(0.6rem + 11px)) - 1px);
+      }
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .product-home-screen .home-create-event-action.is-primary {
+      width: max-content !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      height: auto !important;
+      min-height: 56px !important;
+      padding: 10px 20px !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .product-home-screen .home-create-event-action.is-primary > span:nth-child(2) {
+      min-width: 0 !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .product-home-screen .home-create-event-action.is-primary strong {
+      font-size: var(--dynamic-text-16, 1rem) !important;
+      line-height: 1.2 !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+    }
+
+    /* Match the existing Home type hierarchy at the user's system scale. */
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-row-title strong {
+      font-size: var(--dynamic-text-16, 1rem) !important;
+      line-height: 1.25 !important;
+      white-space: normal !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      overflow-wrap: anywhere !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-row-meta {
+      font-size: var(--dynamic-text-11, 0.6875rem) !important;
+      line-height: 1.4 !important;
+      overflow: visible !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-row-state {
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      line-height: 1.3 !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-row-details {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 4px 8px !important;
+      height: auto !important;
+      white-space: normal !important;
+      overflow: visible !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-row-details :is(span, time, bdi) {
+      font-size: inherit !important;
+      line-height: inherit !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter button {
+      height: auto !important;
+      font-size: var(--dynamic-text-11, 0.6875rem) !important;
+      line-height: 1.25 !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-option-content > span:first-child {
+      font-size: inherit !important;
+      line-height: 1.25 !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: keep-all !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-option-content > strong {
+      font-size: var(--dynamic-text-10, 0.625rem) !important;
+      line-height: 1.2 !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter button .font-num {
+      width: auto !important;
+      height: auto !important;
+      min-height: 1em !important;
+      font-size: inherit !important;
+      line-height: 1.2 !important;
+    }
+
   `;
   document.head.append(style);
 }
+
+const NAV_STACKED_CLASS = "dynamic-type-nav-stacked";
+const NAV_MEASURED_PROPERTY = "--dynamic-type-measured-nav-block";
+const HOME_HALF_PROPERTY = "--dynamic-home-action-half";
+
+export function refreshDynamicTypeControls(root = globalThis.document?.documentElement) {
+  if (!root) return;
+  const document = root.ownerDocument;
+  const view = document.defaultView;
+  const active = root.classList.contains(ACTIVE_CLASS) || root.classList.contains("dynamic-type-preview");
+  if (!active) {
+    if (root.classList.contains(NAV_STACKED_CLASS)) root.classList.remove(NAV_STACKED_CLASS);
+    root.style.removeProperty(NAV_MEASURED_PROPERTY);
+    root.style.removeProperty(HOME_HALF_PROPERTY);
+    return;
+  }
+  const navs = [...document.querySelectorAll("#app .product-app-nav")]
+    .filter(nav => nav.getBoundingClientRect().width > 0);
+  const stacked = navs.some(nav => {
+    const style = view.getComputedStyle(nav);
+    const number = value => Number.parseFloat(value) || 0;
+    const width = nav.clientWidth - number(style.paddingLeft) - number(style.paddingRight);
+    const labelWidths = [...nav.querySelectorAll(".product-nav-button > span:not(.product-nav-badge)")]
+      .map(label => {
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        return range.getBoundingClientRect().width;
+      });
+    return primaryNavigationNeedsTwoRows({ width, labelWidths, gap: number(style.columnGap), inlinePadding: 4 });
+  });
+  if (root.classList.contains(NAV_STACKED_CLASS) !== stacked) root.classList.toggle(NAV_STACKED_CLASS, stacked);
+  const set = (property, value) => {
+    if (root.style.getPropertyValue(property) !== value) root.style.setProperty(property, value);
+  };
+  if (navs.length) set(NAV_MEASURED_PROPERTY, `${Math.ceil(Math.max(...navs.map(nav => nav.getBoundingClientRect().height)))}px`);
+  else root.style.removeProperty(NAV_MEASURED_PROPERTY);
+  const action = document.querySelector("#app .home-create-event-action");
+  if (action?.getBoundingClientRect().height) set(HOME_HALF_PROPERTY, `${action.getBoundingClientRect().height / 2}px`);
+  return { stacked, navCount: navs.length };
+}
+
+function watchDynamicTypeControls(root = document.documentElement) {
+  const view = root.ownerDocument.defaultView;
+  const observed = new Set();
+  let pending = false;
+  const schedule = () => {
+    if (pending) return;
+    pending = true;
+    view.requestAnimationFrame(() => {
+      pending = false;
+      const targets = new Set([root, ...document.querySelectorAll(
+        "#app .product-app-nav, #app .product-nav-button > span:not(.product-nav-badge), #app .home-create-event-action"
+      )]);
+      for (const target of observed) if (!targets.has(target)) { observer?.unobserve(target); observed.delete(target); }
+      for (const target of targets) if (!observed.has(target)) { observer?.observe(target); observed.add(target); }
+      refreshDynamicTypeControls(root);
+    });
+  };
+  const observer = view.ResizeObserver ? new view.ResizeObserver(schedule) : null;
+  document.addEventListener("settle-friends:screen-rendered", schedule);
+  document.addEventListener("settle-friends:accessibility-preferences-changed", schedule);
+  view.addEventListener("resize", schedule);
+  view.addEventListener("pageshow", schedule);
+  document.fonts?.ready?.then(schedule);
+  document.fonts?.addEventListener?.("loadingdone", schedule);
+  schedule();
+}
+
 
 function initializeDynamicType() {
   injectDynamicTypeStyles(document);
@@ -887,6 +1562,8 @@ function initializeDynamicType() {
     document.documentElement.style.setProperty("font-size", `${previewSize}px`, "important");
   }
   refreshAccessibleText();
+  watchAppleDynamicType();
+  watchDynamicTypeControls();
 }
 
 function refreshAccessibleText() {

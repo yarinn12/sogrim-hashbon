@@ -303,6 +303,8 @@ test("Supabase owns referral attribution, qualification and entitlements", async
 });
 
 test("referral UI and AdMob foundation preserve financial focus", async () => {
+  const invitationView = await readFile("src/ui/referralInvitationPresentation.mjs", "utf8");
+
   const [
     packageJson,
     index,
@@ -325,30 +327,32 @@ test("referral UI and AdMob foundation preserve financial focus", async () => {
       readFile("scripts/finalize-native-projects.mjs", "utf8")
     ]);
 
+  assert.match(referralLayer, /renderReferralInvitationDialogView/);
+  assert.match(referralLayer, /renderReferralInvitationQrView/);
   assert.ok(packageJson.dependencies["@capacitor-community/admob"]);
   assert.match(index, /publicReferralRewardsLayer\.mjs/);
   assert.match(index, /publicAdLayer\.mjs/);
   assert.match(referralLayer, /data-open-referral-rewards/);
-  assert.match(referralLayer, /screen\.matches\('\[data-screen-kind="home"\]'\)/);
-  assert.match(referralLayer, /referralRewardCard\("home"\)/);
+  assert.match(referralLayer, /screen\.matches\("\.groups-overview-screen\.friends-hub-screen"\)/);
+  assert.doesNotMatch(referralLayer, /referralRewardCard\("home"\)/);
   assert.match(referralLayer, /referralRewardCard\("profile"\)/);
   assert.match(referralLayer, /syncReferralRewardCard/);
-  assert.match(referralLayer, /data-referral-context="friends"/);
-  assert.doesNotMatch(referralLayer, /syncReferralRewardCard\(screen, "friends"/);
+  assert.match(referralLayer, /referralRewardCard\("friends"\)/);
+  assert.match(referralLayer, /syncReferralRewardCard\(screen, "friends"/);
   assert.match(referralLayer, /existing\.outerHTML = referralRewardCard\(context\)/);
   assert.match(referralLayer, /adFreeDaysRemaining/);
   assert.doesNotMatch(referralLayer, /querySelector\("\.home-invite-shortcuts"\)/);
   assert.match(referralLayer, /חודש ללא פרסומות/);
   assert.match(referralLayer, /הטבת חברים/);
   assert.match(referralLayer, /הזמנת חברים/);
-  assert.match(referralLayer, /\.referral-reward-card\.is-home/);
+  assert.match(referralLayer, /const isFriends = context === "friends"/);
   assert.match(referralLayer, /transform: scale\(0\.96\)/);
   assert.doesNotMatch(app, /function renderHomeEventTools/);
   assert.match(referralLayer, /settle-friends:native-back/);
   assert.match(referralLayer, /setReferralBackgroundInert\(true\)/);
   assert.match(referralLayer, /trapReferralDialogFocus/);
   assert.match(referralLayer, /if \(referralBusy && \["copy", "share"\]\.includes\(action\)\) return/);
-  assert.match(referralLayer, /aria-busy="true"/);
+  assert.match(invitationView, /aria-busy="true"/);
   assert.match(referralLayer, /visibilitychange/);
   assert.match(referralLayer, /addEventListener\("online"/);
   assert.match(referralLayer, /PENDING_REFERRAL_CODE_KEY/);
@@ -374,15 +378,15 @@ test("referral UI and AdMob foundation preserve financial focus", async () => {
   assert.match(referralLayer, /referralStatus\.status === "ready"/);
   assert.match(referralLayer, /refreshReferralStatus\(\);/);
   assert.match(referralLayer, /\.\.\.referralStatus,\s*status: "error"/);
-  assert.match(referralLayer, /class="referral-state-message is-stale"/);
+  assert.match(invitationView, /class="referral-state-message is-stale"/);
   assert.match(referralLayer, /הקישור האישי שלך ממשיך לעבוד/);
   assert.match(referralLayer, /loadReferralStatusWithAccountRecovery/);
   assert.match(referralLayer, /SogrimAccountSession\?\.refresh/);
   assert.match(referralLayer, /Number\(error\?\.status\) === 401/);
   assert.match(referralLayer, /createQrSvg/);
-  assert.match(referralLayer, /data-referral-qr/);
+  assert.match(invitationView, /data-referral-qr/);
   assert.match(referralLayer, /QR להזמנת חברים לסוגרים חשבון/);
-  assert.match(referralLayer, /data-referral-action="profile"/);
+  assert.match(invitationView, /data-referral-action="profile"/);
   assert.match(referralLayer, /data-action="edit-profile"/);
   assert.match(referralLayer, /signedOut \? "is-signin-state" : ""/);
   assert.match(referralLayer, /navigator\.share/);

@@ -1,4 +1,5 @@
 import { sumMoneyAmounts } from "./money.mjs";
+import { validateExpenseFx } from "./expenseFx.mjs";
 
 export function validateExpense(expense, context = {}) {
   const errors = [];
@@ -48,6 +49,9 @@ export function validateExpense(expense, context = {}) {
   }
   if (paidTotal !== null && paidTotal !== expense.total) {
     errors.push("סכום המשלמים חייב להיות שווה לסכום ההוצאה.");
+  }
+  if (expense.fxConversion && !validateExpenseFx(expense, context.currency ?? expense.fxConversion.targetCurrency)) {
+    errors.push("נתוני המרת המטבע אינם תואמים לסכום ההוצאה.");
   }
 
   return errors;

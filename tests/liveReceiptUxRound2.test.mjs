@@ -27,11 +27,13 @@ test("active events use one persistent expense action instead of a repeated head
   assert.match(eventScreen, /event-has-action-dock/);
   assert.match(eventScreen, /renderEventActionDock\(event, total, canEdit\)/);
   assert.doesNotMatch(eventScreen, /class="primary-button" data-action="show-expense-form"/);
-  assert.match(actionDock, /class="event-action-dock"/);
-  assert.match(actionDock, /data-inline-sync-status/);
-  assert.match(actionDock, /data-inline-sync-retry/);
-  assert.match(actionDock, /data-action="show-expense-form"/);
-  assert.match(actionDock, /סה"כ באירוע/);
+  assert.match(actionDock, /renderEventActionDockView/);
+  const actionView = await readFile("src/ui/eventFinancialCards.mjs", "utf8");
+  assert.match(actionView, /class="event-action-dock"/);
+  assert.match(actionView, /data-inline-sync-status/);
+  assert.match(actionView, /data-inline-sync-retry/);
+  assert.match(actionView, /data-action="show-expense-form"/);
+  assert.match(actionView, /סה״כ הוצאות/);
   assert.doesNotMatch(insightAction, /data-action="settle"/);
 });
 
@@ -67,7 +69,9 @@ test("expense rows reveal every shared participant from the uncluttered row", as
   );
 
   assert.match(expenseRow, /class="expense-participants-details"/);
-  assert.match(expenseRow, /class="expense-participants-list-title"[^>]*>רשימת משתתפים<\/p>/);
+  const disclosure = await readFile("src/ui/expenseDisclosure.mjs", "utf8");
+  assert.match(expenseRow, /renderExpenseParticipantsHeadingView\(\{ expenseId: expense.id \}\)/);
+  assert.match(disclosure, /class="expense-participants-list-title"[^>]*>מתחלקים בהוצאה<\/p>/);
   assert.match(expenseRow, /participant && !isCurrentParticipant \? renderParticipantConnectionBadge\(participant\) : ""/);
   assert.match(expenseRow, /data-action="toggle-expense-participants"/);
   assert.match(expenseRow, /aria-expanded="false"/);

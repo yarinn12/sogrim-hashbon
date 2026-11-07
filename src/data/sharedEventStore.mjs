@@ -568,6 +568,16 @@ export async function syncSharedEvents(
   if (runtimeConfig?.storage?.mode !== "supabase") return state;
 
   let nextState = state;
+  const deferredFailures = Array.isArray(selection?.deferredFailures)
+    ? selection.deferredFailures : [];
+  const deferredFailure = (kind, id) => {
+    const held = deferredFailures.find(item => item.kind === kind && item.id === id);
+    if (!held) return null;
+    const error = new Error("A previously rejected shared event write is awaiting explicit retry");
+    error.status = held.status;
+    if (held.code) error.code = held.code;
+    return error;
+  };
   const selectedDeletedEventIds = selectedIds(selection?.deletedEventIds);
   const deletedEvents = (state.deletedEvents ?? []).filter(
     (deletedEvent) =>
@@ -575,8 +585,11 @@ export async function syncSharedEvents(
   );
   const deletionResults = await mapSettledWithConcurrency(
     deletedEvents,
-    (deletedEvent) =>
-      saveSharedEventDeletion(runtimeConfig, deletedEvent, fetchImpl),
+    (deletedEvent) => {
+      const held = deferredFailure("deletion", deletedEvent.id);
+      if (held) throw held;
+      return saveSharedEventDeletion(runtimeConfig, deletedEvent, fetchImpl);
+    },
     SHARED_EVENT_WRITE_CONCURRENCY
   );
 
@@ -592,6 +605,8 @@ export async function syncSharedEvents(
   const eventResults = await mapSettledWithConcurrency(
     sharedEventIds,
     async (eventId) => {
+      const held = deferredFailure("event", eventId);
+      if (held) throw held;
       try {
         return await saveSharedEventState(runtimeConfig, state, eventId, fetchImpl);
       } catch (error) {
@@ -658,6 +673,12 @@ export async function syncSharedEvents(
     // nextState still contains the optimistic changes of failed siblings.
     error.partialSharedState = {
       state: nextState,
+      failedItems: [
+        ...deletionResults.filter(result => result.status === "rejected")
+          .map(result => ({ kind: "deletion", id: result.item.id, error: result.reason })),
+        ...eventResults.filter(result => result.status === "rejected")
+          .map(result => ({ kind: "event", id: result.item, error: result.reason }))
+      ],
       succeededEventIds: [
         ...deletionResults.filter((result) => result.status === "fulfilled" && result.value === true)
           .map((result) => result.item.id),

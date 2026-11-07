@@ -1,3 +1,4 @@
+import { renderAccessibilityCenterView } from "./ui/accessibilityPresentation.mjs";
 import {
   DEFAULT_ACCESSIBILITY_PREFERENCES,
   loadAccessibilityPreferences,
@@ -178,7 +179,9 @@ function handleAccessibilityChange(event) {
   const control = event.target.closest(
     "[data-accessibility-text-size], [data-accessibility-contrast], [data-accessibility-motion]"
   );
-  if (!control) return;
+  // The root carries the same attribute as a state marker. Ordinary form
+  // changes must not treat that marker as a settings input and reset preferences.
+  if (!(control instanceof HTMLInputElement)) return;
 
   if (control.matches("[data-accessibility-text-size]")) {
     preferences = saveAccessibilityPreferences({
@@ -217,97 +220,7 @@ function openAccessibilityCenter(trigger = document.activeElement) {
     // Focus restoration still works without session storage on the same page.
   }
 
-  document.body.insertAdjacentHTML(
-    "beforeend",
-    `
-      <div class="accessibility-center-backdrop">
-        <section
-          class="accessibility-center"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="accessibility-center-title"
-          aria-describedby="accessibility-center-description"
-          tabindex="-1"
-        >
-          <header class="accessibility-center-header">
-            <div>
-              <p class="accessibility-center-eyebrow">תצוגה נוחה יותר</p>
-              <h2 id="accessibility-center-title">נגישות</h2>
-              <p id="accessibility-center-description">
-                בחרו את ההעדפות שנוחות לכם במכשיר הזה.
-              </p>
-            </div>
-            <button
-              class="accessibility-close-button"
-              data-close-accessibility
-              type="button"
-              aria-label="סגירת הגדרות נגישות"
-              title="סגור"
-            >${iconSvg("x")}</button>
-          </header>
-
-          <div class="accessibility-center-content">
-            <fieldset class="accessibility-text-size-control">
-              <legend>גודל טקסט</legend>
-              <p>ברירת המחדל מתאימה את הטקסט להגדרת המכשיר.</p>
-              <div class="accessibility-segmented-control">
-                ${renderTextSizeOption("system", "לפי המכשיר")}
-                ${renderTextSizeOption("large", "גדול")}
-                ${renderTextSizeOption("extra-large", "גדול מאוד")}
-              </div>
-            </fieldset>
-
-            <label class="accessibility-setting-row">
-              <span>
-                <strong>ניגודיות גבוהה</strong>
-                <small>מחזקת טקסט, גבולות וכפתורים.</small>
-              </span>
-              <input
-                data-accessibility-contrast
-                type="checkbox"
-                role="switch"
-                aria-label="ניגודיות גבוהה"
-              />
-              <span class="accessibility-switch" aria-hidden="true"></span>
-            </label>
-
-            <label class="accessibility-setting-row">
-              <span>
-                <strong>הפחתת תנועה</strong>
-                <small>מצמצמת אנימציות ומעברים.</small>
-              </span>
-              <input
-                data-accessibility-motion
-                type="checkbox"
-                role="switch"
-                aria-label="הפחתת תנועה"
-              />
-              <span class="accessibility-switch" aria-hidden="true"></span>
-            </label>
-
-            <a class="accessibility-statement-link" href="./accessibility.html">
-              <span>
-                <strong>הצהרת נגישות</strong>
-                <small>מידע, התאמות ויצירת קשר.</small>
-              </span>
-              <span aria-hidden="true">${iconSvg("chevron-left")}</span>
-            </a>
-          </div>
-
-          <footer class="accessibility-center-footer">
-            <button class="accessibility-reset-button" data-reset-accessibility type="button">
-              איפוס הגדרות
-            </button>
-            <button class="accessibility-done-button" data-close-accessibility type="button">
-              סיום
-            </button>
-          </footer>
-          <p class="visually-hidden" data-accessibility-status role="status" aria-live="polite"></p>
-        </section>
-      </div>
-    `
-  );
-
+  document.body.insertAdjacentHTML("beforeend", renderAccessibilityCenterView());
   setBackgroundInert(true);
   document.documentElement.classList.add("accessibility-center-open");
   publishAccessibilityCenterState(true);
@@ -325,20 +238,6 @@ function openAccessibilityCenter(trigger = document.activeElement) {
   // render as well without stealing it once the user moved inside the dialog.
   requestAnimationFrame(() => requestAnimationFrame(focusCenterIfNeeded));
   window.setTimeout(focusCenterIfNeeded, 120);
-}
-
-function renderTextSizeOption(value, label) {
-  return `
-    <label>
-      <input
-        data-accessibility-text-size
-        type="radio"
-        name="accessibility-text-size"
-        value="${value}"
-      />
-      <span>${label}</span>
-    </label>
-  `;
 }
 
 function syncAccessibilityControls() {
@@ -415,14 +314,19 @@ function closeAccessibilityCenter({ fromHistory = false } = {}) {
   document.documentElement.classList.remove("accessibility-center-open");
   publishAccessibilityCenterState(false);
   const target = returnFocus;
+  const recovery = { stopped: false };
   returnFocus = null;
   const restoreFocus = () => {
+    if (recovery.stopped || document.querySelector(BACKDROP_SELECTOR)) return;
     const visibleEntry = [...document.querySelectorAll(`${ENTRY_SELECTOR}:not([disabled])`)]
       .find((entry) => entry.getClientRects().length > 0 && !entry.closest("[inert]"));
     const focusTarget =
       target?.isConnected && target.getClientRects().length > 0
         ? target
         : visibleEntry;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.isConnected && active !== document.body &&
+        active !== document.documentElement && active !== focusTarget) return;
     if (focusTarget instanceof HTMLElement && !focusTarget.closest("[inert]")) {
       focusTarget.focus({ preventScroll: true });
       try {
@@ -438,15 +342,16 @@ function closeAccessibilityCenter({ fromHistory = false } = {}) {
   for (const delay of [120, 400, 1_000, 1_800, 3_000]) {
     window.setTimeout(restoreFocus, delay);
   }
-  maintainAccessibilityReturnFocus(target);
+  maintainAccessibilityReturnFocus(target, recovery);
 }
 
-function maintainAccessibilityReturnFocus(preferredTarget) {
+function maintainAccessibilityReturnFocus(preferredTarget, recovery = { stopped: false }) {
   focusReturnGuardCleanup?.();
   let stopped = false;
   const stop = () => {
     if (stopped) return;
     stopped = true;
+    recovery.stopped = true;
     window.clearInterval(intervalId);
     window.clearTimeout(timeoutId);
     document.removeEventListener("pointerdown", stop, true);
@@ -463,6 +368,9 @@ function maintainAccessibilityReturnFocus(preferredTarget) {
         ? preferredTarget
         : visibleEntry;
     if (!(focusTarget instanceof HTMLElement) || focusTarget.closest("[inert]")) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.isConnected && active !== document.body &&
+        active !== document.documentElement && active !== focusTarget) { stop(); return; }
     if (document.activeElement !== focusTarget) focusTarget.focus();
   };
   document.addEventListener("pointerdown", stop, true);
@@ -488,10 +396,20 @@ function restoreAccessibilityEntryFocusAfterNavigation() {
     return;
   }
   window.setTimeout(() => {
+    if (document.querySelector(BACKDROP_SELECTOR)) return;
+    try {
+      if (window.sessionStorage.getItem(RETURN_FOCUS_STORAGE_KEY) !== "1") return;
+    } catch {
+      return;
+    }
     const entry = [...document.querySelectorAll(`${ENTRY_SELECTOR}:not([disabled])`)]
       .find((item) => item.getClientRects().length > 0 && !item.closest("[inert]"));
     if (!(entry instanceof HTMLElement)) return;
-    entry.focus({ preventScroll: true });
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement && active.isConnected && active !== document.body &&
+        active !== document.documentElement && active !== entry)) {
+      entry.focus({ preventScroll: true });
+    }
     try {
       window.sessionStorage.removeItem(RETURN_FOCUS_STORAGE_KEY);
     } catch {
@@ -552,10 +470,12 @@ function handleAccessibilityKeydown(event) {
   if (!center) return;
   if (event.key === "Escape") {
     event.preventDefault();
+    event.stopImmediatePropagation();
     closeAccessibilityCenter();
     return;
   }
   if (event.key !== "Tab") return;
+  event.stopImmediatePropagation();
 
   const focusable = [
     ...center.querySelectorAll(

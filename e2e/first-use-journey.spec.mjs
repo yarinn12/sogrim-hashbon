@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
 
 const OWNER_ID = "person-first-use-owner";
 let runtimeIssues = [];
@@ -59,8 +60,7 @@ test.beforeEach(async ({ page, request }) => {
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, { participantId: OWNER_ID, state: emptyAccountState });
 
-  await page.goto("/");
-  await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
+  await openRenderedHome(page);
 });
 
 test.afterEach(() => {
@@ -83,11 +83,21 @@ test("a new user completes the first useful loop without help", async ({ page })
   const currencyPicker = page.locator(".new-event-inline-picker").filter({
     hasText: "מטבע האירוע"
   });
+  await page.locator('[data-action="new-event-name"]').press("Enter");
+  await expect(currencyPicker.locator("summary")).toBeFocused();
   await expect(currencyPicker.locator("summary")).toContainText("שקל ישראלי");
   await currencyPicker.locator("summary").click();
   await expect(
     currencyPicker.locator('[data-action="new-event-currency-choice"]')
-  ).toHaveCount(29);
+  ).toHaveCount(32);
+  const currencySearch = currencyPicker.locator('[data-action="new-event-currency-search"]');
+  await currencySearch.fill("MXN");
+  await expect(currencyPicker.locator('[data-action="new-event-currency-choice"]:visible')).toHaveCount(1);
+  await expect(currencyPicker.locator('[data-action="new-event-currency-choice"][data-choice-value="MXN"]')).toBeVisible();
+  await currencySearch.fill("ברזילאי");
+  await expect(currencyPicker.locator('[data-action="new-event-currency-choice"]:visible')).toHaveCount(1);
+  await expect(currencyPicker.locator('[data-action="new-event-currency-choice"][data-choice-value="BRL"]')).toBeVisible();
+  await currencySearch.clear();
   await expect(
     currencyPicker.locator('[data-action="new-event-currency-choice"][data-choice-value="USD"]')
   ).toContainText("דולר אמריקאי");
@@ -211,8 +221,8 @@ test("a new user completes the first useful loop without help", async ({ page })
 
   // A closed event intentionally blocks adding participants. Reopen it before
   // exercising the invitation journey so this test follows the real product flow.
-  await settlement.locator(".settlement-more-actions > summary").click();
-  await settlement.locator('[data-action="reopen-event"]').click();
+  await expect(settlement.locator('.settlement-reopen-action')).toHaveText('פתח אירוע מחדש');
+  await settlement.locator('.settlement-reopen-action[data-action="reopen-event"]').click();
   await page.locator('[data-action="confirm-important-action"]').click();
   await expect(settlement.locator('[data-action="close-event"]').first()).toBeVisible();
 
@@ -404,13 +414,15 @@ test("a long saved-name list stays searchable while creating an event", async ({
 test("friends hub exposes tabs without reporting profile as the current page", async ({ page }) => {
   await page.locator('.product-nav-button[data-nav-destination="profile"]').click();
   await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
-  await page.locator('[data-action="groups"][data-tab="people"]').click();
+  await page.locator('.profile-friends-entry[data-action="groups"][data-tab="people"]').click();
 
   const friendsHub = page.locator('[data-screen-kind="groups"].friends-hub-screen');
   await expect(friendsHub).toBeVisible();
   await expect(friendsHub.locator('[role="tab"][aria-selected="true"]')).toHaveCount(1);
   await expect(friendsHub.locator('#friends-tab-people')).toHaveAttribute("aria-selected", "true");
-  await expect(friendsHub.locator('.product-nav-button[aria-current="page"]')).toHaveCount(0);
+  await expect(friendsHub.locator('.product-nav-button[aria-current="page"]')).toHaveCount(1);
+  await expect(friendsHub.locator('[data-nav-destination="friends"]')).toHaveAttribute("aria-current", "page");
+  await expect(friendsHub.locator('[data-nav-destination="profile"]')).not.toHaveAttribute("aria-current", "page");
 });
 
 async function assertShareRouteChoicesDoNotOverlap(shareDialog) {
@@ -439,7 +451,7 @@ async function captureConsistencySurface(page, name) {
   if (process.env.CAPTURE_COHERENCE_ALL !== "1") return;
   await page.waitForTimeout(200);
   await page.screenshot({
-    path: `design-audits/consistency-current/${name}.png`,
+    path: test.info().outputPath(`${name}.png`),
     fullPage: false
   });
 }

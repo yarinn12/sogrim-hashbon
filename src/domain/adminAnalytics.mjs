@@ -8,9 +8,7 @@ export function buildAdminAnalyticsViewModel(overview, locale = "he-IL") {
     (total, item) => total + nonNegativeNumber(item?.count),
     0
   );
-  const clientErrorCount = nonNegativeNumber(
-    overview?.telemetry?.clientErrorsDuringWindow
-  );
+  const clientErrorCount = overview?.telemetry?.clientErrorsDuringWindow;
   const stalePushDeliveries = nonNegativeNumber(
     overview?.pushDelivery?.stalePending
   );
@@ -119,6 +117,12 @@ export function buildAdminAnalyticsViewModel(overview, locale = "he-IL") {
             locale
           ),
           detailItem(
+            "מכשירי Push כבויים",
+            overview?.push?.disabledDevices,
+            "מכשירים רשומים ללא Push פעיל",
+            locale
+          ),
+          detailItem(
             "התראות שלא נקראו",
             overview?.notifications?.unreadItems,
             `${formatNumber(overview?.notifications?.createdDuringWindow, locale)} נוצרו בתקופה`,
@@ -159,6 +163,18 @@ export function buildAdminAnalyticsViewModel(overview, locale = "he-IL") {
             "פניות חדשות",
             overview?.feedback?.new,
             `${formatNumber(overview?.feedback?.reviewing, locale)} בטיפול`,
+            locale
+          ),
+          detailItem(
+            "פניות שנפתרו",
+            overview?.feedback?.resolved,
+            "מצב הפניות כעת",
+            locale
+          ),
+          detailItem(
+            "דיווחי שגיאת לקוח בתקופה",
+            clientErrorCount,
+            `מספר דיווחים ב-${formatNumber(windowDays, locale)} הימים האחרונים`,
             locale
           )
         ]
@@ -241,10 +257,11 @@ export function formatBytes(value, locale = "he-IL") {
 }
 
 function detailItem(label, value, detail, locale) {
+  const available = value !== null && value !== undefined && value !== "";
   return {
     label,
-    value: formatNumber(value, locale),
-    detail
+    value: available ? formatNumber(value, locale) : "—",
+    detail: available ? detail : "נתון לא זמין"
   };
 }
 

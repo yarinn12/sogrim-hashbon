@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
+import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
+
+test.use({ reducedMotion: "no-preference" });
 
 const eventId = "visual-roster-reflow";
 const ownerId = "visual-roster-owner";
@@ -23,7 +27,7 @@ const state = {
 };
 
 for (const orientation of ["portrait", "landscape"]) {
-  test(`a long event title leaves the entire participant roster reachable in ${orientation}`, async ({ page, request, browserName }, testInfo) => {
+  test(`a long event title leaves the entire participant roster reachable in ${orientation}`, async ({ page, request, browserName, baseURL }, testInfo) => {
     await request.post("/api/reset");
     await request.put("/api/state", { data: state });
     await page.addInitScript(({ state, ownerId }) => {
@@ -36,9 +40,59 @@ for (const orientation of ["portrait", "landscape"]) {
       sessionStorage.setItem("settle-friends-skip-next-splash", "1");
     }, { state, ownerId });
     if (orientation === "landscape") await page.setViewportSize({ width: 667, height: 375 });
-    await page.goto("/?dynamic-type-preview=32");
+    // Keep load pending while the real home renders. The roster journey must
+    // use app readiness rather than an unrelated resource or Firefox's
+    // navigation waiter; retain every motion, font and geometry check below.
+    const heldImage = await holdNonessentialHomeImage(page, baseURL);
+    try {
+      await openRenderedHome(page, { path: "/?dynamic-type-preview=32" });
+      expect(heldImage.requested, "the nonessential image is actually pending").toBe(true);
+      expect(await page.evaluate(() => document.readyState), "load must still be pending").not.toBe("complete");
+    } finally {
+      heldImage.release();
+    }
+    await expect(page.locator("#app-splash")).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("visible");
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+    expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(false);
     await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    if (orientation === "landscape") {
+      await page.evaluate(() => {
+        const samples = [];
+        const motionCalls = [];
+        const animate = globalThis.Motion?.animate;
+        if (typeof animate !== "function") throw new Error("Motion.animate is unavailable");
+        globalThis.Motion.animate = (target, keyframes, options) => {
+          if (target instanceof Element && target.matches(".event-participant-roster-modal")) {
+            motionCalls.push({ properties: Object.keys(keyframes), duration: options?.duration });
+          }
+          return animate(target, keyframes, options);
+        };
+        let active = true;
+        const sample = () => {
+          if (!active) return;
+          const modal = document.querySelector(".event-participant-roster-modal");
+          const nav = [...document.querySelectorAll(".product-app-nav")]
+            .map(element => element.getBoundingClientRect()).find(rect => rect.height > 0);
+          if (modal && nav) {
+            const panel = modal.getBoundingClientRect();
+            samples.push({ gap: nav.top - panel.bottom, transform: modal.style.transform });
+          }
+          requestAnimationFrame(sample);
+        };
+        window.__rosterEntranceProbe = {
+          samples, motionCalls, stop: () => { active = false; },
+          initial: {
+            visibility: document.visibilityState,
+            splash: Boolean(document.querySelector("#app-splash")),
+            reducedClass: document.documentElement.classList.contains("accessibility-reduced-motion")
+          }
+        };
+        requestAnimationFrame(sample);
+      });
+    }
     await page.locator('[data-action="open-event-participants"]').click();
     const roster = page.locator(".event-participant-roster-modal");
     await expect(roster).toBeVisible();
@@ -48,6 +102,46 @@ for (const orientation of ["portrait", "landscape"]) {
     await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation =>
       animation.playState === "running" && Number.isFinite(animation.effect?.getComputedTiming().endTime)
     ).length)).toBe(0);
+    if (orientation === "landscape") {
+      // The entrance uses JavaScript-driven transforms, which document.getAnimations() misses.
+      let motionWaitError;
+      try {
+        await page.waitForFunction(() => window.__rosterEntranceProbe.motionCalls.length > 0, null, {
+          polling: 100, timeout: 10_000
+        });
+      } catch (error) {
+        motionWaitError = error;
+      }
+      await page.waitForTimeout(300);
+      const entrance = await page.evaluate(() => {
+        window.__rosterEntranceProbe.stop();
+        return {
+          samples: window.__rosterEntranceProbe.samples,
+          motionCalls: window.__rosterEntranceProbe.motionCalls,
+          initial: window.__rosterEntranceProbe.initial,
+          final: {
+            visibility: document.visibilityState,
+            splash: Boolean(document.querySelector("#app-splash")),
+            reducedClass: document.documentElement.classList.contains("accessibility-reduced-motion")
+          }
+        };
+      });
+      await testInfo.attach("roster-entrance-navigation-gaps", {
+        contentType: "application/json", body: JSON.stringify(entrance)
+      });
+      if (motionWaitError) throw motionWaitError;
+      expect(entrance.motionCalls.length, "the route must open with Motion enabled").toBeGreaterThan(0);
+      expect(entrance.samples.length, "the entrance geometry must be sampled").toBeGreaterThan(0);
+      const minimumGap = Math.min(...entrance.samples.map(sample => sample.gap));
+      console.log(JSON.stringify({
+        kind: "roster-entrance-clearance", profile: testInfo.project.name,
+        minimumGap, transforms: [...new Set(entrance.samples.map(sample => sample.transform))],
+        motionCalls: entrance.motionCalls, initial: entrance.initial, final: entrance.final,
+        samples: entrance.samples.length
+      }));
+      expect(minimumGap,
+        "the route must stay above navigation throughout its entrance").toBeGreaterThanOrEqual(-1);
+    }
 
     const scrollOwner = roster;
     // Programmatic scrolling alone can succeed on overflow:hidden elements.

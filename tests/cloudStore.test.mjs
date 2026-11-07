@@ -592,6 +592,20 @@ test("saveCloudState rejects a concurrent overwrite", async () => {
   );
 });
 
+test("a database FX conflict is reported distinctly from a retryable version conflict", async () => {
+  const response = () => new Response(JSON.stringify({ code: "PFX01", message: "private details" }),
+    { status: 400, headers: { "content-type": "application/json" } });
+  const personal = createConfig("fx-personal-conflict");
+  await assert.rejects(saveCloudState(personal, state, async () => response()),
+    error => error.code === "CLOUD_FX_CONFLICT");
+
+  const shared = createConfig("fx-shared-conflict");
+  shared.storage.snapshotKind = "shared_event";
+  shared.storage.account = { userId: "user-one", accessToken: "token", spaceId: "personal-space" };
+  await assert.rejects(saveCloudState(shared, state, async () => response(),
+    { expectedVersion: "2026-10-11T12:00:00Z" }), error => error.code === "CLOUD_FX_CONFLICT");
+});
+
 function jsonResponse(payload, responseHeaders = {}) {
   return {
     ok: true,

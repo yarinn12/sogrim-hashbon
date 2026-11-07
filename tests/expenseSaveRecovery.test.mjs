@@ -5,6 +5,7 @@ import vm from "node:vm";
 import * as memory from "../src/domain/expenseDraftMemory.mjs";
 import { updateExpense } from "../src/domain/appActions.mjs";
 import { parseMoneyInput } from "../src/domain/money.mjs";
+import { convertExpenseInput } from "../src/domain/expenseFx.mjs";
 import { validateExpense } from "../src/domain/validation.mjs";
 import { buildQuickItemExpenses } from "../src/domain/quickExpenses.mjs";
 
@@ -21,10 +22,10 @@ const originalExpense = () => ({ id: "expense-existing", name: "Original", total
   createdByParticipantId: "owner", occurredOn: "2026-09-09", notes: "", attachmentImage: "",
   updatedAt: "2026-09-08T10:00:00.000Z" });
 let clientSerial = 0;
-function harness({ values = new Map(), state, edit = false, quick = false } = {}) {
+function harness({ values = new Map(), state, edit = false, quick = false, fx = false } = {}) {
   const writes = [], closures = [];
   state ??= { currentParticipantId: "owner", participants: [{ id: "owner" }, { id: "peer" }],
-    events: [{ id: "event", participantIds: ["owner", "peer"], expenses: edit ? [originalExpense()] : [],
+    events: [{ id: "event", currency: "ILS", participantIds: ["owner", "peer"], expenses: edit ? [originalExpense()] : [],
       transfers: [], deletedExpenses: [] }] };
   let serial = 0;
   const client = ++clientSerial;
@@ -34,7 +35,11 @@ function harness({ values = new Map(), state, edit = false, quick = false } = {}
       sharedByParticipantIds: ["owner", "peer"], occurredOn: "2026-09-09", notes: "", attachmentImage: "",
       quickPayerId: "owner", quickItems: [{ name: "Soup", amount: "12", sharedBy: "__all__" },
         { name: "Bread", amount: "4", sharedBy: "__all__" }],
-      ...(edit ? { id: "expense-existing", baseExpenseUpdatedAt: originalExpense().updatedAt } : {}) },
+      ...(edit ? { id: "expense-existing", baseExpenseUpdatedAt: originalExpense().updatedAt } : {}),
+      ...(fx ? { sourceCurrency: "USD", total: "0.03", payers: [
+        { participantId: "owner", amount: "0.02", amountTouched: true },
+        { participantId: "peer", amount: "0.01", amountTouched: true }
+      ], fxMode: "manual", fxRate: "3.5" } : {}) },
     window: { localStorage: { getItem: key => values.get(key) ?? null,
       setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) } },
     getEvent: id => context.state.events.find(event => event.id === id),
@@ -44,6 +49,9 @@ function harness({ values = new Map(), state, edit = false, quick = false } = {}
     render: () => context.rememberExpenseDraft(), syncExpenseSaveState: () => {},
     reactivateDialogAfterRender: () => {}, activateDialog: () => {},
     parseMoneyInput, validateExpense, updateExpense, buildQuickItemExpenses, mergePayers: value => value,
+    expenseFxResult: () => convertExpenseInput({ sourceCurrency: context.expenseDraft.sourceCurrency,
+      targetCurrency: "ILS", sourceAmount: context.expenseDraft.total,
+      sourcePayers: context.expenseDraft.payers, rate: context.expenseDraft.fxRate, mode: context.expenseDraft.fxMode }),
     makeId: () => `expense-${client}-${++serial}`, todayInputValue: () => "2026-09-09", cloneNavigationValue: copy,
     recordEventActivity: () => {}, reconcileEventTransfers: () => {},
     persistState: () => new Promise(resolve => writes.push({ payload: copy(context.state), resolve })),
@@ -58,6 +66,22 @@ function harness({ values = new Map(), state, edit = false, quick = false } = {}
   context.rememberExpenseDraft();
   return { context, values, writes, closures, event: () => context.getEvent("event") };
 }
+
+test("foreign expense writes converted ledger amounts and a stable source snapshot only once", async () => {
+  const client = harness({ fx: true });
+  const firstSave = client.context.saveExpense("event");
+  await client.context.saveExpense("event");
+  assert.equal(client.writes.length, 1);
+  const expense = client.writes[0].payload.events[0].expenses[0];
+  assert.equal(expense.total, 11);
+  assert.deepEqual(expense.payers.map((payer) => payer.amount), [7, 4]);
+  assert.equal(expense.fxConversion.sourceCurrency, "USD");
+  assert.equal(expense.fxConversion.sourceAmountMinorUnits, "3");
+  assert.equal(expense.fxConversion.targetCurrency, "ILS");
+  assert.equal(expense.fxConversion.rateUnits, "target major units per 1 source major unit");
+  client.writes[0].resolve({ ok: true });
+  await firstSave;
+});
 function reload(h, { editId = "", state = h.context.state } = {}) {
   // A vanished page never receives its outstanding response. The next page
   // gets the durable snapshot and the actual serialized draft from that page.

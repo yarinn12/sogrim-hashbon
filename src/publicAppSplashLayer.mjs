@@ -31,7 +31,8 @@ function installSplash({ showPosterOnly = false } = {}) {
   const reduceMotion =
     loadAccessibilityPreferences().reduceMotion ||
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-  let fallbackMode = Boolean(showPosterOnly || reduceMotion || !video);
+  // A failed media load may finish before this module can attach its error listener.
+  let fallbackMode = Boolean(showPosterOnly || reduceMotion || !video || video.error);
   let dismissed = false;
   let loadTimeoutId = 0;
   let progressTimeoutId = 0;

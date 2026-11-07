@@ -188,8 +188,9 @@ test("currency with existing expenses requires an explicit override", () => {
 });
 
 test("the currency control stays available but existing money requires confirmation", () => {
-  assert.match(app, /const hasExistingExpenses = event\.expenses\.length > 0;/);
-  assert.match(app, /\$\{!canManage \? "disabled" : ""\}/);
+  const currencyView = readFileSync("src/ui/eventCurrencyPresentation.mjs", "utf8");
+  assert.match(app, /hasExistingExpenses: event\.expenses\.length > 0/);
+  assert.match(currencyView, /\$\{!canManage \|\| hasConvertedExpenses \? "disabled" : ""\}/);
   assert.match(app, /kind: "change-event-currency"/);
   assert.match(app, /allowExistingExpenses: true/);
 });

@@ -8,6 +8,82 @@ const state={currentParticipantId:owner,participants:[{id:owner,displayName:'ב�
     adminIds:[owner],createdByParticipantId:owner,createdAt:'2026-09-01T00:00:00.000Z',updatedAt:'2026-09-01T00:00:00.000Z',
     expenses:[],transfers:[],notes:[],deletedNotes:[],activityLog:[]}]};
 
+async function assertWorkspaceNavigationRecoversAfterLateGeometry(page) {
+  const initialViewport = page.viewportSize();
+  await page.setViewportSize({ width: 734, height: 343 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const geometry = await page.evaluate(async () => {
+    const screen = document.querySelector('.screen[data-screen-kind="event"]');
+    const nav = screen?.querySelector('.event-workspace-nav');
+    const route = document.querySelector('.product-route-controls');
+    if (!screen || !nav || !route) return { missing: true };
+    const routeBottom = route.getBoundingClientRect().bottom;
+    const navHeight = nav.getBoundingClientRect().height;
+    nav.style.setProperty('transition', 'none', 'important');
+    const moveTo = targetTop => {
+      nav.style.removeProperty('transform');
+      const untransformedTop = nav.getBoundingClientRect().top;
+      nav.style.setProperty('transform', `translateY(${targetTop - untransformedTop}px)`, 'important');
+    };
+    const frames = () => new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const state = () => ({
+      navTop: nav.getBoundingClientRect().top,
+      navHeight: nav.getBoundingClientRect().height,
+      routeBottom: route.getBoundingClientRect().bottom,
+      fullyOccluded: nav.hasAttribute('data-route-fully-occluded'),
+      visibility: getComputedStyle(nav).visibility,
+      clip: parseFloat(getComputedStyle(nav).getPropertyValue('--event-nav-route-occlusion')) || 0
+    });
+
+    moveTo(routeBottom - navHeight - 12);
+    window.dispatchEvent(new Event('scroll'));
+    await frames();
+    const covered = state();
+
+    // The scheduler reads the covered position in its first frame. Layout
+    // moves the navigation below the route controls later in that frame,
+    // with no second scroll event or DOM child replacement.
+    window.dispatchEvent(new Event('scroll'));
+    await new Promise(resolve => requestAnimationFrame(() => {
+      moveTo(routeBottom + 135);
+      resolve();
+    }));
+    await frames();
+    const clear = state();
+
+    nav.style.setProperty('display', 'none', 'important');
+    window.dispatchEvent(new Event('scroll'));
+    await frames();
+    const zeroHeight = state();
+    nav.style.removeProperty('display');
+    window.dispatchEvent(new Event('scroll'));
+    await frames();
+    return { covered, clear, zeroHeight, restored: state() };
+  });
+  expect(geometry.missing).not.toBe(true);
+  expect(geometry.covered.navTop + geometry.covered.navHeight)
+    .toBeLessThan(geometry.covered.routeBottom);
+  expect(geometry.covered.fullyOccluded).toBe(true);
+  expect(geometry.covered.visibility).toBe('hidden');
+  expect(geometry.clear.navTop).toBeGreaterThan(geometry.clear.routeBottom + 20);
+  expect(geometry.clear.fullyOccluded).toBe(false);
+  expect(geometry.clear.visibility).toBe('visible');
+  expect(geometry.clear.clip).toBe(0);
+  expect(geometry.zeroHeight.navHeight).toBe(0);
+  expect(geometry.zeroHeight.fullyOccluded).toBe(false);
+  expect(geometry.restored.fullyOccluded).toBe(false);
+  expect(geometry.restored.visibility).toBe('visible');
+  await page.evaluate(() => {
+    const nav = document.querySelector('.screen[data-screen-kind="event"] .event-workspace-nav');
+    nav.style.removeProperty('transform');
+    nav.style.removeProperty('transition');
+    window.scrollTo(0, 0);
+    window.dispatchEvent(new Event('scroll'));
+  });
+  await page.setViewportSize(initialViewport);
+}
+
 test('a fresh PWA preserves editable data through disconnected-client or origin-outage reloads',async({page,context,request,browserName},testInfo)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await request.post('/api/reset');await request.put('/api/state',{data:state});
@@ -54,6 +130,7 @@ test('a fresh PWA preserves editable data through disconnected-client or origin-
     for(let step=0;step<3;step++)await page.locator('[data-action="expense-step-next"]').click();
     await page.locator('[data-action="save-expense"]').click();
     await expect(page.locator('.expense-row').filter({hasText:'הוצאה לאחר פתיחה אופליין'})).toHaveCount(1);
+    await assertWorkspaceNavigationRecoversAfterLateGeometry(page);
     await page.locator('[data-action="open-event-notes"]').click();
     await page.locator('[data-action="new-event-note"]').click();
     await page.locator('[data-action="event-note-title"]').fill('פתק לאחר פתיחה אופליין');

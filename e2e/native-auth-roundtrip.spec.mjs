@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
+import { fulfillNativeAuthModule } from "./helpers/fulfillNativeAuthModule.mjs";
 
 test.use({ serviceWorkers: "block" });
 const AUTH = "https://native-auth-roundtrip.supabase.co";
@@ -40,13 +41,7 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
   await page.route("**/api/config*", route => route.fulfill({ json: config }));
   // Replace only the external SDK boundary. The production click handler,
   // token exchange, callback bridge, persistence and account hydration run.
-  await page.route("**/src/publicAccountAuthLayer.mjs*", async route => {
-    const response = await route.fetch();
-    const source = await response.text();
-    const sdkImport = 'import("@capgo/capacitor-social-login")';
-    expect(source.split(sdkImport)).toHaveLength(2);
-    await route.fulfill({ response, body: source.replace(sdkImport, "Promise.resolve({ SocialLogin: globalThis.__roundtripSocialLogin })") });
-  });
+  await page.route("**/src/publicAccountAuthLayer.mjs*", fulfillNativeAuthModule);
   await page.addInitScript(({ config, appleSession }) => {
     if (!sessionStorage.getItem("native-roundtrip-ready")) {
       localStorage.clear(); sessionStorage.clear();
@@ -227,7 +222,11 @@ for (const googleError of ["JWT expired", "Invalid audience"]) {
 
 test("Apple callback closes the native browser, exchanges the bound code and opens the account", async ({ page }) => {
   const fixture = await prepare(page);
+  // The callback reloads the document. Wait for that lifecycle before checking
+  // rendered account content, rather than counting a removed gate during unload.
+  const accountReloaded = page.waitForEvent('load');
   const id = await fixture.appleCallback();
+  await accountReloaded;
   await expectAccount(page);
   expect(fixture.counts.pkce).toBe(1);
   expect(fixture.counts.writes).toBeGreaterThan(0);
@@ -332,7 +331,7 @@ test("Apple provider rejection explains the failure and restores a fresh attempt
 test("accepted Google login recovers after a temporary account lookup failure without another chooser", async ({ page }) => {
   const { counts } = await prepare(page, { userFailureOnce: true });
   await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "נכנסת בהצלחה", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "פתיחת החשבון מתעכבת", exact: true })).toBeVisible();
   await expectAccount(page);
   expect(counts.token).toBe(1);
   expect(counts.user).toBeGreaterThan(1);
@@ -356,6 +355,86 @@ test("an expired saved access token refreshes without asking Google to sign in a
   expect(counts.token).toBe(1);
 });
 
+test("a delayed startup user response cannot rotate the same expired session twice", async ({ page }) => {
+  await page.clock.install();
+  await page.addInitScript(() => {
+    globalThis.__roundtripReconciled = 0;
+    globalThis.__roundtripStorageNotices = 0;
+    document.addEventListener('account-session-refreshed', () => globalThis.__roundtripReconciled++);
+    window.addEventListener('storage', event => {
+      if (event.key === 'settle-friends-account-session-sync') globalThis.__roundtripStorageNotices++;
+    });
+  });
+  const { counts } = await prepare(page);
+  await page.getByRole('button', { name: 'המשך עם Google', exact: true }).click();
+  await expectAccount(page);
+  await expect.poll(() => page.evaluate(() => globalThis.__roundtripReconciled)).toBeGreaterThan(0);
+  let releaseUser, heldUserReads = 0;
+  const userGate = new Promise(resolve => { releaseUser = resolve; });
+  let storageWitness;
+  await page.route(`${AUTH}/auth/v1/user`, async route => {
+    if (route.request().headers().authorization === 'Bearer fixture-refreshed-access') {
+      heldUserReads++;
+      await userGate;
+    }
+    return route.fallback();
+  });
+  try {
+    // Prepare the witness before holding /user. Freeze the clock before the
+    // reload so test orchestration cannot exhaust the real 2500ms startup
+    // request budget; the scheduled refresh still advances by 1500ms below.
+    storageWitness = await page.context().newPage();
+    await storageWitness.route('**/__startup-storage-witness', route => route.fulfill({
+      contentType: 'text/html', body: '<!doctype html><title>Storage witness</title>'
+    }));
+    await storageWitness.goto(new URL('/__startup-storage-witness', page.url()).href);
+    await storageWitness.evaluate(async () => {
+      globalThis.__storageAuth = await import('/src/data/accountAuth.mjs');
+    });
+    await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 1000)));
+    await page.evaluate(() => {
+      const key = 'settle-friends-account-session';
+      const session = JSON.parse(localStorage.getItem(key));
+      session.expires_at = 1;
+      localStorage.setItem(key, JSON.stringify(session));
+    });
+    await page.reload();
+    await page.clock.runFor(100);
+    await expect(page.getByText(eventName, { exact: true })).toBeVisible();
+    await expect.poll(() => counts.refresh).toBe(1);
+    await expect.poll(() => heldUserReads).toBe(1);
+    // A second same-origin document publishes through the real storage helper.
+    // It has no app bootstrap, so it cannot start an unrelated auth operation.
+    const storageNotice = await storageWitness.evaluate(() => {
+      const auth = globalThis.__storageAuth;
+      return auth.publishAccountSessionSync(auth.loadStoredAccountSession());
+    });
+    expect(storageNotice.reason).toBe('signed-in');
+    expect(storageNotice.userId).toBe(user.id);
+    await expect.poll(() => page.evaluate(() => globalThis.__roundtripStorageNotices)).toBe(1);
+    await page.evaluate(() => {
+      globalThis.__roundtripConcurrentRefreshFinished = false;
+      globalThis.__roundtripConcurrentRefresh = globalThis.SogrimAccountSession.refresh().then(session => {
+        globalThis.__roundtripConcurrentRefreshFinished = true;
+        return session?.access_token ?? null;
+      });
+    });
+    // Exercise the actual scheduled refresh while reconciliation still waits
+    // for its authenticated user. Advance time, not a wall-clock sleep/retry.
+    await page.clock.runFor(1500);
+    expect(counts.refresh, 'one token rotation must cover the whole startup reconciliation').toBe(1);
+    releaseUser();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('settle-friends-account-session'))?.access_token)).toBe('fixture-refreshed-access');
+    await expect.poll(() => page.evaluate(() => globalThis.__roundtripReconciled)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => globalThis.__roundtripConcurrentRefresh)).toBe('fixture-refreshed-access');
+    expect(counts.token).toBe(1);
+    expect(await page.evaluate(() => localStorage.getItem('roundtrip-chooser-count'))).toBe('1');
+  } finally {
+    releaseUser();
+    await storageWitness?.close();
+  }
+});
+
 test("sign-out removes the saved session and returns to usable native login options", async ({ page }) => {
   const { counts } = await prepare(page);
   await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();
@@ -375,12 +454,13 @@ test("password recovery from email returns through the native callback and survi
   const fixture = await prepare(page);
   await page.locator('input[name="email"]').fill(user.email);
   await page.getByRole("button", { name: "שכחתי סיסמה", exact: true }).click();
-  await expect(page.locator("#account-auth-feedback")).toContainText("שלחנו קישור");
+  await page.getByRole("button",{name:"שלח קישור לאיפוס",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"קישור האיפוס נשלח",exact:true})).toBeVisible();
   const callback = new URL(fixture.getRecoveryRedirect());
   callback.hash = new URLSearchParams({ type: "recovery", access_token: "fixture-recovery-access", refresh_token: "fixture-recovery-refresh", expires_in: "3600" }).toString();
   await page.evaluate(url => globalThis.__roundtripListeners.appUrlOpen({ url }), callback.href);
-  await expect(page.getByRole("heading", { name: "איפוס סיסמה", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "סיסמה חדשה", exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: "איפוס סיסמה", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "סיסמה חדשה", exact: true })).toBeVisible();
   expect(fixture.counts.recovery).toBe(1);
 });

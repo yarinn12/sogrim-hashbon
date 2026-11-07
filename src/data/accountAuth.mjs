@@ -456,6 +456,13 @@ export async function resendSignupConfirmation(
 }
 
 export async function ensureAccountWorkspace(config, session, options = {}) {
+  const assertCurrent = () => {
+    if (options.isCurrent != null &&
+        (typeof options.isCurrent !== "function" || options.isCurrent() !== true)) {
+      throw Object.assign(new Error("Account session changed during workspace restoration"), { code: "STALE_ACCOUNT" });
+    }
+  };
+  assertCurrent();
   let nextSession = session;
   let workspace = accountWorkspaceFromUser(nextSession?.user);
 
@@ -467,11 +474,13 @@ export async function ensureAccountWorkspace(config, session, options = {}) {
       id: createClientSpaceId(),
       key: createClientSpaceKey()
     };
+    assertCurrent();
     activateAccountWorkspace(workspace, {
       storage: options.storage,
       currentUrl: options.currentUrl
     });
     const currentMetadata = nextSession?.user?.user_metadata ?? {};
+    assertCurrent();
     nextSession = await updateAccountUser(
       config,
       nextSession,
@@ -483,6 +492,7 @@ export async function ensureAccountWorkspace(config, session, options = {}) {
       options.fetchImpl ?? fetch,
       { timeoutMs: options.requestTimeoutMs }
     );
+    assertCurrent();
     saveAccountSession(nextSession, options.storage);
   }
 
@@ -490,6 +500,7 @@ export async function ensureAccountWorkspace(config, session, options = {}) {
   // interrupted after metadata is saved and before the first client snapshot
   // write. This idempotent server call creates the owned workspace atomically
   // or validates the existing one on every completed sign-in.
+  assertCurrent();
   await ensureAccountWorkspaceRecord(
     config,
     nextSession,
@@ -497,6 +508,7 @@ export async function ensureAccountWorkspace(config, session, options = {}) {
     options.fetchImpl ?? fetch,
     options.requestTimeoutMs
   );
+  assertCurrent();
   activateAccountWorkspace(workspace, {
     storage: options.storage,
     currentUrl: options.currentUrl
@@ -993,6 +1005,9 @@ async function authRequest(config, path, options, fetchImpl) {
       payload.msg ?? payload.message ?? payload.error_description ?? payload.error ?? "Auth request failed"
     );
     error.status = response.status;
+    // Keep the Auth API's machine-readable code distinct from unrelated
+    // workspace errors that happen to use the same HTTP status.
+    error.authCode = String(payload.code ?? "").trim();
     throw error;
   }
   return payload;

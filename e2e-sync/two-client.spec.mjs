@@ -16,7 +16,7 @@ const headers = {'access-control-allow-origin': '*',
 
 async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withReversePaymentPlan = false, withRoundedStablePlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null, withSelfLeave = false} = {}) {
   const browsers = [];
-  const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
+  const contexts = [], pages = [], errorRecorders = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
   const workspaceFailures = new Map();
   const membershipReadHolds = new Map();
@@ -131,8 +131,14 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     for(const hold of expenseReceiptHolds.values()) hold.release();
     for(const hold of transferReceiptHolds.values()) hold.release();
     for(const hold of inviteHolds.values()) hold.release();
-    // Playwright Test already traces these contexts through the shared config.
-    await Promise.all(browsers.map(browser => browser.close()));
+    // These contexts were created explicitly. Dispose their pages and tracing
+    // before terminating WebKit/Chromium; closing only the browser can leave
+    // WebKit shutdown waiting after every application assertion has passed.
+    // https://playwright.dev/docs/api/class-browser#browser-close
+    const cleanup = await Promise.allSettled(contexts.map(context => context.close()));
+    cleanup.push(...await Promise.allSettled(browsers.map(browser => browser.close())));
+    const failures = cleanup.filter(result => result.status === 'rejected').map(result => result.reason);
+    if (failures.length) throw new AggregateError(failures, 'Two-client browser cleanup failed');
     if(networkDiagnostics.length) console.log(JSON.stringify({kind:'expected-fixture-network-diagnostics',diagnostics:networkDiagnostics}));
   };
   try {
@@ -141,7 +147,9 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     const context = await browsers[i].newContext({...devices[i ? 'iPhone 13' : 'Pixel 5'],
       baseURL, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', reducedMotion: 'reduce', serviceWorkers: 'block'});
     contexts.push(context);
-    const errorRecorder=await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics});
+    const errorRecorder=await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics,
+      browserName:i?'webkit':'chromium',origin,inboxRecipientUserId:ids[i]});
+    errorRecorders.push(errorRecorder);
     // WebKit's context-level offline switch can reject a request before route()
     // runs. Record only this client's deliberately disconnected requests so its
     // native diagnostic consumes one receipt for that exact aborted request.
@@ -304,7 +312,7 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
           expenseHold.arrived = true;
           // Restart as soon as the server commits, before the bounded 350ms
           // foreground wait acknowledges the durable save to this editor.
-          expenseHold.reloaded = pages[i].reload();
+          expenseHold.reloaded = errorRecorders[i].withDocumentReload(pages[i],()=>pages[i].reload());
           await expenseHold.ready;
         }
         const noteHold = noteReceiptHolds.get(i);
@@ -380,6 +388,7 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
   }
   return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs, inviteRequests, rejectedSharedWrites,
     activityRequests, activityInbox,
+    reloadClient(i, options) { return errorRecorders[i].withDocumentReload(pages[i],()=>pages[i].reload(options)); },
     holdNextSecondary(i,table) {
       let release; const ready=new Promise(resolve=>{release=resolve;});
       const hold={arrived:false,ready,release};secondaryHolds.set(`${i}:${table}`,hold);return hold;
@@ -447,7 +456,12 @@ for (const leavingClient of [0, 1]) {
         await expect(member.locator('[data-action="delete-event"]')).toBeDisabled();
         await member.locator('[data-action="leave-event"]').click();
         const confirmation = member.locator('.important-action-dialog');
-        await expect(confirmation).toContainText('יישארו בהיסטוריה');
+        await expect(confirmation).toHaveAttribute('data-important-action-kind', 'leave-event');
+        await expect(confirmation.locator('#event-leave-name')).toHaveText('בדיקה מבודדת בשני מכשירים');
+        await expect(confirmation.locator('#important-action-description')).toHaveText(
+          'הגישה שלך לאירוע תוסר. השם שלך וההוצאות וההעברות הרשומות עליו יישארו באירוע. לחזרה תידרש הזמנה חדשה.'
+        );
+        await expect(confirmation.locator('[data-action="confirm-important-action"]')).toHaveText('עזוב את האירוע');
         await confirmation.locator('[data-action="cancel-important-action"]').click();
         expect(active(f.canonical.state.events[0])).toBe(true);
         if (offline) f.cloudUnavailable(leavingClient, true);
@@ -458,7 +472,7 @@ for (const leavingClient of [0, 1]) {
         if (offline) {
           await expect.poll(pending).not.toBeNull();
           expect(active(f.canonical.state.events[0])).toBe(true);
-          await member.reload();
+          await f.reloadClient(leavingClient);
           await expect(member.locator('[data-screen-kind="home"]')).toBeVisible();
           await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
           f.cloudUnavailable(leavingClient, false);
@@ -468,10 +482,10 @@ for (const leavingClient of [0, 1]) {
         await expect.poll(pending, {timeout:12000}).toBeNull();
         expect(f.canonical.state.events[0].expenses).toEqual(originalExpenses);
         expect(f.canonical.state.events[0].activityLog.filter(entry => entry.kind === 'participant-left')).toHaveLength(1);
-        await manager.reload();
+        await f.reloadClient(1-leavingClient);
         await manager.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
         await expect.poll(() => storedEvent(manager, f.personal[1-leavingClient].id).then(active)).toBe(false);
-        await member.reload();
+        await f.reloadClient(leavingClient);
         await expect(member.locator('[data-screen-kind="home"]')).toBeVisible();
         await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
         expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
@@ -503,7 +517,7 @@ test('self-leave reports repeated rejected requests and a later retry commits on
     await member.locator('.important-action-dialog [data-action="confirm-important-action"]').click();
     await expect.poll(()=>f.canonical.state.events[0].inactiveParticipantIds?.includes(actor)).toBe(true);
     expect(f.canonical.state.events[0].activityLog.filter(entry=>entry.kind==='participant-left')).toHaveLength(1);
-    await member.reload();
+    await f.reloadClient(1);
     await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
     expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
   } finally {await f.close();}
@@ -532,7 +546,7 @@ for(const manager of [0,1]) {
         await expect.poll(()=>page.evaluate(space=>JSON.parse(localStorage.getItem(`settle-friends-state:${space}`))?.events?.some(event=>event.id==='two-client-event'),f.personal[i].id)).toBe(false);
         expect(f.personal[i].state.events.some(event=>event.id===eventId)).toBe(false);
         expect(f.personal[i].state.deletedEvents.some(event=>event.id===eventId)).toBe(true);
-        await page.reload();
+        await f.reloadClient(i);
         await expect(page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
       }
       expect(f.writes.at(-1).deletedEvents.some(event=>event.id===eventId)).toBe(true);
@@ -618,7 +632,7 @@ for (const sender of [0,1]) {
         // unrelated snapshot reads to finish before navigation in WebKit.
         await sending.waitForLoadState('networkidle');
         await expect.poll(pending).toHaveLength(1);
-        await sending.reload();
+        await f.reloadClient(sender);
         await expect(sending.locator('#app .screen')).toBeVisible();
         await expect.poll(pending).toHaveLength(1);
         f.cloudUnavailable(sender,false); f.failActivity(sender,false);
@@ -677,6 +691,10 @@ test('live expense changes preserve close confirmation focus through payment and
     await a.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
     await a.locator('[data-action="close-event"]').first().click();
     const confirm=a.locator('[data-action="confirm-close-event"]');
+    // The approved large-text dialog opens on its readable heading. Then
+    // preserve a user's explicit move to the confirm button through live updates.
+    await expect(a.locator('#settlement-close-confirmation-title')).toBeFocused();
+    await confirm.focus();
     await expect(confirm).toBeFocused();
     await newExpense(b,'מונית שנוספה לפני סגירה','20');
     await expect.poll(()=>storedEvent(a,f.personal[0].id).then(event=>event.expenses.length)).toBe(2);
@@ -902,7 +920,7 @@ for(const joiningClient of [0,1]) {
       await expect.poll(()=>f.personal[joiningClient].state.events[0]?.expenses.length).toBe(1);
       await joiner.waitForLoadState('networkidle');
       expect(f.errors,'reconnection must not raise application errors').toEqual([]);
-      await joiner.reload();
+      await f.reloadClient(joiningClient);
       // A cleaned invitation retains its event destination across reload.
       await expect(joiner.locator('.expense-row')).toContainText('הוצאה אחרי הצטרפות ללא חיבור');
       await joiner.waitForLoadState('networkidle');
@@ -1044,7 +1062,7 @@ for (const reconnectOrder of [[0, 1], [1, 0]]) {
       for (let i=0; i<2; i++) {
         await expect.poll(async () => (await storedEvent(f.pages[i],f.personal[i].id))?.expenses.map(expense=>expense.id).sort()).toEqual(canonical.expenses.map(expense=>expense.id).sort());
         for(let j=0;j<2;j++) await expect(f.pages[i].getByText(`פתק אופליין ${j}`,{exact:true})).toBeVisible();
-        await f.pages[i].waitForLoadState('networkidle'); await f.pages[i].reload();
+        await f.pages[i].waitForLoadState('networkidle'); await f.reloadClient(i);
         await expect(f.pages[i].locator('[data-screen-kind="home"]')).toBeVisible();
         expect((await storedEvent(f.pages[i],f.personal[i].id)).expenses.reduce((sum,expense)=>sum+expense.total,0)).toBe(3004);
       }
@@ -1087,7 +1105,9 @@ test('offline payment confirmation survives peer reopening and preserves the sam
     await f.offline(1,true); await paymentAction(b,'mark-paid').click();
     await expect(paymentAction(b,'mark-pending')).toHaveCount(1);
     await a.locator('[data-action="open-event-notes"]').click();
-    await expect(a.getByRole('button',{name:'האירוע סגור',exact:true})).toBeDisabled();
+    const closedNotes = a.locator('[data-screen-kind="event-notes"]');
+    await expect(closedNotes.locator('.event-notes-heading-copy')).toContainText('האירוע סגור. הפתקים זמינים לקריאה.');
+    await expect(closedNotes.locator('[data-action="new-event-note"]')).toBeDisabled();
     await a.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
     await a.locator('[data-action="reopen-event"]').first().click();
     await a.locator('[data-action="confirm-important-action"]').click();
@@ -1126,7 +1146,7 @@ test('an interrupted link recovers at a new time and is confirmed on both device
       await expect(page.locator(`.event-participant-roster-modal .event-participant-roster-row[data-participant-id="${target}"]`)
         .getByText('בודק אייפון',{exact:true})).toBeVisible();
     }
-    await a.reload();
+    await f.reloadClient(0);
     await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
     expect(await a.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-account-links')||'[]'))).toEqual([]);
     const oldIntent=await a.evaluate(spaceId=>JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)),f.personal[0].id);
@@ -1147,7 +1167,7 @@ for (const author of [0,1]) {
       // Mid-request recovery is exercised separately; error guards stay strict.
       await a.clock.pauseAt(Date.now() + 50);
       await a.waitForLoadState('networkidle');
-      await a.reload({waitUntil:'domcontentloaded'});
+      await f.reloadClient(author,{waitUntil:'domcontentloaded'});
       await a.clock.resume();
     };
     try {
@@ -1179,6 +1199,12 @@ for (const author of [0,1]) {
       await a.screenshot({path:testInfo.outputPath('confirmed-group-personal-receipt-pending.png')});
       f.failWorkspace(author,0);
       await restartCompletedDelivery();
+      // Permanent receipt denials stay held across restart. Recovery must be
+      // explicitly requested and ACK only the personal index, never republish
+      // the already-confirmed shared note.
+      await expect(a.locator('[data-sync-account-summary]')).toBeVisible();
+      expect(await a.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[author].id)).not.toBeNull();
+      await a.locator('[data-sync-account-summary] [data-sync-retry]').click();
       await expect.poll(()=>a.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[author].id)).toBe(null);
       expect(f.writes.filter(w=>w.client===author)).toHaveLength(writesBeforeRestart);
       expect(f.personal[author].state.events.find(e=>e.id===eventId).notes.filter(n=>n.id===noteId)).toHaveLength(1);
@@ -1229,7 +1255,7 @@ test('an account link reaches the other device while an unrelated event remains 
     }
     expect(f.canonical.state.events[0].expenses.reduce((sum,expense)=>sum+expense.total,0)).toBe(10234);
     await expect.poll(()=>b.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[1].id)).toBeNull();
-    await b.waitForLoadState('networkidle');await b.reload();
+    await b.waitForLoadState('networkidle');await f.reloadClient(1);
     await b.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
     await b.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
     await expect(b.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`)).toHaveCount(0);
@@ -1342,7 +1368,7 @@ test('two administrators cannot relink the same guest to different accounts duri
     }
     // Reload the rejected device and verify the accepted decision is what the
     // participant sees, with no rejected identity or durable retry left behind.
-    await b.reload();
+    await f.reloadClient(1);
     await b.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
     await b.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
     await expect(b.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`)).toHaveCount(0);
@@ -1467,7 +1493,7 @@ for (const actor of [0,1]) test(`repayment plan changes on ${actor ? 'iPhone' : 
       await expect.poll(()=>f.canonical.state.events[0].directSettlementTransfers).toBe(mode==='direct');
       expect(f.canonical.state.events[0].transfers.map(t=>t.amount)).toEqual(Array(count).fill(amount));
       for(let i=0;i<2;i++) {
-        await f.pages[i].reload();
+        await f.reloadClient(i);
         await f.pages[i].locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
         await f.pages[i].locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
         await expect(rows(f.pages[i])).toHaveCount(count);
@@ -1510,7 +1536,7 @@ for (const actor of [0,1]) test(`first published 998 smart route stays identical
       for (let i = 0; i < 2; i++) {
         await expect.poll(() => f.pages[i].evaluate(spaceId => JSON.parse(localStorage.getItem(
           `settle-friends-state:${spaceId}`))?.events?.[0]?.transfers, f.personal[i].id)).toEqual(expected);
-        await f.pages[i].reload();
+        await f.reloadClient(i);
         await f.pages[i].locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
         await f.pages[i].locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
         await expect(rows(f.pages[i])).toHaveCount(expected.length);
@@ -1566,7 +1592,7 @@ test('reordered wire keys preserve remembered reverse plans and the paid 998 rec
       for (let i = 0; i < 2; i++) {
         await expect.poll(() => f.pages[i].evaluate(spaceId => JSON.parse(localStorage.getItem(
           `settle-friends-state:${spaceId}`))?.events?.[0]?.directSettlementTransfers, f.personal[i].id)).toBe(mode === 'direct');
-        await f.pages[i].reload();
+        await f.reloadClient(i);
         await f.pages[i].locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
         await f.pages[i].locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
         await assertRemembered(f.pages[i], i);
@@ -1672,7 +1698,7 @@ for (const author of [0, 1]) {
         }
       }
       // The server committed, but this page never receives its acknowledgement.
-      await a.reload();
+      await f.reloadClient(author);
       hold.release();
       await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
       await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
@@ -1701,7 +1727,7 @@ for (const author of [0, 1]) {
       // The receipt race was exercised by the first reload. Let independent
       // background reads finish before this final persistence check reload.
       await a.waitForLoadState('networkidle');
-      await a.reload();
+      await f.reloadClient(author);
       await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
       await a.locator('[data-action="open-event-notes"]').click();
       await a.locator('[data-action="new-event-note"]').click();
@@ -1736,7 +1762,7 @@ for (const author of [0, 1]) {
         await saveNote(b);
         await expect(b.locator('.event-note-modal')).toHaveCount(0);
       }
-      await a.reload();
+      await f.reloadClient(author);
       hold.release();
       await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
       await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
@@ -1798,7 +1824,7 @@ for (const author of [0,1]) for (const restaurant of [false,true]) {
       await b.locator('[data-action="confirm-important-action"]').click();
       await expect(b.locator('.event-participant-notice.is-account-link-success')).toBeVisible();
       await expect.poll(()=>storedEvent(a,f.personal[author].id).then(event=>event.participantIds.includes(guest))).toBe(false);
-      await a.reload();
+      await f.reloadClient(author);
       await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
       await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
       await a.locator(`[data-action="show-expense-form"][data-event-id="${eventId}"]`).first().click();
@@ -1925,7 +1951,7 @@ test('a durable outbox survives page restart during a cloud outage and reaches t
     await expect(b.locator('.event-note-modal')).toHaveCount(0);
     await expect.poll(pending).not.toBeNull();
     expect(f.canonical.state.events[0].notes).toHaveLength(0);
-    await b.reload();
+    await f.reloadClient(1);
     await expect(b.locator('#app .screen')).toBeVisible();
     await expect.poll(pending).not.toBeNull();
     expect(f.canonical.state.events[0].notes).toHaveLength(0);

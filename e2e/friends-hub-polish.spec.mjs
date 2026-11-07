@@ -336,7 +336,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
   await page.locator('[data-nav-destination="profile"]').click();
-  await page.locator('[data-action="groups"][data-tab="people"]').click();
+  await page.locator('.profile-friends-entry[data-action="groups"][data-tab="people"]').click();
   await expect(page.locator('[data-screen-kind="groups"][data-friends-tab="people"]'))
     .toBeVisible();
   await expect(page.locator('[data-friend-identity-section="connected"] .friend-row'))
@@ -420,7 +420,7 @@ test("accepting a friend while navigating away refreshes the roster without hija
     rpc.release();
     await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
     await page.locator('[data-nav-destination="profile"]').click();
-    await page.locator('[data-action="groups"][data-tab="people"]').click();
+    await page.locator('.profile-friends-entry[data-action="groups"][data-tab="people"]').click();
     await expect(page.locator('[data-friend-identity-section="connected"] .friend-row')).toHaveCount(2);
     await expect(page.locator('.friend-remove-button svg')).toHaveCount(5);
     await expect(page.locator('.friend-remove-button svg').first()).toBeVisible();
@@ -463,8 +463,32 @@ test("friend relationship stays readable and legacy group routes return to frien
       '[data-friend-identity-section="connected"] .avatar[data-action="open-participant-statistics"]'
     )
     .click();
-  await expect(page.locator('[data-friend-profile-id]')).toBeVisible();
-  await expect(page.getByText("אתם במספרים", { exact: true })).toBeVisible();
+  const relationship = page.locator('[data-friend-profile-id]');
+  await expect(relationship).toBeVisible();
+  await expect(relationship.getByRole("heading", { name: "הפעילות המשותפת", exact: true })).toBeVisible();
+  await expect(relationship.locator(".relationship-identity-copy")).toContainText("מאור סיבוני");
+  const metrics = relationship.locator(".friend-activity-overview .friend-activity-metric");
+  await expect(metrics.locator("h3")).toHaveText(["כמה כל אחד שילם בהוצאות", "הוצאות שנוספו"]);
+  await expect(metrics.nth(0).locator(".font-num")).toHaveText(["₪180.00", "₪320.00"]);
+  await expect(metrics.nth(1).locator(".font-num")).toHaveText(["1", "2"]);
+  for (const values of await metrics.locator(".friend-activity-values").all()) {
+    await expect(values.locator("small")).toHaveText(["אתה", "מאור סיבוני"]);
+    const sides = await values.evaluate((element) => {
+      const [current, target] = [...element.children].map(node => node.getBoundingClientRect());
+      return {columns: getComputedStyle(element).gridTemplateColumns.split(" ").length,
+        current: {left: current.left, top: current.top, right: current.right, bottom: current.bottom},
+        target: {left: target.left, top: target.top, right: target.right, bottom: target.bottom},
+        clipped: [...element.querySelectorAll("small,strong")].some(node => node.scrollWidth > node.clientWidth + 1)};
+    });
+    expect(sides.clipped).toBe(false);
+    if (sides.columns === 1) {
+      expect(Math.abs(sides.current.left - sides.target.left)).toBeLessThanOrEqual(1);
+      expect(sides.target.top).toBeGreaterThanOrEqual(sides.current.bottom);
+    } else {
+      expect(sides.columns).toBe(2);
+      expect(sides.current.left).toBeGreaterThanOrEqual(sides.target.right);
+    }
+  }
   await assertNoHorizontalOverflow(page);
   await capture(page, "08e-friend-relationship");
 

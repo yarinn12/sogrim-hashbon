@@ -1,0 +1,23 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {runInNewContext} from "node:vm";
+import {renderFriendRequestsPanelView,renderFriendRequestSectionView,renderPendingFriendRowView} from "../src/ui/friendRequestsPresentation.mjs";
+import {formatUsername,profileUsername} from "../src/domain/usernames.mjs";
+const source=readFileSync(process.env.FRIEND_REQUESTS_TEST_APP||"src/app.mjs","utf8");
+function extract(name){const start=source.indexOf('function '+name+'(');assert.ok(start>=0,name);const end=source.indexOf('\nfunction ',start+1);return source.slice(start,end<0?undefined:end)}
+const esc=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+function render({incoming=true,outgoing=true,busy="",username="dana_levi",missing=false}={}){
+ const profiles={incoming:{user_id:'target-a',display_name:'דנה לוי',username,username_customized:true},outgoing:{user_id:'target-b',display_name:'איתי כהן',username:'itay_cohen',username_customized:true}};
+ const context={renderFriendRequestsPanelView,renderFriendRequestSectionView,renderPendingFriendRowView,friendProfileForRelationship:r=>missing?null:profiles[r.id],formatUsername,publicProfileUsername:profileUsername,friendNetworkBusyAction:busy,escapeHtml:esc,escapeAttribute:esc,renderFriendProfileAvatar:()=>'<span class="avatar"></span>',incomingFriendships:incoming?[{id:'incoming'}]:[],outgoingFriendships:outgoing?[{id:'outgoing'}]:[]};
+ return runInNewContext([extract('renderFriendsRequestsTab'),extract('renderFriendRequestSection'),extract('renderPendingFriendRow'),'renderFriendsRequestsTab({incomingFriendships,outgoingFriendships})'].join('\n'),context);
+}
+test('request panel drops repeated headings and waiting explanations without dropping directions',()=>{const html=render();assert.doesNotMatch(html,/friends-panel-heading|friend-identity-marker|ממתינים לאישור|רוצה להתחבר אליך כחבר|הבקשה נשלחה/);assert.match(html,/בקשות שקיבלת/);assert.match(html,/בקשות ששלחת/);assert.equal((html.match(/friend-request-section is-/g)||[]).length,2)});
+test('incoming request keeps exact accept and decline identities with a clear accept label',()=>{const html=render({outgoing:false});assert.match(html,/data-action="accept-friend-request" data-friendship-id="incoming"[^>]*>אשר חברות<\/button>/);assert.match(html,/data-action="decline-friend-request" data-friendship-id="incoming"/);assert.doesNotMatch(html,/cancel-friend-request/)});
+test('outgoing request keeps cancellation and never offers acceptance',()=>{const html=render({incoming:false});assert.match(html,/data-action="cancel-friend-request" data-friendship-id="outgoing"/);assert.doesNotMatch(html,/accept-friend-request|decline-friend-request/)});
+test('empty requests use one practical explanation instead of product-design commentary',()=>{const html=render({incoming:false,outgoing:false});assert.match(html,/אין בקשות חברות שממתינות/);assert.match(html,/כשתקבל או תשלח בקשה, היא תופיע כאן\./);assert.doesNotMatch(html,/בלי להעמיס|friend-request-section|friends-panel-heading/)});
+test('only the matching pending request disables its controls',()=>{const html=render({busy:'incoming'});assert.equal((html.match(/disabled/g)||[]).length,2);const outgoing=html.slice(html.indexOf('is-outgoing'));assert.doesNotMatch(outgoing,/disabled/)});
+for(const username of ['dana_levi','@dana_levi',''])test(`request username ${username||'missing'} retains normalization and the legacy search alias`,()=>{const html=render({outgoing:false,username});if(username){assert.match(html,/>dana_levi<\/bdi>/);assert.match(html,/data-friend-name="דנה לוי @dana_levi"/)}else assert.doesNotMatch(html,/class="friend-username"/)});
+test('an unavailable relationship profile does not produce an empty action row',()=>{assert.doesNotMatch(render({missing:true}),/class="friend-row friend-request-row/)});
+test('pure row and group escape all untrusted text and ids',()=>{const html=renderPendingFriendRowView({friendshipId:'"><script>',displayName:'<img src=x onerror=1>',username:'<script>',searchableIdentity:'"onclick="x',avatarHtml:'',direction:'incoming',busy:false});assert.doesNotMatch(html,/<script>|<img src=x| onclick=/);assert.match(html,/&lt;img/);const section=renderFriendRequestSectionView({direction:'incoming',title:'<script>',count:2,rowsHtml:html});assert.match(section,/&lt;script&gt;/)});
+test('requests module stays in both offline inventories',()=>{const sw=readFileSync('sw.js','utf8');assert.equal((sw.match(/"\/src\/ui\/friendRequestsPresentation\.mjs"/g)||[]).length,2)});

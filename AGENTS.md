@@ -1,5 +1,26 @@
 # Repository working rules
 
+## Permanent engineering and release workflow
+
+Follow `docs/engineering-workflow-he.md` for every change. Use a separate branch,
+small reviewable commits and immutable annotated checkpoints before change batches
+and release handoff. Never move an existing checkpoint, force-push a shared branch
+or use destructive reset as a rollback. Git checkpoints restore source, not data.
+
+Keep presentation in `src/ui`, pure business rules in `src/domain`, persistence in
+`src/data` and backend work in `src/server`/`supabase`. Extract legacy orchestration
+incrementally with compatible adapters; visual changes must not modify financial,
+identity, authorization or synchronization rules. Run `qa:architecture`, focused
+tests and the complete normal suite. Unit and Integration partition the complete
+inventory; E2E/mobile/sync/Native remain required for relevant changes.
+
+Public deployment, including manual dispatch, requires all four release CI lanes
+and their required jobs on the same exact source. Missing, skipped, stale or failed
+verification blocks release. iOS, Android and PWA must use one approved source and
+verified packaged assets. Use staged deployment verification before promotion.
+Keep the production activation switch off until the existing database and store
+gates are met. Do not claim branch protection or live CD is enabled from YAML alone.
+
 ## Regression tests for every bug fix
 
 The user requires a regression test for every bug that is fixed. Treat this as part of the fix, not optional follow-up work.
@@ -21,3 +42,19 @@ When handing off a bug fix, briefly state the cause, the regression scenario, th
 - `npm run qa:mobile`: mobile UI matrix; use the relevant projects and focused cases during development.
 
 GitHub QA already runs these suites. Do not claim that they block every deployment path without checking the actual deployment configuration.
+
+
+## Screen-by-screen design review
+
+The user reviews one page/area at a time. For every page we work on:
+
+- Capture the current screen and its relevant scrolled, menu, empty and enlarged-text states. Use synthetic data and record browser/viewport limits; do not describe a browser preview as a physical Android/iPhone check.
+- Inspect the whole page for alignment, spacing, actual SVG-to-text gaps, centered visible groups, RTL, wrapping, clipping, touch targets and content hidden by persistent navigation. Measure visible glyphs and text, not only their wrapper boxes.
+- Explicitly report elements that feel like generic AI/template design: unnecessary card nesting, excessive glow/shadows, decoration without a purpose, repeated promotional blocks, inconsistent controls and generic copy. Explain the specific visual concern; appearance does not prove how the code was authored.
+- Separate reproducible layout defects from subjective design choices. Preserve the agreed green brand, home hero and subtle glow; discuss broader visual changes with the user before applying them.
+- Show findings and a concrete local preview for the current area, collect feedback and finish the agreed changes before advancing to another page. Keep the existing regression-test and release gates.
+
+
+## Shared design language
+
+Follow `docs/design-language-he.md` when building or reviewing UI. Role, connection and friendship identity captions use the shared `participant-identity-label` class. Keep its neutral scalable presentation consistent across screens; do not create a local decorative identity badge.

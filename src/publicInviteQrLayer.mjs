@@ -1,3 +1,4 @@
+import {renderEventShareQrView} from "./ui/eventSharePresentation.mjs";
 import { compactQrInviteUrl, createQrSvg } from "./domain/qrCode.mjs";
 import { parseInviteEventId, parseInviteToken } from "./domain/inviteLinks.mjs";
 
@@ -68,13 +69,14 @@ function renderInviteQr(copyButton) {
   qr.dataset.publicInviteQr = "true";
   qr.dataset.eventId = eventId;
   qr.dataset.inviteUrl = qrUrl;
-  qr.innerHTML = renderInviteQrContent(qrUrl);
+  qr.innerHTML = renderInviteQrContent(qrUrl, { compact: Boolean(copyButton.closest(".event-link-share-screen")) });
 
   if (!existing) row.after(qr);
 }
 
-function renderInviteQrContent(inviteUrl) {
+function renderInviteQrContent(inviteUrl, { compact = false } = {}) {
   try {
+    if (compact) return renderEventShareQrView({ qrSvg: createQrSvg(inviteUrl, { cellSize: 3, quietZone: 4 }) });
     return `
       <summary class="public-invite-qr-summary">
         <span class="public-invite-qr-mark" aria-hidden="true">QR</span>

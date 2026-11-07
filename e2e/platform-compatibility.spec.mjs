@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test, { resource: 'defer' });
 
 const OWNER_ID = "person-legacy-platform-owner";
 
@@ -44,7 +47,7 @@ test("the app boots when iOS 15.0-era built-ins are unavailable", async ({ page,
 
   const runtimeIssues = [];
   page.on("pageerror", (error) => runtimeIssues.push(error.message));
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openHeldRenderedHome(page);
 
   await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
   await expect(page.locator("#app-splash")).toHaveCount(0, { timeout: 8_000 });

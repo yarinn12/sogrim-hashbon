@@ -106,6 +106,7 @@ test("account bootstrap waits once and app hydration does not repeat the cloud w
 
 test("home never presents a cloud-loading account as a new empty account", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const emptyView = await readFile("src/ui/homeEmptyStatePresentation.mjs", "utf8");
 
   assert.match(
     app,
@@ -113,8 +114,9 @@ test("home never presents a cloud-loading account as a new empty account", async
   );
   assert.match(
     app,
-    /awaitingAuthoritativeEvents[\s\S]*?renderHomeEventHydrationState\(\)[\s\S]*?אין אירועים שלך עדיין/
+    /awaitingAuthoritativeEvents\s*\? renderHomeEventHydrationState\(\)[\s\S]*?renderHomeEmptyStateView\(\{view:"first"\}\)/
   );
+  assert.match(emptyView, /אין אירועים שלך עדיין/);
   assert.match(app, /data-action="retry-account-event-hydration"/);
   assert.match(
     app,

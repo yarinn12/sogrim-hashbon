@@ -1,0 +1,9 @@
+INFO         | Graphics backend: gfxstream
+INFO         | emuglConfig_init: vulkan_mode_selected:swiftshader gles_mode_selected:swangle
+DEBUG   | setCurrentRenderer: swangle swiftshader gles:Angle Indirect vulkan:Swiftshader Indirect
+DEBUG   | gfxstreamFeature:Vulkan = 0
+DEBUG   | gfxstreamFeature:HasSharedSlotsHostMemoryAllocator = 1
+DEBUG   | gfxstreamFeature:GlDirectMem = 1
+DEBUG   | Performing composition using CompositorGl.
+INFO         | Graphics Adapter Android Emulator OpenGL ES Translator (ANGLE (Google, Vulkan 1.2.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver-5.0.0))
+INFO         | Graphics API Version OpenGL ES 3.0 (OpenGL ES 3.1.0 (ANGLE 2.1.17841 git hash: 5fa2e61da947))

@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test);
 
 const OWNER_ID = "financial-owner";
 const PARTICIPANTS = [
@@ -105,7 +108,7 @@ test.beforeEach(async ({ page, request }) => {
     localStorage.setItem("settle-friends-current-participant", participantId);
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, { participantId: OWNER_ID, state: seededState });
-  await page.goto("/");
+  await openHeldRenderedHome(page);
 });
 
 async function openSummary(page, eventId) {

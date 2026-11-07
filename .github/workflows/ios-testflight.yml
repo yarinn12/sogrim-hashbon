@@ -7,18 +7,19 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.55"
+        default: "4.59"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "186"
+        default: "195"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "תכניות ההחזר נשמרות באופן עקבי במעבר בין שיטות הקיזוז וברענון. נוסף פירוט הסכום שכל משלם שילם בכל הוצאה. תוקנו בחירת המשלמים באייפון ובאייפד, וההתחברות עם Apple ובאימייל."
+        default: "עודכנו מסכי האירועים, ההוצאות, הפתקים, החברים והפרופיל בעיצוב אחיד ובהתאמה לטקסט מוגדל. שופרו בחירת תמונות וחיתוך, שיתוף והזמנות, וההסברים במצבי שגיאה. גרסת בדיקה של אותו עדכון ב־iPhone וב־Android."
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ios-testflight-${{ github.repository }}
@@ -48,6 +49,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
+
+      - name: Require complete CI on this exact source before signing or upload
+        run: node scripts/verify-release-ci.mjs --require-main-head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Validate Apple configuration
         run: node scripts/verify-ios-workflow-env.mjs

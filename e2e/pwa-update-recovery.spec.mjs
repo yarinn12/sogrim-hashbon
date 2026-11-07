@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 const OLD_RELEASE = "443";
 const CURRENT_RELEASE = "449";
 
-test("a new worker reloads an installed app even when the old page suppresses controllerchange", async ({
+test("a new worker leaves an unresponsive old page open until the user reloads", async ({
   page
 }) => {
   const currentWorker = await readFile("sw.js", "utf8");
@@ -45,6 +45,9 @@ test("a new worker reloads an installed app even when the old page suppresses co
 
     serveCurrentRelease = true;
     await page.evaluate(() => window.__pwaRegistration.update());
+
+    await expect(page.locator("html")).toHaveAttribute("data-pwa-release", OLD_RELEASE);
+    await page.reload();
 
     await expect(page.locator("html")).toHaveAttribute(
       "data-pwa-release",
@@ -101,6 +104,8 @@ function installedAppPage(release) {
 }
 
 function contentType(pathname) {
+  // The real worker validates precached local fonts by MIME type before activation.
+  if (pathname.endsWith(".woff2")) return "font/woff2";
   if (pathname.endsWith(".css")) return "text/css; charset=utf-8";
   if (pathname.endsWith(".mjs") || pathname.endsWith(".js")) {
     return "text/javascript; charset=utf-8";

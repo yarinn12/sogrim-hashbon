@@ -1,4 +1,6 @@
+import {control as invitationControl} from "./helpers/referralInvitationPresentation.mjs";
 import { expect, test } from "@playwright/test";
+import { verifyNotificationNavBadge } from "./helpers/notificationNavBadge.mjs";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import {
@@ -400,21 +402,39 @@ test("profile sections use one visual surface system without changing their orde
     background: "rgba(0, 0, 0, 0)",
     shadow: "none"
   });
-  expect(new Set(presentation.surfaces.map((surface) => JSON.stringify(surface))).size).toBe(1);
+  // The approved avatar selection surface deliberately has no shadow.
+  // Borders, radius and background remain shared with the other profile rows.
+  expect(new Set(presentation.surfaces.map(({shadow, ...surface}) => JSON.stringify(surface))).size).toBe(1);
   expect(presentation.surfaces[0]).toEqual({
     borderWidth: "1px",
     borderColor: "rgb(226, 232, 240)",
     radius: "12px",
     background: "rgb(255, 255, 255)",
-    shadow: "rgba(15, 23, 42, 0.05) 0px 1px 3px 0px"
+    shadow: "none"
   });
-  expect(new Set(presentation.titles.map((title) => JSON.stringify(title))).size).toBe(1);
+  expect(presentation.surfaces.slice(1).map(surface => surface.shadow)).toEqual(
+    Array(4).fill("rgba(15, 23, 42, 0.05) 0px 1px 3px 0px")
+  );
+  const sectionOrder = await profile.evaluate(screen => {
+    const selectors = [".profile-avatar-picker-shell", ".profile-shortcuts", ".referral-reward-card.is-profile", ".notification-settings-card", ".account-profile-controls"];
+    return selectors.map(selector => {
+      const element = screen.querySelector(selector), rect = element.getBoundingClientRect();
+      return {selector, top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right};
+    });
+  });
+  for (let index = 1; index < sectionOrder.length; index++) {
+    expect(sectionOrder[index].top, sectionOrder[index].selector).toBeGreaterThanOrEqual(sectionOrder[index - 1].bottom);
+    expect(Math.abs(sectionOrder[index].left - sectionOrder[0].left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(sectionOrder[index].right - sectionOrder[0].right)).toBeLessThanOrEqual(1);
+  }
+  expect(new Set(presentation.titles.map(({lineHeight, ...title}) => JSON.stringify(title))).size).toBe(1);
   expect(presentation.titles[0]).toEqual({
     color: "rgb(15, 23, 42)",
     fontSize: "16px",
     fontWeight: "650",
-    lineHeight: "21.6px"
+    lineHeight: "22.4px"
   });
+  expect(presentation.titles.slice(1).map(title=>title.lineHeight)).toEqual(["21.6px","22.4px"]);
 
   await page.evaluate(() => window.scrollTo({ top: 420, behavior: "instant" }));
   const stickyHeader = await profileHeader.evaluate((element) => {
@@ -548,19 +568,22 @@ test("long home event names wrap to two lines without colliding with status", as
   await assertNoHorizontalOverflow(page);
 });
 
-test("ad-free gift opens as a focused share workspace with a working QR", async ({ page }) => {
+test("referral invitation opens as one clear share workspace with a working QR", async ({ page }) => {
+  await page.getByRole("button", { name: "חברים", exact: true }).click();
   const entry = page.locator(
-    '[data-open-referral-rewards][data-referral-context="home"]'
+    '#referral-reward-card-friends'
   );
   await expect(entry).toBeVisible();
   await entry.click();
 
   const dialog = page.locator("#public-referral-rewards-dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator(".referral-dialog-lead")).toContainText("חודש שקט");
+  await expect(dialog.locator(".referral-dialog-lead")).toHaveCount(0);
+  await expect(dialog.locator("h2")).toHaveText("הזמנת חברים");
+  await invitationControl(dialog.locator('[data-referral-action="close"]'));
   await expect(dialog.locator(".referral-gift-card")).toBeVisible();
   await expect(dialog.locator(".referral-benefit-card")).toContainText(
-    "30ימים בלי פרסומות"
+    "חודש ללא פרסומות"
   );
   await expect(dialog.locator('[data-referral-qr] svg')).toHaveAttribute(
     "aria-label",
@@ -579,6 +602,7 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
   }
 
   const visualState = await dialog.evaluate((element) => {
+    const shell = element.querySelector(".referral-dialog-shell").getBoundingClientRect();
     const header = element.querySelector(".referral-dialog-header");
     const benefit = element.querySelector(".referral-benefit-card");
     const qr = element.querySelector("[data-referral-qr] svg");
@@ -588,6 +612,7 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
     const giftCard = element.querySelector(".referral-gift-card");
     const shareSection = element.querySelector(".referral-share-section");
     return {
+      shellTop:shell.top, shellBottom:shell.bottom, shellLeft:shell.left, shellRight:shell.right,
       headerBackgroundColor: getComputedStyle(header).backgroundColor,
       headerDecorationDisplay: getComputedStyle(header, "::before").display,
       benefitBackground: getComputedStyle(benefit).backgroundImage,
@@ -607,16 +632,20 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
   });
   expect(visualState.headerBackgroundColor).toMatch(/rgba?\(255, 255, 255/);
   expect(visualState.headerDecorationDisplay).toBe("none");
-  expect(visualState.benefitBackground).toContain("linear-gradient");
+  expect(visualState.benefitBackground).toBe("none");
   expect(
     visualState.qrWidth,
     `viewport=${visualState.viewportWidth}, columns=${visualState.shareColumns}`
   ).toBeGreaterThanOrEqual(140);
-  expect(visualState.shareButtonHeight).toBeGreaterThanOrEqual(44);
+  expect(visualState.shareButtonHeight).toBeGreaterThanOrEqual(48);
   if (visualState.viewportWidth <= 760) {
     expect(visualState.shareButtonTop).toBeLessThan(visualState.qrTop);
-    expect(visualState.contentTop).toBeLessThan(160);
+    expect(visualState.contentTop).toBeGreaterThanOrEqual(visualState.headerBottom - 1);
   }
+  expect(visualState.shellTop).toBeGreaterThanOrEqual(11);
+  expect(visualState.shellBottom).toBeLessThanOrEqual(visualState.viewportHeight - 11);
+  expect(visualState.shellLeft).toBeGreaterThanOrEqual(11);
+  expect(visualState.shellRight).toBeLessThanOrEqual(visualState.viewportWidth - 11);
   expect(visualState.shareButtonBottom).toBeLessThanOrEqual(visualState.viewportHeight + 1);
   expect(visualState.contentTop).toBeLessThanOrEqual(visualState.headerBottom + 2);
   expect(visualState.giftCardBottom).toBeGreaterThanOrEqual(visualState.shareSectionBottom - 1);
@@ -636,9 +665,10 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
   await assertNoHorizontalOverflow(page);
 });
 
-test("signed-out gift state uses the available mobile canvas instead of leaving a bottom void", async ({ page }) => {
+test("signed-out invitation fits its content and keeps the account action reachable", async ({ page }) => {
+  await page.getByRole("button", { name: "חברים", exact: true }).click();
   await page
-    .locator('[data-open-referral-rewards][data-referral-context="home"]')
+    .locator('#referral-reward-card-friends')
     .click();
   const dialog = page.locator("#public-referral-rewards-dialog");
   await expect(dialog).toBeVisible();
@@ -655,6 +685,7 @@ test("signed-out gift state uses the available mobile canvas instead of leaving 
     `;
   });
 
+  await invitationControl(dialog.locator(".is-signin button"));
   const layout = await dialog.evaluate((element) => {
     const shellBox = element
       .querySelector(".referral-dialog-shell")
@@ -665,10 +696,19 @@ test("signed-out gift state uses the available mobile canvas instead of leaving 
     const cardBox = element
       .querySelector(".referral-state-message.is-signin")
       .getBoundingClientRect();
+    const content = element.querySelector(".referral-dialog-content");
+    const shell = element.querySelector(".referral-dialog-shell");
+    const card = element.querySelector(".referral-state-message.is-signin");
+    const value=(el,property)=>parseFloat(getComputedStyle(el)[property])||0;
+    const vertical=(el,properties)=>properties.reduce((sum,property)=>sum+value(el,property),0);
+    const frameInsets=vertical(shell,['paddingTop','paddingBottom','borderTopWidth','borderBottomWidth','rowGap'])
+      +vertical(content,['paddingTop','paddingBottom','marginTop','marginBottom','borderTopWidth','borderBottomWidth'])
+      +vertical(card,['marginTop','marginBottom']);
     return {
+      frameInsets,
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
-      shellHeight: shellBox.height,
+      shellHeight: shellBox.height, shellTop:shellBox.top, shellBottom:shellBox.bottom, headerHeight:headerBox.height, cardHeight:cardBox.height,
       availableCenter: (headerBox.bottom + shellBox.bottom) / 2,
       cardCenter: (cardBox.top + cardBox.bottom) / 2,
       cardLeft: cardBox.left,
@@ -676,12 +716,10 @@ test("signed-out gift state uses the available mobile canvas instead of leaving 
     };
   });
 
-  if (layout.viewportWidth <= 640) {
-    expect(Math.abs(layout.cardCenter - layout.availableCenter)).toBeLessThanOrEqual(28);
-    expect(layout.shellHeight).toBeGreaterThanOrEqual(layout.viewportHeight - 16);
-  } else {
-    expect(layout.shellHeight).toBeLessThan(layout.viewportHeight * 0.75);
-  }
+  expect(Math.abs(layout.cardCenter - layout.availableCenter)).toBeLessThanOrEqual(28);
+  expect(layout.shellTop).toBeGreaterThanOrEqual(11);
+  expect(layout.shellBottom).toBeLessThanOrEqual(layout.viewportHeight - 11);
+  expect(layout.shellHeight).toBeLessThanOrEqual(layout.headerHeight + layout.cardHeight + layout.frameInsets + 1);
   expect(layout.cardLeft).toBeGreaterThanOrEqual(0);
   expect(layout.cardRight).toBeLessThanOrEqual(layout.viewportWidth + 1);
   if (process.env.CAPTURE_FIGMA_APPROVED === "1") {
@@ -719,7 +757,7 @@ test("a gallery profile image persists after reload without a false sync warning
   const cropDialog = page.locator(".image-crop-dialog");
   const cropStage = cropDialog.locator(".image-crop-stage.is-circle");
   await expect(cropDialog).toBeVisible();
-  await expect(cropDialog).toContainText("בחר את תמונת הפרופיל");
+  await expect(cropDialog).toContainText("התאמת התמונה");
   const cropBounds = await cropStage.boundingBox();
   expect(Math.abs((cropBounds?.width ?? 0) - (cropBounds?.height ?? 0))).toBeLessThanOrEqual(1);
   await cropDialog.locator('[data-crop-action="confirm"]').click();
@@ -870,6 +908,32 @@ test("delayed profile PATCH retains the newer SQL identity through reload", asyn
   }
 });
 
+test("notification nav counter overlays the bell without shifting the icon or label", async ({ page }, testInfo) => {
+  for (const root of [16, 20, 32]) {
+    await page.goto(root === 16 ? "/" : `/?dynamic-type-preview=${root}`);
+    await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+    // Wait for the fixture inbox before injecting presentation-only counter transitions.
+    await expect(page.locator(".product-nav-badge")).toHaveText("2");
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(root);
+    await verifyNotificationNavBadge(page);
+    await page.locator('[data-nav-destination="notifications"]').click();
+    await expect(page.locator('[data-screen-kind="notifications"]')).toBeVisible();
+    await verifyNotificationNavBadge(page);
+  }
+  const initialViewport = page.viewportSize();
+  for (const viewport of [{ width:320, height:390 }, { width:852, height:393 }, initialViewport]) {
+    await page.setViewportSize(viewport);
+    await verifyNotificationNavBadge(page);
+  }
+  await page.goto("/");
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await expect(page.locator(".product-nav-badge")).toHaveText("2");
+  expect(await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(16);
+  await verifyNotificationNavBadge(page);
+  await page.screenshot({ path:testInfo.outputPath("notification-badge-aligned.png"), animations:"disabled" });
+});
+
 test("notification inbox stays readable and completes its main mobile actions", async ({ page }) => {
   await expect(page.locator(".product-nav-badge")).toHaveText("2");
   await page.locator('[data-nav-destination="notifications"]').click();
@@ -952,7 +1016,8 @@ test(`late inbox HTTP ${refreshStatus} cannot undo mark-all read or resurrect it
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(page.locator(".notification-inbox-item:not(.is-read)")).toHaveCount(0);
     await expect(page.locator(".product-nav-badge")).toBeHidden();
-    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toHaveCount(0);
+    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toHaveCount(1);
+    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toBeDisabled();
     await assertNoHorizontalOverflow(page);
     await page.screenshot({ path: testInfo.outputPath(`inbox-after-${refreshStatus}.png`), fullPage: true });
   } finally {
@@ -1071,7 +1136,8 @@ test("server-confirmed read markers survive a delayed write error with an identi
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(page.locator(".notification-inbox-item.is-read")).toHaveCount(1);
     await expect(page.locator(".product-nav-badge")).toBeHidden();
-    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toHaveCount(0);
+    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toHaveCount(1);
+    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toBeDisabled();
     expect(errors).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath("inbox-confirmed-read-after-error.png"), fullPage: true });
   } finally { release(); }

@@ -14,7 +14,7 @@ test("home lists every event without a separate recent-event card", async () => 
 });
 
 test("settlement prioritizes transfers that involve the current participant", async () => {
-  const app = await readFile("src/app.mjs", "utf8");
+  const app = await readFile("src/app.mjs", "utf8") + await readFile("src/ui/closedSettlementPresentation.mjs", "utf8");
   const styles = await readFile("src/publicCircleDesignLayer.mjs", "utf8");
   const ledgerStyles = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
@@ -29,7 +29,7 @@ test("settlement prioritizes transfers that involve the current participant", as
   assert.doesNotMatch(app, /class="settlement-progress-chip"/);
   assert.match(app, /class="settlement-transfer-board"/);
   assert.match(app, /class="settlement-list-actions"/);
-  assert.match(app, /סה"כ פתוח בקבוצה/);
+  assert.match(app, /נותר לתשלום בקבוצה/);
   assert.match(app, /personalPendingTransfers/);
   assert.match(app, /function renderTransferExplanation/);
   assert.match(app, /איך הסכום חושב/);
@@ -43,7 +43,7 @@ test("settlement prioritizes transfers that involve the current participant", as
   assert.doesNotMatch(app, /function renderSettlementCompleteState/);
   assert.match(app, /"הכול שולם"/);
   assert.match(app, /"אין צורך להעביר כסף בין המשתתפים\."/);
-  assert.match(app, /hasPendingTransfers[\s\S]*?class="settlement-hero-total"/);
+  assert.match(app, /hasPendingTransfers[\s\S]*?class="settlement-hero-total/);
   assert.match(app, /אפשר לבטל את הסימון מאותה שורה/);
   assert.match(styles, /\.settlement-transfer-board/);
   assert.match(styles, /\.transfer-row\.is-personal/);

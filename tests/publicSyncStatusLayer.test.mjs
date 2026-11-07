@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
+import { renderEventNoteEditorView } from "../src/ui/eventNoteEditorPresentation.mjs";
 
 test("event route dialogs receive an explicit event id without relying on window.event", async () => {
   const app = await readFile("src/app.mjs", "utf8");
@@ -14,7 +15,46 @@ test("event route dialogs receive an explicit event id without relying on window
     const html = context.renderEventDialogShell({ eventId: "event-scope-fixture", title: "Share", body: "Fixture", routeMode });
     if (routeMode) assert.match(html, /data-sync-event-id="event-scope-fixture"/);
   }
-  const calls = [...app.matchAll(/return renderEventDialogShell\(\{\s*eventId: event\.id,/g)];
+  const overview = await readFile("src/ui/eventSettingsOverviewPresentation.mjs", "utf8");
+  assert.match(overview, /return renderEventDialogShell\(\{\s*eventId,/);
+  const management = await readFile("src/ui/eventManagementPresentation.mjs", "utf8");
+  assert.match(management, /return renderEventDialogShell\(\{\s*eventId,/);
+  const currency = await readFile("src/ui/eventCurrencyPresentation.mjs", "utf8");
+  assert.match(currency, /return renderEventDialogShell\(\{\s*eventId,/);
+  const repayment = await readFile("src/ui/eventRepaymentPresentation.mjs", "utf8");
+  assert.match(repayment, /return renderEventDialogShell\(\{\s*eventId,/);
+  const rounding = await readFile("src/ui/eventRoundingPresentation.mjs", "utf8");
+  assert.match(rounding, /return renderEventDialogShell\(\{\s*eventId,/);
+  const activity = await readFile("src/ui/eventActivityPresentation.mjs", "utf8");
+  assert.match(activity, /return renderEventDialogShell\(\{\s*eventId,/);
+  const editing = await readFile("src/ui/eventEditingPresentation.mjs", "utf8");
+  assert.match(editing, /return renderEventDialogShell\(\{\s*eventId,/);
+  const departure = await readFile("src/ui/eventDeparturePresentation.mjs", "utf8");
+  assert.match(departure, /return renderEventDialogShell\(\{\s*eventId,/);
+  // Execute the thin note adapter and its real extracted view through the
+  // original shell. An ambient `event` remains undefined throughout the test.
+  const noteStart = app.indexOf("function renderEventNoteDialog(");
+  const noteEnd = app.indexOf("\nfunction renderEventShareMenu", noteStart);
+  assert(noteStart >= 0 && noteEnd > noteStart);
+  Object.assign(context, {renderEventNoteEditorView, eventDialog: {noteId: null},
+    canCurrentParticipantEdit: () => true, pendingEventNoteDeletionMatches: () => false,
+    MAX_EVENT_NOTE_TITLE_LENGTH: 120, MAX_EVENT_NOTE_BODY_LENGTH: 12000});
+  vm.runInContext(app.slice(noteStart, noteEnd), context);
+  const noteHtml = context.renderEventNoteDialog({id: "actual-note-event-scope", name: "Notes", notes: []});
+  assert.match(noteHtml, /data-inline-sync-status[^>]*data-sync-event-id="actual-note-event-scope"/);
+  assert.match(noteHtml, /class="event-note-editor" data-event-id="actual-note-event-scope"/);
+  const calls = [
+    ...app.matchAll(/return renderEventDialogShell\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventSettingsOverviewView\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventManagementView\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventCurrencyView\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventRepaymentView\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventDepartureView\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventEditingView\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventActivityView\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventRoundingView\(\{\s*eventId: event\.id,/g),
+    ...app.matchAll(/return renderEventNoteEditorView\(\{\s*eventId:\s*event\.id,/g)
+  ];
   assert.equal(calls.length, 18, "all event dialog callers supply their actual event id");
 });
 
@@ -31,7 +71,8 @@ test("public sync status reports cloud saves and recovery without cluttering scr
 
   assert.match(index, /publicSyncStatusLayer\.mjs/);
   assert.match(sw, /publicSyncStatusLayer\.mjs/);
-  assert.match(layer, /aria-live/);
+  const view = await readFile("src/ui/syncNoticePresentation.mjs", "utf8");
+  assert.match(view, /aria-live/);
   assert.match(layer, /body\.app-dialog-open \.public-sync-status/);
   assert.doesNotMatch(layer, /body\.app-dialog-open\.has-event-route-dialog \.public-sync-status/);
   assert.match(layer, /data-inline-sync-status/);
@@ -102,7 +143,7 @@ test("public sync status reports cloud saves and recovery without cluttering scr
     /importantActionDialog\.kind === "merge-participants" \? 'data-allow-offline-mutation="true"'/
   );
   assert.doesNotMatch(layer, /let mutationLockReason = navigator\.onLine === false/);
-  assert.match(layer, /return "אין רשת כרגע"/);
+  assert.match(layer, /return "אין חיבור לאינטרנט כרגע. התחברו ונסו שוב."/);
   assert.match(layer, /return "הסנכרון מתעכב כרגע"/);
   assert.match(layer, /MutationObserver/);
   assert.match(layer, /let lastScreenSignature = screenSignature\(\)/);
@@ -120,13 +161,13 @@ test("public sync status reports cloud saves and recovery without cluttering scr
     /status === "saved" && !activeSaveScreenSignature[\s\S]*?showStatus\(""\)[\s\S]*?return/
   );
   assert.match(layer, /ROUTINE_SYNC_STATUSES\.has\(status\)/);
-  assert.match(layer, /import \{ iconSvg \} from "\.\/uiIcons\.mjs"/);
-  assert.match(layer, /class="app-toast-icon"/);
-  assert.match(layer, /class="app-toast-copy"/);
-  assert.match(layer, /class="app-toast-close"[^>]*data-sync-dismiss/);
-  assert.match(layer, /iconSvg\("bell"\)/);
-  assert.match(layer, /iconSvg\("x"\)/);
-  assert.match(layer, /aria-atomic/);
+  assert.match(view, /import \{ iconSvg \} from "\.\.\/uiIcons\.mjs"/);
+  assert.doesNotMatch(view, /class="app-toast-icon"/);
+  assert.match(view, /class="app-toast-copy"/);
+  assert.match(view, /class="app-toast-close"[^>]*data-sync-dismiss/);
+  assert.doesNotMatch(view, /iconSvg\("bell"\)/);
+  assert.match(view, /iconSvg\("x"\)/);
+  assert.match(view, /aria-atomic/);
   assert.match(
     layer,
     /function handleDismissClick[\s\S]*?node\.hidden = true;[\s\S]*?currentStatus = "";/
@@ -143,7 +184,12 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   );
   assert.match(layer, /\.public-sync-status\[hidden\] \{ display: none !important; \}/);
   assert.match(layer, /flushPendingSharedState/);
+  assert.match(layer, /reconnectPromise = flushPendingSharedState\(\{ automatic: true \}\)/);
   assert.match(layer, /await flushPendingSharedState\(\)/);
+  assert.equal([...app.matchAll(/flushPendingSharedState\(\{ automatic: true \}\)/g)].length, 3,
+    "background account-link, membership, and notification recovery use automatic retry selection");
+  assert.equal([...app.matchAll(/flushPendingSharedState\(\)/g)].length, 1,
+    "only the user-triggered payment reminder may explicitly retry the whole outbox");
   assert.doesNotMatch(layer, /if \(result\?\.ok\) showStatus\("saved"\)/);
   assert.match(layer, /if \(!status \|\| ROUTINE_SYNC_STATUSES\.has\(status\)\) \{[\s\S]*?currentStatus = "";[\s\S]*?existingNode\.hidden = true/);
   assert.match(layer, /pendingHere \? pendingSaveMessage\(pendingFailureKind\) : ""/);
@@ -154,7 +200,7 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   }
   assert.match(layer, /if \(routeStatus\) routeStatus\.hidden = !message;/);
   assert.doesNotMatch(layer, /background: #fffaf0/);
-  assert.match(layer, /return "המידע עודכן במכשיר אחר"/);
+  assert.match(layer, /return pendingSaveMessage\("conflict"\)/);
   assert.doesNotMatch(layer, /public-sync-dot/);
   assert.doesNotMatch(layer, /data-sync-retry>נסה שוב/);
   assert.match(layer, /target\.closest\("\[data-route-sync-status\]"\)/);
