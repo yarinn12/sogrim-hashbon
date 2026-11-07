@@ -256,3 +256,90 @@ test('real failures and missing causal proof stay failures', () => {
     assert.equal(fixture.record.pageErrors.length, 1);
   }
 });
+
+function recoveryReloadLedger() {
+  const fixture = ledger({ boundaryStart: 100, navigationStart: 130, navigationCommit: 140, boundaryEnd: 200 });
+  const reload = fixture.context.reloads[0];
+  reload.kind = 'recovery';
+  reload.workspaceId = 'space-account-entry';
+  reload.recoveryUserId = '11111111-1111-4111-8111-111111111111';
+  reload.finalRecoveryUserId = reload.recoveryUserId;
+  fixture.context.attempts.clear();
+  fixture.context.accountRequests.clear();
+  const notificationQuery = 'recipient_user_id=eq.11111111-1111-4111-8111-111111111111' +
+    '&select=id%2Cevent_id%2Cactivity_id%2Ckind%2Ctitle%2Cbody%2Cview%2Caction_url%2Ccreated_at%2Cread_at' +
+    '&order=created_at.desc&limit=40';
+  const add = (id, path, query, documentId, sequence, finished) => {
+    const url = `${ORIGIN}${path}?${query}&__qa_account_attempt=${id}`;
+    const attempt = { id, url, documentId, method: 'GET', sequence, finished,
+      request: { sequence: sequence + 1 }, response: { status: 200, allowOrigin: '*' } };
+    fixture.context.attempts.set(id, attempt);
+    return attempt;
+  };
+  add('old-full', PATH, 'id=eq.space-account-entry&select=state%2Cupdated_at', 'old-document', 50, 55);
+  add('old-metadata-control', PATH, 'id=eq.space-account-entry&select=updated_at', 'old-document', 110, 115);
+  add('old-notification-control', '/rest/v1/notification_inbox', notificationQuery, 'old-document', 116, 120);
+  add('new-full', PATH, 'id=eq.space-account-entry&select=state%2Cupdated_at', 'new-document', 150, 155);
+  add('new-notification', '/rest/v1/notification_inbox', notificationQuery, 'new-document', 160, 165);
+  const fail = (id, path, query, sequence, errorSequence) => {
+    const url = `${ORIGIN}${path}?${query}&__qa_account_attempt=${id}`;
+    fixture.context.attempts.set(id, { id, url, documentId: 'old-document', method: 'GET', sequence });
+    const stackHead = `Fetch API cannot load ${url} due to access control checks.`;
+    const fetchFrame = path === '/rest/v1/notification_inbox'
+      ? '\n    at unknown (http://127.0.0.1:4182/src/data/fetchTimeout.mjs:40:23)' : '';
+    const error = { name: 'Fetch API cannot load https',
+      message: stackHead.slice('Fetch API cannot load https:/'.length),
+      stack: stackHead + '\n    at unknown (web-inspector://bootstrap.js:1269:32)' + fetchFrame,
+      sequence: errorSequence };
+    fixture.record.pageErrors.push(error);
+    return error;
+  };
+  const notification = fail('unissued-notification', '/rest/v1/notification_inbox', notificationQuery, 131, 132);
+  const metadata = fail('unissued-metadata', PATH, 'id=eq.space-account-entry&select=updated_at', 133, 134);
+  return { fixture, notification, metadata };
+}
+
+test('iPad recovery reload ledger retains both independently identified old-document reads', () => {
+  const { fixture, notification, metadata } = recoveryReloadLedger();
+  const diagnostics = assertAccountEntryReloadLedger(fixture.record, fixture.context);
+  assert.deepEqual(diagnostics.map(item => item.id), ['unissued-notification', 'unissued-metadata']);
+  assert.deepEqual(diagnostics.map(item => item.raw), [notification, metadata]);
+  assert.deepEqual(fixture.record.pageErrors, [notification, metadata]);
+});
+
+test('WebKit recovery notification with a two-frame native stack keeps the same strict proof', () => {
+  const { fixture } = recoveryReloadLedger();
+  fixture.record.pageErrors[0].stack = fixture.record.pageErrors[0].stack.replace(
+    /\n    at unknown \(http:[^\n]+$/, '');
+  const diagnostics = assertAccountEntryReloadLedger(fixture.record, fixture.context);
+  assert.deepEqual(diagnostics.map(item => item.id), ['unissued-notification', 'unissued-metadata']);
+});
+
+test('recovery reload ledger rejects issued failures, missing CORS proof, identity loss and unsafe work', () => {
+  for (const mutation of [
+    fixture => { fixture.context.attempts.get('unissued-notification').request = { sequence: 132 }; },
+    fixture => { fixture.record.pageErrors[0].stack = fixture.record.pageErrors[0].stack.replace('fetchTimeout.mjs:40:23', 'foreign.mjs:40:23'); },
+    fixture => { fixture.context.attempts.get('unissued-metadata').request = { sequence: 134 }; },
+    fixture => fixture.context.attempts.delete('old-notification-control'),
+    fixture => fixture.context.attempts.delete('old-metadata-control'),
+    fixture => fixture.context.attempts.delete('new-notification'),
+    fixture => fixture.context.attempts.delete('old-full'),
+    fixture => fixture.context.attempts.delete('new-full'),
+    fixture => { fixture.context.attempts.get('old-notification-control').response.allowOrigin = null; },
+    fixture => { fixture.context.attempts.get('new-full').response.status = 503; },
+    fixture => { fixture.context.reloads[0].finalRecoveryUserId = 'foreign-user'; },
+    fixture => { fixture.context.reloads[0].finalReady = false; },
+    fixture => { fixture.context.attempts.get('unissued-notification').url =
+      fixture.context.attempts.get('unissued-notification').url.replace(ORIGIN, 'https://foreign.invalid'); },
+    fixture => { fixture.context.attempts.set('pending-write', {
+      documentId: 'old-document', method: 'PATCH', sequence: 125,
+      url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=pending-write`
+    }); },
+    fixture => { fixture.context.accountRequests.set('failed-account', { sequence: 126, status: 401 }); },
+    fixture => { fixture.record.runtimeErrors.push({ message: 'real runtime failure' }); }
+  ]) {
+    const { fixture } = recoveryReloadLedger();
+    mutation(fixture);
+    assert.throws(() => assertAccountEntryReloadLedger(fixture.record, fixture.context));
+  }
+});

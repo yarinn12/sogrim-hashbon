@@ -98,8 +98,10 @@ test('account entry: login rejection can retry the final password request withou
 });
 
 test('account entry: authenticated recovery keeps the new-password gate across reload and rotation', async ({ page, baseURL }) => {
-  const fixture = await prepareAccountEntry(page, baseURL, { recovery: true }), gate = await openAccountEntry(page, { mode: 'reset', size: 32, width: 320 });
-  await expect(gate.getByRole('heading', { name: 'סיסמה חדשה', exact: true })).toBeVisible();await assertAccountLayout(gate, 32);await page.reload();await expect(gate.locator('form')).toHaveAttribute('data-mode', 'reset-password');
+  const fixture = await prepareAccountEntry(page, baseURL, { recovery: true, trackRecoveryReload: true }), gate = await openAccountEntry(page, { mode: 'reset', size: 32, width: 320 });
+  await expect(gate.getByRole('heading', { name: 'סיסמה חדשה', exact: true })).toBeVisible();await assertAccountLayout(gate, 32);
+  await fixture.reloadEvidence.withExpectedReload(() => page.reload(), { expectedFinal: 'recovery-gate' });
+  await expect(gate.locator('form')).toHaveAttribute('data-mode', 'reset-password');
   await page.setViewportSize({ width: 844, height: 390 });await assertAccountLayout(gate, 32);expect(fixture.record.userUpdates).toHaveLength(0);expectNoExternalFailures(fixture);
 });
 

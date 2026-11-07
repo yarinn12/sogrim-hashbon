@@ -36,7 +36,8 @@ export async function prepareAccountEntry(page, baseURL, options = {}) {
   const record = { passwords: [], signup: [], recover: [], resend: [], userUpdates: [], username: [], snapshotWrites: [], external: [], pageErrors: [], runtimeErrors: [], unmatchedRequests: [], reloadDiagnostics: [], methods: [] };
   let failedUserWrites = 0, failedUsernames = 0;
   const reloadEvidence = await installAccountEntryReloadEvidence(page, {
-    origin: accountEntryAuthOrigin, record, browserName: page.context().browser()?.browserType().name()
+    origin: accountEntryAuthOrigin, record, browserName: page.context().browser()?.browserType().name(),
+    trackRecoveryNotifications: Boolean(options.trackRecoveryReload)
   });
   await page.addInitScript({ content: '(' + bootstrap + ')(' + JSON.stringify({ session: options.authenticated || options.recovery ? session : null, recovery: Boolean(options.recovery), nativeProviders: Boolean(options.nativeProviders), runtimeConfig }) + ')' });
   // Optional immutable OLD source for explicit regression proof. Other tests use
