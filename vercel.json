@@ -3,6 +3,7 @@
   "version": 2,
   "git": {
     "deploymentEnabled": {
+      "codex/ios-auth76-result-inspection-20261107": false,
       "codex/ios-native-stage-diagnostics-20261107": false,
       "codex/test-release-459-20261104": false,
       "codex/unified-release-4-58-20261012": false,
