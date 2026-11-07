@@ -16,7 +16,8 @@
       "codex/android-host-profile-stdout-2d4-20261107": false,
       "codex/android-host-profile-env-2d4-20261107": false,
       "codex/android-host-profile-sdk-env-2d4-20261107": false,
-      "codex/android-host-profile-runtime-2d4-20261107": false
+      "codex/android-host-profile-runtime-2d4-20261107": false,
+      "codex/android-swangle-compatibility-2d4-20261107": false
     }
   },
   "builds": [
