@@ -33,6 +33,16 @@ test('painted target: a visible fixed control keeps the background scroll positi
   expect(await page.evaluate(()=>scrollY)).toBe(before);
 });
 
+test('painted target: a tight clipping label scrolls above navigation without artificial padding',async({page})=>{
+  await page.setViewportSize({width:568,height:360});
+  await page.setContent(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;height:2000px}.before{height:600px}.clip{width:100px;height:72px;overflow:hidden}.target{display:block;width:100px;height:72px;border:0;padding:0}.product-route-controls{position:fixed;top:0;left:0}.product-route-controls button{height:80px;width:80px}.nav{position:fixed;bottom:0;left:0;width:100%;height:190px}</style><div class="before"></div><div class="clip"><button class="target" onclick="window.clicked=(window.clicked||0)+1">Target</button></div><div class="product-route-controls"><button>Header</button></div><nav class="nav" aria-label="ניווט ראשי"></nav>`);
+  await home.homeArchiveClick(page,page.locator('.target'));
+  expect(await page.evaluate(()=>window.clicked)).toBe(1);
+  expect(await page.locator('.clip').evaluate(e=>e.scrollTop)).toBe(0);
+  const box=await page.locator('.target').boundingBox();
+  expect(box.y).toBeGreaterThanOrEqual(80);expect(box.y+box.height).toBeLessThanOrEqual(170);
+});
+
 test('painted target: fixed menu corrects scroll after content grows',async({page})=>{
   await page.setViewportSize({width:568,height:360});
   await page.setContent(`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;height:100%;overflow:hidden}.event-status-menu{position:fixed;top:30px;left:80px;width:400px;height:300px;overflow:auto;overflow-anchor:none;z-index:2}.before{height:500px}.after{height:300px}.target{display:block;width:100%;height:56px}.nav{position:fixed;bottom:0;height:30px;width:100%}</style><section class="event-status-menu"><div class="before"></div><button class="target" onclick="window.clicked=(window.clicked||0)+1">Cancel</button><div class="after"></div></section><nav class="nav" aria-label="ניווט ראשי"></nav>`);

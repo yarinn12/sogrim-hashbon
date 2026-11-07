@@ -44,12 +44,16 @@ export async function alignPaintedTarget(element) {
     const targetBox=target.getBoundingClientRect();
     // Floating controls guide scrolling only where they overlap this target.
     // Their bottom edge is not a viewport-wide clip; the final hit test remains mandatory.
-    const alignmentTop=menu?top:Math.max(top,...controls.filter(r=>r.left<targetBox.right&&r.right>targetBox.left).map(r=>r.bottom));
-    return {top,bottom,alignmentTop};
+    // A tight overflow:hidden label is a physical clip, not an inset to pad.
+    // Adding eight pixels to that moving clip makes a full-height child
+    // impossible to align and repeatedly moves it back under navigation.
+    const softTop=menu?Math.max(0,menu.top):Math.max(0,...controls.filter(r=>r.left<targetBox.right&&r.right>targetBox.left).map(r=>r.bottom));
+    const softBottom=menu?Math.min(innerHeight,menu.bottom):Math.min(innerHeight,nav?.top??innerHeight);
+    return {top,bottom,alignmentTop:Math.max(top,softTop+8),alignmentBottom:Math.min(bottom,softBottom-8)};
   };
   const r=target.getBoundingClientRect(),b=bounds();
   const targetTop=glyph?r.y+r.height/2-22:r.top,targetBottom=glyph?r.y+r.height/2+22:r.bottom;
-  let delta=targetTop<b.alignmentTop+8?targetTop-b.alignmentTop-8:targetBottom>b.bottom-8?targetBottom-b.bottom+8:0;
+  let delta=targetTop<b.alignmentTop?targetTop-b.alignmentTop:targetBottom>b.alignmentBottom?targetBottom-b.alignmentBottom:0;
   for (const root of roots) {
     const before=root.scrollTop;root.scrollBy({top:delta,behavior:'instant'});delta-=root.scrollTop-before;
     if (Math.abs(delta)<.01) break;
@@ -61,7 +65,9 @@ export async function alignPaintedTarget(element) {
   const x=g.x+g.width/2,y=g.y+g.height/2,hit=document.elementFromPoint(x,y);
   return {attached:true,rect:box.toJSON(),glyph:glyph?g.toJSON():null,x,y,
     targetTop:glyph?y-22:box.top,targetBottom:glyph?y+22:box.bottom,
-    top:final.top,bottom:final.bottom,hit:element===hit||element.contains(hit)};
+    top:final.top,bottom:final.bottom,hit:element===hit||element.contains(hit),
+    scrollContext:{fixedBoundary:fixedBoundary?.className??null,documentCanScroll,windowY:window.scrollY??null,
+      roots:roots.map(root=>({tag:root.tagName,className:root.className,scrollTop:root.scrollTop,clientHeight:root.clientHeight,scrollHeight:root.scrollHeight,rect:root.getBoundingClientRect().toJSON()}))}};
 }
 
 export function paintedTargetIsReachable(sample,minimumSize) {

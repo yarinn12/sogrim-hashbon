@@ -44,20 +44,27 @@ test('[regression] archive action realigns after a late scroll restores its cove
  await page.setContent(`<meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}.before{height:500px}.after{height:700px}#archive{display:block;margin-left:21px;width:261px;height:92px;scroll-margin-block:0 300px}.product-route-controls{position:fixed;left:136px;top:10px;z-index:3}.product-route-controls button{width:48px;height:48px}nav{position:fixed;left:104px;bottom:14px;width:360px;height:150px;background:#dde5e3;z-index:2}</style><div class="before"></div><button id="archive" onclick="window.archiveClicks=(window.archiveClicks||0)+1">ארכיון</button><div class="after"></div><div class="product-route-controls"><button>נגישות</button></div><nav aria-label="ניווט ראשי"></nav>`);
  expect(await page.evaluate(()=>({width:innerWidth,height:innerHeight}))).toEqual({width:568,height:360});
  await page.evaluate(()=>{
-  const action=document.querySelector('#archive');let coveredScroll;
+  const action=document.querySelector('#archive'),control=document.querySelector('.product-route-controls button').getBoundingClientRect();
+  const initial=action.getBoundingClientRect(),coveredScroll=scrollY+initial.y+initial.height/2-(control.y+control.height/2);
+  // Define the obstruction independently of the helper's initial scroll path.
+  // A safer initial alignment must still exercise the delayed covered restore.
   window.archiveRestores=0;
   addEventListener('scroll',()=>{
    const r=action.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
-   if(!action.contains(hit))coveredScroll=scrollY;
-   else if(coveredScroll!==undefined&&!window.archiveRestores){
+   if(action.contains(hit)&&!window.archiveRestores){
     window.archiveRestores++;
     // The original capture restores the covered position on the next frame.
-    requestAnimationFrame(()=>scrollTo({top:coveredScroll,behavior:'instant'}));
+    requestAnimationFrame(()=>{
+     scrollTo({top:coveredScroll,behavior:'instant'});
+     const restored=action.getBoundingClientRect();
+     window.archiveRestoredCovered=!action.contains(document.elementFromPoint(restored.x+restored.width/2,restored.y+restored.height/2));
+    });
    }
   });
  });
  await homeArchiveClick(page,page.locator('#archive'));
  expect(await page.evaluate(()=>window.archiveRestores)).toBe(1);
+ expect(await page.evaluate(()=>window.archiveRestoredCovered)).toBe(true);
  expect(await page.evaluate(()=>window.archiveClicks)).toBe(1);
 });
 

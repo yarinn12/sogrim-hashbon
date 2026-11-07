@@ -4,21 +4,21 @@ import {alignPaintedTarget,paintedTargetIsReachable} from '../e2e/helpers/painte
 
 // A layout model, not a browser/device claim. Coordinates follow ancestor scroll
 // positions; hidden panes and the fixed header/footer intercept real hit regions.
-function layout(t,{menu=false,overflow='auto',grow=false,overlay=false,detach=false,glyph=true,fixedControl=false,documentScroll=false}={}) {
-  const world={leading:fixedControl?0:500,scrollTop:0,scrollHeight:1800,windowY:documentScroll?500:0,scrollCalls:[],grown:false};
+function layout(t,{menu=false,overflow='auto',grow=false,overlay=false,detach=false,glyph=true,fixedControl=false,documentScroll=false,clipLabel=false}={}) {
+  const world={leading:fixedControl?0:clipLabel?600:500,scrollTop:0,scrollHeight:clipLabel?44:1800,windowY:documentScroll?500:0,scrollCalls:[],grown:false};
   const height=menu?300:360,width=568,header=menu?0:80,footer=menu?height:170;
   const rect=(x,y,w,h)=>({x,y,left:x,top:y,width:w,height:h,right:x+w,bottom:y+h,toJSON(){return{x,y,left:x,top:y,width:w,height:h,right:x+w,bottom:y+h}}});
   const html={overflow:documentScroll?'visible':'hidden',parentElement:null,clientTop:0,clientHeight:height,getBoundingClientRect:()=>rect(0,0,width,height)};
   const body={...html,parentElement:html};
-  const pane={overflow:fixedControl?'visible':overflow,position:fixedControl?'fixed':'static',parentElement:body,clientTop:0,clientHeight:height,
+  const pane={overflow:clipLabel?'hidden':fixedControl?'visible':overflow,position:fixedControl?'fixed':'static',parentElement:body,clientTop:0,clientHeight:clipLabel?44:height,
     get scrollHeight(){return world.scrollHeight},get scrollTop(){return world.scrollTop},
-    getBoundingClientRect:()=>rect(0,0,width,height),
+    getBoundingClientRect:()=>rect(0,clipLabel?world.leading-world.windowY:0,width,clipLabel?44:height),
     scrollBy({top}){
       world.scrollCalls.push(top);world.scrollTop=Math.max(0,Math.min(world.scrollHeight-height,world.scrollTop+top));
       if(grow&&!world.grown){world.grown=true;world.leading+=900;world.scrollHeight+=900;}
     }};
   const button={dataset:glyph?{action:'event-status-select'}:{},isConnected:true,parentElement:pane,
-    getBoundingClientRect:()=>rect(fixedControl?width-100:0,world.leading-world.scrollTop,fixedControl?100:width,glyph?600:44),
+    getBoundingClientRect:()=>rect(fixedControl?width-100:0,world.leading-world.scrollTop-(clipLabel?world.windowY:0),fixedControl?100:width,glyph?600:44),
     closest:selector=>menu&&selector==='.event-status-menu'?pane:null,
     querySelector:()=>arrow,contains:node=>node===button||node===arrow};
   const arrow={getBoundingClientRect:()=>rect(24,button.getBoundingClientRect().y+140,20,20)};
@@ -74,4 +74,10 @@ test('reaching a fixed control does not scroll the background document',async t=
   const{world,button}=layout(t,{fixedControl:true,glyph:false,documentScroll:true});
   const sample=await alignPaintedTarget(button);
   assert.equal(world.windowY,500);assert.equal(paintedTargetIsReachable(sample,43.99),true);
+});
+test('a tight non-scrollable clipping label does not receive an impossible padding requirement',async t=>{
+  const{world,button}=layout(t,{clipLabel:true,glyph:false,documentScroll:true});
+  const sample=await alignPaintedTarget(button);
+  assert.equal(paintedTargetIsReachable(sample,43.99),true);
+  assert.equal(world.scrollTop,0);assert.ok(sample.targetBottom<=170);
 });
