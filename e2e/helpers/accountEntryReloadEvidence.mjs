@@ -65,6 +65,10 @@ export function classifyAccountEntryReloadError(error, {
       item.navigationStart < attempt.sequence && attempt.sequence < error.sequence;
   });
   if (!reload) return null;
+  // Notification attempts are instrumented only for the read-only recovery
+  // lifecycle. The generic branch compares snapshot request identities and
+  // must never interpret two non-snapshot identities as equal.
+  if (notificationAttemptUrl(url.href, origin) && reload.kind !== 'recovery') return null;
   if (reload.kind === 'recovery') {
     const snapshot = snapshotAttemptUrl(url.href, origin);
     const notification = notificationAttemptUrl(url.href, origin);
@@ -95,15 +99,22 @@ export function classifyAccountEntryReloadError(error, {
     inboxUrl.searchParams.set('select', NOTIFICATION_SELECT);
     inboxUrl.searchParams.set('order', 'created_at.desc');
     inboxUrl.searchParams.set('limit', '40');
+    const crossesBoundary = item => {
+      const end = item.finished ?? item.failure?.sequence;
+      return item.sequence < reload.navigationCommit &&
+        (end === undefined || end > reload.boundaryStart);
+    };
+    const acknowledgedBeforeNavigation = item =>
+      hasAcknowledgedResponse(item, origin) && item.finished < reload.navigationStart;
     const unsafeAttempt = [...attempts.values()].some(item => item !== attempt &&
-      item.documentId === reload.oldDocumentId && item.sequence > reload.boundaryStart &&
-      item.sequence < reload.navigationCommit &&
-      (item.failure || item.method !== 'GET' && !hasAcknowledgedResponse(item, origin) ||
-        item.request && !hasAcknowledgedResponse(item, origin)));
+      item.documentId === reload.oldDocumentId && crossesBoundary(item) &&
+      (item.failure || item.method !== 'GET' && !acknowledgedBeforeNavigation(item) ||
+        item.request && !acknowledgedBeforeNavigation(item)));
     const unsafeAccount = [...accountRequests.values()].some(item =>
-      item.sequence > reload.boundaryStart && item.sequence < reload.navigationCommit &&
+      crossesBoundary(item) &&
       (item.failure || !(item.status >= 200 && item.status < 300 &&
-        [origin, '*'].includes(item.allowOrigin) && item.finished)));
+        [origin, '*'].includes(item.allowOrigin) && item.finished &&
+        item.finished < reload.navigationStart)));
     if (!acknowledgedRead(reload.oldDocumentId, SNAPSHOT_PATH, fullUrl, 0, reload.navigationStart) ||
         !acknowledgedRead(reload.finalDocumentId, SNAPSHOT_PATH, fullUrl,
           reload.navigationCommit, reload.boundaryEnd) ||

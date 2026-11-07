@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertAccountEntryReloadLedger } from '../e2e/helpers/accountEntryReloadEvidence.mjs';
+import {
+  assertAccountEntryReloadLedger, classifyAccountEntryReloadError
+} from '../e2e/helpers/accountEntryReloadEvidence.mjs';
 
 const ORIGIN = 'https://account-entry-e2e.supabase.co';
 const PATH = '/rest/v1/app_snapshots';
@@ -342,4 +344,96 @@ test('recovery reload ledger rejects issued failures, missing CORS proof, identi
     mutation(fixture);
     assert.throws(() => assertAccountEntryReloadLedger(fixture.record, fixture.context));
   }
+});
+
+test('notification reads cannot borrow generic account-write reload proof', () => {
+  const { fixture, notification, metadata } = recoveryReloadLedger();
+  fixture.context.reloads[0].kind = undefined;
+  fixture.context.attempts.set('generic-write', {
+    method: 'PATCH', sequence: 117, finished: 123,
+    response: { status: 200, allowOrigin: '*' }
+  });
+  fixture.context.accountRequests.set('generic-account', {
+    method: 'PUT', sequence: 112, finished: 119,
+    status: 200, allowOrigin: '*'
+  });
+  assert.equal(classifyAccountEntryReloadError(notification, fixture.context), null);
+  assert.notEqual(classifyAccountEntryReloadError(metadata, fixture.context), null);
+});
+
+test('recovery reload rejects operations active across the boundary or acknowledged after navigation starts', async t => {
+  const cases = [
+    ['snapshot pending before boundary', fixture => fixture.context.attempts.set('pending-before-snapshot', {
+      documentId: 'old-document', method: 'PATCH', sequence: 90,
+      request: { sequence: 91 }, url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=pending-before-snapshot`
+    })],
+    ['account pending before boundary', fixture => fixture.context.accountRequests.set('pending-before-account', {
+      method: 'PUT', path: '/auth/v1/user', sequence: 90
+    })],
+    ['snapshot ACK after navigation starts', fixture => fixture.context.attempts.set('late-snapshot', {
+      documentId: 'old-document', method: 'PATCH', sequence: 110, finished: 135,
+      request: { sequence: 111 }, response: { status: 200, allowOrigin: '*' },
+      url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=late-snapshot`
+    })],
+    ['snapshot ACK after commit', fixture => fixture.context.attempts.set('later-snapshot', {
+      documentId: 'old-document', method: 'PATCH', sequence: 110, finished: 145,
+      request: { sequence: 111 }, response: { status: 200, allowOrigin: '*' },
+      url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=later-snapshot`
+    })],
+    ['account ACK after navigation starts', fixture => fixture.context.accountRequests.set('late-account', {
+      method: 'PUT', path: '/auth/v1/user', sequence: 110, finished: 135,
+      status: 200, allowOrigin: '*'
+    })],
+    ['account ACK after commit', fixture => fixture.context.accountRequests.set('later-account', {
+      method: 'PUT', path: '/auth/v1/user', sequence: 110, finished: 145,
+      status: 200, allowOrigin: '*'
+    })],
+    ['snapshot failure after boundary from earlier start', fixture => fixture.context.attempts.set('late-snapshot-failure', {
+      documentId: 'old-document', method: 'PATCH', sequence: 90,
+      failure: { sequence: 135, text: 'net::ERR_FAILED' },
+      url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=late-snapshot-failure`
+    })],
+    ['account failure after boundary from earlier start', fixture => fixture.context.accountRequests.set('late-account-failure', {
+      method: 'PUT', path: '/auth/v1/user', sequence: 90,
+      failure: { sequence: 135, text: 'net::ERR_FAILED' }
+    })]
+  ];
+  for (const [name, mutate] of cases) {
+    await t.test(name, () => {
+      const { fixture } = recoveryReloadLedger();
+      mutate(fixture);
+      assert.throws(() => assertAccountEntryReloadLedger(fixture.record, fixture.context),
+        /expect\(received\)/);
+    });
+  }
+});
+
+test('handled failures completed before the reload boundary do not veto healthy recovery', () => {
+  const { fixture } = recoveryReloadLedger();
+  fixture.context.attempts.set('old-handled-snapshot-failure', {
+    documentId: 'old-document', method: 'PATCH', sequence: 70,
+    failure: { sequence: 80, text: 'handled HTTP 409' },
+    url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=old-handled-snapshot-failure`
+  });
+  fixture.context.accountRequests.set('old-handled-account-failure', {
+    method: 'PUT', path: '/auth/v1/user', sequence: 70,
+    failure: { sequence: 80, text: 'handled HTTP 503' }
+  });
+  assert.deepEqual(assertAccountEntryReloadLedger(fixture.record, fixture.context)
+    .map(item => item.id), ['unissued-notification', 'unissued-metadata']);
+});
+
+test('operations crossing the reload boundary remain safe when acknowledged before navigation', () => {
+  const { fixture } = recoveryReloadLedger();
+  fixture.context.attempts.set('early-snapshot-ack', {
+    documentId: 'old-document', method: 'PATCH', sequence: 90, finished: 120,
+    request: { sequence: 91 }, response: { status: 200, allowOrigin: '*' },
+    url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=early-snapshot-ack`
+  });
+  fixture.context.accountRequests.set('early-account-ack', {
+    method: 'PUT', path: '/auth/v1/user', sequence: 90, finished: 120,
+    status: 200, allowOrigin: '*'
+  });
+  assert.deepEqual(assertAccountEntryReloadLedger(fixture.record, fixture.context)
+    .map(item => item.id), ['unissued-notification', 'unissued-metadata']);
 });
