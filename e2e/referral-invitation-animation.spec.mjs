@@ -70,3 +70,23 @@ test('invitation control keeps an undersized raw target as a failure',async({pag
   expect(box.height).toBe(43.5);
   expect(box.height).toBeLessThan(44);
 });
+
+test('invitation control rejects a visually blocked button center',async({page})=>{
+  await page.setContent(markup);
+  const button=page.locator('#public-referral-rewards-dialog button');
+  await button.evaluate(el=>{
+    const r=el.getBoundingClientRect();
+    const blocker=document.createElement('div');
+    blocker.id='button-center-blocker';
+    blocker.style.cssText=`position:fixed;z-index:10;left:${r.x}px;top:${r.y}px;width:${r.width}px;height:${r.height}px;background:rgba(0,0,0,.1)`;
+    document.body.append(blocker);
+  });
+  await expect(control(button)).rejects.toThrow();
+  const result=await button.evaluate(el=>{
+    const r=el.getBoundingClientRect();
+    return {height:r.height,width:r.width,hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.id};
+  });
+  expect(result.height).toBe(44);
+  expect(result.width).toBe(100);
+  expect(result.hit).toBe('button-center-blocker');
+});

@@ -1196,3 +1196,17 @@ test("native landscape headers retain a positioned stacking context for fixed na
   const rule=css.slice(start,css.indexOf('}',start));
   assert.match(rule,/position:relative!important/,'non-sticky header must retain its z-index above content');
 });
+
+test("native invitation keeps hovered primary color in its runtime CSS",async()=>{
+  const referral=resolve("src/publicReferralRewardsLayer.mjs");
+  const ledger=resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const {extractNativeStaticCss,extractStaticCssTemplatesPlugin}=await harness();
+  const paths=await extractNativeStaticCss([{path:referral},{path:ledger}],"fixture-assets");
+  assert.equal(paths.has(referral),false,"Referral CSS is intentionally inserted by its runtime module");
+  assert.ok(paths.has(ledger),"Other static Native CSS must still be extracted");
+  assert.match(await readFile("index.html","utf8"),/src\/publicReferralRewardsLayer\.mjs/);
+  let onLoad;
+  extractStaticCssTemplatesPlugin(paths).setup({onLoad(_options,handler){onLoad=handler}});
+  const {contents}=await onLoad({path:referral});
+  assert.match(contents,/#public-referral-rewards-dialog \.primary-button:hover:not\(:disabled\)\s*\{\s*color:\s*#ffffff\s*!important;/);
+});

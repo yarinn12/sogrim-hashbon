@@ -1188,6 +1188,10 @@ function injectReferralStyles() {
       min-width: 104px;
     }
 
+    #public-referral-rewards-dialog .primary-button:hover:not(:disabled) {
+      color: #ffffff !important;
+    }
+
     .referral-share-actions button:active:not(:disabled) {
       scale: 0.96;
     }

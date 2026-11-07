@@ -29,3 +29,80 @@ async function journey(page,mode,root,w,h,testInfo){
 }
 for(const mode of ['inactive','active','error','loading','signed-out','custom14','stats','stale'])test('invitation state '+mode,async({page},info)=>journey(page,mode,16,393,852,info));
 for(const[id,root,w,h]of [['text20',20,411,852],['text32',32,320,852],['short',32,320,390],['landscape',32,852,393]])test('invitation reflow '+id,async({page},info)=>journey(page,'stats',root,w,h,info));
+
+function invitationContrast(foreground,background){
+  const channels=value=>[...value.matchAll(/[0-9.]+/g)].slice(0,3).map(match=>Number(match[0]));
+  const luminance=value=>channels(value).map(channel=>{
+    const normalized=channel/255;
+    return normalized<=.04045?normalized/12.92:((normalized+.055)/1.055)**2.4;
+  }).reduce((sum,channel,index)=>sum+channel*[.2126,.7152,.0722][index],0);
+  const a=luminance(foreground),b=luminance(background);
+  return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+}
+
+async function openContrastInvitation(page,mode,root){
+  await page.setViewportSize({width:root===16?393:320,height:852});
+  await page.goto('/?requests=empty&reward='+(mode==='stale'?'active':mode)+(root===16?'':'&dynamic-type-preview='+root));
+  await page.locator('.product-app-nav [data-nav-destination="profile"]').click();
+  const opener=page.locator('#referral-reward-card-profile [data-open-referral-rewards]');
+  await profileIdentityReach(opener);
+  await clickProfileIdentity(opener);
+  const dialog=page.locator('#public-referral-rewards-dialog');
+  await expect(dialog).toBeVisible();
+  expect(await page.evaluate(()=>parseFloat(getComputedStyle(document.documentElement).fontSize))).toBe(root);
+  if(mode==='stale'){
+    await page.evaluate(async()=>{__friendInviteQa.rewardMode='error';await SogrimMonetization.refresh()});
+    await expect(dialog.locator('.is-stale')).toBeVisible();
+  }
+  return dialog;
+}
+
+for(const root of [16,32]){
+  for(const mode of ['signed-out','active','error','stale']){
+    test(`invitation ${mode} action keeps readable text and keyboard focus at root ${root}`,async({page})=>{
+      const dialog=await openContrastInvitation(page,mode,root);
+      const selector=mode==='signed-out'?'[data-referral-action="profile"]'
+        :mode==='active'?'[data-referral-action="share"]':'[data-referral-action="retry"]';
+      const button=dialog.locator(selector);
+      await control(button);
+      await page.evaluate(()=>document.fonts.ready);
+      await button.hover();
+      await control(button);
+      const painted=await button.evaluate(el=>{
+        const text=el.querySelector('span')||el;
+        const box=el.getBoundingClientRect();
+        const hit=document.elementFromPoint(box.x+box.width/2,box.y+box.height/2);
+        return {
+          foreground:getComputedStyle(text).color,
+          background:getComputedStyle(el).backgroundColor,
+          width:box.width,height:box.height,
+          reachable:hit===el||el.contains(hit)
+        };
+      });
+      expect(painted.foreground).toMatch(/^rgb\([0-9.]+,\s*[0-9.]+,\s*[0-9.]+\)$/);
+      expect(painted.background).toMatch(/^rgb\([0-9.]+,\s*[0-9.]+,\s*[0-9.]+\)$/);
+      expect(invitationContrast(painted.foreground,painted.background)).toBeGreaterThanOrEqual(4.5);
+      expect(painted.width).toBeGreaterThanOrEqual(44);
+      expect(painted.height).toBeGreaterThanOrEqual(44);
+      expect(painted.reachable).toBe(true);
+      await page.keyboard.press('Tab');
+      await button.focus();
+      await expect(button).toBeFocused();
+      const focus=await button.evaluate(el=>({
+        visible:el.matches(':focus-visible'),
+        outlineStyle:getComputedStyle(el).outlineStyle,
+        outlineWidth:parseFloat(getComputedStyle(el).outlineWidth)
+      }));
+      expect(focus.visible).toBe(true);
+      expect(focus.outlineStyle).not.toBe('none');
+      expect(focus.outlineWidth).toBeGreaterThan(0);
+      const focusedColors=await button.evaluate(el=>({
+        foreground:getComputedStyle(el.querySelector('span')||el).color,
+        background:getComputedStyle(el).backgroundColor
+      }));
+      expect(focusedColors.foreground).toMatch(/^rgb\([0-9.]+,\s*[0-9.]+,\s*[0-9.]+\)$/);
+      expect(focusedColors.background).toMatch(/^rgb\([0-9.]+,\s*[0-9.]+,\s*[0-9.]+\)$/);
+      expect(invitationContrast(focusedColors.foreground,focusedColors.background)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+}
