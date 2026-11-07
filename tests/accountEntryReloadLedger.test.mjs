@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertAccountEntryReloadLedger } from '../e2e/helpers/accountEntryReloadEvidence.mjs';
+import {
+  assertAccountEntryReloadLedger, classifyAccountEntryReloadError
+} from '../e2e/helpers/accountEntryReloadEvidence.mjs';
 
 const ORIGIN = 'https://account-entry-e2e.supabase.co';
 const PATH = '/rest/v1/app_snapshots';
@@ -255,4 +257,183 @@ test('real failures and missing causal proof stay failures', () => {
     assert.throws(() => assertAccountEntryReloadLedger(fixture.record, fixture.context));
     assert.equal(fixture.record.pageErrors.length, 1);
   }
+});
+
+function recoveryReloadLedger() {
+  const fixture = ledger({ boundaryStart: 100, navigationStart: 130, navigationCommit: 140, boundaryEnd: 200 });
+  const reload = fixture.context.reloads[0];
+  reload.kind = 'recovery';
+  reload.workspaceId = 'space-account-entry';
+  reload.recoveryUserId = '11111111-1111-4111-8111-111111111111';
+  reload.finalRecoveryUserId = reload.recoveryUserId;
+  fixture.context.attempts.clear();
+  fixture.context.accountRequests.clear();
+  const notificationQuery = 'recipient_user_id=eq.11111111-1111-4111-8111-111111111111' +
+    '&select=id%2Cevent_id%2Cactivity_id%2Ckind%2Ctitle%2Cbody%2Cview%2Caction_url%2Ccreated_at%2Cread_at' +
+    '&order=created_at.desc&limit=40';
+  const add = (id, path, query, documentId, sequence, finished) => {
+    const url = `${ORIGIN}${path}?${query}&__qa_account_attempt=${id}`;
+    const attempt = { id, url, documentId, method: 'GET', sequence, finished,
+      request: { sequence: sequence + 1 }, response: { status: 200, allowOrigin: '*' } };
+    fixture.context.attempts.set(id, attempt);
+    return attempt;
+  };
+  add('old-full', PATH, 'id=eq.space-account-entry&select=state%2Cupdated_at', 'old-document', 50, 55);
+  add('old-metadata-control', PATH, 'id=eq.space-account-entry&select=updated_at', 'old-document', 110, 115);
+  add('old-notification-control', '/rest/v1/notification_inbox', notificationQuery, 'old-document', 116, 120);
+  add('new-full', PATH, 'id=eq.space-account-entry&select=state%2Cupdated_at', 'new-document', 150, 155);
+  add('new-notification', '/rest/v1/notification_inbox', notificationQuery, 'new-document', 160, 165);
+  const fail = (id, path, query, sequence, errorSequence) => {
+    const url = `${ORIGIN}${path}?${query}&__qa_account_attempt=${id}`;
+    fixture.context.attempts.set(id, { id, url, documentId: 'old-document', method: 'GET', sequence });
+    const stackHead = `Fetch API cannot load ${url} due to access control checks.`;
+    const fetchFrame = path === '/rest/v1/notification_inbox'
+      ? '\n    at unknown (http://127.0.0.1:4182/src/data/fetchTimeout.mjs:40:23)' : '';
+    const error = { name: 'Fetch API cannot load https',
+      message: stackHead.slice('Fetch API cannot load https:/'.length),
+      stack: stackHead + '\n    at unknown (web-inspector://bootstrap.js:1269:32)' + fetchFrame,
+      sequence: errorSequence };
+    fixture.record.pageErrors.push(error);
+    return error;
+  };
+  const notification = fail('unissued-notification', '/rest/v1/notification_inbox', notificationQuery, 131, 132);
+  const metadata = fail('unissued-metadata', PATH, 'id=eq.space-account-entry&select=updated_at', 133, 134);
+  return { fixture, notification, metadata };
+}
+
+test('iPad recovery reload ledger retains both independently identified old-document reads', () => {
+  const { fixture, notification, metadata } = recoveryReloadLedger();
+  const diagnostics = assertAccountEntryReloadLedger(fixture.record, fixture.context);
+  assert.deepEqual(diagnostics.map(item => item.id), ['unissued-notification', 'unissued-metadata']);
+  assert.deepEqual(diagnostics.map(item => item.raw), [notification, metadata]);
+  assert.deepEqual(fixture.record.pageErrors, [notification, metadata]);
+});
+
+test('WebKit recovery notification with a two-frame native stack keeps the same strict proof', () => {
+  const { fixture } = recoveryReloadLedger();
+  fixture.record.pageErrors[0].stack = fixture.record.pageErrors[0].stack.replace(
+    /\n    at unknown \(http:[^\n]+$/, '');
+  const diagnostics = assertAccountEntryReloadLedger(fixture.record, fixture.context);
+  assert.deepEqual(diagnostics.map(item => item.id), ['unissued-notification', 'unissued-metadata']);
+});
+
+test('recovery reload ledger rejects issued failures, missing CORS proof, identity loss and unsafe work', () => {
+  for (const mutation of [
+    fixture => { fixture.context.attempts.get('unissued-notification').request = { sequence: 132 }; },
+    fixture => { fixture.record.pageErrors[0].stack = fixture.record.pageErrors[0].stack.replace('fetchTimeout.mjs:40:23', 'foreign.mjs:40:23'); },
+    fixture => { fixture.context.attempts.get('unissued-metadata').request = { sequence: 134 }; },
+    fixture => fixture.context.attempts.delete('old-notification-control'),
+    fixture => fixture.context.attempts.delete('old-metadata-control'),
+    fixture => fixture.context.attempts.delete('new-notification'),
+    fixture => fixture.context.attempts.delete('old-full'),
+    fixture => fixture.context.attempts.delete('new-full'),
+    fixture => { fixture.context.attempts.get('old-notification-control').response.allowOrigin = null; },
+    fixture => { fixture.context.attempts.get('new-full').response.status = 503; },
+    fixture => { fixture.context.reloads[0].finalRecoveryUserId = 'foreign-user'; },
+    fixture => { fixture.context.reloads[0].finalReady = false; },
+    fixture => { fixture.context.attempts.get('unissued-notification').url =
+      fixture.context.attempts.get('unissued-notification').url.replace(ORIGIN, 'https://foreign.invalid'); },
+    fixture => { fixture.context.attempts.set('pending-write', {
+      documentId: 'old-document', method: 'PATCH', sequence: 125,
+      url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=pending-write`
+    }); },
+    fixture => { fixture.context.accountRequests.set('failed-account', { sequence: 126, status: 401 }); },
+    fixture => { fixture.record.runtimeErrors.push({ message: 'real runtime failure' }); }
+  ]) {
+    const { fixture } = recoveryReloadLedger();
+    mutation(fixture);
+    assert.throws(() => assertAccountEntryReloadLedger(fixture.record, fixture.context));
+  }
+});
+
+test('notification reads cannot borrow generic account-write reload proof', () => {
+  const { fixture, notification, metadata } = recoveryReloadLedger();
+  fixture.context.reloads[0].kind = undefined;
+  fixture.context.attempts.set('generic-write', {
+    method: 'PATCH', sequence: 117, finished: 123,
+    response: { status: 200, allowOrigin: '*' }
+  });
+  fixture.context.accountRequests.set('generic-account', {
+    method: 'PUT', sequence: 112, finished: 119,
+    status: 200, allowOrigin: '*'
+  });
+  assert.equal(classifyAccountEntryReloadError(notification, fixture.context), null);
+  assert.notEqual(classifyAccountEntryReloadError(metadata, fixture.context), null);
+});
+
+test('recovery reload rejects operations active across the boundary or acknowledged after navigation starts', async t => {
+  const cases = [
+    ['snapshot pending before boundary', fixture => fixture.context.attempts.set('pending-before-snapshot', {
+      documentId: 'old-document', method: 'PATCH', sequence: 90,
+      request: { sequence: 91 }, url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=pending-before-snapshot`
+    })],
+    ['account pending before boundary', fixture => fixture.context.accountRequests.set('pending-before-account', {
+      method: 'PUT', path: '/auth/v1/user', sequence: 90
+    })],
+    ['snapshot ACK after navigation starts', fixture => fixture.context.attempts.set('late-snapshot', {
+      documentId: 'old-document', method: 'PATCH', sequence: 110, finished: 135,
+      request: { sequence: 111 }, response: { status: 200, allowOrigin: '*' },
+      url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=late-snapshot`
+    })],
+    ['snapshot ACK after commit', fixture => fixture.context.attempts.set('later-snapshot', {
+      documentId: 'old-document', method: 'PATCH', sequence: 110, finished: 145,
+      request: { sequence: 111 }, response: { status: 200, allowOrigin: '*' },
+      url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=later-snapshot`
+    })],
+    ['account ACK after navigation starts', fixture => fixture.context.accountRequests.set('late-account', {
+      method: 'PUT', path: '/auth/v1/user', sequence: 110, finished: 135,
+      status: 200, allowOrigin: '*'
+    })],
+    ['account ACK after commit', fixture => fixture.context.accountRequests.set('later-account', {
+      method: 'PUT', path: '/auth/v1/user', sequence: 110, finished: 145,
+      status: 200, allowOrigin: '*'
+    })],
+    ['snapshot failure after boundary from earlier start', fixture => fixture.context.attempts.set('late-snapshot-failure', {
+      documentId: 'old-document', method: 'PATCH', sequence: 90,
+      failure: { sequence: 135, text: 'net::ERR_FAILED' },
+      url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=late-snapshot-failure`
+    })],
+    ['account failure after boundary from earlier start', fixture => fixture.context.accountRequests.set('late-account-failure', {
+      method: 'PUT', path: '/auth/v1/user', sequence: 90,
+      failure: { sequence: 135, text: 'net::ERR_FAILED' }
+    })]
+  ];
+  for (const [name, mutate] of cases) {
+    await t.test(name, () => {
+      const { fixture } = recoveryReloadLedger();
+      mutate(fixture);
+      assert.throws(() => assertAccountEntryReloadLedger(fixture.record, fixture.context),
+        /expect\(received\)/);
+    });
+  }
+});
+
+test('handled failures completed before the reload boundary do not veto healthy recovery', () => {
+  const { fixture } = recoveryReloadLedger();
+  fixture.context.attempts.set('old-handled-snapshot-failure', {
+    documentId: 'old-document', method: 'PATCH', sequence: 70,
+    failure: { sequence: 80, text: 'handled HTTP 409' },
+    url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=old-handled-snapshot-failure`
+  });
+  fixture.context.accountRequests.set('old-handled-account-failure', {
+    method: 'PUT', path: '/auth/v1/user', sequence: 70,
+    failure: { sequence: 80, text: 'handled HTTP 503' }
+  });
+  assert.deepEqual(assertAccountEntryReloadLedger(fixture.record, fixture.context)
+    .map(item => item.id), ['unissued-notification', 'unissued-metadata']);
+});
+
+test('operations crossing the reload boundary remain safe when acknowledged before navigation', () => {
+  const { fixture } = recoveryReloadLedger();
+  fixture.context.attempts.set('early-snapshot-ack', {
+    documentId: 'old-document', method: 'PATCH', sequence: 90, finished: 120,
+    request: { sequence: 91 }, response: { status: 200, allowOrigin: '*' },
+    url: `${ORIGIN}${PATH}?id=eq.space-account-entry&__qa_account_attempt=early-snapshot-ack`
+  });
+  fixture.context.accountRequests.set('early-account-ack', {
+    method: 'PUT', path: '/auth/v1/user', sequence: 90, finished: 120,
+    status: 200, allowOrigin: '*'
+  });
+  assert.deepEqual(assertAccountEntryReloadLedger(fixture.record, fixture.context)
+    .map(item => item.id), ['unissued-notification', 'unissued-metadata']);
 });

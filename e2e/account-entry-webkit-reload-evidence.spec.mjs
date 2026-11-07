@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { createServer } from 'node:http';
 import {
   accountEntryAuthOrigin, accountEntryEmail, expectNoExternalFailures,
-  openAccountEntry, prepareAccountEntry
+  accountEntryUserId, openAccountEntry, prepareAccountEntry
 } from './helpers/accountEntryBatchPresentation.mjs';
 
 test.use({ serviceWorkers: 'block' });
@@ -100,6 +100,65 @@ test('account entry reload evidence: an identified unissued snapshot fetch is re
   expect(attempt.request).toBeUndefined();
   expect(attempt.response).toBeUndefined();
   expect(attempt.failure).toBeUndefined();
+});
+
+test('account recovery reload: two old-document reads are identified while the new gate and reads recover', async ({ page, baseURL }) => {
+  const fixture = await prepareAccountEntry(page, baseURL,
+    { recovery: true, trackRecoveryReload: true });
+  const gate = await openAccountEntry(page, { mode: 'reset' });
+  const old = await page.evaluateHandle(async () => {
+    const { fetchWithTimeout } = await import('/src/data/fetchTimeout.mjs');
+    return { run: async url => {
+      try { return { status: (await fetchWithTimeout(fetch, url)).status }; }
+      catch (error) { return { name: error.name, message: error.message }; }
+    } };
+  });
+  const metadataUrl = accountEntryAuthOrigin +
+    '/rest/v1/app_snapshots?id=eq.space-account-entry&select=updated_at';
+  const notificationUrl = new URL(accountEntryAuthOrigin + '/rest/v1/notification_inbox');
+  notificationUrl.searchParams.set('recipient_user_id', 'eq.' + accountEntryUserId);
+  notificationUrl.searchParams.set('select',
+    'id,event_id,activity_id,kind,title,body,view,action_url,created_at,read_at');
+  notificationUrl.searchParams.set('order', 'created_at.desc');
+  notificationUrl.searchParams.set('limit', '40');
+  let release, started;
+  const held = new Promise(resolve => { release = resolve; });
+  const navigationStarted = new Promise(resolve => { started = resolve; });
+  await page.route(url => url.origin === new URL(baseURL).origin && url.pathname === '/', async route => {
+    if (!route.request().isNavigationRequest()) return route.fallback();
+    started();
+    await held;
+    await route.fallback();
+  });
+  let probes;
+  try {
+    await fixture.reloadEvidence.withExpectedReload(async () => {
+      const navigation = page.reload();
+      await navigationStarted;
+      probes = await Promise.all([
+        old.evaluate((value, url) => value.run(url), notificationUrl.href),
+        old.evaluate((value, url) => value.run(url), metadataUrl)
+      ]);
+      release();
+      await navigation;
+    }, { expectedFinal: 'recovery-gate' });
+  } finally { release(); }
+  expect(probes).toEqual([{ name: 'TypeError', message: 'Load failed' },
+    { name: 'TypeError', message: 'Load failed' }]);
+  await expect(gate.locator('form')).toHaveAttribute('data-mode', 'reset-password');
+  expect(fixture.record.userUpdates).toEqual([]);
+  expect(fixture.record.snapshotWrites).toEqual([]);
+  expectNoExternalFailures(fixture);
+  expect(fixture.record.reloadDiagnostics.map(item => item.reason)).toEqual([
+    'webkit-unissued-recovery-notification', 'webkit-unissued-recovery-metadata'
+  ]);
+  for (const diagnostic of fixture.record.reloadDiagnostics) {
+    const attempt = fixture.reloadEvidence.attempts.get(diagnostic.id);
+    expect(attempt).toMatchObject({ documentId: fixture.reloadEvidence.reloads[0].oldDocumentId });
+    expect(attempt.request).toBeUndefined();
+    expect(attempt.response).toBeUndefined();
+    expect(attempt.failure).toBeUndefined();
+  }
 });
 
 test('account entry sign-out reload: an unissued workspace read is identified only after logout', async ({ page, baseURL }) => {

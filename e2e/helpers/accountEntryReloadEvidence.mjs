@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 
 const ATTEMPT_PARAM = '__qa_account_attempt';
 const SNAPSHOT_PATH = '/rest/v1/app_snapshots';
+const NOTIFICATION_PATH = '/rest/v1/notification_inbox';
+const NOTIFICATION_SELECT = 'id,event_id,activity_id,kind,title,body,view,action_url,created_at,read_at';
 const NATIVE_PREFIX = 'Fetch API cannot load ';
 const NATIVE_SUFFIX = ' due to access control checks.';
 
@@ -13,6 +15,27 @@ function snapshotAttemptUrl(value, origin) {
   } catch { return null; }
 }
 
+function notificationAttemptUrl(value, origin) {
+  try {
+    const url = new URL(value);
+    return url.origin === origin && url.pathname === NOTIFICATION_PATH && url.searchParams.has(ATTEMPT_PARAM)
+      ? url : null;
+  } catch { return null; }
+}
+
+function hasAcknowledgedResponse(item, origin) {
+  return item.response?.status >= 200 && item.response?.status < 300 &&
+    [origin, '*'].includes(item.response?.allowOrigin) && item.finished && !item.failure;
+}
+
+function sameReadWithoutAttempt(left, right) {
+  if (!left || !right || left.origin !== right.origin || left.pathname !== right.pathname) return false;
+  const a = new URL(left), b = new URL(right);
+  a.searchParams.delete(ATTEMPT_PARAM);
+  b.searchParams.delete(ATTEMPT_PARAM);
+  return a.href === b.href;
+}
+
 export function classifyAccountEntryReloadError(error, {
   origin, browserName, attempts, accountRequests, reloads, runtimeErrors
 }) {
@@ -21,9 +44,13 @@ export function classifyAccountEntryReloadError(error, {
   if (browserName !== 'webkit' || error.name !== 'Fetch API cannot load https' ||
       !firstLine.startsWith(NATIVE_PREFIX) || !firstLine.endsWith(NATIVE_SUFFIX) ||
       !error.message || !firstLine.endsWith(error.message) ||
-      stack.length !== 2 ||
       !/^\s+at unknown \(web-inspector:\/\/bootstrap\.js:\d+:\d+\)$/.test(stack[1])) return null;
-  const url = snapshotAttemptUrl(firstLine.slice(NATIVE_PREFIX.length, -NATIVE_SUFFIX.length), origin);
+  const rawUrl = firstLine.slice(NATIVE_PREFIX.length, -NATIVE_SUFFIX.length);
+  const nativeFetchFrame = stack.length === 3 &&
+    /^\s+at unknown \(http:\/\/127\.0\.0\.1:\d+\/src\/data\/fetchTimeout\.mjs:40:\d+\)$/.test(stack[2]);
+  const url = stack.length === 2 ?
+    snapshotAttemptUrl(rawUrl, origin) ?? notificationAttemptUrl(rawUrl, origin) :
+    nativeFetchFrame ? notificationAttemptUrl(rawUrl, origin) : null;
   if (!url) return null;
   const id = url.searchParams.get(ATTEMPT_PARAM), attempt = attempts.get(id);
   if (!attempt || attempt.url !== url.href || attempt.request || attempt.response || attempt.failure) return null;
@@ -38,6 +65,67 @@ export function classifyAccountEntryReloadError(error, {
       item.navigationStart < attempt.sequence && attempt.sequence < error.sequence;
   });
   if (!reload) return null;
+  // Notification attempts are instrumented only for the read-only recovery
+  // lifecycle. The generic branch compares snapshot request identities and
+  // must never interpret two non-snapshot identities as equal.
+  if (notificationAttemptUrl(url.href, origin) && reload.kind !== 'recovery') return null;
+  if (reload.kind === 'recovery') {
+    const snapshot = snapshotAttemptUrl(url.href, origin);
+    const notification = notificationAttemptUrl(url.href, origin);
+    const queryNames = [...url.searchParams.keys()];
+    const metadataRead = snapshot && attempt.method === 'GET' && queryNames.length === 3 &&
+      url.searchParams.get('id') === 'eq.' + reload.workspaceId &&
+      url.searchParams.get('select') === 'updated_at';
+    const inboxRead = notification && attempt.method === 'GET' && queryNames.length === 5 &&
+      url.searchParams.get('recipient_user_id') === 'eq.' + reload.recoveryUserId &&
+      url.searchParams.get('select') === NOTIFICATION_SELECT &&
+      url.searchParams.get('order') === 'created_at.desc' && url.searchParams.get('limit') === '40';
+    if ((!metadataRead && !inboxRead) || !reload.recoveryUserId ||
+        reload.finalRecoveryUserId !== reload.recoveryUserId ||
+        !/^space-[A-Za-z0-9_-]+$/.test(reload.workspaceId ?? '')) return null;
+    const acknowledgedRead = (documentId, path, query, after, before) =>
+      [...attempts.values()].some(item => {
+        const readUrl = path === SNAPSHOT_PATH
+          ? snapshotAttemptUrl(item.url, origin) : notificationAttemptUrl(item.url, origin);
+        return item !== attempt && item.documentId === documentId && item.method === 'GET' &&
+          readUrl?.pathname === path && sameReadWithoutAttempt(readUrl, query) &&
+          item.sequence > after && item.finished < before && hasAcknowledgedResponse(item, origin);
+      });
+    const fullUrl = new URL(origin + SNAPSHOT_PATH);
+    fullUrl.searchParams.set('id', 'eq.' + reload.workspaceId);
+    fullUrl.searchParams.set('select', 'state,updated_at');
+    const inboxUrl = new URL(origin + NOTIFICATION_PATH);
+    inboxUrl.searchParams.set('recipient_user_id', 'eq.' + reload.recoveryUserId);
+    inboxUrl.searchParams.set('select', NOTIFICATION_SELECT);
+    inboxUrl.searchParams.set('order', 'created_at.desc');
+    inboxUrl.searchParams.set('limit', '40');
+    const crossesBoundary = item => {
+      const end = item.finished ?? item.failure?.sequence;
+      return item.sequence < reload.navigationCommit &&
+        (end === undefined || end > reload.boundaryStart);
+    };
+    const acknowledgedBeforeNavigation = item =>
+      hasAcknowledgedResponse(item, origin) && item.finished < reload.navigationStart;
+    const unsafeAttempt = [...attempts.values()].some(item => item !== attempt &&
+      item.documentId === reload.oldDocumentId && crossesBoundary(item) &&
+      (item.failure || item.method !== 'GET' && !acknowledgedBeforeNavigation(item) ||
+        item.request && !acknowledgedBeforeNavigation(item)));
+    const unsafeAccount = [...accountRequests.values()].some(item =>
+      crossesBoundary(item) &&
+      (item.failure || !(item.status >= 200 && item.status < 300 &&
+        [origin, '*'].includes(item.allowOrigin) && item.finished &&
+        item.finished < reload.navigationStart)));
+    if (!acknowledgedRead(reload.oldDocumentId, SNAPSHOT_PATH, fullUrl, 0, reload.navigationStart) ||
+        !acknowledgedRead(reload.finalDocumentId, SNAPSHOT_PATH, fullUrl,
+          reload.navigationCommit, reload.boundaryEnd) ||
+        !acknowledgedRead(reload.oldDocumentId, url.pathname, url,
+          reload.boundaryStart, reload.navigationStart) ||
+        !acknowledgedRead(reload.finalDocumentId, NOTIFICATION_PATH, inboxUrl,
+          reload.navigationCommit, reload.boundaryEnd) ||
+        unsafeAttempt || unsafeAccount || runtimeErrors.length) return null;
+    return { id, url: url.href, documentId: attempt.documentId,
+      reason: metadataRead ? 'webkit-unissued-recovery-metadata' : 'webkit-unissued-recovery-notification' };
+  }
   if (reload.kind === 'presentation') {
     // A presentation test deliberately replaces the logged-out document.
     // Only an unissued read is safe to classify, and both documents must have
@@ -169,7 +257,9 @@ export function assertAccountEntryReloadLedger(record, context, annotate = () =>
   return diagnostics;
 }
 
-export async function installAccountEntryReloadEvidence(page, { origin, record, browserName }) {
+export async function installAccountEntryReloadEvidence(page, {
+  origin, record, browserName, trackRecoveryNotifications = false
+}) {
   let sequence = 0;
   let activeReload = null;
   const attempts = new Map();
@@ -183,7 +273,7 @@ export async function installAccountEntryReloadEvidence(page, { origin, record, 
     if (event.kind === 'attempt') attempts.set(event.id, entry);
     else if (event.kind === 'runtime') record.runtimeErrors.push(entry);
   });
-  await page.addInitScript(({ origin, attemptParam }) => {
+  await page.addInitScript(({ origin, attemptParam, trackRecoveryNotifications }) => {
     const documentId = crypto.randomUUID();
     Object.defineProperty(window, '__qaAccountEntryDocumentId', { value: documentId });
     const nativeFetch = window.fetch.bind(window);
@@ -191,7 +281,9 @@ export async function installAccountEntryReloadEvidence(page, { origin, record, 
       let url;
       try { url = new URL(input instanceof Request ? input.url : input, location.href); }
       catch { return nativeFetch(input, init); }
-      if (url.origin !== origin || url.pathname !== '/rest/v1/app_snapshots') return nativeFetch(input, init);
+      if (url.origin !== origin || (url.pathname !== '/rest/v1/app_snapshots' &&
+          !(trackRecoveryNotifications && url.pathname === '/rest/v1/notification_inbox')))
+        return nativeFetch(input, init);
       const id = crypto.randomUUID();
       url.searchParams.set(attemptParam, id);
       const method = String(init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
@@ -205,7 +297,7 @@ export async function installAccountEntryReloadEvidence(page, { origin, record, 
     };
     window.addEventListener('error', event => report('error', event.error ?? event.message));
     window.addEventListener('unhandledrejection', event => report('unhandledrejection', event.reason));
-  }, { origin, attemptParam: ATTEMPT_PARAM });
+  }, { origin, attemptParam: ATTEMPT_PARAM, trackRecoveryNotifications });
 
   page.on('request', request => {
     const seq = next();
@@ -221,7 +313,8 @@ export async function installAccountEntryReloadEvidence(page, { origin, record, 
       requestUrl.pathname === '/rest/v1/rpc/set_friend_username')) {
       accountRequests.set(request, { path: requestUrl.pathname, method: request.method(), sequence: seq });
     }
-    const url = snapshotAttemptUrl(request.url(), origin);
+    const url = snapshotAttemptUrl(request.url(), origin) ??
+      (trackRecoveryNotifications ? notificationAttemptUrl(request.url(), origin) : null);
     if (!url) return;
     const id = url.searchParams.get(ATTEMPT_PARAM);
     requestByObject.set(request, id);
@@ -264,15 +357,56 @@ export async function installAccountEntryReloadEvidence(page, { origin, record, 
     stack: error.stack, sequence: next() }));
 
   const withExpectedReload = async (action, { expectedFinal = 'account-ready' } = {}) => {
-    if (!['account-ready', 'signed-out', 'account-gate'].includes(expectedFinal)) throw new Error('Unknown account-entry reload target');
+    if (!['account-ready', 'signed-out', 'account-gate', 'recovery-gate'].includes(expectedFinal))
+      throw new Error('Unknown account-entry reload target');
     if (activeReload) throw new Error('Nested account-entry reload');
     const oldDocumentId = await page.evaluate(() => window.__qaAccountEntryDocumentId);
     const reload = { oldDocumentId, boundaryStart: next(), navigationStart: null,
       navigationCommit: null, finalDocumentId: null, finalReady: false };
     if (expectedFinal === 'signed-out') reload.kind = 'signout';
     if (expectedFinal === 'account-gate') reload.kind = 'presentation';
+    if (expectedFinal === 'recovery-gate') reload.kind = 'recovery';
     activeReload = reload;
     try {
+      if (expectedFinal === 'recovery-gate') {
+        expect(trackRecoveryNotifications).toBe(true);
+        reload.recoveryUserId = await page.evaluate(() =>
+          JSON.parse(localStorage.getItem('settle-friends-account-recovery-session') ?? 'null')?.userId);
+        expect(reload.recoveryUserId).toMatch(/^[0-9a-f-]{36}$/i);
+        const oldFullRead = () => [...attempts.values()].find(item => {
+          const url = snapshotAttemptUrl(item.url, origin);
+          return item.documentId === oldDocumentId && item.method === 'GET' &&
+            url?.searchParams.get('select') === 'state,updated_at' &&
+            [...url.searchParams.keys()].length === 3 && hasAcknowledgedResponse(item, origin);
+        });
+        await expect.poll(() => Boolean(oldFullRead()), { timeout: 20000 }).toBe(true);
+        reload.workspaceId = oldFullRead().url &&
+          snapshotAttemptUrl(oldFullRead().url, origin).searchParams.get('id')?.slice(3);
+        expect(reload.workspaceId).toMatch(/^space-[A-Za-z0-9_-]+$/);
+        const metadataUrl = new URL(origin + SNAPSHOT_PATH);
+        metadataUrl.searchParams.set('id', 'eq.' + reload.workspaceId);
+        metadataUrl.searchParams.set('select', 'updated_at');
+        const inboxUrl = new URL(origin + NOTIFICATION_PATH);
+        inboxUrl.searchParams.set('recipient_user_id', 'eq.' + reload.recoveryUserId);
+        inboxUrl.searchParams.set('select', NOTIFICATION_SELECT);
+        inboxUrl.searchParams.set('order', 'created_at.desc');
+        inboxUrl.searchParams.set('limit', '40');
+        // Prove the exact synthetic GETs are exposed through CORS in the old
+        // document before interpreting any later WebKit navigation error.
+        for (const url of [metadataUrl, inboxUrl]) {
+          expect(await page.evaluate(async value => {
+            const session = JSON.parse(localStorage.getItem('settle-friends-account-session') ?? 'null');
+            if (!session?.access_token) throw new Error('Recovery CORS probe lost the account session');
+            return (await fetch(value, {
+              headers: { Authorization: 'Bearer ' + session.access_token }
+            })).status;
+          }, url.href)).toBe(200);
+          await expect.poll(() => [...attempts.values()].some(item =>
+            item.documentId === oldDocumentId && item.sequence > reload.boundaryStart &&
+            sameReadWithoutAttempt(new URL(item.url), url) && hasAcknowledgedResponse(item, origin)),
+          { timeout: 20000 }).toBe(true);
+        }
+      }
       await action();
       await expect.poll(async () => {
         try {
@@ -290,6 +424,27 @@ export async function installAccountEntryReloadEvidence(page, { origin, record, 
       if (expectedFinal === 'signed-out' || expectedFinal === 'account-gate') {
         await expect(page.locator('#public-account-auth-gate form[data-mode=login]')).toBeVisible({ timeout: 20000 });
         expect(await page.evaluate(() => localStorage.getItem('settle-friends-account-session'))).toBeNull();
+      } else if (expectedFinal === 'recovery-gate') {
+        await expect(page.locator('#public-account-auth-gate form[data-mode=reset-password]'))
+          .toBeVisible({ timeout: 20000 });
+        reload.finalRecoveryUserId = await page.evaluate(() =>
+          JSON.parse(localStorage.getItem('settle-friends-account-recovery-session') ?? 'null')?.userId);
+        expect(reload.finalRecoveryUserId).toBe(reload.recoveryUserId);
+        await expect.poll(() => {
+          const current = [...attempts.values()].filter(item =>
+            item.documentId === reload.finalDocumentId && item.method === 'GET' &&
+            item.sequence > reload.navigationCommit && hasAcknowledgedResponse(item, origin));
+          return current.some(item => {
+            const url = snapshotAttemptUrl(item.url, origin);
+            return url?.searchParams.get('id') === 'eq.' + reload.workspaceId &&
+              url?.searchParams.get('select') === 'state,updated_at';
+          }) && current.some(item => {
+            const url = notificationAttemptUrl(item.url, origin);
+            return url?.searchParams.get('recipient_user_id') === 'eq.' + reload.recoveryUserId &&
+              url?.searchParams.get('select') === NOTIFICATION_SELECT &&
+              url?.searchParams.get('order') === 'created_at.desc' && url?.searchParams.get('limit') === '40';
+          });
+        }, { timeout: 20000 }).toBe(true);
       } else {
         await expect(page.getByRole('heading', { name: 'מה סוגרים היום?', exact: true })).toBeVisible({ timeout: 20000 });
         await expect(page.getByText('אירוע בדיקת החשבון', { exact: true })).toBeVisible({ timeout: 20000 });
