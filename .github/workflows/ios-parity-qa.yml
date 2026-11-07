@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   native-parity:
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 35
     env:
       SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
