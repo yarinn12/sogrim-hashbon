@@ -11,17 +11,10 @@ import {assertRendererSelection} from '../scripts/qa/android-native-isolated/ren
 const appSource='b'.repeat(40),toolsSource='c'.repeat(40),pid=4321;
 const reference=readSdkReference(readFileSync(new URL('../scripts/qa/android-swangle-compatibility/reference-sdk-binaries.json',import.meta.url)));
 const required=['emulator/lib64/gles_angle/libEGL.so','emulator/lib64/gles_angle/libGLESv2.so','emulator/lib64/gles_angle/libvk_swiftshader.so'];
-// Source-backed route model; actual SDK mappings are verified by cloud Native QA.
-const selected=`INFO | Graphics backend: gfxstream
-INFO | emuglConfig_init: vulkan_mode_selected:swiftshader gles_mode_selected:swangle
-DEBUG | setCurrentRenderer: swangle swiftshader gles:Angle Indirect vulkan:Swiftshader Indirect
-DEBUG | gfxstreamFeature:Vulkan = 0
-DEBUG | gfxstreamFeature:GlDirectMem = 1
-DEBUG | gfxstreamFeature:HasSharedSlotsHostMemoryAllocator = 1
-INFO | Graphics Adapter Android Emulator OpenGL ES Translator (Google SwiftShader)
-INFO | Graphics API Version OpenGL ES 3.1 (SwiftShader 5.0.0)
-DEBUG | Performing composition using CompositorGl.
-`;
+// Verbatim selection lines from run42324443218 artifact13555365529, archive SHA256
+// 1e09f023b81c1d7f5fa53ea69fd6f47f9bf2db82c48d8fc9c3f7579b3875fab4.
+// Process/SDK boundaries below remain synthetic; the actual archive is reviewed separately.
+const selected=readFileSync(new URL('./fixtures/android-native-renderer-swangle-42324443218.txt',import.meta.url),'utf8');
 const guest=Object.fromEntries(ASG_PROPERTIES.map((k,i)=>[k,i<2?'asg':i===2?'':i===3?'emulation':'ranchu']));
 const settings=Object.entries({'hw.gltransport':'asg','androidboot.hardware.gltransport':'asg','androidboot.qemu.gltransport.name':'asg',...ASG_BUFFERS,'androidboot.debug.hwui.renderer':'skiagl','gfxstreamFeature:Minigbm':'0','gfxstreamFeature:VirtioGpuNext':'0'}).map(([k,v])=>'DEBUG | '+k+' = '+v+'\n').join('');
 function model(){
