@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import {readFinalAccountDeletionGeometry} from "./helpers/accountDeletionGeometry.mjs";
 import { readFileSync } from "node:fs";
 import { click as appClick } from "./helpers/profileAccountPresentation.mjs";
 const fixture = readFileSync(new URL("./fixtures/profileRewardBootstrap.js", import.meta.url), "utf8"), evidence = /* @__PURE__ */ new WeakMap();
@@ -90,23 +91,7 @@ for (const [id, root, width, height] of [["normal", 16, 393, 852], ["text20", 20
   await page.setViewportSize({ width, height });
   await open(page, root);
   const before = await state(page), d = page.locator(".account-delete-dialog");
-  const geometry = await d.evaluate((e) => {
-    const modal = e.getBoundingClientRect(), fonts = {}, bad = [];
-    for (const s of ["h2", "#account-delete-description", ".account-delete-confirmation span", "button"]) {
-      const el = e.querySelector(s);
-      fonts[s] = parseFloat(getComputedStyle(el).fontSize);
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-      let n;
-      while (n = walker.nextNode()) for (let i = 0; i < n.length; i++) {
-        if (!n.textContent[i].trim()) continue;
-        const range = document.createRange();
-        range.setStart(n, i);
-        range.setEnd(n, i + 1);
-        for (const r of range.getClientRects()) if (r.left < modal.left - 1 || r.right > modal.right + 1) bad.push({ s, left: r.left, right: r.right });
-      }
-    }
-    return { root: parseFloat(getComputedStyle(document.documentElement).fontSize), fonts, bad, top: modal.top, bottom: modal.bottom, overflow: document.documentElement.scrollWidth - innerWidth, actionPosition: getComputedStyle(e.querySelector(".account-delete-actions")).position };
-  });
+  const geometry = await readFinalAccountDeletionGeometry(d,height);
   expect(geometry.root).toBe(root);
   expect(geometry.fonts.h2).toBe(root * 1.5);
   expect(geometry.fonts["#account-delete-description"]).toBe(root * 0.875);

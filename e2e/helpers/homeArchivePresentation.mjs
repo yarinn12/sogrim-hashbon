@@ -1,44 +1,24 @@
 import {expect} from '@playwright/test';
+import {alignPaintedTarget,paintedTargetIsReachable} from './paintedTarget.mjs';
 import {installSyntheticSystemText} from './accessibilityPresentation.mjs';
 export const homeArchiveState=page=>page.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-state:friend-invitation-space')));
 export const homeArchiveRecords=state=>state.events.map(e=>({id:e.id,currency:e.currency,expenses:e.expenses,transfers:e.transfers,participantIds:e.participantIds}));
 export async function homeArchiveReach(page,locator){
- // Firefox commits scrollIntoView before the next paint. Read fresh geometry
- // afterwards; measuring in the same task can undo a valid scroll.
- await locator.evaluate(e=>{e.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});return new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))});
- // A queued browser scroll can restore the old position after our correction.
- // Re-read and align on each attempt, within the original hit-test deadline.
- await expect.poll(()=>locator.evaluate(async e=>{
-  if(!e.closest('.event-status-menu')){
-   const nav=document.querySelector('[aria-label="ניווט ראשי"]');
-   const controls=[...document.querySelectorAll('.product-route-controls button')].map(x=>x.getBoundingClientRect()).filter(r=>r.height>0&&r.top>=0&&r.top<80);
-   const top=Math.max(0,...controls.map(r=>r.bottom))+8,bottom=nav?nav.getBoundingClientRect().top-8:innerHeight;
-   const box=e.getBoundingClientRect(),glyph=e.dataset.action==='event-status-select'?e.querySelector('.event-row-options-chevron')?.getBoundingClientRect():null;
-   const r=glyph?{top:glyph.y+glyph.height/2-22,bottom:glyph.y+glyph.height/2+22}:box;
-   const delta=r.top<top?r.top-top:r.bottom>bottom?r.bottom-bottom:0;
-   if(delta)window.scrollTo({top:window.scrollY+delta,behavior:'instant'});
-  }
-  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-  const target=e.dataset.action==='event-status-select'?e.querySelector('.event-row-options-chevron'):e,r=target.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
-  return e===hit||e.contains(hit);
- })).toBe(true);
- const r=await locator.boundingBox();expect(r.x).toBeGreaterThanOrEqual(-1);expect(Math.round(r.width*100)/100).toBeGreaterThanOrEqual(44);expect(Math.round(r.height*100)/100).toBeGreaterThanOrEqual(44);
- const bottom=await locator.evaluate(e=>{const d=e.closest('.event-status-menu');return d?Math.min(innerHeight,d.getBoundingClientRect().bottom):document.querySelector('[aria-label="ניווט ראשי"]').getBoundingClientRect().top});
- if(await locator.getAttribute('data-action')==='event-status-select'){
-  // Existing row hit areas stretch with long event cards. Measure the visible
-  // 44px target around their glyph, rather than requiring a page-high row to
-  // fit wholly on screen. Newly implemented menu/empty controls stay stricter.
-  const glyph=await locator.locator('.event-row-options-chevron').boundingBox(),center=glyph.y+glyph.height/2;
-  expect(center-Math.max(0,r.y)).toBeGreaterThanOrEqual(22);expect(Math.min(bottom,r.y+r.height)-center).toBeGreaterThanOrEqual(22);
- }else{expect(r.y).toBeGreaterThanOrEqual(-1);expect(r.y+r.height).toBeLessThanOrEqual(bottom+1)}
+ let sample;
+ await expect.poll(async()=>{sample=await locator.evaluate(alignPaintedTarget);return paintedTargetIsReachable(sample,43.995)}).toBe(true);
+ const r=sample.rect;expect(r.x).toBeGreaterThanOrEqual(-1);expect(Math.round(r.width*100)/100).toBeGreaterThanOrEqual(44);expect(Math.round(r.height*100)/100).toBeGreaterThanOrEqual(44);
+ if(sample.glyph){
+  const center=sample.y;
+  expect(center-Math.max(0,r.y)).toBeGreaterThanOrEqual(22);expect(Math.min(sample.bottom,r.y+r.height)-center).toBeGreaterThanOrEqual(22);
+ }else{expect(r.y).toBeGreaterThanOrEqual(-1);expect(r.y+r.height).toBeLessThanOrEqual(sample.bottom+1)}
+ return sample;
 }
 export async function homeArchiveClick(page,locator){
- await expect(locator).toBeEnabled();await homeArchiveReach(page,locator);
+ await expect(locator).toBeEnabled();const point=await homeArchiveReach(page,locator);
  // Locator.click performs another automatic scroll in Chromium, which can
  // put a short landscape target back under the floating accessibility button.
  // Use real pointer input at the already hit-tested visible center instead.
- const target=await locator.getAttribute('data-action')==='event-status-select'?locator.locator('.event-row-options-chevron'):locator;
- const r=await target.boundingBox();await page.mouse.click(r.x+r.width/2,r.y+r.height/2);
+ await page.mouse.click(point.x,point.y);
 }
 export async function openHomeArchive(page,view='menu',{width=393,height=852,root=16,system=false,long=false,member=false}={}){
  await page.setViewportSize({width,height});if(system)await page.addInitScript(installSyntheticSystemText);

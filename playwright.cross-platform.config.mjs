@@ -12,6 +12,7 @@ const journeys = [
   "e2e/crop-invite-block-presentation.spec.mjs",
   "e2e/profile-friends-cards-presentation.spec.mjs",
   "e2e/home-archive-presentation.spec.mjs",
+  "e2e/painted-target-regression.spec.mjs",
   "e2e/restaurant-bill-presentation.spec.mjs",
   "e2e/restaurant-keyboard-presentation.spec.mjs",
   "e2e/expense-participant-add-presentation.spec.mjs",
