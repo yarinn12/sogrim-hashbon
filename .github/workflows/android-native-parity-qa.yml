@@ -60,6 +60,8 @@ jobs:
           test -z "$(git status --porcelain)"
           mkdir -p artifacts/android-native-isolated scripts/qa
           cp -R "$GITHUB_WORKSPACE/scripts/qa/android-native-isolated" scripts/qa/
+          cp -R "$GITHUB_WORKSPACE/scripts/qa/android-swangle-compatibility" scripts/qa/
+          cp -R "$GITHUB_WORKSPACE/scripts/qa/android-host-profile" scripts/qa/
           printf '%s\n' "$GITHUB_SHA" > artifacts/android-native-isolated/qa-tools-source.txt
           echo "ANDROID_QA_AVD=sogrim_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
           echo "ANDROID_AVD_HOME=$RUNNER_TEMP/android-native-avd" >> "$GITHUB_ENV"
@@ -94,8 +96,7 @@ jobs:
         working-directory: app
         run: |
           set -euo pipefail
-          node scripts/qa/android-native-isolated/renderer-capabilities.mjs snapshot
-          node scripts/qa/android-native-isolated/gltransport.mjs snapshot
+          node scripts/qa/android-native-isolated/swangle-native.mjs snapshot
       - name: Prepare shared isolated key and fresh ADB server before first emulator launch
         working-directory: app
         run: |
@@ -123,8 +124,9 @@ jobs:
           set -euo pipefail
           test -c /dev/kvm
           sudo setfacl -m "u:$USER:rw" /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator -verbose -memory 4096 -cores 2 > artifacts/android-native-isolated/emulator.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu swangle -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator -verbose -memory 4096 -cores 2 > artifacts/android-native-isolated/emulator.log 2>&1 &
           echo "$!" > artifacts/android-native-isolated/emulator.pid
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/swangle-native.mjs pin-owner
           # A failed emulator must produce diagnostics rather than leave ADB
           # waiting for a device until the entire job times out.
           timeout 240 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" wait-for-device
@@ -137,7 +139,7 @@ jobs:
           test "$("$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD"
           tr '\0' ' ' < "/proc/$(cat artifacts/android-native-isolated/emulator.pid)/cmdline" > artifacts/android-native-isolated/emulator-cmdline.txt
           printf '\n' >> artifacts/android-native-isolated/emulator-cmdline.txt
-          grep -qF -- '-gpu swiftshader' artifacts/android-native-isolated/emulator-cmdline.txt
+          grep -qF -- '-gpu swangle' artifacts/android-native-isolated/emulator-cmdline.txt
           grep -qF -- '-memory 4096 -cores 2' artifacts/android-native-isolated/emulator-cmdline.txt
           cat artifacts/android-native-isolated/emulator-cmdline.txt
           "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell cat /proc/meminfo > artifacts/android-native-isolated/guest-meminfo.txt
@@ -153,8 +155,7 @@ jobs:
         run: |
           set -euo pipefail
           ANDROID_QA_HEALTH_PHASE=before node scripts/qa/android-native-isolated/emulator-health.mjs
-          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/renderer-capabilities.mjs verify
-          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/gltransport.mjs verify
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/swangle-native.mjs verify
           # Keep every Native-run event even if a later force-stop closes an ANR dialog.
           "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -b all -v threadtime > artifacts/android-native-isolated/logcat-live.log 2>&1 &
           echo "$!" > artifacts/android-native-isolated/logcat-live.pid
@@ -181,6 +182,7 @@ jobs:
         run: |
           set -euo pipefail
           ANDROID_QA_HEALTH_PHASE=after node scripts/qa/android-native-isolated/emulator-health.mjs
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/swangle-native.mjs verify-after
       - name: Preserve diagnostics and stop only the owned AVD
         if: always()
         working-directory: app

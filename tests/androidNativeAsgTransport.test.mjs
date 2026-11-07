@@ -59,10 +59,10 @@ test('foreign serial ADB path or missing PID is rejected before any SDK read',()
 test('workflow selects ASG once and verifies transport before the unchanged measurement stages',()=>{
   const workflow=readFileSync(new URL('../.github/workflows/android-native-parity-qa.yml',import.meta.url),'utf8');
   assert.match(workflow,/'hw\.gltransport':'asg'/);
-  assert.ok(workflow.indexOf('gltransport.mjs snapshot')<workflow.indexOf('Boot only the owned AVD'));
-  assert.ok(workflow.indexOf('gltransport.mjs verify')<workflow.indexOf('trace-diagnostics.mjs start'));
-  assert.ok(workflow.indexOf('gltransport.mjs verify')<workflow.indexOf('font-regression.mjs'));
-  assert.match(workflow,/-gpu swiftshader -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator/);
+  for(const [before,after] of [['swangle-native.mjs snapshot','Boot only the owned AVD'],['swangle-native.mjs pin-owner','wait-for-device'],['swangle-native.mjs verify','trace-diagnostics.mjs start'],['swangle-native.mjs verify','font-regression.mjs'],['geometry-regression.mjs','swangle-native.mjs verify-after']]){
+    const a=workflow.indexOf(before),b=workflow.indexOf(after);assert.ok(a>=0&&b>=0&&a<b,'Missing or reordered required Native stage: '+before+' -> '+after);
+  }
+  assert.match(workflow,/-gpu swangle -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator/);
   const vercel=JSON.parse(readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
   assert.equal(vercel.git.deploymentEnabled['codex/android-asg-qa-coverage-20261015'],false);
 });
