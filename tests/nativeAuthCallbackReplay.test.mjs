@@ -4,11 +4,17 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import {nativeDestination,NATIVE_AUTH_PATH,NATIVE_PUBLIC_HOST,nativePublicOrigin} from '../src/domain/nativeDeepLinks.mjs';
 import {claimNativeAuthCallback} from '../src/domain/nativeAuthCallbacks.mjs';
+import {ACCOUNT_OAUTH_FLOW_QUERY_PARAM,ACCOUNT_RECOVERY_FLOW_PURPOSE,saveAccountOAuthFlow,loadAccountOAuthFlow,clearAccountOAuthFlow} from '../src/data/accountAuth.mjs';
 
 const source=(await readFile('src/publicNativeBridgeLayer.mjs','utf8')).replaceAll('\r\n','\n').replace(/^import[\s\S]*?from\s+["'][^"']+["'];\s*/gm,'');
+const accountSource=(await readFile('src/publicAccountAuthLayer.mjs','utf8')).replaceAll('\r\n','\n');
+const setupStart=accountSource.indexOf('async function setupAccountAuth(');
+const setupEnd=accountSource.indexOf('\n}\n',setupStart)+2;
+assert.ok(setupStart>=0&&setupEnd>setupStart);
+const setupAccountAuthSource=accountSource.slice(setupStart,setupEnd);
 const origin='https://sogrim-hesbon-app.vercel.app';
 const flowId='fixture-apple-callback-flow-20261006';
-function storage() {const values=new Map();return {values,getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};}
+function storage() {const values=new Map();return {values,getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};}
 async function page({sessionStorage,launchUrl=null,currentUrl='capacitor://localhost',authSession=null}) {
   const listeners={};
   const reloads=[];
@@ -33,7 +39,7 @@ async function page({sessionStorage,launchUrl=null,currentUrl='capacitor://local
   });
   vm.runInContext(source,context);
   for(let i=0;i<16;i++)await Promise.resolve();
-  return {listeners,reloads,navigations,location,browserCalls,native:context.SogrimNative};
+  return {listeners,reloads,navigations,location,browserCalls,native:context.SogrimNative,context};
 }
 
 test('Apple authentication session returns its bound code to the original app without a Safari page or Browser.close',async()=>{
@@ -49,6 +55,83 @@ test('Apple authentication session returns its bound code to the original app wi
   assert.match(first.reloads[0],/code=single-use-session-code/);
   assert.deepEqual(first.browserCalls,[],'closing a Browser that was never opened must not delay delivery');
 });
+
+for(const order of ['custom-first','completion-first']) {
+  test(`a custom App URL ${order} cannot consume the active Apple flow before one HTTPS completion`,async()=>{
+    const sessionStorage=storage();
+    const flowStorage=storage();
+    const verifier='v'.repeat(43);
+    assert.ok(saveAccountOAuthFlow({id:flowId,verifier,returnPath:'/'},flowStorage));
+    const callback=`${origin}/auth/callback?code=single-use-session-code&auth_flow=${flowId}`;
+    const custom=`com.sogrimhashbon.app://auth/callback?code=single-use-session-code&auth_flow=${flowId}`;
+    const authorization=new URL('https://fixture.supabase.co/auth/v1/authorize');
+    authorization.searchParams.set('provider','apple');
+    authorization.searchParams.set('code_challenge_method','s256');
+    authorization.searchParams.set('code_challenge','c'.repeat(43));
+    authorization.searchParams.set('redirect_to',`${origin}/auth/callback?auth_flow=${flowId}`);
+    let finishSession;
+    const result=new Promise(resolve=>{finishSession=resolve;});
+    const first=await page({sessionStorage,authSession:{open:()=>result}});
+    const pending=first.native.openAuth(authorization.href);
+    const customEvent=async()=>{
+      first.listeners.appUrlOpen({url:custom});
+      for(let i=0;i<8;i++)await Promise.resolve();
+      assert.equal(first.reloads.length,order==='completion-first'?1:0);
+      assert.equal(first.navigations.length,0,'the generic link handler must not navigate to the custom scheme');
+      if(order==='custom-first')assert.equal(sessionStorage.values.size,0,'the custom URL must not claim the flow before OS completion');
+      assert.equal(loadAccountOAuthFlow(flowId,flowStorage)?.verifier,verifier,'the generic URL must not consume the PKCE flow');
+    };
+    if(order==='custom-first')await customEvent();
+    finishSession({url:callback});
+    assert.equal(await pending,true);
+    if(order==='completion-first')await customEvent();
+    first.listeners.appUrlOpen({url:callback});
+    for(let i=0;i<8;i++)await Promise.resolve();
+    assert.equal(first.reloads.length,1,'the bound HTTPS callback must reload the account page once');
+    assert.deepEqual(first.browserCalls,[]);
+
+    let exchanges=0,connections=0;
+    Object.assign(first.context,{
+      runtimeConfig:null,accountSession:null,accountSignInPending:false,
+      ACCOUNT_OAUTH_FLOW_QUERY_PARAM,ACCOUNT_RECOVERY_FLOW_PURPOSE,
+      loadRuntimeConfig:async()=>({storage:{mode:'supabase'}}),runtimeConfigUsesFallback:()=>false,
+      loadAccountOAuthFlow:id=>loadAccountOAuthFlow(id,flowStorage),
+      clearAccountOAuthFlow:id=>clearAccountOAuthFlow(id,flowStorage),
+      authCallbackType:()=>'',sessionFromOAuthHash:()=>null,
+      oauthPkceVerifier:()=>'',clearOAuthPkceVerifier:()=>{},
+      exchangeOAuthCode:async(_config,code,boundVerifier)=>{
+        exchanges++;
+        assert.equal(code,'single-use-session-code');
+        assert.equal(boundVerifier,verifier);
+        return {access_token:'synthetic-access',user:{id:'synthetic-account'}};
+      },
+      loadStoredAccountSession:()=>null,
+      cleanAuthHash:()=>{first.location.href=new URL('/',first.location.href).href;},
+      parseInviteEventId:()=>null,pendingInviteUrl:()=>'',
+      restoreAccountSession:async session=>session,loadAccountRecoverySession:()=>false,
+      scheduleAccountSessionRefresh:()=>{},
+      connectAccountToApp:async(session,{forceReload})=>{
+        connections++;
+        assert.equal(session.user.id,'synthetic-account');
+        assert.equal(forceReload,true);
+      },
+      watchAccountControls:()=>{},enhanceAccountControls:()=>{}
+    });
+    vm.runInContext(setupAccountAuthSource,first.context);
+    await vm.runInContext('setupAccountAuth()',first.context);
+    assert.equal(exchanges,1,'the original page must exchange the bound code once');
+    assert.equal(connections,1,'the account must connect once');
+    assert.equal(first.context.accountSession?.user?.id,'synthetic-account');
+    assert.equal(loadAccountOAuthFlow(flowId,flowStorage),null,'the spent flow must be cleared');
+    first.listeners.appUrlOpen({url:custom});
+    first.listeners.appUrlOpen({url:callback});
+    for(let i=0;i<8;i++)await Promise.resolve();
+    assert.equal(first.reloads.length,1,'late duplicate callbacks must not reopen the completed flow');
+    assert.equal(first.navigations.length,0);
+    assert.equal(exchanges,1);
+    assert.equal(connections,1);
+  });
+}
 
 for(const query of ['code=single-use-apple-code','error=access_denied']) {
   test(`retained iOS launch URL cannot reload the Apple callback again: ${query.split('=')[0]}`,async()=>{
