@@ -241,7 +241,19 @@ ready=0
 for n in $(toybox seq 1 40); do
   for fd in /proc/$watcher/fdinfo/*; do
     [ -r "$fd" ] || continue
-    if toybox grep -Eq "^inotify wd:[[:xdigit:]]+ ino:$hex " "$fd"; then ready=1; break; fi
+    fd_status=0
+    fd_error=$(toybox grep -Eq "^inotify wd:[[:xdigit:]]+ ino:$hex " "$fd" 2>&1) || fd_status=$?
+    if [ "$fd_status" = 0 ] && [ -z "$fd_error" ]; then ready=1; break; fi
+    if [ "$fd_status" = 1 ] && [ -z "$fd_error" ]; then continue; fi
+    # A transient descriptor may close after the readable guard. Suppress only
+    # the actual ENOENT diagnostic for that now-absent path while this same
+    # direct child still has the recorded PID birth and exact watch command.
+    # Other read errors, warnings, a surviving fd or lost ownership stay fatal.
+    if [ "$fd_status" = 2 ] && [ "$fd_error" = "grep: $fd: No such file or directory" ] &&
+       [ ! -e "$fd" ] && watcher_identity && watcher_command && watcher_identity; then continue; fi
+    [ -z "$fd_error" ] || printf '%s\n' "$fd_error" >&2
+    echo 'Owned close-watch fdinfo read failed' >&2
+    exit 3
   done
   [ "$ready" = 0 ] || break
   toybox sleep 0.05

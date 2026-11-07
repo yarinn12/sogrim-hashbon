@@ -32,6 +32,7 @@ async function exercise(t,mode){
  t.after(async()=>{writeFileSync(join(directory,'holder-stop'),'stop');writeFileSync(join(directory,'harness-stop'),'stop');for(let i=0;i<100&&(!existsSync(join(directory,'watcher-ended'))||existsSync(join(directory,'holder-ready'))&&!existsSync(join(directory,'holder-ended')));i++)await new Promise(r=>setTimeout(r,10));assert.ok(existsSync(join(directory,'watcher-ended')),'The test must clean its own background child');if(existsSync(join(directory,'holder-ready')))assert.ok(existsSync(join(directory,'holder-ended')),'The test must release its own helper descendant');rmSync(directory,{recursive:true,force:true});});
  const control=String.raw`
 mode='${mode}'
+export LC_ALL=C
 # Observe actual guest polling and invariant formatting without replacing either.
 # Git Bash forks for command substitution even when printf is a builtin.
 printf() {
@@ -117,6 +118,10 @@ toybox() {
    if [ "$mode" = intact ] || [ "$mode" = intact-ignore-term ]; then printf 'toybox\000inotifyd\000-\000%s:w\000' "$trace" >"./proc/$BASHPID/cmdline";
    else printf 'toybox\000inotifyd\000-\000%s\000w\000' "$trace" >"./proc/$BASHPID/cmdline"; fi
    printf 'inotify wd:1 ino:7b sdev:fe38 mask:8\n' >"./proc/$BASHPID/fdinfo/3"
+   case "$mode" in
+    fdinfo-directory) mkdir "./proc/$BASHPID/fdinfo/10" ;;
+    fdinfo-*) printf 'pos: 0\n' >"./proc/$BASHPID/fdinfo/10" ;;
+   esac
    printf '%s\n' "$BASHPID" >./watcher.pid
    case "$mode" in ignore-term|intact-ignore-term|late-cmdline|late-startticks|late-parent|gone-*|reject-*|changed-command-*|held-helper-pipe) trap '' TERM;; *) trap 'exit 0' TERM;; esac
    # Utility descendants must not inherit the transport pipe being tested.
@@ -162,6 +167,23 @@ toybox() {
    fi
    while IFS= read -r -d '' arg; do printf '%s\n' "$arg"; done ;;
   grep)
+   if builtin [ "$#" = 3 ] && builtin [ "$3" = "./proc/$watcher/fdinfo/10" ]; then
+    printf '%s\n' "$mode" >>./fdinfo-probes
+    case "$mode" in
+     fdinfo-gone|fdinfo-reused-on-close)
+      # The generated readable guard has already succeeded. Remove the real
+      # synthetic file immediately before the real grep opens that same path.
+      command rm -f -- "$3"
+      if builtin [ "$mode" = fdinfo-reused-on-close ]; then publish_stat "$watcher" S "$$" 4000; fi
+      local fd_rc=0; grep "$@" || fd_rc=$?; return "$fd_rc" ;;
+     fdinfo-directory|fdinfo-no-match) local fd_rc=0; grep "$@" || fd_rc=$?; return "$fd_rc" ;;
+     fdinfo-io-after-close)
+      command rm -f -- "$3"
+      printf 'grep: %s: Input/output error\n' "$3" >&2; return 2 ;;
+     fdinfo-enoent-existing) printf 'grep: %s: No such file or directory\n' "$3" >&2; return 2 ;;
+     fdinfo-warning-match) printf 'grep: unexpected fdinfo read warning\n' >&2; return 0 ;;
+    esac
+   fi
    if builtin [ "$#" = 3 ] && builtin [ "$3" = "$events" ]; then builtin printf . >>./ack-probes; fi
    if [ "$#" = 3 ]; then match_rows "$1" "$2" <"$3"; else match_rows "$1" "$2"; fi ;;
   # Model polling, not wall time. The real child still has actual TERM/KILL and
@@ -202,7 +224,7 @@ kill() {
   # polling time advances. Otherwise twenty zero-wall-time polls can send
   # KILL while a correctly delivered TERM is still being scheduled by Linux.
   # Ignore-TERM, identity-race and retained-pipe modes keep their own controls.
-  case "$mode" in intact|mutated|no-ack|inode-changed|atomic-snapshot|partial-initial-stat)
+  case "$mode" in intact|mutated|no-ack|inode-changed|atomic-snapshot|partial-initial-stat|fdinfo-*)
     local term_ended=0
     for ((j=0;j<1000;j++)); do
       if builtin [ -e ./watcher-ended ]; then term_ended=1; break; fi
@@ -238,10 +260,21 @@ kill() {
  const result=await runShell(directory);const signals=existsSync(join(directory,'signals.log'))?readFileSync(join(directory,'signals.log'),'utf8').trim().split(/\r?\n/):[];
  const child=existsSync(join(directory,'watcher.pid'))?readFileSync(join(directory,'watcher.pid'),'utf8').trim():null;
  const marker=name=>existsSync(join(directory,name))?readFileSync(join(directory,name),'utf8').trim():null;
- return {...result,ackFormatterCalls:marker('ack-format-calls')?.length||0,ackProbes:marker('ack-probes')?.length||0,signals,child,watchSignals:signals.filter(s=>s.endsWith(' '+child)),cmdline:child&&existsSync(join(directory,'proc',child,'cmdline'))?readFileSync(join(directory,'proc',child,'cmdline')):null,lateChange:existsSync(join(directory,'late-identity-change')),cmdlineBeforeLateChange:existsSync(join(directory,'pre-change-cmdline'))?readFileSync(join(directory,'pre-change-cmdline')):null,race:marker('race-triggered'),ownedChildEnded:existsSync(join(directory,'watcher-ended')),cooperativeTermAck:existsSync(join(directory,'cooperative-term-ack')),liveIdentityChange:marker('live-identity-change'),holderStillAlive:existsSync(join(directory,'holder-ready'))&&!existsSync(join(directory,'holder-ended')),readinessWaitObserved:existsSync(join(directory,'readiness-wait-observed')),snapshotFirstRead:marker('snapshot-first-read'),localDiagnostic:{phase:marker('cleanup-phase'),pollCount:marker('poll-count'),identityCount:marker('identity-count'),watcherReady:existsSync(join(directory,'watcher.pid')),watcherEnded:existsSync(join(directory,'watcher-ended'))}};
+ return {...result,fdinfoProbes:marker('fdinfo-probes')?.split(/\r?\n/)||[],fdinfoStillExists:child&&existsSync(join(directory,'proc',child,'fdinfo','10')),ackFormatterCalls:marker('ack-format-calls')?.length||0,ackProbes:marker('ack-probes')?.length||0,signals,child,watchSignals:signals.filter(s=>s.endsWith(' '+child)),cmdline:child&&existsSync(join(directory,'proc',child,'cmdline'))?readFileSync(join(directory,'proc',child,'cmdline')):null,lateChange:existsSync(join(directory,'late-identity-change')),cmdlineBeforeLateChange:existsSync(join(directory,'pre-change-cmdline'))?readFileSync(join(directory,'pre-change-cmdline')):null,race:marker('race-triggered'),ownedChildEnded:existsSync(join(directory,'watcher-ended')),cooperativeTermAck:existsSync(join(directory,'cooperative-term-ack')),liveIdentityChange:marker('live-identity-change'),holderStillAlive:existsSync(join(directory,'holder-ready'))&&!existsSync(join(directory,'holder-ended')),readinessWaitObserved:existsSync(join(directory,'readiness-wait-observed')),snapshotFirstRead:marker('snapshot-first-read'),localDiagnostic:{phase:marker('cleanup-phase'),pollCount:marker('poll-count'),identityCount:marker('identity-count'),watcherReady:existsSync(join(directory,'watcher.pid')),watcherEnded:existsSync(join(directory,'watcher-ended'))}};
 }
 
 const failureContext=r=>JSON.stringify({status:r.status,error:r.error?.code,bashExitCode:r.bashExitCode,stdout:r.stdout,stderr:r.stderr,signals:r.signals,ackFormatterCalls:r.ackFormatterCalls,ackProbes:r.ackProbes,diagnostic:r.localDiagnostic});
+
+for(const mode of ['fdinfo-gone','fdinfo-no-match'])test(`${mode} continues to the real inode watch without a false transport error`,async t=>{
+ const r=await exercise(t,mode);assert.deepEqual(r.fdinfoProbes,[mode],'The real fdinfo read must be exercised after the readable guard');assert.equal(r.fdinfoStillExists,mode==='fdinfo-no-match');
+ assert.equal(r.status,0,failureContext(r));assert.equal(r.error,undefined);assert.equal(r.stderr,'','Trace transport rejects any surviving stderr, including the original fdinfo ENOENT');
+ assert.equal(verifyCloseWrite(r.stdout.replaceAll('./traces/trace.pftrace',start.guestPath),start).verified,true);assert.deepEqual(r.watchSignals,['-TERM '+r.child]);assert.equal(r.ownedChildEnded,true);
+});
+for(const [mode,error,exists] of [['fdinfo-directory',/Is a directory/,true],['fdinfo-io-after-close',/Input\/output error/,false],['fdinfo-enoent-existing',/No such file or directory/,true],['fdinfo-warning-match',/unexpected fdinfo read warning/,true],['fdinfo-reused-on-close',/No such file or directory/,false]])test(`${mode} fails closed before signalling the tracer`,async t=>{
+ const r=await exercise(t,mode);assert.deepEqual(r.fdinfoProbes,[mode]);assert.equal(r.fdinfoStillExists,exists);assert.equal(r.bashExitCode,3,failureContext(r));assert.equal(r.status,3,failureContext(r));assert.match(r.stderr,error);
+ assert.doesNotMatch(r.stdout,/WATCH_READY|CLOSE_WRITE/);assert.ok(!r.signals.some(s=>s.endsWith(' 7000')),'No tracer signal before a verified watch');
+ assert.deepEqual(r.watchSignals,mode==='fdinfo-reused-on-close'?[]:['-TERM '+r.child],'Cleanup must retain PID/birth ownership checks');
+});
 
 for(const mode of ['intact','mutated'])test(`owned watcher with ${mode} Toybox argv is cleaned after the actual close event`,async t=>{
  const r=await exercise(t,mode);assert.equal(r.status,0,failureContext(r));assert.equal(r.error,undefined);assert.deepEqual(r.watchSignals,['-TERM '+r.child]);assert.match(r.stdout,/WATCH_READY 123/);assert.match(r.stdout,/CLOSE_WRITE 123/);assert.equal(verifyCloseWrite(r.stdout.replaceAll('./traces/trace.pftrace',start.guestPath),start).verified,true);
