@@ -1,10 +1,19 @@
 import {expect} from "@playwright/test";
 async function settle(locator) {
-  await locator.evaluate(async el => {
-    const dialog = el.closest("#public-referral-rewards-dialog") || el;
-    const finite = dialog.getAnimations({subtree:true}).filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime));
-    await Promise.all(finite.map(animation => animation.finished));
+  const frames=()=>locator.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const active=()=>locator.evaluate(el=>{
+    const dialog=el.closest("#public-referral-rewards-dialog")||el;
+    return dialog.getAnimations({subtree:true}).filter(animation=>
+      Number.isFinite(animation.effect?.getComputedTiming().endTime)
+      &&(animation.pending||animation.playState==='running'||animation.playState==='paused')
+    ).length;
   });
+  // A cancelled animation rejects .finished; sample the current finite animations
+  // so a replacement transition must also settle before measuring the control.
+  await frames();
+  await expect.poll(active).toBe(0);
+  await frames();
+  await expect.poll(active).toBe(0);
 }
 
 export async function control(locator){await settle(locator);await locator.evaluate(el=>{const c=document.querySelector('#public-referral-rewards-dialog .referral-dialog-content');if(c.contains(el)){const a=el.getBoundingClientRect(),b=c.getBoundingClientRect();c.scrollTop+=a.y+a.height/2-b.y-b.height/2}});await expect.poll(()=>locator.evaluate(el=>{const r=el.getBoundingClientRect(),c=document.querySelector('#public-referral-rewards-dialog .referral-dialog-content'),b=c.contains(el)?c.getBoundingClientRect():document.querySelector('#public-referral-rewards-dialog .referral-dialog-shell').getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return r.width>=44&&r.height>=44&&r.left>=b.left-1&&r.right<=b.right+1&&r.top>=b.top-1&&r.bottom<=b.bottom+1&&!!hit&&(hit===el||el.contains(hit))})).toBe(true)}

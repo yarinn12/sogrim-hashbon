@@ -58,6 +58,7 @@ const journeys = [
   "e2e/feedback-page.spec.mjs",
   "e2e/profile-account-presentation.spec.mjs",
   "e2e/referral-invitation-presentation.spec.mjs",
+  "e2e/referral-invitation-animation.spec.mjs",
   "e2e/friend-requests-presentation.spec.mjs",
   "e2e/friend-invitation.spec.mjs",
   "e2e/friends-presentation.spec.mjs",
