@@ -103,6 +103,9 @@ test('account entry reload evidence: an identified unissued snapshot fetch is re
 });
 
 test('account recovery reload: two old-document reads are identified while the new gate and reads recover', async ({ page, baseURL }) => {
+  // This is a controlled document-replacement experiment. The separate
+  // authenticated-recovery journey still runs with the real polling clock.
+  await page.clock.install();
   const fixture = await prepareAccountEntry(page, baseURL,
     { recovery: true, trackRecoveryReload: true });
   const gate = await openAccountEntry(page, { mode: 'reset' });
@@ -113,6 +116,22 @@ test('account recovery reload: two old-document reads are identified while the n
       catch (error) { return { name: error.name, message: error.message }; }
     } };
   });
+  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 1000)));
+  // With timers paused, drain startup I/O before opening the held-navigation
+  // window. Do not freeze or disregard an already pending user write.
+  await page.waitForLoadState('networkidle', { timeout: 8000 });
+  const oldDocumentId = await page.evaluate(() => window.__qaAccountEntryDocumentId);
+  await expect.poll(() => {
+    const reads = [...fixture.reloadEvidence.attempts.values()]
+      .filter(item => item.documentId === oldDocumentId);
+    return reads.length > 0 && reads.every(item => item.request && item.finished &&
+      !item.failure && item.response?.status >= 200 && item.response.status < 300);
+  }).toBe(true);
+  expect(await page.evaluate(async () => {
+    const { pendingSharedSyncStatus } = await import('/src/data/localStore.mjs');
+    return pendingSharedSyncStatus().pending;
+  })).toBe(false);
+  expectNoExternalFailures(fixture);
   const metadataUrl = accountEntryAuthOrigin +
     '/rest/v1/app_snapshots?id=eq.space-account-entry&select=updated_at';
   const notificationUrl = new URL(accountEntryAuthOrigin + '/rest/v1/notification_inbox');
@@ -130,25 +149,44 @@ test('account recovery reload: two old-document reads are identified while the n
     await held;
     await route.fallback();
   });
-  let probes;
+  let probes, forcedAttempts;
+  let clockPaused = true;
   try {
     await fixture.reloadEvidence.withExpectedReload(async () => {
       const navigation = page.reload();
       await navigationStarted;
+      const before = new Set(fixture.reloadEvidence.attempts.keys());
       probes = await Promise.all([
         old.evaluate((value, url) => value.run(url), notificationUrl.href),
         old.evaluate((value, url) => value.run(url), metadataUrl)
       ]);
+      forcedAttempts = [...fixture.reloadEvidence.attempts.values()]
+        .filter(item => !before.has(item.id));
+      expect(forcedAttempts.map(item => {
+        const url = new URL(item.url);
+        url.searchParams.delete('__qa_account_attempt');
+        return { method: item.method, documentId: item.documentId, url: url.href };
+      })).toEqual([
+        { method: 'GET', documentId: oldDocumentId, url: notificationUrl.href },
+        { method: 'GET', documentId: oldDocumentId, url: metadataUrl }
+      ]);
       release();
       await navigation;
+      await page.clock.resume();
+      clockPaused = false;
     }, { expectedFinal: 'recovery-gate' });
-  } finally { release(); }
+  } finally {
+    release();
+    if (clockPaused) await page.clock.resume();
+  }
   expect(probes).toEqual([{ name: 'TypeError', message: 'Load failed' },
     { name: 'TypeError', message: 'Load failed' }]);
   await expect(gate.locator('form')).toHaveAttribute('data-mode', 'reset-password');
   expect(fixture.record.userUpdates).toEqual([]);
   expect(fixture.record.snapshotWrites).toEqual([]);
   expectNoExternalFailures(fixture);
+  expect(fixture.record.reloadDiagnostics.map(item => item.id))
+    .toEqual(forcedAttempts.map(item => item.id));
   expect(fixture.record.reloadDiagnostics.map(item => item.reason)).toEqual([
     'webkit-unissued-recovery-notification', 'webkit-unissued-recovery-metadata'
   ]);
