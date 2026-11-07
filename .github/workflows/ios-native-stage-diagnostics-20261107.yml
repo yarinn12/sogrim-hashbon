@@ -1,0 +1,15 @@
+name: iOS native stage diagnostics
+
+# One immutable diagnostic creation; original assertions and deadlines remain.
+on:
+  push:
+    branches: [codex/ios-native-stage-diagnostics-20261107]
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    uses: ./.github/workflows/ios-parity-qa.yml
+    with:
+      app_sha: "fed54e2d45c107facf250d798994e18f65607059"
