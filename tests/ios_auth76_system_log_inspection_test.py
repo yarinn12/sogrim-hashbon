@@ -198,6 +198,39 @@ class SystemLogControls(unittest.TestCase):
         self.assertEqual(MODULE.output_status(0, b'[{"timestamp":"2026-11-07T17:50:28Z"}]', False, False),
                          "AVAILABLE")
 
+    def test_output_cap_refinement_excludes_only_xctest_subsystem(self):
+        evidence = json.loads((ROOT / "tests/fixtures/auth76/log-output-cap-provenance.json").read_text(encoding="utf-8"))
+        self.assertEqual(evidence["diagnosticRunId"], 42406564051)
+        self.assertEqual(evidence["diagnosticArtifactId"], 13587204357)
+        self.assertEqual(evidence["status"], "INCOMPLETE_OUTPUT_CAP")
+        self.assertTrue(evidence["outputTruncated"])
+        self.assertTrue(evidence["partialOnly"])
+        self.assertFalse(evidence["rootCauseProven"])
+        self.assertEqual(evidence["xctestEvents"] + evidence["retainedNonXctestEvents"],
+                         evidence["completeEventsParsed"])
+        self.assertEqual(MODULE.PROCESSES, (
+            "SafariViewService", "App", "runningboardd", "SpringBoard", "launchd_sim", "swcd"))
+        self.assertEqual(MODULE.UDID, "DD0F04E6-F694-4A74-AB2C-70453176B7BB")
+        self.assertEqual((MODULE.START_UTC, MODULE.END_UTC),
+                         ("2026-11-07 17:50:20", "2026-11-07 17:51:40"))
+        self.assertEqual((MODULE.LOG_STDOUT_BYTES, MODULE.LOG_SECONDS,
+                          MODULE.HELP_SECONDS, MODULE.EXPORT_SECONDS),
+                         (evidence["stdoutLimitBytes"], 180, 20, 240))
+        original = " OR ".join('process == "' + name + '"' for name in MODULE.PROCESSES)
+        expected = '(' + original + ') AND subsystem != "com.apple.dt.xctest"'
+        self.assertEqual(MODULE.PREDICATE, expected)
+        with tempfile.TemporaryDirectory(prefix="a76-", dir=ROOT) as temp:
+            _, archive = fixture(temp)
+            self.assertEqual(MODULE.log_show_argv(archive), [
+                "/usr/bin/log", "show",
+                "--start", MODULE.START_UTC + "+0000",
+                "--end", MODULE.END_UTC + "+0000",
+                "--predicate", expected, "--timezone", "UTC", "--style", "json",
+                "--info", "--debug", str(archive),
+            ])
+        self.assertEqual(MODULE.output_status(-9, b'[{"timestamp":"partial"}]', False, True),
+                         "INCOMPLETE_OUTPUT_CAP")
+
     def test_one_off_workflow_uses_only_original_gets_and_disables_preview(self):
         workflow = (ROOT / ".github/workflows/ios-auth76-system-log-inspection-20261107.yml").read_text()
         vercel = json.loads((ROOT / "vercel.json").read_text())
@@ -235,6 +268,22 @@ class SystemLogControls(unittest.TestCase):
         for forbidden in ("workflow_dispatch:", "pull_request:", "contents: write", "actions: write",
                           "xcodebuild ", "simctl ", "log stream", "curl ", "npm ci"):
             self.assertNotIn(forbidden, workflow)
+
+
+    def test_focused_workflow_changes_only_branch_and_evidence_name(self):
+        previous = (ROOT / ".github/workflows/ios-auth76-system-log-help-20261107.yml").read_text(encoding="utf-8")
+        focused = (ROOT / ".github/workflows/ios-auth76-system-log-focused-20261107.yml").read_text(encoding="utf-8")
+        expected = previous.replace("codex/ios-auth76-system-log-help-20261107",
+                                    "codex/ios-auth76-system-log-focused-20261107")
+        expected = expected.replace("name: READ_ONLY_ORIGINAL_EVIDENCE Auth76 system log help correction",
+                                    "name: READ_ONLY_ORIGINAL_EVIDENCE Auth76 focused system log inspection")
+        expected = expected.replace("name: READ_ONLY_ORIGINAL_EVIDENCE-auth76-system-log-help",
+                                    "name: READ_ONLY_ORIGINAL_EVIDENCE-auth76-system-log-focused")
+        self.assertEqual(focused, expected)
+        vercel = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
+        self.assertFalse(vercel["git"]["deploymentEnabled"]["codex/ios-auth76-system-log-focused-20261107"])
+        self.assertEqual(focused.count("github.event.created == true"), 1)
+        self.assertEqual(focused.count("gh api --method GET"), 2)
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ UDID = "DD0F04E6-F694-4A74-AB2C-70453176B7BB"
 START_UTC = "2026-11-07 17:50:20"
 END_UTC = "2026-11-07 17:51:40"
 PROCESSES = ("SafariViewService", "App", "runningboardd", "SpringBoard", "launchd_sim", "swcd")
-PREDICATE = " OR ".join('process == "' + name + '"' for name in PROCESSES)
+PREDICATE = "(" + " OR ".join('process == "' + name + '"' for name in PROCESSES) + ') AND subsystem != "com.apple.dt.xctest"'
 PRIVATE_NAME = "auth76-system-log-private"
 MAX_ARCHIVE_FILES = 1000
 MAX_ARCHIVE_BYTES = 350_000_000
