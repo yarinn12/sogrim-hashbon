@@ -20,12 +20,15 @@ const env = {
 const candidates = [
   process.env.PYTHON_EXECUTABLE,
   process.env.PYTHON,
-  process.platform === 'win32' ? 'C:/Users/A/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe' : 'python3',
-  process.platform === 'win32' ? 'python' : undefined,
+  'python3',
+  'python',
 ].filter(Boolean);
 
 test('Auth76 original evidence source and extraction controls', () => {
-  const python = candidates.find(file => spawnSync(file, ['--version'], {encoding: 'utf8', windowsHide: true, env}).status === 0);
+  const python = candidates.find(file => {
+    const result = spawnSync(file, ['--version'], {encoding: 'utf8', windowsHide: true, env});
+    return result.status === 0 && /Python 3\./.test((result.stdout || '') + (result.stderr || ''));
+  });
   assert.ok(python, 'Python 3 required for permanent Auth76 evidence controls');
   const result = spawnSync(python, ['-B', script], {
     cwd: repository,
