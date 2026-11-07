@@ -231,6 +231,61 @@ class SystemLogControls(unittest.TestCase):
         self.assertEqual(MODULE.output_status(-9, b'[{"timestamp":"partial"}]', False, True),
                          "INCOMPLETE_OUTPUT_CAP")
 
+    def test_real_macos_footer_from_saved_output_requires_expected_archive(self):
+        fixture = ROOT / "tests/fixtures/auth76/log-show-json-footer-sample.txt"
+        provenance = json.loads((ROOT / "tests/fixtures/auth76/log-show-json-footer-provenance.json").read_text(encoding="utf-8"))
+        payload = fixture.read_bytes()
+        archive = provenance["expectedArchive"]
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), provenance["derivedFixtureSha256"])
+        self.assertEqual(provenance["sourcePublishedStdoutSha256"],
+                         "f6a7a736597fd3dceb40c63f72eeeaca334d93cdea4c68e691e3552596438168")
+        self.assertEqual(provenance["sourceDiagnosticArtifactId"], 13587892043)
+        self.assertEqual(provenance["sourceReaderStatus"], "UNPARSEABLE")
+        self.assertEqual(provenance["sourceOverallRunConclusion"], "failure")
+        self.assertEqual(provenance["sourceFooterExact"],
+                         "==========\n" + archive + "\n==========\n")
+        self.assertTrue(archive.startswith("/Users/runner/"))
+        self.assertTrue(archive.endswith("/simctl_diagnostics/" + MODULE.UDID + "/system.logarchive"))
+        self.assertEqual(MODULE.log_event_count(payload, expected_archive=archive), 1)
+        self.assertEqual(MODULE.output_status(0, payload, False, False, expected_archive=archive),
+                         "AVAILABLE")
+
+    def test_footer_rejects_changed_path_repeat_junk_and_partial_json(self):
+        fixture = (ROOT / "tests/fixtures/auth76/log-show-json-footer-sample.txt").read_bytes()
+        provenance = json.loads((ROOT / "tests/fixtures/auth76/log-show-json-footer-provenance.json").read_text(encoding="utf-8"))
+        archive = provenance["expectedArchive"]
+        footer = provenance["sourceFooterExact"].encode("utf-8")
+        self.assertTrue(fixture.endswith(footer))
+        pure = fixture[:-len(footer)]
+        self.assertEqual(MODULE.log_event_count(pure), 1)
+        self.assertEqual(MODULE.output_status(0, pure, False, False), "AVAILABLE")
+        self.assertIsNone(MODULE.log_event_count(fixture))
+        other_archive = archive.replace("0_Test_Native", "other_Test_Native")
+        self.assertNotEqual(other_archive, archive)
+        self.assertIsNone(MODULE.log_event_count(fixture, expected_archive=other_archive))
+        for changed in (
+            pure + b"\n" + footer,
+            fixture + footer,
+            fixture + b"junk",
+            fixture[:-1],
+            pure[:-1] + footer,
+            b"[{]" + footer,
+            b'{"timestamp":"2026-11-07T17:50:20Z"}' + footer,
+            pure + footer.replace(archive.encode("utf-8"), other_archive.encode("utf-8")),
+        ):
+            with self.subTest(changed=changed[-50:]):
+                self.assertIsNone(MODULE.log_event_count(changed, expected_archive=archive))
+                self.assertEqual(MODULE.output_status(0, changed, False, False, expected_archive=archive),
+                                 "UNPARSEABLE")
+        self.assertEqual(MODULE.output_status(1, fixture, False, False, expected_archive=archive),
+                         "UNAVAILABLE_COMMAND_FAILED")
+        self.assertEqual(MODULE.output_status(0, fixture, True, False, expected_archive=archive),
+                         "INCOMPLETE_TIMEOUT")
+        self.assertEqual(MODULE.output_status(0, fixture, False, True, expected_archive=archive),
+                         "INCOMPLETE_OUTPUT_CAP")
+        ndjson = b'{"timestamp":"a"}\n{"timestamp":"b"}\n'
+        self.assertEqual(MODULE.log_event_count(ndjson), 2)
+
     def test_one_off_workflow_uses_only_original_gets_and_disables_preview(self):
         workflow = (ROOT / ".github/workflows/ios-auth76-system-log-inspection-20261107.yml").read_text()
         vercel = json.loads((ROOT / "vercel.json").read_text())
@@ -284,6 +339,12 @@ class SystemLogControls(unittest.TestCase):
         self.assertFalse(vercel["git"]["deploymentEnabled"]["codex/ios-auth76-system-log-focused-20261107"])
         self.assertEqual(focused.count("github.event.created == true"), 1)
         self.assertEqual(focused.count("gh api --method GET"), 2)
+
+
+    def test_footer_parser_branch_has_no_new_query_workflow_or_preview(self):
+        vercel = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
+        self.assertFalse(vercel["git"]["deploymentEnabled"]["codex/ios-auth76-system-log-footer-20261107"])
+        self.assertFalse((ROOT / ".github/workflows/ios-auth76-system-log-footer-20261107.yml").exists())
 
 
 if __name__ == "__main__":

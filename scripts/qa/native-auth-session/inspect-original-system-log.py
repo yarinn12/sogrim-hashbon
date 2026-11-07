@@ -4,7 +4,7 @@ import hashlib
 import importlib.util
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import platform
 import re
 import selectors
@@ -175,15 +175,32 @@ def validate_command(argv):
         return
     raise InspectionError("forbidden or live-log command")
 
-def log_event_count(stdout_bytes):
+def log_event_count(stdout_bytes, expected_archive=None):
     try:
-        content = stdout_bytes.decode("utf-8").strip()
-        if not content:
+        content = stdout_bytes.decode("utf-8")
+        if not content.strip():
             return 0
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError:
-            parsed = [json.loads(line) for line in content.splitlines() if line.strip()]
+            if content.lstrip().startswith("["):
+                # macOS log show appends this literal footer after a complete JSON array.
+                # It is trusted only when it repeats the already validated query archive.
+                archive = str(expected_archive) if expected_archive is not None else ""
+                path = PurePosixPath(archive)
+                if not path.is_absolute() or path.parts[-3:] != ("simctl_diagnostics", UDID, "system.logarchive"):
+                    return None
+                footer = "==========\n" + archive + "\n==========\n"
+                if not content.endswith(footer):
+                    return None
+                body = content[:-len(footer)]
+                if not body.endswith("]"):
+                    return None
+                parsed = json.loads(body)
+                if not isinstance(parsed, list):
+                    return None
+            else:
+                parsed = [json.loads(line) for line in content.splitlines() if line.strip()]
         if isinstance(parsed, list):
             return sum(isinstance(item, dict) and any(key in item for key in ("timestamp", "eventMessage", "process", "processID")) for item in parsed)
         if isinstance(parsed, dict):
@@ -194,14 +211,14 @@ def log_event_count(stdout_bytes):
         return None
     return None
 
-def output_status(exit_code, stdout_bytes, timed_out, truncated):
+def output_status(exit_code, stdout_bytes, timed_out, truncated, expected_archive=None):
     if timed_out:
         return "INCOMPLETE_TIMEOUT"
     if truncated:
         return "INCOMPLETE_OUTPUT_CAP"
     if exit_code != 0:
         return "UNAVAILABLE_COMMAND_FAILED"
-    events = log_event_count(stdout_bytes)
+    events = log_event_count(stdout_bytes, expected_archive=expected_archive)
     if events is None:
         return "UNPARSEABLE"
     if events == 0:
@@ -359,9 +376,11 @@ def inspect(private_root, report_root, environment):
         argv = log_show_argv(archive)
         decoded = run_bounded(argv, raw, "log-show", LOG_SECONDS, LOG_STDOUT_BYTES, STDERR_BYTES, env)
         manifest["commands"].append(publish_result(decoded, output))
-        status = output_status(decoded["exitCode"], decoded["rawPaths"]["stdout"].read_bytes(), decoded["timedOut"], decoded["outputTruncated"])
+        stdout_bytes = decoded["rawPaths"]["stdout"].read_bytes()
+        status = output_status(decoded["exitCode"], stdout_bytes, decoded["timedOut"], decoded["outputTruncated"],
+                               expected_archive=argv[-1])
         manifest["status"] = status
-        manifest["eventCount"] = log_event_count(decoded["rawPaths"]["stdout"].read_bytes())
+        manifest["eventCount"] = log_event_count(stdout_bytes, expected_archive=argv[-1])
         require(status == "AVAILABLE", "original archive log query " + status)
     except InspectionError as error:
         manifest["failureReason"] = str(error)

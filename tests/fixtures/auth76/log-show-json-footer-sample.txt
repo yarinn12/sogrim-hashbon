@@ -1,0 +1,36 @@
+[
+  {
+    "timezoneName": "",
+    "messageType": "Default",
+    "eventType": "logEvent",
+    "source": null,
+    "formatString": "",
+    "userID": 2863311530,
+    "activityIdentifier": 0,
+    "subsystem": "user/501/com.apple.mlhostd",
+    "category": "",
+    "threadID": 142136,
+    "senderImageUUID": "06B57277-DBF0-307F-8748-72D019EE8314",
+    "backtrace": {
+      "frames": [
+        {
+          "imageOffset": 92420,
+          "imageUUID": "06B57277-DBF0-307F-8748-72D019EE8314"
+        }
+      ]
+    },
+    "bootUUID": "A908C09E-DFF8-45A4-AFE6-32E703F2DA24",
+    "processImagePath": "/Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/sbin/launchd_sim",
+    "senderImagePath": "/Library/Developer/CoreSimulator/Volumes/iOS_23F77/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 26.5.simruntime/Contents/Resources/RuntimeRoot/sbin/launchd_sim",
+    "timestamp": "2026-11-07 17:50:20.167997+0000",
+    "machTimestamp": 3501692136395,
+    "eventMessage": "service state: spawning",
+    "processImageUUID": "06B57277-DBF0-307F-8748-72D019EE8314",
+    "traceID": 0,
+    "processID": 25207,
+    "senderProgramCounter": 92420,
+    "parentActivityIdentifier": 0
+  }
+]==========
+/Users/runner/work/_temp/auth76-system-log-private/diagnostics-export/0_Test_Native Apple auth probe_Diagnostics/simctl_diagnostics/DD0F04E6-F694-4A74-AB2C-70453176B7BB/system.logarchive
+==========
