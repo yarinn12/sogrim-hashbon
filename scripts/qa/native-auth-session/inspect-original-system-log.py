@@ -125,18 +125,36 @@ def fingerprint_archive(archive):
 
 
 def validate_log_help(help_text):
-    for option in ("--archive", "--start", "--end", "--predicate", "--style", "--timezone", "--info", "--debug"):
-        require(re.search(r"(?<![A-Za-z])" + re.escape(option) + r"\b", help_text), "log help show lacks " + option)
-    require(re.search(r"\bjson\b", help_text, re.IGNORECASE), "log help show lacks json style")
+    require(re.search(r"(?m)^usage:\s+log show \[options\] <archive>\s*$", help_text),
+            "log help show lacks positional archive usage")
+    require(re.search(r"(?m)^\s*or:\s+log show \[options\]\s*$", help_text),
+            "log help show lacks live-store contrast")
+    for option in ("--start", "--end", "--predicate", "--style", "--timezone"):
+        require(re.search(r"(?<![A-Za-z])" + re.escape(option) + r"\b", help_text),
+                "log help show lacks " + option)
+    for option in ("--[no-]info", "--[no-]debug"):
+        require(option in help_text, "log help show lacks " + option)
+    for section in ("options:", "valid time formats:", "predicate usage:", "shorthand usage:"):
+        require(section in help_text, "log help show incomplete: " + section)
+    require(re.search(r"--style <style>.*\bjson\b", help_text), "log help show lacks json style")
     return True
 
 
+def validate_log_help_result(result, help_text):
+    require(not result["timedOut"] and not result["outputTruncated"], "log help show incomplete by bound")
+    require(result["exitCode"] in (0, 64), "log help show exit status unavailable")
+    return validate_log_help(help_text)
+
+
 def log_show_argv(archive):
-    require(Path(archive).name == "system.logarchive" and Path(archive).is_absolute(), "explicit archive required")
+    archive = Path(archive)
+    require(archive.is_absolute() and archive.parts[-3:] == ("simctl_diagnostics", UDID, "system.logarchive"),
+            "explicit original archive required")
     return [
-        "/usr/bin/log", "show", "--archive", str(archive),
-        "--start", START_UTC, "--end", END_UTC,
+        "/usr/bin/log", "show",
+        "--start", START_UTC + "+0000", "--end", END_UTC + "+0000",
         "--predicate", PREDICATE, "--timezone", "UTC", "--style", "json", "--info", "--debug",
+        str(archive),
     ]
 
 
@@ -152,8 +170,8 @@ def validate_command(argv):
         return
     if argv == ["/usr/bin/log", "help", "show"]:
         return
-    if len(argv) == 16 and argv[:3] == ["/usr/bin/log", "show", "--archive"]:
-        require(argv == log_show_argv(Path(argv[3])), "log show arguments changed")
+    if len(argv) == 15 and argv[:2] == ["/usr/bin/log", "show"]:
+        require(argv == log_show_argv(Path(argv[-1])), "log show arguments changed")
         return
     raise InspectionError("forbidden or live-log command")
 
@@ -336,9 +354,8 @@ def inspect(private_root, report_root, environment):
         manifest["archive"] = {"relativePath": archive.relative_to(export).as_posix(), **archive_fingerprint}
         help_result = run_bounded(["/usr/bin/log", "help", "show"], raw, "log-help-show", HELP_SECONDS, HELP_BYTES, STDERR_BYTES, env)
         manifest["commands"].append(publish_result(help_result, output))
-        require(help_result["exitCode"] == 0 and not help_result["timedOut"] and not help_result["outputTruncated"], "log help show unavailable")
         help_text = help_result["rawPaths"]["stdout"].read_text(encoding="utf-8", errors="replace") + help_result["rawPaths"]["stderr"].read_text(encoding="utf-8", errors="replace")
-        validate_log_help(help_text)
+        validate_log_help_result(help_result, help_text)
         argv = log_show_argv(archive)
         decoded = run_bounded(argv, raw, "log-show", LOG_SECONDS, LOG_STDOUT_BYTES, STDERR_BYTES, env)
         manifest["commands"].append(publish_result(decoded, output))
