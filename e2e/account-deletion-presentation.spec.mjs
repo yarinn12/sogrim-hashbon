@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import {readFinalAccountDeletionGeometry} from "./helpers/accountDeletionGeometry.mjs";
+import {openHeldRenderedHome,requireHeldHomeReadiness} from "./helpers/heldHomeReadinessControl.mjs";
 import { readFileSync } from "node:fs";
 import { click as appClick } from "./helpers/profileAccountPresentation.mjs";
 const fixture = readFileSync(new URL("./fixtures/profileRewardBootstrap.js", import.meta.url), "utf8"), evidence = /* @__PURE__ */ new WeakMap();
@@ -17,7 +18,7 @@ test.afterEach(async ({ page }) => {
   expect(evidence.get(page).external).toEqual([]);
 });
 async function open(page, root = 16, query = "") {
-  await page.goto("/?requests=empty&reward=inactive" + query + (root > 16 ? "&dynamic-type-preview=" + root : ""));
+  await openHeldRenderedHome(page, {path:"/?requests=empty&reward=inactive" + query + (root > 16 ? "&dynamic-type-preview=" + root : "")});
   await page.locator('.product-app-nav [data-nav-destination="profile"]').click();
   await expect(page.locator('[data-profile-identity="username"] strong')).toHaveText("noam_levi");
   await expect.poll(() => page.evaluate(() => SogrimMonetization.status.status)).toBe("ready");
@@ -87,6 +88,9 @@ async function reopen(page) {
   await expect(page.locator("[data-account-delete-confirmation]")).not.toBeChecked();
   await expect(page.locator('[data-account-action="delete-account-confirm"]')).toBeDisabled();
 }
+test.describe(() => {
+requireHeldHomeReadiness(test, {resource:"image"});
+
 for (const [id, root, width, height] of [["normal", 16, 393, 852], ["text20", 20, 411, 852], ["text32", 32, 320, 852], ["short", 32, 320, 390], ["landscape", 32, 852, 393]]) test("account deletion presentation " + id, async ({ page }, info) => {
   await page.setViewportSize({ width, height });
   await open(page, root);
@@ -188,6 +192,7 @@ test("account deletion returns to the mouse opener even when the browser does no
   await page.goBack();
   await returned(page);
   expect(await deletionCount(page)).toBe(0);
+});
 });
 
 test("account action click reaches its button when the bottom navigation moves over the measured point", async ({ page }) => {

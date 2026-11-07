@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {openHeldRenderedHome,requireHeldHomeReadiness} from './helpers/heldHomeReadinessControl.mjs';
 import{readFileSync}from'node:fs';
 import{installSyntheticSystemText}from'./helpers/accessibilityPresentation.mjs';
 import{geometry,finish,ack}from'./helpers/eventRepaymentPresentation.mjs';
@@ -9,10 +10,11 @@ test.beforeEach(async({page})=>{
  await page.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():(e.external.push(r.request().url()),r.abort()));
  await page.addInitScript({content:fixture});
 });
+requireHeldHomeReadiness(test,{resource:'image'});
 test.afterEach(async({page})=>{const e=evidence.get(page);expect(e.errors).toEqual([]);expect(e.external).toEqual([])});
 async function start(page,{width=393,height=852,root=16,query='',system=false}={}) {
  if(system)await page.addInitScript(installSyntheticSystemText);await page.setViewportSize({width,height});
- await page.goto('/?review=1&requests=accepted&reward=inactive'+(!system&&root>16?'&dynamic-type-preview='+root:'')+query);
+ await openHeldRenderedHome(page,{path:'/?review=1&requests=accepted&reward=inactive'+(!system&&root>16?'&dynamic-type-preview='+root:'')+query});
  await page.locator('.product-home-screen .event-list [data-action="open-event"][data-event-id="friend-weekend"]').click();
  await page.locator('.screen [data-action="open-event-settings"]').click();await page.locator('[data-settings-section="repayment"]').click();
  const menu=page.locator('.event-modal:has([data-action="set-event-repayment-mode"])');await expect(menu).toBeVisible();await page.evaluate(()=>document.fonts.ready);
