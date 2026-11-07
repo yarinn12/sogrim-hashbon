@@ -48,6 +48,14 @@ def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def require_original_job(item, label):
+    for key, expected in (
+        ("id", JOB_ID), ("run_id", RUN_ID), ("run_attempt", 1),
+        ("head_sha", SOURCE_SHA), ("head_branch", SOURCE_BRANCH),
+        ("name", "native"), ("status", "completed"), ("conclusion", "failure"),
+    ):
+        require(isinstance(item, dict) and item.get(key) == expected, label + " " + key)
+
 def validate_metadata(data):
     repo = data["repo"]
     run = data["run"]
@@ -56,7 +64,9 @@ def validate_metadata(data):
     artifact = data["artifact"]
     run_artifacts = data["run_artifacts"]
     require(repo.get("id") == REPO_ID and repo.get("full_name") == REPO and repo.get("fork") is False, "repository identity or fork status")
-    require(run.get("id") == RUN_ID and run.get("repository", {}).get("id") == REPO_ID, "run/repository identity")
+    source_repo = run.get("repository") or {}
+    require(run.get("id") == RUN_ID, "run identity")
+    require(source_repo.get("id") == REPO_ID and source_repo.get("full_name") == REPO and source_repo.get("fork") is False, "run repository identity or fork status")
     head = run.get("head_repository") or {}
     require(head.get("id") == REPO_ID and head.get("full_name") == REPO and head.get("fork") is False, "source head repository is not the original nonfork")
     for key, expected in (
@@ -65,11 +75,12 @@ def validate_metadata(data):
         ("run_attempt", 1), ("status", "completed"), ("conclusion", "failure"),
     ):
         require(run.get(key) == expected, "run " + key)
-    require(job.get("id") == JOB_ID and job.get("run_id") == RUN_ID and job.get("run_attempt") == 1, "job/run/attempt identity")
-    require(job.get("name") == "native" and job.get("status") == "completed" and job.get("conclusion") == "failure", "original native job failure")
+    require_original_job(job, "job")
     jobs = attempt_jobs.get("jobs")
     require(isinstance(jobs, list) and attempt_jobs.get("total_count") == len(jobs), "attempt jobs list incomplete")
-    require(len([item for item in jobs if item.get("id") == JOB_ID and item.get("run_attempt") == 1 and item.get("conclusion") == "failure"]) == 1, "original failed job missing from attempt 1")
+    original_attempt_jobs = [item for item in jobs if isinstance(item, dict) and item.get("id") == JOB_ID]
+    require(len(original_attempt_jobs) == 1, "original job missing or duplicated in attempt 1")
+    require_original_job(original_attempt_jobs[0], "attempt job")
     require(artifact.get("id") == ARTIFACT_ID and artifact.get("name") == ARTIFACT_NAME and artifact.get("size_in_bytes") == ZIP_BYTES, "artifact identity/size")
     require(artifact.get("expired") is False and artifact.get("digest") == "sha256:" + ZIP_SHA256, "artifact expired or digest mismatch")
     link = artifact.get("workflow_run") or {}
@@ -142,21 +153,18 @@ def safe_extract_result(archive_path, destination):
     with zipfile.ZipFile(archive_path) as archive:
         members, total, result_count = safe_members(archive)
         destination.mkdir(parents=True)
-        try:
-            for info in members:
-                parts = info.filename.rstrip("/").split("/")
-                if parts[0] != "result.xcresult":
-                    continue
-                target = destination.joinpath(*parts)
-                if info.is_dir():
-                    target.mkdir(parents=True, exist_ok=True)
-                    continue
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with archive.open(info) as source, target.open("xb") as sink:
-                    shutil.copyfileobj(source, sink, length=1024 * 1024)
-        except Exception:
-            shutil.rmtree(destination)
-            raise
+        # Keep already extracted files when a later entry fails. They are diagnostic evidence.
+        for info in members:
+            parts = info.filename.rstrip("/").split("/")
+            if parts[0] != "result.xcresult":
+                continue
+            target = destination.joinpath(*parts)
+            if info.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(info) as source, target.open("xb") as sink:
+                shutil.copyfileobj(source, sink, length=1024 * 1024)
     require((destination / "result.xcresult" / "Info.plist").is_file(), "extracted result bundle Info.plist absent")
     return {"zipMembers": len(members), "zipUncompressedBytes": total, "resultMembers": result_count, "safeExtraction": True}
 

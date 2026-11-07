@@ -3,6 +3,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import stat
 import tempfile
@@ -11,7 +12,7 @@ from unittest.mock import patch
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "scripts/qa/native-auth-session/inspect-original-xcresult.py"
+SOURCE = Path(os.environ.get("AUTH76_INSPECT_DRIVER", ROOT / "scripts/qa/native-auth-session/inspect-original-xcresult.py"))
 SPEC = importlib.util.spec_from_file_location("auth76_result", SOURCE)
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
@@ -27,6 +28,7 @@ def metadata():
     }
     job = {
         "id": MODULE.JOB_ID, "run_id": MODULE.RUN_ID, "run_attempt": 1,
+        "head_sha": MODULE.SOURCE_SHA, "head_branch": MODULE.SOURCE_BRANCH,
         "name": "native", "status": "completed", "conclusion": "failure",
     }
     artifact = {
@@ -85,6 +87,27 @@ class EvidenceControls(unittest.TestCase):
             with self.assertRaises(MODULE.EvidenceError):
                 MODULE.validate_metadata(item)
 
+    def test_original_run_and_both_job_receipts_reject_source_substitutions(self):
+        changes = (
+            ("run_repository_fork", lambda data: data["run"]["repository"].update(fork=True)),
+            ("run_repository_name", lambda data: data["run"]["repository"].update(full_name="other/repo")),
+            ("job_source_sha", lambda data: data["job"].update(head_sha="0" * 40)),
+            ("job_run_id", lambda data: data["job"].update(run_id=7)),
+            ("job_status", lambda data: data["job"].update(status="queued")),
+            ("attempt_job_source_sha", lambda data: data["attempt_jobs"]["jobs"][0].update(head_sha="0" * 40)),
+            ("attempt_job_run_id", lambda data: data["attempt_jobs"]["jobs"][0].update(run_id=7)),
+            ("attempt_job_status", lambda data: data["attempt_jobs"]["jobs"][0].update(status="queued")),
+            ("attempt_job_name", lambda data: data["attempt_jobs"]["jobs"][0].update(name="other")),
+            ("attempt_job_conclusion", lambda data: data["attempt_jobs"]["jobs"][0].update(conclusion="success")),
+            ("attempt_job_branch", lambda data: data["attempt_jobs"]["jobs"][0].update(head_branch="other")),
+        )
+        self.assertTrue(MODULE.validate_metadata(metadata())["metadataValidated"])
+        for label, mutate in changes:
+            with self.subTest(label=label):
+                item = metadata()
+                mutate(item)
+                with self.assertRaises(MODULE.EvidenceError):
+                    MODULE.validate_metadata(item)
     def make_zip(self, path, entries):
         with zipfile.ZipFile(path, "w") as archive:
             for name, content, mode in entries:
@@ -135,6 +158,30 @@ class EvidenceControls(unittest.TestCase):
             with zipfile.ZipFile(duplicate) as archive, self.assertRaises(MODULE.EvidenceError):
                 MODULE.safe_members(archive)
 
+    def test_failed_extraction_keeps_partial_original_evidence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            archive = base / "partial.zip"
+            destination = base / "extracted"
+            self.make_zip(archive, [
+                ("result.xcresult/Info.plist", b"synthetic-info", stat.S_IFREG | 0o644),
+                ("result.xcresult/Data/second", b"synthetic-data", stat.S_IFREG | 0o644),
+            ])
+            original_copy = MODULE.shutil.copyfileobj
+            copies = 0
+
+            def fail_second(source, sink, length):
+                nonlocal copies
+                copies += 1
+                if copies == 2:
+                    raise OSError("synthetic second-entry failure")
+                return original_copy(source, sink, length)
+
+            with patch.object(MODULE.shutil, "copyfileobj", side_effect=fail_second):
+                with self.assertRaisesRegex(OSError, "synthetic second-entry failure"):
+                    MODULE.safe_extract_result(archive, destination)
+            self.assertEqual(copies, 2)
+            self.assertEqual((destination / "result.xcresult/Info.plist").read_bytes(), b"synthetic-info")
     def test_archive_bytes_and_sha_gate_precede_extraction(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "tiny.zip"
