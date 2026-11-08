@@ -3,6 +3,7 @@
   "version": 2,
   "git": {
     "deploymentEnabled": {
+      "codex/ios-original-two-failures-20261108": false,
       "codex/ios-auth79-ax-services-20261108": false,
       "codex/ios-auth79-daemon-log-20261108": false,
       "codex/ios-auth76-system-log-footer-20261107": false,
