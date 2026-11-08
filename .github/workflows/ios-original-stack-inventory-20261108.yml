@@ -1,0 +1,209 @@
+name: READ_ONLY_ORIGINAL_EVIDENCE Original iOS exported diagnostic stacks
+
+on:
+  push:
+    branches: [codex/ios-original-stack-inventory-20261108]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  read-original-auth79:
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios-original-stack-inventory-20261108' && github.event.created == true && github.event.deleted == false && github.event.forced == false && github.run_attempt == 1 && github.run_number == 1
+    runs-on: macos-26-intel
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      TZ: UTC
+      PYTHONDONTWRITEBYTECODE: "1"
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Focused synthetic original-evidence controls
+        run: |
+          python3 -B tests/original_diagnostic_stacks_test.py
+          python3 -B tests/ios_auth79_ax_services_test.py
+          python3 -B tests/ios_auth79_daemon_log_test.py
+          python3 -B tests/ios_auth76_result_inspection_test.py
+          python3 -B tests/ios_auth76_system_log_inspection_test.py
+      - name: Record diagnostic tool source separately from frozen original app
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/auth79-ax-services
+          python3 -B - <<'PY'
+          import json, os, pathlib, subprocess
+          git=lambda *args: subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse','HEAD')==os.environ['GITHUB_SHA']
+          data={'qaSource':git('rev-parse','HEAD'),'qaTree':git('rev-parse','HEAD^{tree}'),
+                'originalSource':'b19b57ec071ab0fbd3cd799b217198ccfd013a75',
+                'originalTree':'a54f15852c16ad7b9c2b04b8d632b93599d0419f',
+                'imageOS':os.environ.get('ImageOS'),'imageVersion':os.environ.get('ImageVersion'),
+                'originalRun':42422409479,'originalAttempt':1,'originalJob':128553466429,
+                'readOnlyOriginalEvidence':True,'stackInventoryOnly':True,'releaseAcceptance':False,'causeDetermined':False,
+                'newAppOrXCTestRun':False,'additionalActorSubsystemPrefix':'com.apple.Accessibility'}
+          pathlib.Path('artifacts/auth79-ax-services/source.json').write_text(json.dumps(data,indent=2)+'\n')
+          PY
+      - name: Verify exact Auth79 metadata using GET only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          private="$RUNNER_TEMP/auth79-ax-services-private"
+          report="$GITHUB_WORKSPACE/artifacts/auth79-ax-services"
+          mkdir -p "$private/metadata" "$report"
+          printf 'READ_ONLY_ORIGINAL_EVIDENCE\nOriginal failed Auth79 attempt 1 only. AX service namespace included. No new App/XCTest run, replay or release acceptance.\n' > "$report/README.txt"
+          fetch_json() {
+            local name="$1" endpoint="$2"
+            if ! gh api --method GET "$endpoint" > "$private/metadata/$name.json" 2> "$private/gh-error.log"; then
+              echo "::error::Original evidence metadata GET failed"
+              exit 1
+            fi
+          }
+          fetch_json repo repos/yarinn12/sogrim-hashbon
+          fetch_json run repos/yarinn12/sogrim-hashbon/actions/runs/42422409479
+          fetch_json job repos/yarinn12/sogrim-hashbon/actions/jobs/128553466429
+          fetch_json attempt_jobs 'repos/yarinn12/sogrim-hashbon/actions/runs/42422409479/attempts/1/jobs?per_page=100'
+          fetch_json artifact repos/yarinn12/sogrim-hashbon/actions/artifacts/13594830607
+          fetch_json run_artifacts 'repos/yarinn12/sogrim-hashbon/actions/runs/42422409479/artifacts?per_page=100'
+          python3 -B scripts/qa/native-auth-session/inspect-auth79-original.py verify-metadata "$private/metadata" "$report/metadata-validation.json"
+      - name: Download exact original ZIP once and safely extract its result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          private="$RUNNER_TEMP/auth79-ax-services-private"
+          report="$GITHUB_WORKSPACE/artifacts/auth79-ax-services"
+          if ! gh api --method GET repos/yarinn12/sogrim-hashbon/actions/artifacts/13594830607/zip > "$private/original.zip" 2> "$private/gh-error.log"; then
+            echo "::error::Original artifact GET failed"
+            exit 1
+          fi
+          python3 -B scripts/qa/native-auth-session/inspect-auth79-original.py verify-extract "$private/original.zip" "$private/extracted" "$report/archive-validation.json"
+      - name: Read the same saved AX archive with its Accessibility service namespace
+        run: |
+          set -euo pipefail
+          python3 -B scripts/qa/native-auth-session/inspect-auth79-ax-services.py inspect "$RUNNER_TEMP/auth79-ax-services-private" "$GITHUB_WORKSPACE/artifacts/auth79-ax-services"
+      - name: Inventory only existing exported stack reports
+        run: |
+          set -euo pipefail
+          python3 -B scripts/qa/native-auth-session/inspect-original-diagnostic-stacks.py inspect auth79 "$RUNNER_TEMP/auth79-ax-services-private" "$GITHUB_WORKSPACE/artifacts/auth79-ax-services"
+      - name: State evidence scope and availability
+        if: always()
+        run: |
+          echo 'READ_ONLY_ORIGINAL_EVIDENCE: failed Auth79 attempt 1 only. No XCTest, simulator, App or live-log replay. Includes only the original actors or com.apple.Accessibility namespace. Not release acceptance or a causal verdict.' >> "$GITHUB_STEP_SUMMARY"
+          if test -f artifacts/auth79-ax-services/system-log/manifest.json; then
+            python3 -B -c 'import json; p="artifacts/auth79-ax-services/system-log/manifest.json"; d=json.load(open(p)); print("Original query status: "+d["status"]+"; timeout, output cap, empty, unknown or foreign events cannot supply availability.")' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: State stack evidence availability separately
+        if: always()
+        run: |
+          if test -f artifacts/auth79-ax-services/diagnostic-stacks/manifest.json; then
+            python3 -B -c 'import json; d=json.load(open("artifacts/auth79-ax-services/diagnostic-stacks/manifest.json")); print("Original stack inventory: "+d["status"]+"; validated files="+str(len(d["matches"]))+"; absence of stacks is not proven; no release acceptance.")' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: READ_ONLY_ORIGINAL_STACK_INVENTORY-auth79-ax-services
+          path: artifacts/auth79-ax-services/
+          if-no-files-found: warn
+          retention-days: 14
+
+  read-original-native503:
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios-original-stack-inventory-20261108' && github.event.created == true && github.event.deleted == false && github.event.forced == false && github.run_attempt == 1 && github.run_number == 1
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      TZ: UTC
+      PYTHONDONTWRITEBYTECODE: "1"
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Focused synthetic original-evidence controls
+        run: |
+          python3 -B tests/original_diagnostic_stacks_test.py
+          python3 -B tests/ios_native503_home_log_test.py
+      - name: Record diagnostic tool source separately from frozen original app
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/native503-home-log
+          python3 -B - <<'PY'
+          import json, os, pathlib, subprocess
+          git=lambda *args: subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse','HEAD')==os.environ['GITHUB_SHA']
+          data={'qaSource':git('rev-parse','HEAD'),'qaTree':git('rev-parse','HEAD^{tree}'),
+                'originalSource':'b19b57ec071ab0fbd3cd799b217198ccfd013a75',
+                'originalTree':'a54f15852c16ad7b9c2b04b8d632b93599d0419f',
+                'imageOS':os.environ.get('ImageOS'),'imageVersion':os.environ.get('ImageVersion'),
+                'originalRun':42422409530,'originalAttempt':1,'originalJob':128554012283,
+                'readOnlyOriginalEvidence':True,'stackInventoryOnly':True,'releaseAcceptance':False,'causeDetermined':False,
+                'newAppOrXCTestRun':False,'originalProfile':'default'}
+          pathlib.Path('artifacts/native503-home-log/source.json').write_text(json.dumps(data,indent=2)+'\n')
+          PY
+      - name: Verify exact Native503 metadata using GET only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          private="$RUNNER_TEMP/native503-home-log-private"
+          report="$GITHUB_WORKSPACE/artifacts/native503-home-log"
+          mkdir -p "$private/metadata" "$report"
+          printf 'READ_ONLY_ORIGINAL_EVIDENCE\nOriginal failed Native503 attempt 1 only. Original default Home/lifecycle evidence only. No new App/XCTest run, replay or release acceptance.\n' > "$report/README.txt"
+          fetch_json() {
+            local name="$1" endpoint="$2"
+            if ! gh api --method GET "$endpoint" > "$private/metadata/$name.json" 2> "$private/gh-error.log"; then
+              echo "::error::Original evidence metadata GET failed"
+              exit 1
+            fi
+          }
+          fetch_json repo repos/yarinn12/sogrim-hashbon
+          fetch_json run repos/yarinn12/sogrim-hashbon/actions/runs/42422409530
+          fetch_json job repos/yarinn12/sogrim-hashbon/actions/jobs/128554012283
+          fetch_json attempt_jobs 'repos/yarinn12/sogrim-hashbon/actions/runs/42422409530/attempts/1/jobs?per_page=100'
+          fetch_json artifact repos/yarinn12/sogrim-hashbon/actions/artifacts/13595380002
+          fetch_json run_artifacts 'repos/yarinn12/sogrim-hashbon/actions/runs/42422409530/artifacts?per_page=100'
+          python3 -B scripts/qa/native-auth-session/inspect-native503-original.py verify-metadata "$private/metadata" "$report/metadata-validation.json"
+      - name: Download exact original ZIP once and safely extract its result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          private="$RUNNER_TEMP/native503-home-log-private"
+          report="$GITHUB_WORKSPACE/artifacts/native503-home-log"
+          if ! gh api --method GET repos/yarinn12/sogrim-hashbon/actions/artifacts/13595380002/zip > "$private/original.zip" 2> "$private/gh-error.log"; then
+            echo "::error::Original artifact GET failed"
+            exit 1
+          fi
+          python3 -B scripts/qa/native-auth-session/inspect-native503-original.py verify-extract "$private/original.zip" "$private/extracted" "$report/archive-validation.json"
+      - name: Read original Native503 Home and scene-transition service archive
+        run: |
+          set -euo pipefail
+          python3 -B scripts/qa/native-auth-session/inspect-native503-home-log.py inspect "$RUNNER_TEMP/native503-home-log-private" "$GITHUB_WORKSPACE/artifacts/native503-home-log"
+      - name: Inventory only existing exported stack reports
+        run: |
+          set -euo pipefail
+          python3 -B scripts/qa/native-auth-session/inspect-original-diagnostic-stacks.py inspect native503 "$RUNNER_TEMP/native503-home-log-private" "$GITHUB_WORKSPACE/artifacts/native503-home-log"
+      - name: State evidence scope and availability
+        if: always()
+        run: |
+          echo 'READ_ONLY_ORIGINAL_EVIDENCE: failed Native503 attempt 1 only. No XCTest, simulator, App or live-log replay. Original App/Runner and named lifecycle services only. Not release acceptance or a causal verdict.' >> "$GITHUB_STEP_SUMMARY"
+          if test -f artifacts/native503-home-log/system-log/manifest.json; then
+            python3 -B -c 'import json; p="artifacts/native503-home-log/system-log/manifest.json"; d=json.load(open(p)); print("Original query status: "+d["status"]+"; timeout, output cap, empty, unknown or foreign events cannot supply availability.")' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: State stack evidence availability separately
+        if: always()
+        run: |
+          if test -f artifacts/native503-home-log/diagnostic-stacks/manifest.json; then
+            python3 -B -c 'import json; d=json.load(open("artifacts/native503-home-log/diagnostic-stacks/manifest.json")); print("Original stack inventory: "+d["status"]+"; validated files="+str(len(d["matches"]))+"; absence of stacks is not proven; no release acceptance.")' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: READ_ONLY_ORIGINAL_STACK_INVENTORY-native503-home-log
+          path: artifacts/native503-home-log/
+          if-no-files-found: warn
+          retention-days: 14
