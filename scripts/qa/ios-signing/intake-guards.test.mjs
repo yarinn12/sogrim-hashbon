@@ -6,7 +6,7 @@ import {verifyOrigin} from './intake194-package-origin.mjs';
 import {verifySigningControls} from './intake-nov5-proof.mjs';
 import {all,requireManualGroups,requireIntakePreflight,collectState,verifyPostflight,verifyReadEndpoints} from './intake-distribution-guard.mjs';
 import {verifyDatabaseReceipt} from './upload-origin-guard.mjs';
-const sample=JSON.parse(readFileSync(new URL('../../../tests/fixtures/ios195-nov5-intake.json',import.meta.url),'utf8'));
+const sample=JSON.parse(readFileSync(new URL('../../../tests/fixtures/ios195-envelope-intake.json',import.meta.url),'utf8'));
 assert.equal(sample.scope,'SYNTHETIC_ONLY_NOT_AN_ARTIFACT_OR_RELEASE');
 const groups=[{id:'internal',attributes:{name:'Internal',isInternalGroup:true,hasAccessToAllBuilds:false,publicLinkEnabled:false}},
  {id:'external',attributes:{name:'External',isInternalGroup:false,hasAccessToAllBuilds:null,publicLinkEnabled:false}}];

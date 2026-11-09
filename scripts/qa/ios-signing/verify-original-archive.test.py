@@ -8,7 +8,7 @@ def load_guard(name,filename):
 guard=load_guard('ios_intake_archive_memory','verify-original-archive.py')
 encryption=load_guard('ios_intake_envelope_memory','extract-intake-envelope.py')
 bindings=load_guard('intake_bindings','intake_bindings.py')
-DATA=json.loads((pathlib.Path(__file__).resolve().parents[3]/'tests/fixtures/ios195-nov5-intake.json').read_text(encoding='utf-8'))
+DATA=json.loads((pathlib.Path(__file__).resolve().parents[3]/'tests/fixtures/ios195-envelope-intake.json').read_text(encoding='utf-8'))
 assert DATA['scope']=='SYNTHETIC_ONLY_NOT_AN_ARTIFACT_OR_RELEASE'
 clone=copy.deepcopy
 def bundle():

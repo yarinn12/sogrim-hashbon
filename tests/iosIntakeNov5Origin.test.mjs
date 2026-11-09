@@ -14,7 +14,7 @@ import {SOURCE_QA_JOBS} from '../scripts/qa/ios-signing/source-ci-required-jobs.
 import {main as originMain} from '../scripts/qa/ios-signing/intake-origin-guard.mjs';
 import {main as downloadMain} from '../scripts/qa/ios-signing/download-intake-artifact.mjs';
 import {main as decryptMain,unprotect} from '../scripts/qa/ios-signing/protect-artifact.mjs';
-const data=JSON.parse(readFileSync(new URL('./fixtures/ios195-nov5-intake.json',import.meta.url),'utf8'));
+const data=JSON.parse(readFileSync(new URL('./fixtures/ios195-envelope-intake.json',import.meta.url),'utf8'));
 assert.equal(data.scope,'SYNTHETIC_ONLY_NOT_AN_ARTIFACT_OR_RELEASE');
 const copy=x=>JSON.parse(JSON.stringify(x)),hash=x=>createHash('sha256').update(x).digest('hex');
 function fixture(counter=7){
@@ -40,7 +40,7 @@ function reads(f){
  return {records,read:path=>path.endsWith('/SogrimHashbon.ipa')?Buffer.from(f.ipaBase64,'base64'):Buffer.from(JSON.stringify(records[path.split('/').at(-1)]))};
 }
 test('real source/tool preparation is separate from explicit synthetic artifact fixtures',()=>{
- assert.equal(INTAKE_BINDINGS.application.sourceSha,'5636a2a15c1480101013b18144cefd0be1cc5127');assert.equal(INTAKE_BINDINGS.signing.toolsSha,'073cec23eb06b0d69a794d706a10fce70d73c57f');
+ assert.equal(INTAKE_BINDINGS.application.sourceSha,'5636a2a15c1480101013b18144cefd0be1cc5127');assert.equal(INTAKE_BINDINGS.signing.toolsSha,'6efbc70ffd2dad9b53f4fa12a605f006ff51307e');
  if(JSON.stringify(INTAKE_BINDINGS).includes('PENDING'))assert.throws(()=>requireBoundIntakePins(),/PENDING/);else requireBoundIntakePins();assert.doesNotThrow(()=>requireBoundIntakePins(fixture().pins));
 });
 for(const key of ['runId','artifactId','runNumber','jobId','artifactSize','ipaSize','ciphertextSize','zipSha256','ipaSha256','ciphertextSha256'])
@@ -173,4 +173,8 @@ test('OLD counter1 origin accepts success without creation steps; Nov5 rejects i
  const c=vm.createContext({assert,Date});vm.runInContext(old+'\nglobalThis.oldVerify=verifyOrigin;',c);
  const run={...f.run,head_branch:'codex/ios195-459-private-tools-20261104',path:'.github/workflows/ios195-459-private-sign-only.yml'},jobs=[{...f.jobs[0],steps:[]}];
  assert.doesNotThrow(()=>c.oldVerify(run,f.artifact,jobs,f.env));assert.throws(()=>verifyOrigin(run,f.artifact,jobs,f.env,{pins:f.pins,controlProof:f.controls,workflow:f.workflow}));
+});
+
+test('historical Nov5 fixture remains immutable alongside the successor route fixture',()=>{
+ assert.equal(hash(readFileSync(new URL('./fixtures/ios195-nov5-intake.json',import.meta.url))),'16eb9d57c2794354973201b0fca625ec71ea56b5ef51c6727dcfda10b1374049');
 });

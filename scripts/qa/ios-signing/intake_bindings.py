@@ -3,11 +3,11 @@ REPO='yarinn12/sogrim-hashbon'
 REPO_ID=1247836328
 VERSION='4.59'
 BUILD='195'
-SIGNING_BRANCH='codex/ios195-459-signing-qa492-20261106'
-SIGNING_PATH='.github/workflows/ios195-459-private-sign-only-qa492-20261106.yml'
+SIGNING_BRANCH='codex/ios195-459-signing-envelope-20261109'
+SIGNING_PATH='.github/workflows/ios195-459-private-sign-only-envelope-20261109.yml'
 SIGNING_NAME='iOS195 4.59 private signed artifact only'
 SIGNING_REF=REPO+'/'+SIGNING_PATH+'@refs/heads/'+SIGNING_BRANCH
-VERIFIER_SHA='f179c7771bbf059e1fa57949158117501ec98c33c671682033eb2df3776cff3a'
+VERIFIER_SHA='aae39c0e3fe47afaa6cc2ea8727f23e68ab86ccd2fd3d4141c71701c9812db82'
 STEPS=[
  'Require first branch creation and two complete workflow histories',
  'Require all four successful source CI runs before signing secrets',
