@@ -48,6 +48,8 @@
 
 ## CI/CD ומסירה
 
+לפני הפעלת סימולטור ב־AuthReturn או ב־Native parity, ממתינים פעם אחת להשלמת סריקת ה־runtime ובניית מטמוני המערכת באמצעות `xcrun simctl runtime dyld_shared_cache update --all`. כשל בפקודה עוצר את המסלול לפני boot ובדיקת XCTest; הפלט נשמר ב־`runtime-cache-preparation.log`. Apple מתעדת פגיעה בביצועים בזמן סריקה ובניית מטמונים והמתנה זו ב־[הערות Xcode 26.4](https://developer.apple.com/documentation/xcode-release-notes/xcode-26_4-release-notes). זו הכנת סביבת הבדיקה, ולא הוכחה למוכנות AX או לפתרון תקלה. אין הארכת זמן לבדיקות, החלפת SDK/מכשיר או retry; הכשלים המקוריים נשמרים וקבלת המקור החדש מחייבת את ארבעת מסלולי ה־CI.
+
 בדיקות iOS קובעות סביבת Mac לפי התרחיש: parity על `macos-26` ‏(ARM), ו־AuthReturn על `macos-26-intel`. אלו מסלולי GitHub רגילים וחינמיים למאגר ציבורי, עם Xcode ‏26.6 ו־iOS Simulator SDK ‏26.5. כל workload נבדק בנפרד עם אותו מקור אפליקציה ואותם תנאים: מסכים, מקלדת ושחזור ב־ARM; חזרה מהתחברות, PKCE יחיד ושחזור ב־Intel. תוצאות הניסוי נשמרות כראיות תאימות, כולל כשלים בסביבות האחרות; ארבעת מסלולי ה־CI וכל משימותיהם עדיין נדרשים על המקור הסופי. גרסת תמונת ה־Mac בפועל נשמרת בכל ריצה לצורך אבחון. מקור התמחור: https://docs.github.com/en/actions/reference/runners/github-hosted-runners .
 
 

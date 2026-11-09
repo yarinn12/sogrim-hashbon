@@ -92,6 +92,8 @@ jobs:
           print('PROBE_DEVICE='+device['name'].replace(' ','_'))
           PY
           source build/native-parity/simulator.env
+          # Finish Xcode runtime scanning/cache generation before build/boot.
+          xcrun simctl runtime dyld_shared_cache update --all > build/native-parity/runtime-cache-preparation.log 2>&1
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
             -sdk iphonesimulator -destination "platform=iOS Simulator,id=$PROBE_UDID" \
             -derivedDataPath build/native-parity/derived build-for-testing CODE_SIGNING_ALLOWED=NO \
