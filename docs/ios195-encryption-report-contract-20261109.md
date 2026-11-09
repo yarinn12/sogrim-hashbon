@@ -1,0 +1,9 @@
+# Encryption report contract correction
+
+Original signing run 42640021107, attempt 1, job129238342990 built and signed source5636a2a successfully. Codesign, provisioning profile, all packaged web assets, independent canonical Git build and both live source/build-slot gates passed. The encryption step failed with `Verified original IPA size is missing or unbounded`; no retained artifact or Apple upload was produced. Preserve that failure and do not rerun its branch.
+
+The size is written by verify-ios-artifact into release-manifest.json. verify-web-assets emits artifact-verification.json without that field and merges its verified proof into the release manifest. The encryption consumer selected the separate report rather than the complete merged report. It now reads release-manifest.json, retaining all signature, canonical asset, source identity, exact size and SHA256 checks.
+
+The normal regression invokes the real encryption CLI with the producer's two-report contract and an ephemeral synthetic key. OLD fails with the same missing-size assertion; FINAL encrypts only the original archive bytes, publishes the exact original IPA hash/size and decrypts back to the same bytes. Nine negative cases reject missing, changed, zero or oversized size; changed package digest; missing signature/canonical/web proof; and an unexpected upload. No real signature or device acceptance is claimed by these fixtures.
+
+The successor uses a new first-creation branch/path and output directory. All event/history/attempt checks remain, prior failures remain visible, and the application source and four original CI bindings remain unchanged. Vercel deployment is disabled for both signing branches. Only encrypted output and its envelope may be retained; no TestFlight or public release is performed here.

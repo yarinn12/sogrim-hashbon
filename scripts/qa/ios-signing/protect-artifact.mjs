@@ -72,7 +72,7 @@ function main() {
   const pem = process.env.APPSTORE_API_PRIVATE_KEY;
   assert.ok(pem, 'Existing App Store API private key must be supplied through the environment');
   if (mode === 'encrypt') {
-    const manifest = JSON.parse(readFileSync('build/ios/artifact-verification.json', 'utf8'));
+    const manifest = JSON.parse(readFileSync('build/ios/release-manifest.json', 'utf8'));
     assert.equal(manifest.appleUploadPerformed, false);
     assert.equal(manifest.signatureVerified, true);
     assert.equal(manifest.everyWwwAssetMatches, true);

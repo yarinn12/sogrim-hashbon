@@ -199,8 +199,8 @@ for (const name of names) {
 }
 
 const oneShotEnv={...env,GITHUB_EVENT_NAME:'push',
- GITHUB_REF:'refs/heads/codex/ios195-459-signing-qa492-20261106',
- GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios195-459-private-sign-only-qa492-20261106.yml@refs/heads/codex/ios195-459-signing-qa492-20261106',
+ GITHUB_REF:'refs/heads/codex/ios195-459-signing-envelope-20261109',
+ GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios195-459-private-sign-only-envelope-20261109.yml@refs/heads/codex/ios195-459-signing-envelope-20261109',
  GITHUB_RUN_NUMBER:'3',GITHUB_RUN_ATTEMPT:'1'};
 test('one-shot artifact preparation accepts only the explicitly frozen push scope',()=>{
  assert.equal(verifyCheckout(git,readText,oneShotEnv).sourceCommit,RELEASE_SOURCE);
@@ -211,10 +211,10 @@ for(const [name,change] of [['branch',{GITHUB_REF:'refs/heads/main'}],
  test('one-shot preparation rejects wrong '+name,()=>assert.throws(()=>verifyCheckout(git,readText,{...oneShotEnv,...change})));
 test('actual one-shot workflow keeps signing gates and creates encrypted artifact only',()=>{
  const original=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
- const actual=readFileSync(new URL('../../../.github/workflows/ios195-459-private-sign-only-qa492-20261106.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
+ const actual=readFileSync(new URL('../../../.github/workflows/ios195-459-private-sign-only-envelope-20261109.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
  assert.ok(!actual.includes('github.run_number == 1')&&actual.includes('github.run_attempt == 1'));
  assert.ok(actual.includes('github.event.created == true')&&actual.includes("github.event.before == '"+'0'.repeat(40)+"'"));
- assert.ok(actual.includes('branches: [codex/ios195-459-signing-qa492-20261106]'));
+ assert.ok(actual.includes('branches: [codex/ios195-459-signing-envelope-20261109]'));
  assert.ok(actual.indexOf('source-guard.mjs" ci-only')<actual.indexOf('secrets.APPSTORE'));
  const normalized=actual.replaceAll("          IOS_FIRST_CREATION_RECEIPT: ${{ steps.first_creation.outputs.receipt_path }}\n          IOS_FIRST_CREATION_SHA256: ${{ steps.first_creation.outputs.receipt_sha256 }}\n","")
   .replace(' ../../../tests/iosFirstCreationGuard.test.mjs','');
@@ -261,7 +261,7 @@ for(const name of ['cross-platform-shard-1 (1)','cross-platform-shard-2 (9)'])
  });
 
 test('4.59 one-shot binds the exact application tree and all four coordinator run IDs',()=>{
- const raw=readFileSync(new URL('../../../.github/workflows/ios195-459-private-sign-only-qa492-20261106.yml',import.meta.url),'utf8');
+ const raw=readFileSync(new URL('../../../.github/workflows/ios195-459-private-sign-only-envelope-20261109.yml',import.meta.url),'utf8');
  assert.equal(RELEASE_SOURCE,'5636a2a15c1480101013b18144cefd0be1cc5127');
  assert.equal(RELEASE_TREE,'c6487c3b54358f5c217d6758495ec6ee988b3d76');
  for(const [name,value]of [['SOURCE_SHA',RELEASE_SOURCE],['SOURCE_QA_RUN',env.SOURCE_QA_RUN],
