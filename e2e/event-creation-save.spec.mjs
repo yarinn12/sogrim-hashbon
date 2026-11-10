@@ -9,9 +9,12 @@ const headers = { "access-control-allow-origin": "*",
   "access-control-allow-headers": "authorization, apikey, content-type, prefer, x-space-key",
   "access-control-allow-methods": "GET, POST, PATCH, OPTIONS" };
 
-for (const mode of ["slow", "rejected", "old-rejected", "personal-old-rejected", "five-old-rejected", "share-slow", "share-old-rejected", "share-rejected", "share-personal-old-rejected", "share-navigation"]) {
-test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "personal" : "connected"} event creation stays usable with ${mode} cloud publication`, async ({ page }, testInfo) => {
-  const personalCreation = ["personal-old-rejected", "five-old-rejected", "share-personal-old-rejected"].includes(mode);
+for (const mode of ["slow", "rejected", "old-rejected", "personal-old-rejected", "five-old-rejected", "six-old-rejected", "share-slow", "share-old-rejected", "share-rejected", "share-personal-old-rejected", "share-navigation"]) {
+test(`${["personal-old-rejected", "five-old-rejected", "six-old-rejected"].includes(mode) ? "personal" : "connected"} event creation stays usable with ${mode} cloud publication`, async ({ page }, testInfo) => {
+  const personalCreation = ["personal-old-rejected", "five-old-rejected", "six-old-rejected", "share-personal-old-rejected"].includes(mode);
+  const multipleOldRejections = ["five-old-rejected", "six-old-rejected"].includes(mode);
+  const pendingCount = mode === "six-old-rejected" ? 6 : 5;
+  const textPreview = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
   const creationShare = mode.startsWith("share-");
   const cloudMode = creationShare ? mode.slice(6) : mode;
   const version = new Date().toISOString();
@@ -30,7 +33,7 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
     notes: [{ id: "old-pending-note", body: "Keep old local intent", createdAt: version, updatedAt: version,
       createdByParticipantId: `account-${owner}`, updatedByParticipantId: `account-${owner}` }]
   });
-  if (mode === "five-old-rejected") for (let number = 2; number <= 5; number++) initial.events.push({
+  if (multipleOldRejections) for (let number = 2; number <= pendingCount; number++) initial.events.push({
     ...structuredClone(initial.events[0]), id: `${oldEventId}-${number}`, name: `אירוע ממתין ${number}`,
     sharedSpaceId: `${oldSpaceId}-${number}`
   });
@@ -112,9 +115,10 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
     return request.method() === "GET" ? reply([]) : route.fulfill({ headers, status: 204 });
   });
   await page.addInitScript(({ user, initial, spaceId, spaceKey, mode }) => {
-    if (mode === "five-old-rejected") {
-      if (sessionStorage.getItem("five-event-fixture-seeded")) return;
-      sessionStorage.setItem("five-event-fixture-seeded", "1");
+    if (["five-old-rejected", "six-old-rejected"].includes(mode)) {
+      const fixtureKey = `${mode}-fixture-seeded`;
+      if (sessionStorage.getItem(fixtureKey)) return;
+      sessionStorage.setItem(fixtureKey, "1");
     }
     localStorage.setItem("settle-friends-account-session", JSON.stringify({ access_token: "qa-token", refresh_token: "qa-refresh", expires_at: Math.floor(Date.now() / 1000) + 3600, user }));
     localStorage.setItem("settle-friends-cloud-space", spaceId);
@@ -127,22 +131,33 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, { user, initial, spaceId, spaceKey, mode });
   try {
-    await page.goto("/");
+    await page.goto(textPreview > 16 ? `/?dynamic-type-preview=${textPreview}` : "/");
     await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
-    if (mode === "five-old-rejected") {
+    if (textPreview > 16) await expect(page.locator("html")).toHaveCSS("font-size", `${textPreview}px`);
+    if (multipleOldRejections) {
       const notice = page.locator("[data-sync-account-summary]");
       await expect.poll(() => page.evaluate(async () => {
         const store = await import("/src/data/localStore.mjs");
         return store.pendingSharedSyncStatus({ includeFailureKind: true }).eventFailures?.length;
-      })).toBe(5);
-      await expect(notice.locator('.sync-pending-heading')).toHaveText("שמירת העדכונים נחסמה ב־5 אירועים");
+      })).toBe(pendingCount);
+      await expect(notice.locator('.sync-pending-heading')).toHaveText("השמירה לא הושלמה");
+      await expect(notice).not.toContainText(`${pendingCount} אירועים לא סונכרנו`);
+      const disclosure = notice.locator('[data-sync-pending-notice]');
+      await expect(disclosure).not.toHaveAttribute('open', '');
+      await expect(notice.locator('[data-sync-retry]')).not.toBeVisible();
+      const collapsed = await notice.boundingBox();
+      expect(collapsed.height).toBeLessThanOrEqual(textPreview > 16 ? 128 : 64);
+      await page.screenshot({ path: testInfo.outputPath(`${pendingCount}-pending-events-collapsed.png`), fullPage: true });
+      await disclosure.locator(':scope > summary').click();
       await expect(notice.locator('.sync-pending-explanation')).toHaveText("העדכונים שמורים במכשיר הזה. בדקו הרשאות עם מנהלי האירועים.");
-      await notice.locator("summary").click();
-      await expect(notice.locator('[data-action="open-event"]')).toHaveCount(5);
+      await notice.locator("[data-sync-event-details] > summary").click();
+      await expect(notice.locator('[data-action="open-event"]')).toHaveCount(pendingCount);
       for (const event of initial.events) await expect(notice.locator(`[data-event-id="${event.id}"]`)).toHaveText(event.name);
       const originalDenied = deniedWrites;
       await page.reload();
-      await expect(notice.locator('.sync-pending-heading')).toHaveText("שמירת העדכונים נחסמה ב־5 אירועים");
+      await expect(notice.locator('.sync-pending-heading')).toHaveText("השמירה לא הושלמה");
+      await expect(disclosure).not.toHaveAttribute('open', '');
+      await disclosure.locator(':scope > summary').click();
       const automatic = await page.evaluate(async () => {
         const store = await import("/src/data/localStore.mjs");
         return store.flushPendingSharedState({ automatic: true });
@@ -150,14 +165,19 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
       console.log(JSON.stringify({ kind: "known-denial-restart", device: testInfo.project.name,
         blocked: automatic.blocked, originalDenied, afterRestartDenied: deniedWrites }));
       expect(automatic.blocked).toBe(true);
-      expect(deniedWrites).toBe(originalDenied, "a fresh document cannot replay the known five denials");
-      await notice.locator("summary").click();
+      expect(deniedWrites).toBe(originalDenied, "a fresh document cannot replay known denied writes");
+      await notice.locator("[data-sync-event-details] > summary").click();
       await notice.locator("[data-sync-retry]").click();
-      await expect.poll(() => deniedWrites).toBe(originalDenied + 5);
-      await expect(notice.locator("details")).toHaveAttribute("open", "");
-      await expect(notice.locator('[data-action="open-event"]')).toHaveCount(5);
+      await expect.poll(() => deniedWrites).toBe(originalDenied + pendingCount);
+      await expect(disclosure).toHaveAttribute("open", "");
+      await expect(notice.locator("[data-sync-event-details]")).toHaveAttribute("open", "");
+      await expect(notice.locator('[data-action="open-event"]')).toHaveCount(pendingCount);
       await expect(page.locator("[data-sync-account-summary]:visible")).toHaveCount(1);
-      await page.screenshot({ path: testInfo.outputPath("five-pending-events-explained.png"), fullPage: true });
+      const geometry = await notice.evaluate(element => ({ scrollWidth: element.scrollWidth, clientWidth: element.clientWidth,
+        rootSize: getComputedStyle(document.documentElement).fontSize }));
+      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
+      await testInfo.attach("pending-status-layout", { body: JSON.stringify(geometry), contentType: "application/json" });
+      await page.screenshot({ path: testInfo.outputPath(`${pendingCount}-pending-events-explained.png`), fullPage: true });
     }
     await page.locator('[data-action="new-event"]').first().click();
     await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();

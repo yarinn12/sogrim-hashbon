@@ -43,16 +43,42 @@ test('explicit dismissal and a newer feedback revision cancel old scroll callbac
 });
 function summary(events,failureDetails){const h=harness(),target=new Node(h.document);target.dataset.syncAccountEvents=JSON.stringify(events);const options={pendingEventIds:events.map(e=>e.id),failureDetails,document:h.document};renderPendingSyncSummary(target,'אין הרשאה לבצע את השינוי',options);return{...h,target,options};}
 const descendants=root=>root.children.flatMap(node=>[node,...(node.children?descendants(node):[])]);
+
+test('six pending events are not presented as six failed events when only one write was rejected',()=>{
+ const events=Array.from({length:6},(_,i)=>({id:`event-${i+1}`,name:`אירוע ${i+1}`}));
+ const h=summary(events,{failureKind:'permission',eventFailures:[{id:'event-1',failureKind:'permission'}]});
+ const nodes=descendants(h.target),copy=nodes.map(node=>node.textContent||'').join(' ');
+ assert.doesNotMatch(copy,/6 אירועים לא סונכרנו|נחסמה ב־6 אירועים/,
+   'the durable pending inventory is not a count of confirmed failures');
+ assert.match(copy,/השמירה לא הושלמה/);
+ assert.equal(nodes.filter(node=>node.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,1);
+ assert.deepEqual(nodes.filter(node=>node.dataset?.action==='open-event').map(node=>node.dataset.eventId),events.map(event=>event.id),
+   'the changes and their review destinations remain available');
+ assert.equal(nodes.filter(node=>node.dataset?.syncRetry!==undefined).length,1);
+ assert.match(copy,/שמורים במכשיר הזה/);
+});
+
+test('an account-level rejection never claims six separate event permission failures',()=>{
+ const events=Array.from({length:6},(_,i)=>({id:`event-${i+1}`,name:`אירוע ${i+1}`}));
+ const h=summary(events,{failureKind:'permission',eventFailures:[]});
+ const copy=descendants(h.target).map(node=>node.textContent||'').join(' ');
+ assert.doesNotMatch(copy,/6 אירועים לא סונכרנו|נחסמה ב־6 אירועים/);
+ assert.match(copy,/השמירה לא הושלמה/);
+ assert.equal(descendants(h.target).filter(node=>node.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,0);
+ assert.match(copy,/אין הרשאה לבצע את השינוי/,'account-level failure guidance remains available inside the disclosure');
+ assert.equal(descendants(h.target).filter(node=>node.dataset?.action==='open-event').length,6);
+});
 test('pending summary keeps original event identity and per-event failure attribution without rebuilding open details',()=>{
  const events=[{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],h=summary(events,{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'}]});
  const nodes=descendants(h.target),links=nodes.filter(n=>n.dataset?.action==='open-event');assert.deepEqual(links.map(n=>[n.dataset.eventId,n.textContent]),events.map(e=>[e.id,e.name]));
  assert.equal(nodes.filter(n=>n.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,1);
- assert.ok(!nodes.some(n=>n.className==='sync-pending-heading'),'unknown event outcomes cannot be labelled as confirmed permission rejections');
+ assert.doesNotMatch(nodes.find(n=>n.className==='sync-pending-heading').textContent,/הרשאה|נחסמ|אירועים/,
+   'the neutral summary cannot label unknown event outcomes as permission rejections');
  const details=nodes.find(n=>n.dataset?.syncEventDetails!==undefined);details.open=true;renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',h.options);assert.equal(descendants(h.target).find(n=>n.dataset?.syncEventDetails!==undefined),details);assert.equal(details.open,true);
 });
-test('all confirmed permission failures use concise count, retained-on-device guidance and explicit retry',()=>{
+test('all confirmed permission failures use a concise warning, retained-on-device guidance and explicit retry',()=>{
  const events=[{id:'a',name:'<b>שם</b>'},{id:'b',name:'אירוע ב'}],h=summary(events,{failureKind:'permission',eventFailures:events.map(e=>({id:e.id,failureKind:'permission'}))});const nodes=descendants(h.target);
- assert.equal(nodes.find(n=>n.className==='sync-pending-heading').textContent,'שמירת העדכונים נחסמה ב־2 אירועים');assert.match(nodes.find(n=>n.className==='sync-pending-explanation').textContent,/שמורים במכשיר הזה/);
+ assert.equal(nodes.find(n=>n.className==='sync-pending-heading').textContent,'השמירה לא הושלמה');assert.match(nodes.find(n=>n.className==='sync-pending-explanation').textContent,/שמורים במכשיר הזה/);
  assert.equal(nodes.find(n=>n.dataset?.syncRetry!==undefined).textContent,'נסה לשמור שוב');assert.equal(nodes.find(n=>n.dataset?.eventId==='a').textContent,'<b>שם</b>');
  assert.equal(nodes.find(n=>n.dataset?.syncEventDetails!==undefined).children[0].textContent,'באילו אירועים?');
 });
@@ -67,8 +93,47 @@ test('a per-event failure refresh keeps the pending review details open and both
  assert.equal(descendants(h.target).filter(node=>node.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,1);
 });
 test('quiet or account-wide pending state never invents event IDs or drops failure guidance',()=>{
- const h=summary([],{failureKind:'auth'});assert.equal(descendants(h.target).filter(n=>n.dataset?.action==='open-event').length,0);assert.match(h.target.children[0].textContent,/אין הרשאה לבצע את השינוי/);
+ const h=summary([],{failureKind:'auth'});assert.equal(descendants(h.target).filter(n=>n.dataset?.action==='open-event').length,0);assert.match(descendants(h.target).map(n=>n.textContent||'').join(' '),/אין הרשאה לבצע את השינוי/);
  renderPendingSyncSummary(h.target,'',h.options);assert.equal(h.target.children.length,0);
+});
+
+test('account save feedback starts as one collapsed disclosure with all recovery actions retained inside',()=>{
+ const h=summary([{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],{failureKind:'permission'});
+ const notice=descendants(h.target).find(n=>n.dataset?.syncPendingNotice!==undefined);
+ assert.ok(notice);assert.equal(notice.open,false);
+ assert.equal(notice.children[0].className,'sync-pending-toggle');
+ assert.equal(notice.children[0].children[0].textContent,'השמירה לא הושלמה');
+ assert.equal(descendants(notice).filter(n=>n.dataset?.syncRetry!==undefined).length,1);
+ assert.equal(descendants(notice).filter(n=>n.dataset?.action==='open-event').length,2);
+});
+
+test('new per-event failure evidence preserves both user-opened disclosure levels',()=>{
+ const events=[{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],h=summary(events,{failureKind:'permission'});
+ h.target.querySelector=selector=>descendants(h.target).find(n=>
+   selector==='[data-sync-pending-notice]'?n.dataset?.syncPendingNotice!==undefined:
+   selector==='[data-sync-event-details]'?n.dataset?.syncEventDetails!==undefined:false)||null;
+ h.target.querySelector('[data-sync-pending-notice]').open=true;
+ h.target.querySelector('[data-sync-event-details]').open=true;
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,
+   failureDetails:{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'}]}});
+ assert.equal(h.target.querySelector('[data-sync-pending-notice]').open,true);
+ assert.equal(h.target.querySelector('[data-sync-event-details]').open,true);
+ assert.equal(descendants(h.target).filter(n=>n.dataset?.action==='open-event').length,2);
+});
+
+test('fresh failure evidence preserves the disclosure, keyboard target and retry button identities',()=>{
+ const events=[{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],h=summary(events,{failureKind:'permission'});
+ const before=descendants(h.target),notice=before.find(n=>n.dataset?.syncPendingNotice!==undefined);
+ const toggle=before.find(n=>n.className==='sync-pending-toggle'),retry=before.find(n=>n.dataset?.syncRetry!==undefined);
+ notice.open=true;
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,
+   failureDetails:{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'}]}});
+ const after=descendants(h.target);
+ assert.ok(after.includes(notice),'incoming status must not detach the user-opened disclosure');
+ assert.ok(after.includes(toggle),'incoming status must not detach the keyboard target');
+ assert.ok(after.includes(retry),'incoming status must not detach the retry during pointer activation');
+ assert.equal(notice.open,true);
+ assert.equal(after.filter(n=>n.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,1);
 });
 test('sync presentation has no data or server dependency and ships in both offline inventories',()=>{
  const source=readFileSync('src/ui/syncNoticePresentation.mjs','utf8');assert.doesNotMatch(source,/from ["'][^"']*(?:data|domain|server)\//);assert.equal(readFileSync('sw.js','utf8').split('"/src/ui/syncNoticePresentation.mjs"').length-1,2);

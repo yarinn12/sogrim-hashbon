@@ -60,6 +60,7 @@ export function createSyncNoticePresentation({ document = globalThis.document, r
   return { render, place };
 }
 
+const pendingSummaryNodes = new WeakMap();
 export function renderPendingSyncSummary(target, message, { pendingEventIds = [], failureDetails = {}, document = target.ownerDocument } = {}) {
   const ids = Array.isArray(pendingEventIds) ? [...new Set(pendingEventIds)] : [];
   let supplied = [];
@@ -78,38 +79,57 @@ export function renderPendingSyncSummary(target, message, { pendingEventIds = []
     return { id, name, failureKind: failureDetails.eventFailures?.find(item => item.id === id)?.failureKind || "" };
   });
   target.classList.add("sync-pending-context");
-  const key = JSON.stringify([message, events]);
+  const key = JSON.stringify(["pending-disclosure-v1", message, failureDetails.failureKind, events]);
   if (target.dataset.syncSummaryKey === key) return;
+  const noticeWasOpen = target.querySelector("[data-sync-pending-notice]")?.open === true;
   const detailsWereOpen = target.querySelector("[data-sync-event-details]")?.open === true;
   target.dataset.syncSummaryKey = key;
-  target.replaceChildren();
-  if (!message) return;
+  if (!message) { target.replaceChildren(); pendingSummaryNodes.delete(target); return; }
 
-  const eventName = events[0]?.name;
-  const context = ids.length > 1
-    ? `עדכונים ב־${ids.length} אירועים לא סונכרנו. `
-    : eventName ? `עדכונים באירוע ״${eventName}״ לא סונכרנו. `
-      : ids.length === 1 ? "עדכונים באירוע לא סונכרנו. " : "עדכונים בחשבון לא סונכרנו. ";
-  const guidance = failureDetails.failureKind === "permission"
-    ? "השרת דחה שמירה בגלל הרשאה. פרטי האירועים מופיעים כאן."
-    : message;
-  if (failureDetails.failureKind === "permission" && ids.length && events.every(event => event.failureKind === "permission")) {
+  // Keep the failure visible without turning the whole durable pending
+  // inventory into a large error panel or a count of confirmed failures.
+  let nodes = pendingSummaryNodes.get(target);
+  if (!nodes || !target.contains(nodes.notice)) {
+    target.replaceChildren();
+    const notice = document.createElement("details");
+    notice.dataset.syncPendingNotice = "";
+    notice.open = noticeWasOpen;
+    const toggle = document.createElement("summary");
+    toggle.className = "sync-pending-toggle";
     const heading = document.createElement("strong");
     heading.className = "sync-pending-heading";
-    heading.textContent = ids.length > 1 ? `שמירת העדכונים נחסמה ב־${ids.length} אירועים` : "שמירת העדכונים באירוע נחסמה";
+    heading.textContent = "השמירה לא הושלמה";
+    const toggleChevron = document.createElement("span");
+    toggleChevron.className = "sync-pending-chevron";
+    toggleChevron.setAttribute("aria-hidden", "true");
+    toggleChevron.innerHTML = iconSvg("chevron-left");
+    toggle.append(heading, toggleChevron);
+    const body = document.createElement("div");
+    body.className = "sync-pending-body";
+    notice.append(toggle, body);
+    target.append(notice);
     const explanation = document.createElement("p");
     explanation.className = "sync-pending-explanation";
-    explanation.textContent = `העדכונים שמורים במכשיר הזה. בדקו הרשאות עם ${ids.length > 1 ? "מנהלי האירועים" : "מנהל האירוע"}.`;
-    target.append(heading, explanation);
-  } else {
-    target.append(document.createTextNode(`${context}${guidance} העדכונים הממתינים שמורים במכשיר הזה.`));
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "secondary-button pending-sync-review sync-pending-retry";
+    retry.dataset.syncRetry = "";
+    retry.textContent = "נסה לשמור שוב";
+    const reviews = document.createElement("div");
+    reviews.dataset.syncEventReviews = "";
+    body.append(explanation, retry, reviews);
+    nodes = { notice, explanation, reviews };
+    pendingSummaryNodes.set(target, nodes);
   }
-  const retry = document.createElement("button");
-  retry.type = "button";
-  retry.className = "secondary-button pending-sync-review sync-pending-retry";
-  retry.dataset.syncRetry = "";
-  retry.textContent = "נסה לשמור שוב";
-  target.append(retry);
+  // New receipts update copy and event rows only. The focused summary and retry
+  // stay attached so a late response cannot consume a keyboard or pointer action.
+  const { explanation, reviews } = nodes;
+  reviews.replaceChildren();
+  if (failureDetails.failureKind === "permission" && ids.length && events.every(event => event.failureKind === "permission")) {
+    explanation.textContent = `העדכונים שמורים במכשיר הזה. בדקו הרשאות עם ${ids.length > 1 ? "מנהלי האירועים" : "מנהל האירוע"}.`;
+  } else {
+    explanation.textContent = [message, "העדכונים הממתינים שמורים במכשיר הזה."].filter(Boolean).join(" ");
+  }
   const addReview = (container, event) => {
     if (!event.name) {
       container.append(document.createTextNode("אירוע שהוסר או אינו זמין — עדכון ממתין לסנכרון"));
@@ -126,7 +146,7 @@ export function renderPendingSyncSummary(target, message, { pendingEventIds = []
     if (event.failureKind) container.append(document.createTextNode(
       event.failureKind === "permission" ? " — השמירה נחסמה בגלל הרשאה" : " — נדרש לבדוק את העדכון"));
   };
-  if (events.length === 1) { addReview(target, events[0]); return; }
+  if (events.length === 1) { addReview(reviews, events[0]); return; }
   if (!events.length) return;
   const details = document.createElement("details");
   details.dataset.syncEventDetails = "";
@@ -146,5 +166,5 @@ export function renderPendingSyncSummary(target, message, { pendingEventIds = []
     list.append(item);
   }
   details.append(summary, list);
-  target.append(details);
+  reviews.append(details);
 }

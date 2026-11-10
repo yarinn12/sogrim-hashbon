@@ -518,7 +518,9 @@ test(`${knownPermissionFailure ? "pre-blocked permission: " : ""}${offline ? "of
       expect(deniedCounts).toEqual(Array(4).fill(deniedBeforeOnline));
       expect(await page.evaluate(spaceId =>
         localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).toBe(outboxBeforeOnline);
-      await expect(summary.locator('.sync-pending-heading')).toHaveText("שמירת העדכונים באירוע נחסמה");
+      await expect(summary.locator('.sync-pending-heading')).toHaveText("השמירה לא הושלמה");
+      await expect(summary.locator('[data-sync-pending-notice]')).not.toHaveAttribute('open', '');
+      await summary.locator('[data-sync-pending-notice] > summary').click();
       await expect(summary.locator('.sync-pending-explanation')).toHaveText("העדכונים שמורים במכשיר הזה. בדקו הרשאות עם מנהל האירוע.");
       await expect(summary).toContainText("אירוע שני");
       const reviewButton = summary.locator('[data-action="open-event"]');
@@ -554,7 +556,8 @@ test(`${knownPermissionFailure ? "pre-blocked permission: " : ""}${offline ? "of
     if (permissionContext) {
       await page.getByRole("button", { name: "בית", exact: true }).click();
       await expect(page.locator("[data-sync-account-summary]")).toContainText("אירוע שני");
-      await page.locator(`[data-action="open-event"][data-event-id="${secondEventId}"]`).first().click();
+      await page.locator('[data-sync-account-summary] [data-sync-pending-notice] > summary').click();
+      await page.locator(`[data-sync-account-summary] [data-action="open-event"][data-event-id="${secondEventId}"]`).click();
       await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("אין הרשאה לבצע את השינוי");
       await page.getByRole("button", { name: "בית", exact: true }).click();
       await reloadPage();
@@ -574,7 +577,8 @@ test(`${knownPermissionFailure ? "pre-blocked permission: " : ""}${offline ? "of
     if (permissionContext) {
       // A known permanent denial stays held after restart. The user explicitly
       // retries once permission is restored; only the actual ACK clears it.
-      await expect(page.locator("[data-sync-account-summary] .sync-pending-heading")).toHaveText("שמירת העדכונים באירוע נחסמה");
+      await expect(page.locator("[data-sync-account-summary] .sync-pending-heading")).toHaveText("השמירה לא הושלמה");
+      await page.locator('[data-sync-account-summary] [data-sync-pending-notice] > summary').click();
       expect(await page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).not.toBeNull();
       await page.locator("[data-sync-account-summary] [data-sync-retry]").click();
     }

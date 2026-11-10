@@ -2,6 +2,34 @@ import {test,expect} from '@playwright/test';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {installSyntheticSystemText} from './helpers/accessibilityPresentation.mjs';
 import {geometry,finish,readable} from './helpers/syncNoticePresentation.mjs';
+
+test('sync feedback compact disclosure keeps keyboard access and never acknowledges a queued write',async({page},info)=>{
+ await start(page,{scene:'home',scenario:'permission',root:16,width:393});
+ const notice=page.locator('[data-sync-account-summary]'),disclosure=notice.locator('[data-sync-pending-notice]');
+ const toggle=disclosure.locator(':scope > summary');
+ const pending=()=>page.evaluate(()=>localStorage.getItem(__friendInviteQa.pendingKey));
+ const before=await pending();
+ await toggle.focus();await toggle.press('Enter');
+ await expect(disclosure).not.toHaveAttribute('open','');
+ await expect(notice.locator('[data-sync-retry]')).not.toBeVisible();
+ expect((await notice.boundingBox()).height).toBeLessThanOrEqual(64);
+ await expect(notice).toHaveCSS('border-inline-start-width','0px');
+ await page.evaluate(()=>__syncNoticePreview.emit({status:'reconnecting',pending:true,pendingEventIds:['friend-weekend','friend-friday'],failureKind:'permission'}));
+ await expect(disclosure).not.toHaveAttribute('open','');
+ await expect(toggle).toBeFocused();
+ expect(await pending()).toBe(before);
+ await toggle.press('Enter');
+ await expect(notice.locator('[data-sync-retry]')).toBeVisible();
+ await expect(notice.locator('[data-sync-event-details]')).not.toHaveAttribute('open','');
+ await expect.poll(()=>notice.evaluate(n=>({
+   outerOpen:n.querySelector('[data-sync-pending-notice]').open,
+   innerOpen:n.querySelector('[data-sync-event-details]').open,
+   differentDirections:getComputedStyle(n.querySelector('[data-sync-pending-notice] > summary .sync-pending-chevron')).transform!==
+     getComputedStyle(n.querySelector('[data-sync-event-details] > summary .sync-pending-chevron')).transform
+ }))).toEqual({outerOpen:true,innerOpen:false,differentDirections:true});
+ expect(await pending()).toBe(before);
+ await info.attach('disclosure-preserves-outbox',{body:JSON.stringify({pendingUnchanged:true,keyboard:true}),contentType:'application/json'});
+});
 const fixture=readFileSync(new URL('./fixtures/syncNoticeBootstrap.js',import.meta.url),'utf8'),evidence=new WeakMap();
 test.use({serviceWorkers:'block'});
 test.beforeEach(async({page})=>{const r={errors:[],external:[]};evidence.set(page,r);page.on('pageerror',e=>r.errors.push(e.message));await page.route('**/*',q=>new URL(q.request().url()).hostname==='127.0.0.1'?q.continue():(r.external.push(q.request().url()),q.abort()));await page.addInitScript({content:fixture})});
@@ -23,6 +51,7 @@ async function start(p,{width=320,height=852,root=32,scene='share',scenario='off
  // not do this in a WebKit init script (which has no module script origin).
  if(scene==='share'&&['offline','conflict'].includes(scenario))await p.evaluate(async()=>{const store=await import('/src/data/localStore.mjs');await store.flushPendingSharedState({automatic:true})});
  await p.evaluate(({scenario,query})=>{const ids=query.includes('pending-events=one')?['friend-weekend']:['friend-weekend','friend-friday'];const detail=scenario==='permission'?{status:'reconnecting',pending:true,pendingEventIds:ids,failureKind:'permission'}:scenario==='conflict'?{status:'conflict',pending:false}:scenario==='routine'?{status:'saving',pending:true,pendingEventIds:ids,failureKind:''}:{status:'offline',pending:false};__syncNoticePreview.emit(detail);__syncNoticePreview.initialized=true},{scenario,query});
+ if(scene==='home'&&scenario==='permission')await p.locator('[data-sync-pending-notice] > summary').click();
  return{p,root,scene,scenario,...evidence.get(p)};
 }
 
@@ -31,8 +60,28 @@ test('sync feedback actual leaf grows to 28px at root32',async({page})=>{await s
 for(const[id,width,height,root,scene,scenario,query]of profiles)test('sync feedback '+id,async({page})=>{await geometry(await start(page,{width,height,root,scene,scenario,query}))});
 test('sync feedback survives rerender and Enter dismissal stays closed',async({page})=>{await start(page,{height:390});await expect(page.locator('.sync-inline-notice')).toBeVisible();await page.locator('.event-share-modal .modal-section-back-button').click();await expect(page.locator('.event-participant-add-route-modal .event-modal-body > [data-sync-status]')).toBeVisible();await expect(page.locator('[data-sync-status]')).toHaveCount(1);const close=page.locator('[data-sync-dismiss]');await close.focus();await close.press('Enter');await expect(page.locator('[data-sync-status]')).not.toBeVisible();await page.evaluate(()=>__syncNoticePreview.emit({status:'reconnecting',pending:false}));await expect(page.locator('[data-sync-status]')).not.toBeVisible()});
 test('sync feedback routine saving and recovery stay quiet',async({page})=>{await start(page);for(const status of['saving','saved','reconnecting','unavailable']){await page.evaluate(status=>__syncNoticePreview.emit({status,pending:false}),status);await expect(page.locator('[data-sync-status]')).not.toBeVisible()}});
-test('sync feedback blocked retry keeps both pending events and details',async({page})=>{await start(page,{scene:'home',scenario:'permission'});const summary=page.locator('.sync-pending-context');await summary.locator('summary').click();await expect(summary.locator('details')).toHaveAttribute('open','');await expect(summary.locator('li')).toHaveCount(2);for(const li of await summary.locator('li').all())await readable(li);const before=await page.evaluate(()=>__friendInviteQa.failedPendingAttempts.length);await summary.locator('[data-sync-retry]').click();await expect.poll(()=>page.evaluate(()=>__friendInviteQa.failedPendingAttempts.length)).toBeGreaterThan(before);await expect(summary.locator('[data-sync-retry]')).toBeEnabled();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem(__friendInviteQa.pendingKey)).__pendingSync.selection.eventIds.sort())).toEqual(['friend-friday','friend-weekend']);await expect(summary).toBeVisible()});
-test('sync feedback only a canonical ACK clears the pending queue',async({page})=>{await start(page,{scene:'home',scenario:'permission',root:16,width:393,query:'&pending-events=one'});await page.evaluate(()=>__friendInviteQa.allowPendingAcknowledgement=true);await page.locator('.sync-pending-context [data-sync-retry]').click();await expect.poll(()=>page.evaluate(()=>localStorage.getItem(__friendInviteQa.pendingKey))).toBeNull();await expect(page.locator('[data-sync-account-summary]')).not.toBeVisible();expect(await page.evaluate(()=>__friendInviteQa.canonicalWrites.length)).toBeGreaterThan(0)});
+test('sync feedback blocked retry keeps both pending events and details',async({page})=>{await start(page,{scene:'home',scenario:'permission'});const summary=page.locator('.sync-pending-context');await summary.locator('[data-sync-event-details] > summary').click();await expect(summary.locator('[data-sync-event-details]')).toHaveAttribute('open','');await expect(summary.locator('li')).toHaveCount(2);for(const li of await summary.locator('li').all())await readable(li);const before=await page.evaluate(()=>__friendInviteQa.failedPendingAttempts.length);await summary.locator('[data-sync-retry]').click();await expect.poll(()=>page.evaluate(()=>__friendInviteQa.failedPendingAttempts.length)).toBeGreaterThan(before);await expect(summary.locator('[data-sync-retry]')).toBeEnabled();expect(await page.evaluate(()=>JSON.parse(localStorage.getItem(__friendInviteQa.pendingKey)).__pendingSync.selection.eventIds.sort())).toEqual(['friend-friday','friend-weekend']);await expect(summary).toBeVisible()});
+test('sync feedback only a canonical ACK clears the pending queue',async({page})=>{
+ await start(page,{scene:'home',scenario:'permission',root:16,width:393,query:'&pending-events=one'});
+ expect(await page.evaluate(()=>localStorage.getItem(__friendInviteQa.pendingKey))).not.toBeNull();
+ expect(await page.evaluate(()=>__friendInviteQa.canonicalWrites.length)).toBe(0);
+ // Keep background writes rejected until a real retry activation. Granting the
+ // fixture permission earlier lets a valid background ACK remove the button
+ // while WebKit is still waiting for pointer stability.
+ await page.evaluate(()=>{
+   document.addEventListener('click',function grant(event){
+     if(!event.target.closest?.('.sync-pending-context [data-sync-retry]'))return;
+     __friendInviteQa.retryActivations=(__friendInviteQa.retryActivations||0)+1;
+     __friendInviteQa.allowPendingAcknowledgement=true;
+     document.removeEventListener('click',grant,true);
+   },true);
+ });
+ await page.locator('.sync-pending-context [data-sync-retry]').click();
+ expect(await page.evaluate(()=>__friendInviteQa.retryActivations)).toBe(1);
+ await expect.poll(()=>page.evaluate(()=>localStorage.getItem(__friendInviteQa.pendingKey))).toBeNull();
+ await expect(page.locator('[data-sync-account-summary]')).not.toBeVisible();
+ expect(await page.evaluate(()=>__friendInviteQa.canonicalWrites.length)).toBeGreaterThan(0);
+});
 test('sync feedback event review keeps queue and opens correct event',async({page},info)=>{
  await start(page,{scene:'home',scenario:'permission'});
  const summary=page.locator('.sync-pending-context');
@@ -43,14 +92,14 @@ test('sync feedback event review keeps queue and opens correct event',async({pag
  }));
  const expected={ids:['friend-friday','friend-weekend'],acknowledgements:0,savedEvents:0};
  expect(await readPending()).toEqual(expected);
- await summary.locator('summary').click();
- await expect(summary.locator('details')).toHaveAttribute('open','');
+ await summary.locator('[data-sync-event-details] > summary').click();
+ await expect(summary.locator('[data-sync-event-details]')).toHaveAttribute('open','');
  await expect(summary.locator('[data-action="open-event"]')).toHaveCount(2);
  const attempts=await page.evaluate(()=>__friendInviteQa.failedPendingAttempts.length);
  await summary.locator('[data-sync-retry]').click();
  await expect.poll(()=>page.evaluate(()=>__friendInviteQa.failedPendingAttempts.length)).toBeGreaterThan(attempts);
  await expect(summary.locator('[data-sync-retry]')).toBeEnabled();
- await expect(summary.locator('details')).toHaveAttribute('open','');
+ await expect(summary.locator('[data-sync-event-details]')).toHaveAttribute('open','');
  expect(await readPending()).toEqual(expected);
  const review=summary.locator('[data-action="open-event"][data-event-id="friend-weekend"]');
  await expect(review).toHaveAttribute('aria-label','פתיחת האירוע סוף השבוע בצפון לבדיקת העדכון הממתין');

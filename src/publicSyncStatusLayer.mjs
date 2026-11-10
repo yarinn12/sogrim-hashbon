@@ -323,16 +323,27 @@ function syncInlineStatusTargets() {
   document.body.classList.toggle("has-event-action-dock", hasEventActionDock);
   document.body.classList.toggle("has-event-route-dialog", hasEventRouteDialog);
 
+  const failureDetails = pendingSharedSyncStatus({ includeFailureKind: true });
+  const pendingMessageForEvent = (eventId) => {
+    const pendingHere = pendingSync && (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId));
+    if (!pendingHere) return "";
+    // A rejected account write, or one denied event, is not evidence that every
+    // other queued event failed. Explicit per-event receipts own route warnings.
+    const kind = eventId && failureDetails.pending && Array.isArray(failureDetails.eventFailures)
+      ? failureDetails.eventFailures.find(item => item.id === eventId)?.failureKind ?? ""
+      : pendingFailureKind;
+    return pendingSaveMessage(kind);
+  };
+
   document.querySelectorAll("[data-inline-sync-status]").forEach((target) => {
     target.className = `${target.className
       .split(/\s+/)
       .filter((name) => name && !name.startsWith("is-sync-"))
       .join(" ")}`;
     const eventId = target.dataset.syncEventId;
-    const pendingHere = pendingSync && (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId));
-    const message = pendingHere ? pendingSaveMessage(pendingFailureKind) : "";
+    const message = pendingMessageForEvent(eventId);
     if (target.dataset.syncAccountSummary !== undefined) {
-      renderAccountPendingSummary(target, message, pendingSharedSyncStatus({ includeFailureKind: true }));
+      renderAccountPendingSummary(target, message, failureDetails);
     } else if (target.textContent !== message) {
       target.textContent = message;
     }
@@ -344,8 +355,7 @@ function syncInlineStatusTargets() {
   document.querySelectorAll("[data-inline-sync-retry]").forEach((button) => {
     const eventId = button.closest(".event-action-sync-wrap, [data-route-sync-status]")
       ?.querySelector("[data-inline-sync-status]")?.dataset.syncEventId;
-    button.hidden = !(pendingSync && pendingSaveMessage(pendingFailureKind) &&
-      (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId)));
+    button.hidden = !pendingMessageForEvent(eventId);
   });
   syncMutationControls();
   syncNoticeView.place(currentStatus);
