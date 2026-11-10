@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
+import { pendingSaveMessage } from "../src/domain/userNoticePolicy.mjs";
 import { renderEventNoteEditorView } from "../src/ui/eventNoteEditorPresentation.mjs";
 
 test("event route dialogs receive an explicit event id without relying on window.event", async () => {
@@ -192,7 +193,31 @@ test("public sync status reports cloud saves and recovery without cluttering scr
     "only the user-triggered payment reminder may explicitly retry the whole outbox");
   assert.doesNotMatch(layer, /if \(result\?\.ok\) showStatus\("saved"\)/);
   assert.match(layer, /if \(!status \|\| ROUTINE_SYNC_STATUSES\.has\(status\)\) \{[\s\S]*?currentStatus = "";[\s\S]*?existingNode\.hidden = true/);
-  assert.match(layer, /pendingHere \? pendingSaveMessage\(pendingFailureKind\) : ""/);
+  // Exercise event scoping rather than requiring one particular conditional.
+  // Two queued events do not imply that both have a permission failure.
+  const scopeStart = layer.indexOf("function syncInlineStatusTargets()");
+  const scopeEnd = layer.indexOf("\nfunction ", scopeStart + 1);
+  assert(scopeStart >= 0 && scopeEnd > scopeStart);
+  const scopedTarget = { dataset: { syncEventId: "event-a" }, className: "hint",
+    textContent: "", hidden: true, closest: () => null };
+  const scopeContext = vm.createContext({ pendingSaveMessage, pendingSync: true,
+    pendingEventIds: ["event-a", "event-b"], pendingFailureKind: "permission", currentStatus: "",
+    pendingSharedSyncStatus: () => ({ pending: true, eventFailures: [{ id: "event-a", failureKind: "permission" }] }),
+    document: { body: { classList: { toggle() {} } }, querySelector: () => null,
+      querySelectorAll: selector => selector === "[data-inline-sync-status]" ? [scopedTarget] : [] },
+    syncMutationControls() {}, syncNoticeView: { place() {} } });
+  vm.runInContext(layer.slice(scopeStart, scopeEnd), scopeContext);
+  scopeContext.syncInlineStatusTargets();
+  assert.equal(scopedTarget.hidden, false);
+  assert.equal(scopedTarget.textContent, pendingSaveMessage("permission"));
+  scopedTarget.dataset.syncEventId = "event-b";
+  scopeContext.syncInlineStatusTargets();
+  assert.equal(scopedTarget.hidden, true);
+  assert.equal(scopedTarget.textContent, "");
+  scopeContext.pendingSync = false;
+  scopedTarget.dataset.syncEventId = "event-a";
+  scopeContext.syncInlineStatusTargets();
+  assert.equal(scopedTarget.hidden, true, "completed delivery must remove the stale warning");
   assert.match(layer, /pendingEventIds\.includes\(eventId\)/);
   assert.match(app, /data-sync-account-summary/);
   for (const match of app.matchAll(/<[^>]*data-inline-sync-status[^>]*>/g)) {
