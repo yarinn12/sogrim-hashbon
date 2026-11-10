@@ -20,4 +20,12 @@ test('the deployed server runtime and lockfile stay on the major exercised by re
     'an open Node range lets Vercel silently choose a newer, untested runtime');
   assert.equal(lockfile.packages[''].engines.node, supportedRuntime,
     'npm clean installs must preserve the same runtime contract');
+  const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
+  const dockerMajors = [...dockerfile.matchAll(/^FROM\s+node:(\d+)(?=[.-]|\s|$)/gmi)]
+    .map(match => match[1]);
+  assert.ok(dockerMajors.length, 'the recovery container must declare its Node runtime');
+  for (const major of dockerMajors) {
+    assert.equal(major, majors[0],
+      'every recovery build/runtime stage must use the Node major exercised by CI');
+  }
 });

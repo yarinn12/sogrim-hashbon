@@ -300,7 +300,7 @@ export function createAppHandler({
     if (url.pathname === "/api/health" && request.method === "GET") {
       const health = getHealthPayload(runtimeConfig, {
         requireProductionReadiness: url.searchParams.get("strict") === "1",
-        deploymentRevision: env.VERCEL_GIT_COMMIT_SHA
+        deploymentRevision: env.VERCEL_GIT_COMMIT_SHA || env.RENDER_GIT_COMMIT
       });
       sendJson(response, health.ok ? 200 : 503, health);
       return;
