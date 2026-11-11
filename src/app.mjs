@@ -694,6 +694,11 @@ const paymentPressRecovery = createPointerRenderRecovery({
   resolveRenderTarget: currentPaymentPressTarget,
   preservePosition: offset => window.scrollBy?.({left: 0, top: offset, behavior: "instant"})
 });
+const settlementSharePressRecovery = createPointerRenderRecovery({
+  resolveTarget: resolveSettlementSharePressTarget,
+  resolveRenderTarget: currentSettlementSharePressTarget,
+  preservePosition: offset => window.scrollBy?.({left: 0, top: offset, behavior: "instant"})
+});
 let resumeSyncRequest = null;
 let resumeSyncScope = "";
 let resumeSyncFollowUpRequest = null;
@@ -745,6 +750,15 @@ document.addEventListener("contextmenu", () => paymentPressRecovery.cancel(), tr
 document.addEventListener("click", consumePaymentCompatibilityClick, true);
 window.addEventListener("blur", () => paymentPressRecovery.cancel());
 window.addEventListener("pagehide", () => paymentPressRecovery.cancel());
+document.addEventListener("pointerdown", handleSettlementSharePointerDown, true);
+document.addEventListener("pointermove", event => settlementSharePressRecovery.move(event), true);
+document.addEventListener("pointerup", event => settlementSharePressRecovery.finish(event), true);
+document.addEventListener("pointercancel", event => settlementSharePressRecovery.cancel(event), true);
+document.addEventListener("wheel", () => settlementSharePressRecovery.cancel(), {capture: true, passive: true});
+document.addEventListener("contextmenu", () => settlementSharePressRecovery.cancel(), true);
+document.addEventListener("click", consumeSettlementShareCompatibilityClick, true);
+window.addEventListener("blur", () => settlementSharePressRecovery.cancel());
+window.addEventListener("pagehide", () => settlementSharePressRecovery.cancel());
 app.addEventListener("pointerdown", handleEventWorkspaceSwipeStart);
 app.addEventListener("pointerup", handleEventWorkspaceSwipeEnd);
 app.addEventListener("pointercancel", cancelEventWorkspaceSwipe);
@@ -1153,6 +1167,7 @@ function commitRenderedScreen(html) {
   const currentRenderGeneration = ++renderGeneration;
   const interactionSnapshot = captureRenderInteractionState();
   const paymentPressAnchor = paymentPressRecovery.captureRenderAnchor();
+  const settlementSharePressAnchor = settlementSharePressRecovery.captureRenderAnchor();
   const persistentIdentity = app.querySelector(
     ":scope > .screen > .product-app-identity"
   );
@@ -1175,7 +1190,9 @@ function commitRenderedScreen(html) {
   lastRenderedScreenKey = nextScreenKey;
   if (!screenChanged) {
     restoreRenderInteractionState(interactionSnapshot, currentRenderGeneration);
-    if (currentRenderGeneration === renderGeneration && paymentPressRecovery.restoreRenderAnchor(paymentPressAnchor)) {
+    if (currentRenderGeneration === renderGeneration &&
+        (paymentPressRecovery.restoreRenderAnchor(paymentPressAnchor) ||
+         settlementSharePressRecovery.restoreRenderAnchor(settlementSharePressAnchor))) {
       interactionSnapshot.pageScrollY = window.scrollY;
     }
   }
@@ -10937,6 +10954,46 @@ function resolvePaymentPressTarget(scope, pointer) {
 
 function consumePaymentCompatibilityClick(event) {
   if (!paymentPressRecovery.consumeCompatibilityClick(event)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+function settlementSharePressScope(target) {
+  if (screen.name !== "settlement" || eventDialog || expenseDraft || eventStatusMenu ||
+      importantActionDialog || settlementCelebration || settlementCloseConfirmation) return null;
+  if (!target || !app.contains(target) || !target.closest(".settlement-screen .settlement-debt-share") ||
+      target.disabled || target.inert || target.closest("[inert]") || target.getAttribute("aria-disabled") === "true") return null;
+  const action = target.dataset.action;
+  if (!["share-whatsapp", "copy-settlement", "copy-event-report"].includes(action)) return null;
+  const event = getEvent(screen.eventId);
+  if (!event || target.dataset.eventId !== event.id) return null;
+  return {account: captureFriendAccountContext(), route: screen, action, eventId: event.id,
+    fingerprint: JSON.stringify([window.innerWidth, window.innerHeight, event.id, event.updatedAt,
+      event.locked, event.name, event.currency, event.participantIds, event.participantAliases,
+      event.directSettlementTransfers, event.transfers, event.expenses])};
+}
+
+function handleSettlementSharePointerDown(event) {
+  const target = event.target.closest?.("button[data-action]");
+  settlementSharePressRecovery.start(event, target, settlementSharePressScope(target));
+}
+
+function currentSettlementSharePressTarget(scope) {
+  if (!scope.account.isCurrent() || scope.route !== screen) return null;
+  const candidates = [...app.querySelectorAll(".settlement-screen .settlement-debt-share button[data-action]")]
+    .filter(button => button.dataset.action === scope.action && button.dataset.eventId === scope.eventId);
+  if (candidates.length !== 1) return null;
+  const target = candidates[0], current = settlementSharePressScope(target);
+  return current?.fingerprint === scope.fingerprint ? target : null;
+}
+
+function resolveSettlementSharePressTarget(scope, pointer) {
+  const target = currentSettlementSharePressTarget(scope);
+  return target?.contains(document.elementFromPoint(pointer.clientX, pointer.clientY)) ? target : null;
+}
+
+function consumeSettlementShareCompatibilityClick(event) {
+  if (!settlementSharePressRecovery.consumeCompatibilityClick(event)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
 }

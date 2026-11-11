@@ -5,6 +5,41 @@ import {formatSettlementSummary} from "../src/domain/settlementSummary.mjs";
 
 test.use({serviceWorkers:"block"});
 
+for(const root of [16,32])for(const action of ['share-whatsapp','copy-settlement','copy-event-report'])
+ test('closed summary '+action+' survives a notice render during its press root '+root,async({page,baseURL},info)=>{
+  const cloud=await setup(page,baseURL,{root,w:root===32?320:393,locked:true,balanced:true});
+  const before=finances(cloud),summary=await canonical(cloud);
+  await toggle(page.locator('.settlement-debt-share'));
+  const selector='.settlement-debt-share [data-action="'+action+'"]',button=page.locator(selector);
+  await button.scrollIntoViewIfNeeded();
+  const point=await button.evaluate(element=>{const r=element.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};});
+  const count=()=>page.evaluate(action=>action==='share-whatsapp'?window.__debtUrls.length:window.__debtCopies.length,action);
+  const initial=await count();
+  await page.mouse.move(point.x,point.y);await page.mouse.down();
+  const boundary=await page.evaluate(async({selector,point})=>{
+   const old=document.querySelector(selector);
+   document.dispatchEvent(new CustomEvent('settle-friends:notice',{detail:{message:'רענון מבוקר בזמן לחיצת שיתוף'}}));
+   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+   const current=document.querySelector(selector);
+   return{replaced:old!==current,beforeConnected:old.isConnected,afterConnected:current?.isConnected,
+    sameHit:current?.contains(document.elementFromPoint(point.x,point.y))};
+  },{selector,point});
+  await info.attach('share-pointer-render-boundary',{body:JSON.stringify(boundary),contentType:'application/json'});
+  expect(boundary).toEqual({replaced:true,beforeConnected:false,afterConnected:true,sameHit:true});
+  await page.mouse.up();await expect.poll(count).toBe(initial+1);
+  if(action==='share-whatsapp'){
+   const url=new URL(await page.evaluate(()=>window.__debtUrls.at(-1)));
+   expect(url.origin).toBe('https://wa.me');expect(url.searchParams.get('text')).toBe(summary);
+  }else{
+   const text=await page.evaluate(()=>window.__debtCopies.at(-1));
+   if(action==='copy-settlement')expect(text).toBe(summary);
+   else{expect(text).toContain(event(cloud).name);expect(text).toContain('ארוחת ערב');}
+  }
+  await page.locator(selector).dispatchEvent('click',{bubbles:true,detail:1,button:0});
+  expect(await count()).toBe(initial+1);
+  expect(finances(cloud)).toEqual(before);expect(cloud.errors).toEqual([]);
+ });
+
 for(const root of [16,32]) test('payment activation survives a notice render between pointer down and up root '+root, async ({page,baseURL},info) => {
  const cloud=await setup(page,baseURL,{root,w:root===32?320:393,payer:true});
  const transfer=event(cloud).transfers.find(t=>t.fromParticipantId===cloud.state().currentParticipantId);
@@ -142,12 +177,16 @@ async function shareChecks(page,cloud){
  }));
  expect(currency).toHaveLength(pending.length);expect(currency.every(x=>x.oneLine&&x.fits)).toBe(true);
  await toggle(view);await expect(message).toBeHidden();await toggle(share);await expect(message).toBeHidden();
- await share.locator('[data-action="copy-settlement"]').click();expect(await page.evaluate(()=>window.__debtCopies.at(-1))).toBe(summary);
+ await share.locator('[data-action="copy-settlement"]').click();
+ expect(await page.evaluate(()=>window.__debtCopies.length)).toBe(copies+1);
+ expect(await page.evaluate(()=>window.__debtCopies.at(-1))).toBe(summary);
  await dismiss(page);if(!await share.evaluate(e=>e.open))await toggle(share);
  await share.locator('[data-action="share-whatsapp"]').click();
+ expect(await page.evaluate(()=>window.__debtUrls.length)).toBe(urls+1);
  const url=new URL(await page.evaluate(()=>window.__debtUrls.at(-1)));expect(url.origin).toBe("https://wa.me");expect(url.searchParams.get("text")).toBe(summary);
  await dismiss(page);if(!await share.evaluate(e=>e.open))await toggle(share);
  await share.locator('[data-action="copy-event-report"]').click();
+ expect(await page.evaluate(()=>window.__debtCopies.length)).toBe(copies+2);
  const report=await page.evaluate(()=>window.__debtCopies.at(-1));expect(report).toContain(event(cloud).name);expect(report).toContain("ארוחת ערב");
  await dismiss(page);if(await share.evaluate(e=>e.open))await toggle(share);
  expect(finances(cloud)).toEqual(before);
