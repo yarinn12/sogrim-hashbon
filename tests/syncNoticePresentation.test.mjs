@@ -125,6 +125,8 @@ test('fresh failure evidence preserves the disclosure, keyboard target and retry
  const events=[{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],h=summary(events,{failureKind:'permission'});
  const before=descendants(h.target),notice=before.find(n=>n.dataset?.syncPendingNotice!==undefined);
  const toggle=before.find(n=>n.className==='sync-pending-toggle'),retry=before.find(n=>n.dataset?.syncRetry!==undefined);
+ const details=before.find(n=>n.dataset?.syncEventDetails!==undefined),detailsToggle=details.children[0];
+ const reviews=before.filter(n=>n.dataset?.action==='open-event');
  notice.open=true;
  renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,
    failureDetails:{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'}]}});
@@ -132,9 +134,32 @@ test('fresh failure evidence preserves the disclosure, keyboard target and retry
  assert.ok(after.includes(notice),'incoming status must not detach the user-opened disclosure');
  assert.ok(after.includes(toggle),'incoming status must not detach the keyboard target');
  assert.ok(after.includes(retry),'incoming status must not detach the retry during pointer activation');
+ assert.ok(after.includes(details),'incoming status must not detach the nested disclosure during pointer activation');
+ assert.ok(after.includes(detailsToggle),'incoming status must not detach the nested summary before its native click');
+ assert.ok(reviews.every(review=>after.includes(review)),'incoming status must not detach an unchanged event review action');
  assert.equal(notice.open,true);
  assert.equal(after.filter(n=>n.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,1);
 });
+test('pending review refreshes names in place and removes stale actions when destinations change',()=>{
+ const h=summary([{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],{failureKind:'permission'});
+ const actions=()=>descendants(h.target).filter(n=>n.dataset?.action==='open-event');
+ const original=actions()[0];
+ h.target.dataset.syncAccountEvents=JSON.stringify([{id:'a',name:'<b>שם חדש</b>'},{id:'b',name:'אירוע ב'}]);
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',h.options);
+ assert.equal(actions()[0],original);assert.equal(original.textContent,'<b>שם חדש</b>');
+ assert.equal(original.attributes['aria-label'],'פתיחת האירוע <b>שם חדש</b> לבדיקת העדכון הממתין');
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,pendingEventIds:['b']});
+ assert.deepEqual(actions().map(n=>n.dataset.eventId),['b']);
+ assert.equal(descendants(h.target).filter(n=>n.dataset?.syncEventDetails!==undefined).length,0);
+ h.target.dataset.syncAccountEvents='[]';
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,pendingEventIds:['b']});
+ assert.equal(actions().length,0,'an unavailable event is not a stale navigation action');
+ assert.match(descendants(h.target).map(n=>n.textContent||'').join(' '),/אירוע שהוסר או אינו זמין/);
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,pendingEventIds:[]});
+ assert.equal(actions().length,0);
+ assert.match(descendants(h.target).map(n=>n.textContent||'').join(' '),/שמורים במכשיר הזה/);
+});
+
 test('sync presentation has no data or server dependency and ships in both offline inventories',()=>{
  const source=readFileSync('src/ui/syncNoticePresentation.mjs','utf8');assert.doesNotMatch(source,/from ["'][^"']*(?:data|domain|server)\//);assert.equal(readFileSync('sw.js','utf8').split('"/src/ui/syncNoticePresentation.mjs"').length-1,2);
 });

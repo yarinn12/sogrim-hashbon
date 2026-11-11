@@ -124,12 +124,33 @@ export function renderPendingSyncSummary(target, message, { pendingEventIds = []
   // New receipts update copy and event rows only. The focused summary and retry
   // stay attached so a late response cannot consume a keyboard or pointer action.
   const { explanation, reviews } = nodes;
-  reviews.replaceChildren();
   if (failureDetails.failureKind === "permission" && ids.length && events.every(event => event.failureKind === "permission")) {
     explanation.textContent = `העדכונים שמורים במכשיר הזה. בדקו הרשאות עם ${ids.length > 1 ? "מנהלי האירועים" : "מנהל האירוע"}.`;
   } else {
     explanation.textContent = [message, "העדכונים הממתינים שמורים במכשיר הזה."].filter(Boolean).join(" ");
   }
+  const failureCopy = event => event.failureKind
+    ? event.failureKind === "permission" ? " — השמירה נחסמה בגלל הרשאה" : " — נדרש לבדוק את העדכון"
+    : "";
+  const updateReview = (row, event) => {
+    if (row.review.textContent !== event.name) row.review.textContent = event.name;
+    row.review.setAttribute("aria-label", `פתיחת האירוע ${event.name} לבדיקת העדכון הממתין`);
+    row.failure.textContent = failureCopy(event);
+  };
+  // A new receipt changes attribution, not the user's pending inventory. Keep
+  // both the summary and event buttons attached until their destinations change;
+  // replacing them between pointerdown and click consumes native activation.
+  const reviewStructureKey = JSON.stringify(events.map(event => [event.id, Boolean(event.name)]));
+  if (nodes.reviewStructureKey === reviewStructureKey) {
+    for (const event of events) {
+      const row = nodes.reviewRows.get(event.id);
+      if (row) updateReview(row, event);
+    }
+    return;
+  }
+  nodes.reviewStructureKey = reviewStructureKey;
+  nodes.reviewRows = new Map();
+  reviews.replaceChildren();
   const addReview = (container, event) => {
     if (!event.name) {
       container.append(document.createTextNode("אירוע שהוסר או אינו זמין — עדכון ממתין לסנכרון"));
@@ -140,11 +161,10 @@ export function renderPendingSyncSummary(target, message, { pendingEventIds = []
     review.className = "pending-sync-review";
     review.dataset.action = "open-event";
     review.dataset.eventId = event.id;
-    review.textContent = event.name;
-    review.setAttribute("aria-label", `פתיחת האירוע ${event.name} לבדיקת העדכון הממתין`);
-    container.append(document.createTextNode(" "), review);
-    if (event.failureKind) container.append(document.createTextNode(
-      event.failureKind === "permission" ? " — השמירה נחסמה בגלל הרשאה" : " — נדרש לבדוק את העדכון"));
+    const row = { review, failure: document.createTextNode("") };
+    updateReview(row, event);
+    nodes.reviewRows.set(event.id, row);
+    container.append(document.createTextNode(" "), review, row.failure);
   };
   if (events.length === 1) { addReview(reviews, events[0]); return; }
   if (!events.length) return;

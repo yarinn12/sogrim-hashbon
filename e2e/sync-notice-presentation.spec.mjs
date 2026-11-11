@@ -113,4 +113,35 @@ test('sync feedback event review keeps queue and opens correct event',async({pag
  await info.attach('pending-review-contract',{body:JSON.stringify({before:expected,after:await readPending(),hit}),contentType:'application/json'});
 });
 
+for(const target of ['disclosure','event'])test('sync feedback preserves '+target+' pointer activation during a fresh failure receipt',async({page},info)=>{
+ await start(page,{scene:'home',scenario:'permission'});
+ const details=page.locator('[data-sync-event-details]');
+ if(target==='event'){await details.locator(':scope > summary').click();await expect(details).toHaveAttribute('open','');}
+ const selector=target==='disclosure'?'[data-sync-event-details] > summary':'[data-sync-event-details] [data-action="open-event"][data-event-id="friend-weekend"]';
+ const readQueue=()=>page.evaluate(()=>({pending:localStorage.getItem(__friendInviteQa.pendingKey),acks:__friendInviteQa.canonicalWrites.length,saved:__syncNoticePreview.sourceSaved}));
+ const before=await readQueue();
+ await page.evaluate(async selector=>{
+  const {renderPendingSyncSummary}=await import('/src/ui/syncNoticePresentation.mjs');
+  const notice=document.querySelector('[data-sync-account-summary]');
+  const message=JSON.parse(notice.dataset.syncSummaryKey)[1];
+  const options={pendingEventIds:['friend-weekend','friend-friday'],failureDetails:{failureKind:'permission',eventFailures:[{id:'friend-weekend',failureKind:'permission'}]}};
+  renderPendingSyncSummary(notice,message,options);
+  window.__pendingReceiptPress={received:0,sameControl:null};
+  document.addEventListener('pointerdown',function receive(event){
+   const control=event.target.closest?.(selector);
+   if(!control)return;
+   document.removeEventListener('pointerdown',receive,true);
+   __pendingReceiptPress.received++;
+   renderPendingSyncSummary(notice,message,{...options,failureDetails:{failureKind:'permission',eventFailures:[...options.failureDetails.eventFailures,{id:'friend-friday',failureKind:'rejected'}]}});
+   __pendingReceiptPress.sameControl=control.isConnected&&document.querySelector(selector)===control;
+  },true);
+ },selector);
+ await page.locator(selector).click();
+ expect(await page.evaluate(()=>__pendingReceiptPress)).toEqual({received:1,sameControl:true});
+ if(target==='disclosure')await expect(details).toHaveAttribute('open','');
+ else await expect(page.locator('.screen h1')).toHaveText('סוף השבוע בצפון');
+ expect(await readQueue()).toEqual(before);
+ await info.attach('pending-receipt-pointer',{body:JSON.stringify({target,queueUnchanged:true,canonicalAcknowledgements:before.acks}),contentType:'application/json'});
+});
+
 test('sync feedback preserves system32 app20 system32 text and the error',async({page})=>{await page.addInitScript(installSyntheticSystemText);const ctx=await start(page,{root:0,height:390});ctx.root=32;await geometry(ctx);const entry=page.locator('.event-share-modal [data-open-accessibility]');for(const[value,root]of[['extra-large',20],['system',32]]){await entry.click();await page.locator('.accessibility-segmented-control label:has(input[value="'+value+'"])').click();await page.keyboard.press('Escape');await expect(entry).toBeFocused();ctx.root=root;await geometry(ctx)}});

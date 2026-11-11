@@ -29,9 +29,26 @@ for(const [name,ios,root,width,height]of [["android",false,16,393,852],["iphone"
 });
 test('installation geometry waits for dialog motion in short landscape',async({page})=>{
   await page.setViewportSize({width:852,height:393});await open(page,true,32);const d=page.locator('.install-app-dialog');
-  await d.evaluate(e=>{e.style.transform='translateY(12px) scale(.99)';setTimeout(()=>{e.style.transform='none'},500)});
-  await stable(page);await expect(d).toHaveCSS('transform','none',{timeout:100});await geometry(page,32);
+  // Model finite browser motion, which the existing animation barrier observes.
+  // An inline transform plus a JS timer can escape that barrier during throttling.
+  await d.evaluate(e=>{window.__installGeometryMotion=e.animate([{transform:'translateY(12px) scale(.99)'},{transform:'none'}],{duration:500,fill:'none'});});
+  await stable(page);expect(await page.evaluate(()=>window.__installGeometryMotion.playState)).toBe('finished');
+  await expect(d).toHaveCSS('transform','none',{timeout:100});await geometry(page,32);
   await hit(d.locator('.install-app-done'));await returned(page);
+});
+
+test('installation geometry rejects an unfinished dialog transform',async({page})=>{
+  await page.setViewportSize({width:852,height:393});await open(page,true,32);const d=page.locator('.install-app-dialog');
+  const offset=await d.evaluate(e=>{
+    const animation=e.animate([{transform:'translateY(12px) scale(.99)'},{transform:'none'}],{duration:500,fill:'both'});
+    animation.pause();animation.currentTime=0;window.__installGeometryMotion=animation;
+    return new DOMMatrixReadOnly(getComputedStyle(e).transform).m42;
+  });
+  expect(offset).toBeGreaterThan(11);
+  await expect(stable(page)).rejects.toThrow();
+  expect(await page.evaluate(()=>window.__installGeometryMotion.playState)).toBe('paused');
+  await page.evaluate(()=>window.__installGeometryMotion.cancel());
+  await stable(page);await hit(d.locator('.install-app-done'));await returned(page);
 });
 for(const ios of [false,true])test("installation keyboard, Back and simulated browser offer "+(ios?"iphone":"android"),async({page})=>{
   await page.addInitScript(()=>localStorage.setItem("settle-friends-accessibility-preferences-v1",JSON.stringify({textSize:"system",highContrast:true,reduceMotion:true})));
