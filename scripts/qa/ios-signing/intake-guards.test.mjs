@@ -6,7 +6,7 @@ import {verifyOrigin} from './intake194-package-origin.mjs';
 import {verifySigningControls} from './intake-nov5-proof.mjs';
 import {all,requireManualGroups,requireIntakePreflight,collectState,verifyPostflight,verifyReadEndpoints} from './intake-distribution-guard.mjs';
 import {verifyDatabaseReceipt} from './upload-origin-guard.mjs';
-const sample=JSON.parse(readFileSync(new URL('../../../tests/fixtures/ios195-envelope-intake.json',import.meta.url),'utf8'));
+const sample=JSON.parse(readFileSync(new URL('../../../tests/fixtures/ios196-qa509-synthetic-intake.json',import.meta.url),'utf8'));
 assert.equal(sample.scope,'SYNTHETIC_ONLY_NOT_AN_ARTIFACT_OR_RELEASE');
 const groups=[{id:'internal',attributes:{name:'Internal',isInternalGroup:true,hasAccessToAllBuilds:false,publicLinkEnabled:false}},
  {id:'external',attributes:{name:'External',isInternalGroup:false,hasAccessToAllBuilds:null,publicLinkEnabled:false}}];
@@ -18,7 +18,7 @@ test('synthetic intake origin cannot grant database/public/distribution acceptan
  assert.equal(p.publicReleaseAccepted,false);assert.equal(p.distributionAllowed,false);
  assert.throws(()=>verifyDatabaseReceipt(Buffer.from('{}'),'a'.repeat(64)),'public gate still refuses missing real evidence');
 });
-test('manual groups can retain links to previous builds without granting195',()=>requireManualGroups(groups));
+test('manual groups can retain links to previous builds without granting196',()=>requireManualGroups(groups));
 for(const value of [true,null,undefined,'false'])test('manual-group guard blocks automatic flag '+String(value),()=>{
  const g=copy(groups);g[0].attributes.hasAccessToAllBuilds=value;assert.throws(()=>requireManualGroups(g));
 });
@@ -42,9 +42,9 @@ function api(options={}){
      const id=path.split('/').at(-1),group=(options.groups??copy(groups)).find(g=>g.id===id);
      return {data:{...group,type:'betaGroups'}};
    }
-   if(path.startsWith('/v1/betaGroups/'))return {data:options.group193?[{id:'build195',attributes:{version:'195'}}]:[{id:'old191',attributes:{version:'191'}}],links:{next:null}};
+   if(path.startsWith('/v1/betaGroups/'))return {data:options.group193?[{id:'build196',attributes:{version:'196'}}]:[{id:'old191',attributes:{version:'191'}}],links:{next:null}};
    if(path.includes('/appStoreVersions?'))return {data:[{id:'store457',attributes:{versionString:'4.57',appStoreState:options.storeChanged?'READY_FOR_SALE':'PENDING_DEVELOPER_RELEASE',releaseType:'MANUAL'}}],links:{next:null}};
-   if(path.startsWith('/v1/builds?'))return {data:options.after?[{id:'build195',attributes:{version:'195',processingState:options.processing??'VALID',expired:false}}]:[],links:{next:null}};
+   if(path.startsWith('/v1/builds?'))return {data:options.after?[{id:'build196',attributes:{version:'196',processingState:options.processing??'VALID',expired:false}}]:[],links:{next:null}};
    if(path.endsWith('/preReleaseVersion'))return {data:{attributes:{version:options.version??'4.59',platform:'IOS'}}};
    if(path.includes('/individualTesters?'))return {data:options.tester193?[{id:'unintended'}]:[],links:{next:null}};
    if(path.endsWith('/relationships/appStoreVersion'))return {data:options.storeAssigned?{id:'store458'}:null};
@@ -62,7 +62,7 @@ test('preflight refuses already uploaded193',async()=>{
 test('preflight refuses193 group linkage even when filtered build query is empty',async()=>{
  const state=await collectState(api({group193:true}));assert.throws(()=>requireIntakePreflight(state));
 });
-test('postflight requires VALID4.59/195 with zero groups/testers/store associations',async()=>{
+test('postflight requires VALID4.59/196 with zero groups/testers/store associations',async()=>{
  const p=await verifyPostflight(api({after:true}),await collectState(api()));
  assert.equal(p.assignedIndividualTesters,0);assert.deepEqual(p.assignedGroups,[]);
  assert.equal(p.publicReleaseAccepted,false);assert.equal(p.databaseAccepted,false);
@@ -94,7 +94,7 @@ test('read-only endpoint proof uses known192 without changing or exposing it',as
  const proof=await verifyReadEndpoints(endpointApi());assert.equal(proof.readOnly,true);
  assert.equal(proof.individualTesterCount,0);assert.equal(proof.build,'192');
 });
-for(const change of [{version:'4.59'},{build:'195'},{store:{type:'other',id:'x'}},{state:42}])
+for(const change of [{version:'4.59'},{build:'196'},{store:{type:'other',id:'x'}},{state:42}])
  test('read-only endpoint proof rejects mismatched original or unsupported relationship '+JSON.stringify(change),
   async()=>assert.rejects(verifyReadEndpoints(endpointApi(change))));
 test('intake audit defaults to GET-only; public receipt workflow and verifier remain separate',()=>{

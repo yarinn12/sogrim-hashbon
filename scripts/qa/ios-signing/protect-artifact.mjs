@@ -21,7 +21,7 @@ export function protect(plaintext, pem, identity) {
   assert.equal(identity.sourceCommit, SOURCE);
   assert.equal(identity.sourceTree, TREE);
   assert.equal(identity.version, '4.59');
-  assert.equal(identity.build, '195');
+  assert.equal(identity.build, '196');
   const aad = JSON.stringify({context: CONTEXT, ...identity});
   const salt = randomBytes(32), iv = randomBytes(12), key = derive(pem, salt, aad);
   try {
@@ -47,7 +47,7 @@ export function unprotect(ciphertext, envelope, pem) {
   assert.equal(identity.sourceCommit, SOURCE);
   assert.equal(identity.sourceTree, TREE);
   assert.equal(identity.version, '4.59');
-  assert.equal(identity.build, '195');
+  assert.equal(identity.build, '196');
   assert.equal(String(identity.buildRunId),INTAKE_BINDINGS.signing.runId);
   assert.equal(String(identity.buildRunAttempt),'1');
   assert.equal(identity.ipaSha256,INTAKE_BINDINGS.signing.ipaSha256);

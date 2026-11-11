@@ -14,7 +14,7 @@ import {SOURCE_QA_JOBS} from '../scripts/qa/ios-signing/source-ci-required-jobs.
 import {main as originMain} from '../scripts/qa/ios-signing/intake-origin-guard.mjs';
 import {main as downloadMain} from '../scripts/qa/ios-signing/download-intake-artifact.mjs';
 import {main as decryptMain,unprotect} from '../scripts/qa/ios-signing/protect-artifact.mjs';
-const data=JSON.parse(readFileSync(new URL('./fixtures/ios195-envelope-intake.json',import.meta.url),'utf8'));
+const data=JSON.parse(readFileSync(new URL('./fixtures/ios196-qa509-synthetic-intake.json',import.meta.url),'utf8'));
 assert.equal(data.scope,'SYNTHETIC_ONLY_NOT_AN_ARTIFACT_OR_RELEASE');
 const copy=x=>JSON.parse(JSON.stringify(x)),hash=x=>createHash('sha256').update(x).digest('hex');
 function fixture(counter=7){
@@ -40,7 +40,7 @@ function reads(f){
  return {records,read:path=>path.endsWith('/SogrimHashbon.ipa')?Buffer.from(f.ipaBase64,'base64'):Buffer.from(JSON.stringify(records[path.split('/').at(-1)]))};
 }
 test('real source/tool preparation is separate from explicit synthetic artifact fixtures',()=>{
- assert.equal(INTAKE_BINDINGS.application.sourceSha,'5636a2a15c1480101013b18144cefd0be1cc5127');assert.equal(INTAKE_BINDINGS.signing.toolsSha,'6efbc70ffd2dad9b53f4fa12a605f006ff51307e');
+ assert.equal(INTAKE_BINDINGS.application.sourceSha,'4a352fdeb0f20a24e8448d182d933e51937e0346');assert.equal(INTAKE_BINDINGS.signing.toolsSha,'cb94f7687f7899c0ac6a3c119cdd77a452d0ca2c');
  if(JSON.stringify(INTAKE_BINDINGS).includes('PENDING'))assert.throws(()=>requireBoundIntakePins(),/PENDING/);else requireBoundIntakePins();assert.doesNotThrow(()=>requireBoundIntakePins(fixture().pins));
 });
 for(const key of ['runId','artifactId','runNumber','jobId','artifactSize','ipaSize','ciphertextSize','zipSha256','ipaSha256','ciphertextSha256'])
@@ -158,7 +158,7 @@ test('PENDING stops actual operational bodies before GET, filesystem work or key
  assert.deepEqual(counts(),{gets:0,writes:0,secrets:0,commands:0});
 });
 test('Nov5 preparation stays inactive; creation and original origin precede keys; old route stays disabled',()=>{
- const read=p=>readFileSync(new URL(p,import.meta.url),'utf8').replaceAll('\r\n','\n'),w=read('../.github/workflows/ios195-459-private-intake-only-20261105.yml');
+ const read=p=>readFileSync(new URL(p,import.meta.url),'utf8').replaceAll('\r\n','\n'),w=read('../.github/workflows/ios196-459-private-intake-only-20261111.yml');
  assert.ok(read('../.github/workflows/ios195-459-private-intake-only.yml').includes('false && github.repository'));if(JSON.stringify(INTAKE_BINDINGS).includes('PENDING'))assert.match(w,/if: \$\{\{ false &&/);else assert.match(w,/github.event.created == true/);
  assert.ok(!w.includes('run_number == 1')&&!w.includes('run_number == 3'));assert.ok(w.includes(CONTRACT.intakeBranch));
  const at=w.indexOf('intake-first-creation-guard.mjs" --output');assert.ok(at>0&&at<w.indexOf('name: Checkout frozen application'));assert.ok(at<w.indexOf('secrets.APPSTORE_API_PRIVATE_KEY'));
@@ -172,9 +172,16 @@ test('OLD counter1 origin accepts success without creation steps; Nov5 rejects i
  for(const [k,v]of Object.entries({SOURCE:f.pins.application.sourceSha,TREE:f.pins.application.sourceTree,SIGNING_TOOLS:f.pins.signing.toolsSha}))old=old.replace(new RegExp("const "+k+"='[^']*'"),"const "+k+"='"+v+"'");
  const c=vm.createContext({assert,Date});vm.runInContext(old+'\nglobalThis.oldVerify=verifyOrigin;',c);
  const run={...f.run,head_branch:'codex/ios195-459-private-tools-20261104',path:'.github/workflows/ios195-459-private-sign-only.yml'},jobs=[{...f.jobs[0],steps:[]}];
- assert.doesNotThrow(()=>c.oldVerify(run,f.artifact,jobs,f.env));assert.throws(()=>verifyOrigin(run,f.artifact,jobs,f.env,{pins:f.pins,controlProof:f.controls,workflow:f.workflow}));
+ // The immutable historical producer requires its own195 artifact label.
+ // Its bad counter/history and absent creation steps stay unchanged.
+ const legacyArtifact={...f.artifact,name:'sogrim-ios-4.59-195-encrypted'};
+ assert.doesNotThrow(()=>c.oldVerify(run,legacyArtifact,jobs,f.env));assert.throws(()=>verifyOrigin(run,f.artifact,jobs,f.env,{pins:f.pins,controlProof:f.controls,workflow:f.workflow}));
 });
 
 test('historical Nov5 fixture remains immutable alongside the successor route fixture',()=>{
  assert.equal(hash(readFileSync(new URL('./fixtures/ios195-nov5-intake.json',import.meta.url))),'16eb9d57c2794354973201b0fca625ec71ea56b5ef51c6727dcfda10b1374049');
+});
+
+test('historical delivered195 envelope fixture stays immutable for196 preparation',()=>{
+ assert.equal(hash(readFileSync(new URL('./fixtures/ios195-envelope-intake.json',import.meta.url))),'2459d58b86ff24ada0cd222b212c0274a8420e5d7a7c4d12da1493bb603d3052');
 });

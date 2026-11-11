@@ -2,12 +2,12 @@ import json,pathlib,re
 REPO='yarinn12/sogrim-hashbon'
 REPO_ID=1247836328
 VERSION='4.59'
-BUILD='195'
-SIGNING_BRANCH='codex/ios195-459-signing-envelope-20261109'
-SIGNING_PATH='.github/workflows/ios195-459-private-sign-only-envelope-20261109.yml'
-SIGNING_NAME='iOS195 4.59 private signed artifact only'
+BUILD='196'
+SIGNING_BRANCH='codex/ios196-459-signing-20261111'
+SIGNING_PATH='.github/workflows/ios196-459-private-sign-only-20261111.yml'
+SIGNING_NAME='iOS196 4.59 private signed artifact only'
 SIGNING_REF=REPO+'/'+SIGNING_PATH+'@refs/heads/'+SIGNING_BRANCH
-VERIFIER_SHA='aae39c0e3fe47afaa6cc2ea8727f23e68ab86ccd2fd3d4141c71701c9812db82'
+VERIFIER_SHA='8ea1339ef9822cef3a4f5f8b942d65b3bf6150c0c1c42315a29c5c28737e7595'
 STEPS=[
  'Require first branch creation and two complete workflow histories',
  'Require all four successful source CI runs before signing secrets',

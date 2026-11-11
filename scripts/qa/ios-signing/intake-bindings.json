@@ -1,33 +1,33 @@
 {
   "schemaVersion": 1,
   "application": {
-    "sourceSha": "5636a2a15c1480101013b18144cefd0be1cc5127",
-    "sourceTree": "c6487c3b54358f5c217d6758495ec6ee988b3d76",
+    "sourceSha": "4a352fdeb0f20a24e8448d182d933e51937e0346",
+    "sourceTree": "5a093f76187ff39a9bbeb8a8b3713bd7292670b5",
     "branch": "codex/test-release-459-20261104",
     "pwa": "532",
     "ciRuns": {
-      "SOURCE_QA_RUN": "42608184400",
-      "SOURCE_WINDOWS_QA_RUN": "42608184395",
-      "SOURCE_FONT_QA_RUN": "42608184391",
-      "SOURCE_AUTH_QA_RUN": "42608184490"
+      "SOURCE_QA_RUN": "43102195329",
+      "SOURCE_WINDOWS_QA_RUN": "43102195223",
+      "SOURCE_FONT_QA_RUN": "43102195199",
+      "SOURCE_AUTH_QA_RUN": "43102195336"
     }
   },
   "signing": {
-    "toolsSha": "6efbc70ffd2dad9b53f4fa12a605f006ff51307e",
-    "runId": "42642570070",
-    "runNumber": 1,
-    "jobId": 129247224511,
-    "artifactId": "13686157887",
-    "artifactSize": 13696841,
-    "zipSha256": "cdd46aad7f3350bc53c148e2467620fe3d1dd31bd97be79dce219a99d1de0a57",
-    "ipaSha256": "070e6764346febf3d7b51124e44f74db232c49e65614df6609e19d825cbc55d8",
-    "ipaSize": 12793069,
-    "ciphertextSha256": "b7c7d444f9fd5e86296b81f1f53182ecaf485d8122a9bc6c2f6f679222ef24ce",
-    "ciphertextSize": 13691904,
+    "toolsSha": "cb94f7687f7899c0ac6a3c119cdd77a452d0ca2c",
+    "runId": "PENDING",
+    "runNumber": "PENDING",
+    "jobId": "PENDING",
+    "artifactId": "PENDING",
+    "artifactSize": "PENDING",
+    "zipSha256": "PENDING",
+    "ipaSha256": "PENDING",
+    "ipaSize": "PENDING",
+    "ciphertextSha256": "PENDING",
+    "ciphertextSize": "PENDING",
     "controls": {
-      "firstCreation": "aae39c0e3fe47afaa6cc2ea8727f23e68ab86ccd2fd3d4141c71701c9812db82",
-      "sourceGuard": "831ce5a42f2f446f710803714fc21beb7f04d6624ad11ce8881e667d88d9509b",
-      "workflow": "4b8c07eaa083ff79bddfacfcf4e291ff5b6d1e269c3c7f27e979241ffcb85adf",
+      "firstCreation": "8ea1339ef9822cef3a4f5f8b942d65b3bf6150c0c1c42315a29c5c28737e7595",
+      "sourceGuard": "93faff37f045a8791c67691aa773853bd165918bdbfe4e9622be82dcaeef33fd",
+      "workflow": "d822176fe0f068ead198a3d6b0e9870e9e7e37b1b1204a17e5946f2e64cd1070",
       "requiredJobs": "62b035d2e175acc5e6006a548fb5bb2167d679dc2c9be680ca2f517d14c83db3"
     }
   }

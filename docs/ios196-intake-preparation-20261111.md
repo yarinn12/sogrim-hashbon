@@ -1,0 +1,11 @@
+# iOS196 intake preparation
+
+Application4.59 is frozen at `4a352fdeb0f20a24e8448d182d933e51937e0346`, tree `5a093f76187ff39a9bbeb8a8b3713bd7292670b5`. The producer tools are `cb94f7687f7899c0ac6a3c119cdd77a452d0ca2c`. All four original source CI runs, including every required job, must pass before signing or intake. Preparation is local and unpublished. The intake workflow is explicitly disabled and all original artifact bindings remain `PENDING`.
+
+The intake-specific source, first-creation, original-archive, envelope and decryption checks remain intact. They are not replaced with the producer's encryption-only entry point. Candidate release bindings move to196; the producer first-creation verifier is byte-identical to the reviewed producer. The68-job contract remains unchanged. Legacy194-only producer controls remain historical and unchanged.
+
+The original Nov5 and delivered195 envelope fixtures remain byte-identical. A separate `SYNTHETIC_ONLY_NOT_AN_ARTIFACT_OR_RELEASE`196 fixture retains synthetic source, run and artifact identities. Its serialized authenticated identity and candidate receipts identify196 consistently. Historical OLD reproducers remain immutable: the Node historical producer retains its195 artifact label, and the Python historical replay uses the original195 fixture with the historical guard. The current196 guards still reject missing creation proofs and every required negative control.
+
+The scoped intake suite covers218 Node controls,165 archive/envelope controls,30 asset controls,4 certificate controls and8 release-note controls. The producer's499 controls are a separate suite and must not be added to application test counts. No real service key, signature, upload, tester assignment, database operation or public deployment is part of these tests.
+
+Activate only after reading the successful original producer run, attempt, job, artifact and exact ZIP/envelope/IPA identities. Only those signed bytes may enter intake; rebuilding them is prohibited. Keep source CI, signature/assets, authenticated envelope and zero automatic distribution checks. Link a validated build only to the authorized existing internal TestFlight group after intake; public release remains outside this route.

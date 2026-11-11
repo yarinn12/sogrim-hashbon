@@ -1,8 +1,8 @@
-name: iOS195 4.59 private intake only
-run-name: iOS195 original Nov5 signed bytes ג€” final bindings required
+name: iOS196 4.59 private intake only
+run-name: iOS196 original signed bytes - final bindings required
 on:
   push:
-    branches: [codex/ios195-459-private-intake-20261105]
+    branches: [codex/ios196-459-private-intake-20261111]
 permissions:
   contents: read
   actions: read
@@ -13,7 +13,7 @@ jobs:
   upload-original:
     # Bound to the original successful successor signing run and exact encrypted
     # artifact; guards recheck source, all CI and zero distribution before upload.
-    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios195-459-private-intake-20261105' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
+    if: ${{ false && github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios196-459-private-intake-20261111' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
     runs-on: macos-26
     timeout-minutes: 45
     defaults:
@@ -21,31 +21,31 @@ jobs:
         shell: bash
         working-directory: app
     env:
-      SOURCE_SHA: "5636a2a15c1480101013b18144cefd0be1cc5127"
-      SOURCE_TREE: "c6487c3b54358f5c217d6758495ec6ee988b3d76"
+      SOURCE_SHA: "4a352fdeb0f20a24e8448d182d933e51937e0346"
+      SOURCE_TREE: "5a093f76187ff39a9bbeb8a8b3713bd7292670b5"
       PWA_RELEASE: "532"
-      SOURCE_QA_RUN: "42608184400"
-      SOURCE_WINDOWS_QA_RUN: "42608184395"
-      SOURCE_FONT_QA_RUN: "42608184391"
-      SOURCE_AUTH_QA_RUN: "42608184490"
-      SIGNING_TOOLS_SHA: "6efbc70ffd2dad9b53f4fa12a605f006ff51307e"
-      SIGNED_RUN_ID: "42642570070"
-      SIGNED_RUN_NUMBER: "1"
-      SIGNED_JOB_ID: "129247224511"
-      SIGNED_ARTIFACT_ID: "13686157887"
-      SIGNED_ARTIFACT_SIZE: "13696841"
-      SIGNED_IPA_SHA256: "070e6764346febf3d7b51124e44f74db232c49e65614df6609e19d825cbc55d8"
-      SIGNED_IPA_SIZE: "12793069"
-      SIGNED_ARTIFACT_ZIP_SHA256: "cdd46aad7f3350bc53c148e2467620fe3d1dd31bd97be79dce219a99d1de0a57"
-      SIGNED_CIPHERTEXT_SHA256: "b7c7d444f9fd5e86296b81f1f53182ecaf485d8122a9bc6c2f6f679222ef24ce"
-      SIGNED_CIPHERTEXT_SIZE: "13691904"
+      SOURCE_QA_RUN: "43102195329"
+      SOURCE_WINDOWS_QA_RUN: "43102195223"
+      SOURCE_FONT_QA_RUN: "43102195199"
+      SOURCE_AUTH_QA_RUN: "43102195336"
+      SIGNING_TOOLS_SHA: "cb94f7687f7899c0ac6a3c119cdd77a452d0ca2c"
+      SIGNED_RUN_ID: "PENDING"
+      SIGNED_RUN_NUMBER: "PENDING"
+      SIGNED_JOB_ID: "PENDING"
+      SIGNED_ARTIFACT_ID: "PENDING"
+      SIGNED_ARTIFACT_SIZE: "PENDING"
+      SIGNED_IPA_SHA256: "PENDING"
+      SIGNED_IPA_SIZE: "PENDING"
+      SIGNED_ARTIFACT_ZIP_SHA256: "PENDING"
+      SIGNED_CIPHERTEXT_SHA256: "PENDING"
+      SIGNED_CIPHERTEXT_SIZE: "PENDING"
       WORKFLOW_COMMIT: ${{ github.workflow_sha }}
       WORKFLOW_REF: ${{ github.workflow_ref }}
       APPLE_TEAM_ID: MA9S4L7WKS
       APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
       APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
       IOS_VERSION: '4.59'
-      IOS_BUILD: '195'
+      IOS_BUILD: '196'
     steps:
       - name: Checkout immutable intake controls only
         uses: actions/checkout@v6
@@ -66,7 +66,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-first-creation-guard.mjs" --output "$RUNNER_TEMP/ios195-intake-first-creation-20261105"
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-first-creation-guard.mjs" --output "$RUNNER_TEMP/ios196-intake-first-creation-20261111"
       - name: Checkout frozen application source explicitly
         uses: actions/checkout@v6
         with:
@@ -107,7 +107,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-origin-guard.mjs"
-      - name: Require live manual distribution and unused195 before private access
+      - name: Require live manual distribution and unused196 before private access
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
         run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" preflight

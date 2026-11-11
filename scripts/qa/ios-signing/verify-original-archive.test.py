@@ -8,12 +8,12 @@ def load_guard(name,filename):
 guard=load_guard('ios_intake_archive_memory','verify-original-archive.py')
 encryption=load_guard('ios_intake_envelope_memory','extract-intake-envelope.py')
 bindings=load_guard('intake_bindings','intake_bindings.py')
-DATA=json.loads((pathlib.Path(__file__).resolve().parents[3]/'tests/fixtures/ios195-envelope-intake.json').read_text(encoding='utf-8'))
+DATA=json.loads((pathlib.Path(__file__).resolve().parents[3]/'tests/fixtures/ios196-qa509-synthetic-intake.json').read_text(encoding='utf-8'))
 assert DATA['scope']=='SYNTHETIC_ONLY_NOT_AN_ARTIFACT_OR_RELEASE'
 clone=copy.deepcopy
-def bundle():
-    pins=clone(DATA['pins']);a,s=pins['application'],pins['signing']
-    required=DATA['controlFiles']['scripts/qa/ios-signing/source-ci-required-jobs.mjs']
+def bundle(sample=DATA):
+    pins=clone(sample['pins']);a,s=pins['application'],pins['signing']
+    required=sample['controlFiles']['scripts/qa/ios-signing/source-ci-required-jobs.mjs']
     names=json.loads(re.search(r'Object.freeze\((\[[\s\S]*?\])\)',required).group(1))
     ci=[]
     for n,(key,path) in enumerate(bindings.CI_PATHS.items()):
@@ -22,20 +22,20 @@ def bundle():
             'jobs':[{'id':720000+n*100+i,'name':name,'source':a['sourceSha'],'conclusion':'success'} for i,name in enumerate(lane)]})
     live={'sourceCommit':a['sourceSha'],'sourceTree':a['sourceTree'],'sourceInputs':{'src/input'+str(i)+'.mjs':'a'*64 for i in range(501)},
         'packageSha256':'b'*64,'packageLockSha256':'c'*64,'ci':ci}
-    proof={'sourceCommit':a['sourceSha'],'sourceTree':a['sourceTree'],'version':'4.59','build':'195',
+    proof={'sourceCommit':a['sourceSha'],'sourceTree':a['sourceTree'],'version':'4.59','build':sample['firstCreation']['application']['build'],
         'ipaSha256':s['ipaSha256'],'sha256':s['ipaSha256'],'signatureVerified':True,'everyWwwAssetMatches':True,
         'everyWwwAssetMatchesCanonicalGitBuild':True,'appleUploadPerformed':False}
-    files={'SogrimHashbon.ipa':base64.b64decode(DATA['ipaBase64']),'Package.resolved':b'synthetic package'}
+    files={'SogrimHashbon.ipa':base64.b64decode(sample['ipaBase64']),'Package.resolved':b'synthetic package'}
     put=lambda n,d:files.update({n:json.dumps(d).encode()})
     for name in ['artifact-verification.json','release-manifest.json']:put(name,proof)
     for phase in ['ci-only','before-build','after-export']:
-        put('source-'+phase+'.json',dict(clone(live),phase=phase,version='4.59',build='195',buildRunId=s['runId'],
+        put('source-'+phase+'.json',dict(clone(live),phase=phase,version='4.59',build=sample['firstCreation']['application']['build'],buildRunId=s['runId'],
             buildRunAttempt='1',workflowCommit=s['toolsSha'],workflowRef=bindings.SIGNING_REF,
-            appleUploadPerformed=False,firstCreation=clone(DATA['firstCreation'])))
+            appleUploadPerformed=False,firstCreation=clone(sample['firstCreation'])))
     put('web-assets.json',{'sourceCommit':a['sourceSha'],'sourceTree':a['sourceTree'],'www':{'index.html':'d'*64},
         'canonicalGit':{'sourceCommit':a['sourceSha'],'sourceTree':a['sourceTree'],'gitInputCount':501,
             'allArchiveBytesMatchGitBlobs':True,'independentCanonicalBuild':True,'www':{'index.html':'d'*64}}})
-    return files,clone(DATA['envelope']),clone(DATA['origin']),live,pins
+    return files,clone(sample['envelope']),clone(sample['origin']),live,pins
 def mutate(files,name,fn):
     value=json.loads(files[name]);fn(value);files[name]=json.dumps(value).encode()
 class IdentityTests(unittest.TestCase):
@@ -48,13 +48,18 @@ class IdentityTests(unittest.TestCase):
         source=re.sub(r"^SOURCE='[^']+'","SOURCE="+repr(p['application']['sourceSha']),source,flags=re.M)
         source=re.sub(r"^TREE='[^']+'","TREE="+repr(p['application']['sourceTree']),source,flags=re.M)
         old=types.ModuleType('old_archive_control');exec(compile(source,'<old-archive>','exec'),old.__dict__)
-        virtual=dict(f,**{'live-ci-before-download.json':json.dumps(l).encode()})
+        # Replay the immutable historical195 payload with its historical guard.
+        # The196 guard below receives the current fixture, still missing proofs.
+        historical=json.loads((pathlib.Path(__file__).resolve().parents[3]/'tests/fixtures/ios195-envelope-intake.json').read_text(encoding='utf-8'))
+        legacy_files,legacy_envelope,legacy_origin,legacy_live,_=bundle(historical)
+        for phase in ['ci-only','before-build','after-export']:mutate(legacy_files,'source-'+phase+'.json',lambda r:r.pop('firstCreation'))
+        virtual=dict(legacy_files,**{'live-ci-before-download.json':json.dumps(legacy_live).encode()})
         class MemoryPath:
             def __init__(self,name=''):self.name=name
             def __truediv__(self,other):return MemoryPath(self.name+'/'+other)
             def read_bytes(self):return virtual[self.name.rsplit('/',1)[-1]]
             def read_text(self,*args,**kwargs):return self.read_bytes().decode()
-        self.assertEqual(old.verify_identity(MemoryPath(),e,o),p['signing']['ipaSha256'])
+        self.assertEqual(old.verify_identity(MemoryPath(),legacy_envelope,legacy_origin),p['signing']['ipaSha256'])
         self.assertRaises(ValueError,guard.verify_bundle,f,e,o,l,p)
     def test_pending_stops_actual_entrypoints_before_original_reads(self):
         class NoAccess:

@@ -144,14 +144,14 @@ export function verifyCheckout(runGit, readText, env,pins=INTAKE_BINDINGS) {
   assert.equal(env.APPLE_TEAM_ID, 'MA9S4L7WKS');
   assert.equal(env.SOURCE_SHA, SOURCE);
   assert.equal(env.IOS_VERSION, '4.59');
-  assert.equal(env.IOS_BUILD, '195');
+  assert.equal(env.IOS_BUILD, '196');
   assert.equal(runGit(['rev-parse', 'HEAD']), SOURCE);
   assert.equal(runGit(['rev-parse', 'HEAD^{tree}']), RELEASE_TREE);
   const pwa = readText('src/pwaBootstrap.mjs').match(/const PWA_RELEASE = "(\d+)"/)?.[1];
   assert.equal(pwa,pins.application.pwa);
   const metadata = JSON.parse(readText('docs/store-submission/app-store-metadata-he.json'));
   assert.equal(metadata.version?.number, '4.59');
-  assert.equal(String(metadata.version?.build), '195');
+  assert.equal(String(metadata.version?.build), '196');
   return {sourceCommit: SOURCE, sourceTree: RELEASE_TREE, pwaRelease: pwa};
 }
 

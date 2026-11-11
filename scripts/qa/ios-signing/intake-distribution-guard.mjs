@@ -65,8 +65,8 @@ export async function collectState(api){
   const versions=await all(api,'/v1/apps/'+APP+'/appStoreVersions?'+new URLSearchParams({
     'filter[platform]':'IOS','fields[appStoreVersions]':'versionString,appStoreState,releaseType',limit:'200'}));
   const matches=await all(api,'/v1/builds?'+new URLSearchParams({
-    'filter[app]':APP,'filter[version]':'195','filter[preReleaseVersion.platform]':'IOS',limit:'200'}));
-  assert.ok(matches.length<=1,'Ambiguous build195');
+    'filter[app]':APP,'filter[version]':'196','filter[preReleaseVersion.platform]':'IOS',limit:'200'}));
+  assert.ok(matches.length<=1,'Ambiguous build196');
   return {appId:APP,groups:groupStates,rawGroups:groups,appStoreVersions:versionState(versions),
     build:matches[0]??null,checkedAt:new Date().toISOString(),mode:'GET_ONLY'};
 }
@@ -89,19 +89,19 @@ export function requireIntakePreflight(snapshot){
   requireManualGroups(snapshot.rawGroups);
   assert.equal(snapshot.build,null,'Build195 exists; do not upload twice');
   for(const group of snapshot.groups)
-    assert.ok(!group.builds.some(b=>b.build==='195'),'Build195 already assigned to group');
+    assert.ok(!group.builds.some(b=>b.build==='196'),'Build195 already assigned to group');
 }
 export async function verifyPostflight(api,before){
   const after=await collectState(api);requireManualGroups(after.rawGroups);
   assert.deepEqual(after.appStoreVersions,before.appStoreVersions,'App Store release record changed');
   const build=after.build;assert.ok(build?.id,'Missing processed195');
-  assert.equal(build.attributes?.version,'195');
+  assert.equal(build.attributes?.version,'196');
   assert.equal(build.attributes.processingState,'VALID');
   assert.equal(build.attributes.expired,false);
   const prerelease=(await api('/v1/builds/'+build.id+'/preReleaseVersion',{method:'GET'})).data;
   assert.equal(prerelease?.attributes?.version,'4.59');assert.equal(prerelease?.attributes?.platform,'IOS');
   for(const group of after.groups)
-    assert.ok(!group.builds.some(b=>b.id===build.id||b.build==='195'),'195 assigned to group '+group.id);
+    assert.ok(!group.builds.some(b=>b.id===build.id||b.build==='196'),'195 assigned to group '+group.id);
   const testers=await all(api,'/v1/builds/'+build.id+'/individualTesters?'+
     new URLSearchParams({'fields[betaTesters]':'state',limit:'200'}));
   assert.equal(testers.length,0,'195 has individually assigned testers');
@@ -111,7 +111,7 @@ export async function verifyPostflight(api,before){
   assert.ok(beta?.attributes,'Missing beta status');
   assert.ok(['READY_FOR_BETA_SUBMISSION','NOT_APPLICABLE'].includes(beta.attributes.externalBuildState),
     'Unexpected external review/distribution state');
-  return {...after,rawGroups:undefined,build:{id:build.id,build:'195',version:'4.59',processingState:'VALID'},
+  return {...after,rawGroups:undefined,build:{id:build.id,build:'196',version:'4.59',processingState:'VALID'},
     assignedGroups:[],assignedIndividualTesters:0,appStoreVersion:null,betaState:beta.attributes,
     scope:'PACKAGE_INTAKE_ONLY',databaseAccepted:false,publicReleaseAccepted:false,distributionAllowed:false};
 }
