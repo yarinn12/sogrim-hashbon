@@ -11,11 +11,11 @@ on:
       build:
         description: Unique TestFlight build number
         required: true
-        default: "195"
+        default: "196"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "עודכנו מסכי האירועים, ההוצאות, הפתקים, החברים והפרופיל בעיצוב אחיד ובהתאמה לטקסט מוגדל. שופרו בחירת תמונות וחיתוך, שיתוף והזמנות, וההסברים במצבי שגיאה. גרסת בדיקה של אותו עדכון ב־iPhone וב־Android."
+        default: "תוקן החיווי על עדכונים ממתינים במסך הבית, עם פירוט ברור וניסיון שמירה חוזר. שופרו שיוך הודעות השגיאה ויציבות הלחיצות. אותו עדכון ל־iPhone ול־Android, כולל התאמה לטקסט מוגדל."
 
 permissions:
   contents: read
