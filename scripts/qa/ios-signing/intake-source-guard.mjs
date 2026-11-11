@@ -6,10 +6,10 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-export const RELEASE_SOURCE = '5636a2a15c1480101013b18144cefd0be1cc5127';
-export const RELEASE_TREE = 'c6487c3b54358f5c217d6758495ec6ee988b3d76';
+export const RELEASE_SOURCE = 'b6630d382b275fae2344b9541d7b2e31e5f20c77';
+export const RELEASE_TREE = '0e5ed5a7871a1b320578573d7d108e3f31b02920';
 export const SOURCE = process.env.SOURCE_SHA;
-export const ARTIFACT_NAME = 'sogrim-ios-4.59-195-encrypted';
+export const ARTIFACT_NAME = 'sogrim-ios-4.59-196-encrypted';
 export const APPLE_APP_ID = '6809952514';
 export const SOURCE_BRANCH = 'codex/test-release-459-20261104';
 assert.match(SOURCE ?? '', /^[0-9a-f]{40}$/, 'source_sha must be a full commit');
@@ -97,7 +97,7 @@ export async function requireUnusedArtifactSlot(fetchImpl, token) {
   const query = new URLSearchParams({name: ARTIFACT_NAME, per_page: '100'});
   const result = await githubRead(fetchImpl, token, '/actions/artifacts?' + query);
   assert.ok(Array.isArray(result.artifacts) && Number.isSafeInteger(result.total_count));
-  assert.equal(result.total_count, 0, 'Build195 already has a retained preparation; inspect it instead of rebuilding');
+  assert.equal(result.total_count, 0, 'Build196 already has a retained preparation; inspect it instead of rebuilding');
   assert.equal(result.artifacts.length, 0, 'Existing preparation blocks duplicate signing');
   return {name: ARTIFACT_NAME, existingPreparations: 0, reserved: false, checkedAt: new Date().toISOString()};
 }
@@ -127,8 +127,8 @@ export async function readUnusedBuild(request) {
     next = response.links?.next;
   }
   assert.ok(!next, 'Apple pagination incomplete');
-  assert.ok(maximum < 195, '195 is no longer unused; coordinator must select a new candidate');
-  return {appId: APPLE_APP_ID, maximumUploadedBuild: maximum, candidateBuild: 195,
+  assert.ok(maximum < 196, '196 is no longer unused; coordinator must select a new candidate');
+  return {appId: APPLE_APP_ID, maximumUploadedBuild: maximum, candidateBuild: 196,
     reserved: false, checkedAt: new Date().toISOString()};
 }
 
@@ -146,14 +146,14 @@ export function verifyCheckout(runGit, readText, env) {
   assert.equal(env.APPLE_TEAM_ID, 'MA9S4L7WKS');
   assert.equal(env.SOURCE_SHA, SOURCE);
   assert.equal(env.IOS_VERSION, '4.59');
-  assert.equal(env.IOS_BUILD, '195');
+  assert.equal(env.IOS_BUILD, '196');
   assert.equal(runGit(['rev-parse', 'HEAD']), SOURCE);
   assert.equal(runGit(['rev-parse', 'HEAD^{tree}']), RELEASE_TREE);
   const pwa = readText('src/pwaBootstrap.mjs').match(/const PWA_RELEASE = "(\d+)"/)?.[1];
   assert.equal(pwa, '532');
   const metadata = JSON.parse(readText('docs/store-submission/app-store-metadata-he.json'));
   assert.equal(metadata.version?.number, '4.59');
-  assert.equal(String(metadata.version?.build), '195');
+  assert.equal(String(metadata.version?.build), '196');
   return {sourceCommit: SOURCE, sourceTree: RELEASE_TREE, pwaRelease: pwa};
 }
 

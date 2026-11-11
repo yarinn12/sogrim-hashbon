@@ -39,7 +39,7 @@ class AssetTests(unittest.TestCase):
     def archive(self, mutate=None):
         files = {str(path.relative_to(self.root / 'ios/App/App')).replace('\\', '/'): path.read_bytes()
                  for path in (self.root / 'ios/App/App').rglob('*') if path.is_file()}
-        files['Info.plist'] = plistlib.dumps({'CFBundleIdentifier': assets.BUNDLE, 'CFBundleShortVersionString': '4.59', 'CFBundleVersion': '195'})
+        files['Info.plist'] = plistlib.dumps({'CFBundleIdentifier': assets.BUNDLE, 'CFBundleShortVersionString': '4.59', 'CFBundleVersion': '196'})
         if mutate:
             mutate(files)
         data = io.BytesIO()

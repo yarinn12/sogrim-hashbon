@@ -11,7 +11,7 @@ import {CONTRACT as C,githubJsonGet,validateCreationContext,verifyFirstCreation,
 
 const clone=value=>structuredClone(value);
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8').replaceAll('\r\n','\n');
-const next=read('../.github/workflows/ios195-459-private-sign-only-envelope-20261109.yml');
+const next=read('../.github/workflows/ios196-459-private-sign-only-20261111.yml');
 const old=JSON.parse(read('./fixtures/ios195-first-creation-old.json'));
 const input=name=>new RegExp('^      '+name+': "([^"]+)"$','m').exec(next)?.[1];
 const sha='2a62c846ed397b93dd68fe0363da0dd148ca9a8e';
@@ -144,7 +144,7 @@ test('stored proof rejects changed bytes, missing digest and every replayed sour
  assert.throws(()=>verifyFirstCreationReceipt(raw,undefined,context(),event()));
  for(const changed of [
   {GITHUB_RUN_ID:'700002'}, {GITHUB_RUN_NUMBER:'4'}, {GITHUB_RUN_ATTEMPT:'2'},
-  {SOURCE_SHA:'b'.repeat(40)}, {SOURCE_TREE:'c'.repeat(40)}, {SOURCE_QA_RUN:'700009'}, {IOS_BUILD:'194'},
+  {SOURCE_SHA:'b'.repeat(40)}, {SOURCE_TREE:'c'.repeat(40)}, {SOURCE_QA_RUN:'700009'}, {IOS_BUILD:'195'},
   {WORKFLOW_COMMIT:'b'.repeat(40)}, {WORKFLOW_REF:'other/path'}])
   assert.throws(()=>verifyFirstCreationReceipt(raw,digest,{...context(),...changed},event()));
  assert.throws(()=>verifyFirstCreationReceipt(raw,digest,context(),{...event(),created:false}));
@@ -179,7 +179,7 @@ test('source guard requires the exact checksummed first-creation receipt before 
  assert.ok(main.indexOf('verifySigningFirstCreation(')<main.indexOf('await verifyCommit'));
  assert.ok(main.includes('...source, firstCreation, phase, ci, apple, artifactSlot'));
  const fakeGit=args=>args[1]==='HEAD'?guard.RELEASE_SOURCE:guard.RELEASE_TREE;
- const appText=path=>path==='src/pwaBootstrap.mjs'?'const PWA_RELEASE = "532";':JSON.stringify({version:{number:'4.59',build:'195'}});
+ const appText=path=>path==='src/pwaBootstrap.mjs'?'const PWA_RELEASE = "532";':JSON.stringify({version:{number:'4.59',build:'196'}});
  assert.equal(guard.verifyCheckout(fakeGit,appText,{...context(),APPLE_TEAM_ID:'MA9S4L7WKS'}).sourceCommit,guard.RELEASE_SOURCE);
 });
 test('actual CLI writes GET evidence on acceptance and rejects a changed push before any GET',()=>{

@@ -19,7 +19,8 @@
       "codex/ios194-11b-intake-only-20261015": false,
       "codex/ios195-459-private-tools-20261105": false,
       "codex/ios195-459-signing-qa492-20261106": false,
-      "codex/ios195-459-signing-envelope-20261109": false
+      "codex/ios195-459-signing-envelope-20261109": false,
+      "codex/ios196-459-signing-20261111": false
     }
   },
   "builds": [

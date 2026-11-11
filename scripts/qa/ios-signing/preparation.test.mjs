@@ -8,10 +8,10 @@ import {RELEASE_SOURCE, RELEASE_TREE, SOURCE, requiredRuns, verifyRuns, verifyCo
 import {protect, unprotect, publicIpaIdentity} from './protect-artifact.mjs';
 import {verifyRuns as verifyIntakeRuns, readUnusedBuild as readIntakeUnusedBuild} from './intake-source-guard.mjs';
 
-const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '42608184400', SOURCE_WINDOWS_QA_RUN: '42608184395',
-  SOURCE_FONT_QA_RUN: '42608184391', SOURCE_AUTH_QA_RUN: '42608184490',
+const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '43069930398', SOURCE_WINDOWS_QA_RUN: '43069930040',
+  SOURCE_FONT_QA_RUN: '43069929956', SOURCE_AUTH_QA_RUN: '43069929960',
   GITHUB_REPOSITORY: 'yarinn12/sogrim-hashbon', GITHUB_EVENT_NAME: 'workflow_dispatch',
-  APPLE_TEAM_ID: 'MA9S4L7WKS', IOS_VERSION: '4.59', IOS_BUILD: '195'};
+  APPLE_TEAM_ID: 'MA9S4L7WKS', IOS_VERSION: '4.59', IOS_BUILD: '196'};
 const names = ['unit','cross-platform','two-client-sync','unit-and-mobile','backup-runtime',
   ...['android-mobile','iphone-webkit','ipad-webkit','iphone-large-text','reflow-200'].map(p=>'mobile ('+p+')'),
   ...Array.from({length:16},(_,i)=>`cross-platform-shard-${i<8?1:2} (${i+1})`),
@@ -87,7 +87,7 @@ function api(builds,next=null) {
       : {data:builds.map(version=>({attributes:{version}})),links:{next}};
   };
 }
-test('Apple application identity is independent of PWA532 and build195',async()=>{
+test('Apple application identity is independent of PWA532 and build196',async()=>{
   assert.equal(APPLE_APP_ID,'6809952514');
   const proof=await readUnusedBuild(api(['191','192','193']));
   assert.equal(proof.appId,'6809952514');
@@ -101,29 +101,29 @@ test('Apple rejects an unreadable application before inspecting build availabili
   }));
   assert.equal(buildsRead,false);
 });
-test('192 permits currently unused 195 without reservation',async()=>{
+test('192 permits currently unused 196 without reservation',async()=>{
   const r=await readUnusedBuild(api(['191','192','193']));assert.equal(r.maximumUploadedBuild,193);assert.equal(r.reserved,false);
 });
 for (const [label,readiness] of [['signing',readUnusedBuild],['intake',readIntakeUnusedBuild]]) {
- test(label+' permits existing194 but refuses an already used195 without reserving a slot',async()=>{
-  const r=await readiness(api(['193','194']));
-  assert.equal(r.maximumUploadedBuild,194);assert.equal(r.candidateBuild,195);assert.equal(r.reserved,false);
-  await assert.rejects(readiness(api(['194','195'])));
+ test(label+' permits existing195 but refuses an already used196 without reserving a slot',async()=>{
+  const r=await readiness(api(['193','195']));
+  assert.equal(r.maximumUploadedBuild,195);assert.equal(r.candidateBuild,196);assert.equal(r.reserved,false);
+  await assert.rejects(readiness(api(['195','196'])));
  });
 }
-for(const value of ['195','196','invalid']) test('Apple rejects build '+value,async()=>assert.rejects(readUnusedBuild(api([value]))));
+for(const value of ['196','197','invalid']) test('Apple rejects build '+value,async()=>assert.rejects(readUnusedBuild(api([value]))));
 test('Apple rejects incomplete pagination',async()=>assert.rejects(readUnusedBuild(api(['192'],'/v1/builds?next=1'))));
 test('Apple refuses foreign pagination origin',async()=>assert.rejects(readUnusedBuild(api(['192'],'https://evil.example/v1/builds?next=1'))));
 test('Apple reads later pages before deciding',async()=>{
   let n=0;const request=async(p,o)=>{
     assert.equal(o.method,'GET');if(p.startsWith('/v1/apps/'))return {data:{attributes:{bundleId:'com.sogrimhashbon.app'}}};
-    n++;return {data:[{attributes:{version:n===1?'192':'195'}}],
+    n++;return {data:[{attributes:{version:n===1?'192':'196'}}],
       links:{next:n===1?'https://api.appstoreconnect.apple.com/v1/builds?next=2':null}};
   };await assert.rejects(readUnusedBuild(request));assert.equal(n,2);
 });
 test('duplicate encrypted preparation blocks another signing attempt',async()=>{
   const fixture=(count,expired)=>async(u,o)=>{
-    assert.equal(o.method,'GET');assert.ok(u.includes('name=sogrim-ios-4.59-195-encrypted'));
+    assert.equal(o.method,'GET');assert.ok(u.includes('name=sogrim-ios-4.59-196-encrypted'));
     return {ok:true,json:async()=>({total_count:count,artifacts:count?[{expired}]:[]})};
   };
   assert.equal((await requireUnusedArtifactSlot(fixture(0),'synthetic')).reserved,false);
@@ -131,7 +131,7 @@ test('duplicate encrypted preparation blocks another signing attempt',async()=>{
   await assert.rejects(requireUnusedArtifactSlot(fixture(1,true),'synthetic'));
 });
 const readText=p=>p==='src/pwaBootstrap.mjs'?'const PWA_RELEASE = "532";':
-  JSON.stringify({version:{number:'4.59',build:195}});
+  JSON.stringify({version:{number:'4.59',build:196}});
 const git=args=>args[1]==='HEAD'?RELEASE_SOURCE:RELEASE_TREE;
 test('checkout/source/version/build/PWA exact identity passes',()=>assert.equal(verifyCheckout(git,readText,env).sourceTree,RELEASE_TREE));
 for(const [name,change] of [['build',{IOS_BUILD:'192'}],['version',{IOS_VERSION:'4.57'}],
@@ -153,7 +153,7 @@ for(const [name,change] of [['missing size',{bytes:undefined}],['zero size',{byt
   ['fractional size',{bytes:1.5}],['unbounded size',{bytes:536870913}],
   ['changed size',{bytes:payload.length+1}],['changed digest',{ipaSha256:'f'.repeat(64)}]])
   test('public original IPA facts reject '+name,()=>assert.throws(()=>publicIpaIdentity({...packageFacts,...change},payload)));
-const identity={sourceCommit:SOURCE,sourceTree:RELEASE_TREE,version:'4.59',build:'195',buildRunId:'synthetic',buildRunAttempt:'1'};
+const identity={sourceCommit:SOURCE,sourceTree:RELEASE_TREE,version:'4.59',build:'196',buildRunId:'synthetic',buildRunAttempt:'1'};
 test('authenticated encryption round trip and canonical DER whitespace',()=>{
   const r=protect(payload,'\n'+key+'\n',identity);
   assert.ok(unprotect(r.ciphertext,r.envelope,key).equals(payload));assert.ok(!r.ciphertext.equals(payload));
@@ -176,11 +176,11 @@ test('artifact-only preparation preserves exact checkout and gates signing while
   if(token==='--extract-certificates') continue; assert.ok(next.includes(token),'lost preparation check: '+token);
  }
  assert.ok(!/upload-testflight-build|complete-ios-testflight|reviewSubmission|appStoreVersionReleaseRequest/.test(next));
- assert.ok(next.includes('sogrim-ios-4.59-195-encrypted'));
+ assert.ok(next.includes('sogrim-ios-4.59-196-encrypted'));
  assert.ok(next.includes('retention-days: 7'));
  assert.ok(next.includes('persist-credentials: false'));
 });
-test('previous build193 and PWA514 cannot be signed as195',()=>{
+test('previous build193 and PWA514 cannot be signed as196',()=>{
  assert.throws(()=>verifyCheckout(git,readText,{...env,IOS_BUILD:'193'}));
  assert.throws(()=>verifyCheckout(git,p=>readText(p).replace('532','514'),env));
  assert.throws(()=>protect(payload,key,{...identity,build:'193'}));
@@ -199,8 +199,8 @@ for (const name of names) {
 }
 
 const oneShotEnv={...env,GITHUB_EVENT_NAME:'push',
- GITHUB_REF:'refs/heads/codex/ios195-459-signing-envelope-20261109',
- GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios195-459-private-sign-only-envelope-20261109.yml@refs/heads/codex/ios195-459-signing-envelope-20261109',
+ GITHUB_REF:'refs/heads/codex/ios196-459-signing-20261111',
+ GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios196-459-private-sign-only-20261111.yml@refs/heads/codex/ios196-459-signing-20261111',
  GITHUB_RUN_NUMBER:'3',GITHUB_RUN_ATTEMPT:'1'};
 test('one-shot artifact preparation accepts only the explicitly frozen push scope',()=>{
  assert.equal(verifyCheckout(git,readText,oneShotEnv).sourceCommit,RELEASE_SOURCE);
@@ -211,10 +211,10 @@ for(const [name,change] of [['branch',{GITHUB_REF:'refs/heads/main'}],
  test('one-shot preparation rejects wrong '+name,()=>assert.throws(()=>verifyCheckout(git,readText,{...oneShotEnv,...change})));
 test('actual one-shot workflow keeps signing gates and creates encrypted artifact only',()=>{
  const original=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
- const actual=readFileSync(new URL('../../../.github/workflows/ios195-459-private-sign-only-envelope-20261109.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
+ const actual=readFileSync(new URL('../../../.github/workflows/ios196-459-private-sign-only-20261111.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
  assert.ok(!actual.includes('github.run_number == 1')&&actual.includes('github.run_attempt == 1'));
  assert.ok(actual.includes('github.event.created == true')&&actual.includes("github.event.before == '"+'0'.repeat(40)+"'"));
- assert.ok(actual.includes('branches: [codex/ios195-459-signing-envelope-20261109]'));
+ assert.ok(actual.includes('branches: [codex/ios196-459-signing-20261111]'));
  assert.ok(actual.indexOf('source-guard.mjs" ci-only')<actual.indexOf('secrets.APPSTORE'));
  const normalized=actual.replaceAll("          IOS_FIRST_CREATION_RECEIPT: ${{ steps.first_creation.outputs.receipt_path }}\n          IOS_FIRST_CREATION_SHA256: ${{ steps.first_creation.outputs.receipt_sha256 }}\n","")
   .replace(' ../../../tests/iosFirstCreationGuard.test.mjs','');
@@ -261,12 +261,12 @@ for(const name of ['cross-platform-shard-1 (1)','cross-platform-shard-2 (9)'])
  });
 
 test('4.59 one-shot binds the exact application tree and all four coordinator run IDs',()=>{
- const raw=readFileSync(new URL('../../../.github/workflows/ios195-459-private-sign-only-envelope-20261109.yml',import.meta.url),'utf8');
- assert.equal(RELEASE_SOURCE,'5636a2a15c1480101013b18144cefd0be1cc5127');
- assert.equal(RELEASE_TREE,'c6487c3b54358f5c217d6758495ec6ee988b3d76');
+ const raw=readFileSync(new URL('../../../.github/workflows/ios196-459-private-sign-only-20261111.yml',import.meta.url),'utf8');
+ assert.equal(RELEASE_SOURCE,'b6630d382b275fae2344b9541d7b2e31e5f20c77');
+ assert.equal(RELEASE_TREE,'0e5ed5a7871a1b320578573d7d108e3f31b02920');
  for(const [name,value]of [['SOURCE_SHA',RELEASE_SOURCE],['SOURCE_QA_RUN',env.SOURCE_QA_RUN],
   ['SOURCE_WINDOWS_QA_RUN',env.SOURCE_WINDOWS_QA_RUN],['SOURCE_FONT_QA_RUN',env.SOURCE_FONT_QA_RUN],
-  ['SOURCE_AUTH_QA_RUN',env.SOURCE_AUTH_QA_RUN],['IOS_VERSION','4.59'],['IOS_BUILD','195']]){
+  ['SOURCE_AUTH_QA_RUN',env.SOURCE_AUTH_QA_RUN],['IOS_VERSION','4.59'],['IOS_BUILD','196']]){
   const matches=[...raw.matchAll(new RegExp('^      '+name+': "([^"]+)"$','gm'))];
   assert.equal(matches.length,1,'one immutable '+name);
   assert.equal(matches[0][1],value,'stale '+name);
