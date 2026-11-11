@@ -11,20 +11,33 @@ for(const root of [16,32])for(const action of ['share-whatsapp','copy-settlement
   const before=finances(cloud),summary=await canonical(cloud);
   await toggle(page.locator('.settlement-debt-share'));
   const selector='.settlement-debt-share [data-action="'+action+'"]',button=page.locator(selector);
-  await button.scrollIntoViewIfNeeded();
-  const point=await button.evaluate(element=>{const r=element.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};});
+  // Establish normal click actionability before splitting a press across the
+  // deliberate render. No click is sent by the trial; down/up below stay real.
+  await button.click({trial:true});
+  const point=await button.evaluate(element=>{const r=element.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;
+   return{x,y,hit:element.contains(document.elementFromPoint(x,y))};});
+  expect(point.hit).toBe(true);
   const count=()=>page.evaluate(action=>action==='share-whatsapp'?window.__debtUrls.length:window.__debtCopies.length,action);
   const initial=await count();
+  await page.evaluate(()=>document.addEventListener('pointerdown',event=>{
+   const target=event.target.closest('button[data-action]');
+   window.__sharePressDown={action:target?.dataset.action,eventId:target?.dataset.eventId};
+  },{capture:true,once:true}));
   await page.mouse.move(point.x,point.y);await page.mouse.down();
+  expect(await page.evaluate(()=>window.__sharePressDown)).toEqual({action,eventId});
   const boundary=await page.evaluate(async({selector,point})=>{
    const old=document.querySelector(selector);
+   const beforeRect=old.getBoundingClientRect().toJSON(),beforeScrollY=scrollY;
    document.dispatchEvent(new CustomEvent('settle-friends:notice',{detail:{message:'רענון מבוקר בזמן לחיצת שיתוף'}}));
    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
    const current=document.querySelector(selector);
+   window.__shareBoundaryGeometry={point,beforeRect,beforeScrollY,afterRect:current?.getBoundingClientRect().toJSON(),afterScrollY:scrollY,
+    maxScrollY:document.documentElement.scrollHeight-innerHeight,hit:document.elementFromPoint(point.x,point.y)?.outerHTML.slice(0,500)};
    return{replaced:old!==current,beforeConnected:old.isConnected,afterConnected:current?.isConnected,
     sameHit:current?.contains(document.elementFromPoint(point.x,point.y))};
   },{selector,point});
   await info.attach('share-pointer-render-boundary',{body:JSON.stringify(boundary),contentType:'application/json'});
+  await info.attach('share-pointer-render-geometry',{body:JSON.stringify(await page.evaluate(()=>window.__shareBoundaryGeometry)),contentType:'application/json'});
   expect(boundary).toEqual({replaced:true,beforeConnected:false,afterConnected:true,sameHit:true});
   await page.mouse.up();await expect.poll(count).toBe(initial+1);
   if(action==='share-whatsapp'){

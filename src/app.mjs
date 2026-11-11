@@ -697,6 +697,7 @@ const paymentPressRecovery = createPointerRenderRecovery({
 const settlementSharePressRecovery = createPointerRenderRecovery({
   resolveTarget: resolveSettlementSharePressTarget,
   resolveRenderTarget: currentSettlementSharePressTarget,
+  allowClampedAnchor: true,
   preservePosition: offset => window.scrollBy?.({left: 0, top: offset, behavior: "instant"})
 });
 let resumeSyncRequest = null;

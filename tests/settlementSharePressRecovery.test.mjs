@@ -10,7 +10,7 @@ const source=await readFile(process.env.SOGRIM_SHARE_PRESS_TEST_APP_SOURCE || ne
 const down=(extra={})=>({isPrimary:true,button:0,pointerId:3,clientX:50,clientY:70,...extra});
 const actions=['share-whatsapp','copy-settlement','copy-event-report'];
 function harness(action='share-whatsapp') {
- let accountCurrent=true,buttons=[],hit;
+ let accountCurrent=true,buttons=[],hit,minTop=-Infinity;
  const callbacks=new Map(),calls=[],scrolls=[];
  const event={id:'event-a',name:'אירוע בדיקה',locked:true,currency:'ILS',participantIds:['owner','peer'],
   participantAliases:{},updatedAt:'2026-11-11T17:00:00Z',expenses:[],
@@ -29,7 +29,7 @@ function harness(action='share-whatsapp') {
   importantActionDialog:null,settlementCelebration:null,settlementCloseConfirmation:null,
   app:{contains:node=>node.isConnected,querySelectorAll:()=>buttons},document,
   window:{innerWidth:393,innerHeight:852,addEventListener:document.addEventListener,
-   scrollBy({top}){scrolls.push(top);current.top-=top;}},
+   scrollBy({top}){scrolls.push(top);current.top=Math.max(minTop,current.top-top);}},
   captureFriendAccountContext:()=>({isCurrent:()=>accountCurrent}),getEvent:id=>id===event.id?event:null,
   createPointerRenderRecovery,
   resolvePaymentPressTarget:()=>null,currentPaymentPressTarget:()=>null,handlePaymentPointerDown:()=>{},
@@ -50,7 +50,7 @@ function harness(action='share-whatsapp') {
   replace(top=50){current.isConnected=false;current=button();current.top=top;buttons=[current];hit=current;return current;},
   capture:()=>vm.runInContext('typeof settlementSharePressRecovery === "undefined" ? null : settlementSharePressRecovery.captureRenderAnchor()',context),
   restore:anchor=>{context.testAnchor=anchor;return vm.runInContext('settlementSharePressRecovery.restoreRenderAnchor(testAnchor)',context);},
-  switchAccount(){accountCurrent=false;},wrongHit(){hit={};},duplicate(){buttons.push(button());}};
+  clampAt(top){minTop=top;},switchAccount(){accountCurrent=false;},wrongHit(){hit={};},duplicate(){buttons.push(button());}};
 }
 
 for(const action of actions)test('pointer-bound share actions survive a replaced '+action+' button exactly once',()=>{
@@ -95,4 +95,16 @@ test('read-only sharing preserves its pressed position through consecutive notic
  const h=harness();h.dispatch('pointerdown');const first=h.capture();h.replace(150);assert.equal(h.restore(first),true);
  const second=h.capture();h.replace(120);assert.equal(h.restore(second),true);
  h.dispatch('pointerup');assert.equal(h.calls.length,1);assert.deepEqual(h.scrolls,[100,70]);
+});
+test('a small end-of-page clamp keeps the same read-only share button usable once',()=>{
+ const h=harness('copy-event-report');h.dispatch('pointerdown');const anchor=h.capture();h.replace(150);h.clampAt(51.7);
+ assert.equal(h.restore(anchor),true);
+ h.dispatch('pointerup');assert.deepEqual(h.calls,[{action:'copy-event-report',eventId:'event-a'}]);
+ assert.equal(h.dispatch('click',{detail:1}).stopped,true);assert.equal(h.calls.length,1);
+});
+for(const reason of ['large clamp','covered point','new revision'])test('clamped read-only sharing rejects '+reason,()=>{
+ const h=harness('copy-event-report');h.dispatch('pointerdown');const anchor=h.capture();h.replace(150);h.clampAt(reason==='large clamp'?65:51.7);
+ if(reason==='covered point')h.wrongHit();
+ if(reason==='new revision')h.event.updatedAt='2026-11-11T17:00:02Z';
+ assert.equal(h.restore(anchor),false);h.dispatch('pointerup');assert.deepEqual(h.calls,[]);
 });

@@ -665,6 +665,8 @@ test("native closed summary keeps scalable amounts, intact payment labels and in
  assert.match(scoped,/\.settlement-share-currency[^}]*display:inline-block!important;white-space:nowrap!important/);
  assert.match(scoped,/\.settlement-debt-preview > summary[^}]*min-height:44px!important/);
  assert.match(scoped,/\.settlement-debt-share > summary[^}]*min-height:48px!important/);
+ const shareButtons=scoped.match(/\.settlement-debt-share-options > button\s*\{[^}]*\}/)?.[0]??'';
+ assert.match(shareButtons,/transform:none!important/,"pressed share buttons keep their visual dimensions across a render");
  assert.match(scoped,/\.settlement-hero-total\.is-group-total[^}]*flex-direction:column!important;align-items:stretch!important/);
  assert(!scoped.includes("data-review-closed"),"Production styles cannot depend on prototype attributes");
 });

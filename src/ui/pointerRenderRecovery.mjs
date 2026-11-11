@@ -1,7 +1,7 @@
 // Preserve native mouse targeting across a late viewport shift, and recover
 // removed controls only through the same still-authorized action on release.
 export function createPointerRenderRecovery({resolveTarget, resolveRenderTarget = () => null,
-  preservePosition = () => {}, moveTolerance = 12}) {
+  preservePosition = () => {}, moveTolerance = 12, allowClampedAnchor = false}) {
   let active = null;
   let completed = false;
   const releaseNativeCapture = press => {
@@ -67,8 +67,15 @@ export function createPointerRenderRecovery({resolveTarget, resolveRenderTarget 
       preservePosition(box.top - anchor.top);
       active.anchorTarget = target;
       if (Math.abs(target.getBoundingClientRect().top - anchor.top) > 1) {
-        active.cancelled = true; // A clamped scroll must never redirect the press.
-        return false;
+        // Read-only sharing may reach the document's fractional scroll limit.
+        // Keep that best position only while the original point still resolves
+        // to this exact, unchanged action within the normal movement bound.
+        // Financial actions retain the default one-pixel cancellation rule.
+        if (!allowClampedAnchor || Math.abs(target.getBoundingClientRect().top - anchor.top) > moveTolerance ||
+            resolveTarget(active.context, {clientX: active.x, clientY: active.y}) !== target) {
+          active.cancelled = true;
+          return false;
+        }
       }
       return true;
     },

@@ -61,7 +61,7 @@ test('secondary and contextless presses do not recover an action', () => {
 });
 
 function anchorHarness() {
-  let allowed=true,clamped=false;
+  let allowed=true,clamped=false,minTop=-Infinity;
   const offsets=[],context={};
   const button=(top=50)=>({isConnected:true,top,left:20,width:90,height:44,clicks:0,
     getBoundingClientRect(){return{left:this.left,top:this.top,right:this.left+this.width,bottom:this.top+this.height,width:this.width,height:this.height};},
@@ -69,11 +69,11 @@ function anchorHarness() {
   let current=button();
   const gesture=createPointerRenderRecovery({resolveTarget:()=>allowed?current:null,
     resolveRenderTarget:scope=>allowed&&scope===context?current:null,
-    preservePosition:offset=>{offsets.push(offset);if(!clamped)current.top-=offset;}});
+    preservePosition:offset=>{offsets.push(offset);if(!clamped)current.top=Math.max(minTop,current.top-offset);}});
   gesture.start(pointer(),current,context);
   return{gesture,offsets,button:()=>current,
     replace(top=200){current.isConnected=false;current=button(top);return current;},
-    revoke(){allowed=false;},clamp(){clamped=true;}};
+    revoke(){allowed=false;},clamp(){clamped=true;},clampAt(top){minTop=top;}};
 }
 test('a valid render preserves the pressed visual anchor before release, including repeated renders',()=>{
   const h=anchorHarness(),first=h.gesture.captureRenderAnchor();h.replace();
@@ -97,6 +97,11 @@ test('a user scroll that moves the press outside its button does not acquire an 
 });
 test('a clamped scroll cancels recovery even if the semantic target still matches',()=>{
  const h=anchorHarness(),anchor=h.gesture.captureRenderAnchor();h.replace();h.clamp();
+ assert.equal(h.gesture.restoreRenderAnchor(anchor),false);
+ assert.equal(h.gesture.finish(pointer()),false);assert.equal(h.button().clicks,0);
+});
+test('the default financial anchor still cancels even a small fractional clamp',()=>{
+ const h=anchorHarness(),anchor=h.gesture.captureRenderAnchor();h.replace();h.clampAt(51.7);
  assert.equal(h.gesture.restoreRenderAnchor(anchor),false);
  assert.equal(h.gesture.finish(pointer()),false);assert.equal(h.button().clicks,0);
 });

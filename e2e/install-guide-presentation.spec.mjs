@@ -84,15 +84,27 @@ test("installation description remains readable when dialog motion ends during r
   })).toBe(true);
 });
 
-test("installation description rejects text covered by a persistent overlay",async({page})=>{
+for(const moving of [false,true])test("installation description rejects text covered by a persistent overlay"+(moving?" during dialog motion":""),async({page})=>{
   await page.setViewportSize({width:393,height:852});await open(page,true,16);
   const description=page.locator(".install-app-description");
-  await description.evaluate(e=>{
-    const rect=e.getBoundingClientRect(),blocker=document.createElement("div");
-    blocker.style.cssText=`position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;z-index:2147483647;pointer-events:auto`;
+  await description.evaluate((e,moving)=>{
+    if(moving){
+      const dialog=e.closest('.install-app-dialog'),distance=e.getBoundingClientRect().height+24;
+      const animation=dialog.animate([{transform:`translateY(${distance}px)`},{transform:'none'}],{duration:1000,fill:'both'});
+      animation.pause();animation.currentTime=0;
+      const descriptor=Object.getOwnPropertyDescriptor(Element.prototype,'scrollTop');
+      Object.defineProperty(dialog,'scrollTop',{configurable:true,get(){return descriptor.get.call(this)},set(value){descriptor.set.call(this,value);animation.finish();}});
+      window.__installBlockerMotion=animation;
+    }
+    const blocker=document.createElement("div");
+    // A persistent occluder must still cover the text after row inspection
+    // scrolls or moves its dialog. A saved text rectangle cannot ensure that.
+    blocker.style.cssText='position:fixed;inset:0;z-index:2147483647;pointer-events:auto';
     blocker.dataset.installReadabilityBlocker="";document.body.append(blocker);
-  });
+  },moving);
+  expect(await description.evaluate(e=>{const r=e.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.hasAttribute('data-install-readability-blocker')})).toBe(true);
   await expect(readable(description)).rejects.toThrow();
+  if(moving)expect(await page.evaluate(()=>window.__installBlockerMotion.playState)).toBe('finished');
   expect(await description.evaluate(e=>{
     const rect=e.getBoundingClientRect(),hit=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);
     return hit?.hasAttribute("data-install-readability-blocker");
