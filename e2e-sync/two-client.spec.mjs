@@ -1204,6 +1204,14 @@ for (const author of [0,1]) {
       // the already-confirmed shared note.
       await expect(a.locator('[data-sync-account-summary]')).toBeVisible();
       expect(await a.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[author].id)).not.toBeNull();
+      // Home keeps account failures in a collapsed disclosure. Exercise its
+      // actual user action before retry; the receipt and no-republish checks
+      // below still decide whether recovery succeeded on both clients.
+      const pendingNotice=a.locator('[data-sync-account-summary] [data-sync-pending-notice]');
+      await expect(pendingNotice).not.toHaveAttribute('open','');
+      await expect(a.locator('[data-sync-account-summary] [data-sync-retry]')).toBeHidden();
+      await pendingNotice.locator(':scope > summary').click();
+      await expect(pendingNotice).toHaveAttribute('open','');
       await a.locator('[data-sync-account-summary] [data-sync-retry]').click();
       await expect.poll(()=>a.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[author].id)).toBe(null);
       expect(f.writes.filter(w=>w.client===author)).toHaveLength(writesBeforeRestart);
