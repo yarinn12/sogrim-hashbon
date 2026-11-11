@@ -104,6 +104,9 @@ const firefoxNavigationReadiness = "e2e-parity/firefox-navigation-readiness.spec
 
 export default defineConfig({
   ...base,
+  // Balance independent cases rather than whole files across the same sixteen
+  // shards. Each shard still has one worker; explicit serial suites stay serial.
+  fullyParallel: true,
   testDir: ".",
   outputDir: process.env.CROSS_PLATFORM_OUTPUT_DIR || "./test-results-cross-platform",
   webServer: {

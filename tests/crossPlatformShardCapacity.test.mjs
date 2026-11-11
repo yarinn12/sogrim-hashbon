@@ -30,6 +30,7 @@ test("cross-platform capacity partitions all cases into sixteen bounded single-w
     assert.doesNotMatch(block, /--workers|--retries|--project|--grep|--test-match/i);
   }
   assert.match(baseConfig, /workers: 1/);
+  assert.match(crossConfig, /fullyParallel: true/);
   assert.match(baseConfig, /retries: process\.env\.CI \? 1 : 0/);
   assert.match(baseConfig, /failOnFlakyTests: Boolean\(process\.env\.CI\)/);
   assert.match(crossConfig, /APP_LOCAL_STATE_FILE: `\.qa-cross-platform-\$\{process\.env\.PW_QA_PORT/);

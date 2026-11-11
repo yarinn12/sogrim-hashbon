@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import {PATHS,PRIORITIES,prepareMirrorPriorities,main} from '../scripts/qa/prepare-playwright-apt-mirrors.mjs';
 
 const ROUTE='mirror+file:'+PATHS.mirrors;
@@ -20,6 +20,20 @@ function snapshot(){
    [PATHS.sources+'/microsoft-prod.list']:Buffer.from('deb [arch=amd64] https://packages.microsoft.com/ubuntu/24.04/prod noble main\n')}};
 }
 const hosted={GITHUB_ACTIONS:'true',RUNNER_OS:'Linux',RUNNER_ARCH:'X64',RUNNER_ENVIRONMENT:'github-hosted'};
+test('strict noble mirror preparation never runs on the mutable ubuntu-latest image',()=>{
+ const root=new URL('../.github/workflows/',import.meta.url);let prepared=0;
+ for(const name of readdirSync(root).filter(name=>name.endsWith('.yml'))){
+  const workflow=readFileSync(new URL(name,root),'utf8');
+  const jobs=[...workflow.matchAll(/^  ([a-z][a-z0-9-]*):\r?$/gm)];
+  for(let i=0;i<jobs.length;i++){
+   const body=workflow.slice(jobs[i].index,jobs[i+1]?.index??workflow.length);
+   if(!body.includes('prepare-playwright-apt-mirrors.mjs --github-hosted-ubuntu24'))continue;
+   prepared++;
+   assert.match(body,/^    runs-on: ubuntu-24\.04\r?$/m,`${name}:${jobs[i][1]} must use the supported noble image`);
+  }
+ }
+ assert.ok(prepared>=9,'Every browser preparation lane must remain covered');
+});
 function directSecuritySnapshot(uri){
  const s=snapshot();
  s.ubuntu=Buffer.from('# unchanged Ubuntu source\n'+stanza('noble noble-updates noble-backports')+'\n\n'+stanza('noble-security').replace('URIs: '+ROUTE,'URIs: '+uri)+'\n');
