@@ -103,7 +103,9 @@ test('sync feedback event review keeps queue and opens correct event',async({pag
  expect(await readPending()).toEqual(expected);
  const review=summary.locator('[data-action="open-event"][data-event-id="friend-weekend"]');
  await expect(review).toHaveAttribute('aria-label','פתיחת האירוע סוף השבוע בצפון לבדיקת העדכון הממתין');
- await review.scrollIntoViewIfNeeded();
+ // A viewport-visible row can still be behind the fixed enlarged navigation.
+ // Ordinary centering exposes it before the unchanged hit and click checks.
+ await review.evaluate(element=>element.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}));
  const hit=await review.evaluate(element=>{const rect=element.getBoundingClientRect(),target=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);return{width:rect.width,height:rect.height,ownsHit:!!target&&(target===element||element.contains(target))}});
  expect(hit.width).toBeGreaterThanOrEqual(44);expect(hit.height).toBeGreaterThanOrEqual(44);expect(hit.ownsHit).toBe(true);
  await page.screenshot({path:info.outputPath('pending-event-review.png')});
