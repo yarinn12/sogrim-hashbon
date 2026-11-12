@@ -287,13 +287,6 @@ def validate(out: Path, source_sha: str) -> None:
             assert record["metrics"][field]["bounds"]["bottom"] <= layout["footer"]["top"] + 1
             assert record["metrics"]["next"]["bounds"]["top"] >= layout["footer"]["top"] - 1
             assert record["metrics"]["next"]["bounds"]["bottom"] <= layout["footer"]["bottom"] + 1
-            for key in [field, "next"]:
-                bounds = record["metrics"][key]["bounds"]
-                assert bounds["top"] >= viewport["visualTop"] - 1
-                assert bounds["bottom"] <= viewport["visualTop"] + viewport["visualHeight"] + 1
-                mapped = record["metrics"][key]["nativeBounds"]
-                assert mapped["top"] >= record["native"]["statusBarFrame"]["y"] + record["native"]["statusBarFrame"]["height"] - 1
-                assert mapped["bottom"] <= record["native"]["keyboardFrame"]["y"] + 1
             frame, offset, scroll = record["native"]["scrollViewFrame"], record["native"]["nativeContentOffset"], record["documentScroll"]
             # WebKit can report offsetTop as the same focus scroll already in
             # scrollY. pageTop is the document-space visual origin; adding
@@ -317,6 +310,16 @@ def validate(out: Path, source_sha: str) -> None:
                                    and math.isclose(visual_page_top, scroll["y"], abs_tol=1))
             assert standard_origin or native_focus_scroll, (
                 mode, phase, "inconsistent visual viewport origin")
+            # DOM bounds are client coordinates. pageTop is a document
+            # coordinate; subtract the already captured document scroll once.
+            visual_client_top = visual_page_top - scroll["y"]
+            for key in [field, "next"]:
+                bounds = record["metrics"][key]["bounds"]
+                assert bounds["top"] >= visual_client_top - 1
+                assert bounds["bottom"] <= visual_client_top + viewport["visualHeight"] + 1
+                mapped = record["metrics"][key]["nativeBounds"]
+                assert mapped["top"] >= record["native"]["statusBarFrame"]["y"] + record["native"]["statusBarFrame"]["height"] - 1
+                assert mapped["bottom"] <= record["native"]["keyboardFrame"]["y"] + 1
             visual_bottom = frame["y"] + visual_page_top - offset["y"] + viewport["visualHeight"]
             assert math.isclose(visual_bottom, record["native"]["keyboardFrame"]["y"], abs_tol=1), (
                 mode, phase, "visual viewport/native keyboard mismatch", visual_bottom,

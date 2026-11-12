@@ -1,6 +1,6 @@
 {
-  "source": "abcbac91e97230e4737e80c4ea3c2206360e855f",
-  "reason": "Existing source-declared iOS/iPad/touch-only cases on unsupported browser profiles; no test or condition changed.",
+  "source": "0250290da45813a17fb188518dfcb89b461a7562",
+  "reason": "Existing source-declared iOS/iPad/touch-only cases on unsupported browser profiles; includes the two original keyboard-scroll-intent touch guards. No test, scope condition, deadline or assertion changed.",
   "projects": {
     "android-mobile": [
       {
@@ -151,6 +151,16 @@
         "id": "d867c06bbc87b45fb343-0adf57d78b77655d0e8f",
         "file": "restaurant-keyboard-presentation.spec.mjs",
         "title": "restaurant keyboard preserves the visible viewport and Next at root 32"
+      },
+      {
+        "id": "0865b70856d5378c98db-07c9597a99a6e4c49215",
+        "file": "keyboard-scroll-intent.spec.mjs",
+        "title": "a newer scroll to Next survives an older layout correction at root 16"
+      },
+      {
+        "id": "0865b70856d5378c98db-6fa32820b975fe96ed3d",
+        "file": "keyboard-scroll-intent.spec.mjs",
+        "title": "a newer scroll to Next survives an older layout correction at root 32"
       }
     ]
   }

@@ -285,6 +285,19 @@ class AcceptanceTests(unittest.TestCase):
     def test_scrolled_name_matches_native_keyboard(self):
         self.scrolled_name()
         self.accept()
+    def test_captured_ax_focus_scroll_keeps_visible_client_field(self):
+        observed = json.loads((Path(__file__).parents[3] / "tests/fixtures/ios-focus-client-origin-qa519.json").read_text(encoding="utf8"))
+        record = self.record("keyboard-name")
+        for key in ["viewport", "documentScroll", "keyboardLayout"]:
+            record[key] = deepcopy(observed[key])
+        record["native"].update(deepcopy(observed["native"]))
+        for key in ["name", "next"]:
+            record["metrics"][key].update(deepcopy(observed["metrics"][key]))
+        # The original name is above offsetTop yet fully visible in UIKit:
+        # pageTop and scrollY already contain that same focus scroll.
+        self.assertLess(record["metrics"]["name"]["bounds"]["top"], record["viewport"]["visualTop"])
+        self.assertGreater(record["metrics"]["name"]["nativeBounds"]["top"], record["native"]["statusBarFrame"]["height"])
+        self.accept()
     def test_scrolled_name_with_recorded_page_top_matches_native_keyboard(self):
         self.scrolled_name()["viewport"]["visualPageTop"] = 196
         self.accept()
