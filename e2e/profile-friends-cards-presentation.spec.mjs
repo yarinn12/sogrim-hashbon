@@ -38,7 +38,10 @@ async function open(page,view,{width=393,height=852,root=16,system=false,unbroke
  return page.locator(view==='avatar'?'.profile-avatar-picker-shell':view==='friends-empty'?'.friends-search-empty':'.event-list');
 }
 async function wholeTitleWords(page){
- const words=await page.locator('.event-row-title strong').evaluateAll(es=>es.flatMap(e=>{const n=e.firstChild,all=[];for(const m of n.textContent.matchAll(/[\u0590-\u05ff]+/g)){const r=document.createRange();r.setStart(n,m.index);r.setEnd(n,m.index+m[0].length);all.push({word:m[0],lines:[...r.getClientRects()].filter(x=>x.width).length})}return all}));
+ // Resolve and measure in the same browser task. A product render between
+ // selector resolution and evaluateAll would otherwise leave detached handles.
+ const words=await page.evaluate(()=>Array.from(document.querySelectorAll('.event-row-title strong')).flatMap(e=>{const n=e.firstChild,all=[];for(const m of n.textContent.matchAll(/[\u0590-\u05ff]+/g)){const r=document.createRange();r.setStart(n,m.index);r.setEnd(n,m.index+m[0].length);all.push({word:m[0],lines:[...r.getClientRects()].filter(x=>x.width).length})}return all}));
+ expect(words.length).toBeGreaterThan(0);
  for(const word of words)expect(word.lines,word.word).toBe(1);
 }
 for(const size of [{width:393,height:852,root:16},{width:320,height:852,root:32},{width:568,height:360,root:32},{width:320,height:852,root:32,system:true}])test(`three approved areas reflow ${size.width}x${size.height} root${size.root}${size.system?' system startup':''}`,async({page})=>{
@@ -60,7 +63,21 @@ test('[regression] profile source labels grow with system text before opening',a
  for(const size of await page.locator('.profile-avatar-source-copy strong').evaluateAll(es=>es.map(e=>parseFloat(getComputedStyle(e).fontSize))))expect(size).toBeGreaterThanOrEqual(28);
 });
 test('[regression] long event names retain whole Hebrew words at enlarged text',async({page})=>{
- await open(page,'long-cards',{width:320,height:852,root:32});await wholeTitleWords(page);
+ await open(page,'long-cards',{width:320,height:852,root:32});const before=await records(page);let replacements=0;
+ // evalOnSelectorAll resolves an element array, then evaluates against it in a
+ // second protocol call. Recreate a render in that gap using real DOM nodes.
+ const changingPage={
+  locator(selector){return{async evaluateAll(callback){
+   const result=await page.evaluate(({selector,callback})=>{const prior=[...document.querySelectorAll(selector)];for(const title of prior)title.replaceWith(title.cloneNode(true));return{connected:prior.map(e=>e.isConnected),words:(0,eval)('('+callback+')')(prior)};},{selector,callback:callback.toString()});
+   expect(result.connected).toEqual([false,false,false]);replacements++;return result.words;
+  }};},
+  async evaluate(callback){
+   const connected=await page.evaluate(()=>{const prior=[...document.querySelectorAll('.event-row-title strong')];for(const title of prior)title.replaceWith(title.cloneNode(true));return prior.map(e=>e.isConnected);});
+   expect(connected).toEqual([false,false,false]);replacements++;return page.evaluate(callback);
+  }
+ };
+ await wholeTitleWords(changingPage);expect(replacements).toBe(1);
+ await wholeTitleWords(page);expect(await records(page)).toEqual(before);
 });
 test('[regression] no-result search has a reset that restores the roster and focus',async({page})=>{
  await open(page,'friends-empty',{width:320,height:852,root:32});const before=await records(page);
