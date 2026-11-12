@@ -1,0 +1,39 @@
+name: Read original Auth92 result without launching an app
+
+on:
+  push:
+    branches: [codex/auth92-original-xcresult-20261112]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.event_name == 'push' && github.ref == 'refs/heads/codex/auth92-original-xcresult-20261112' }}
+    runs-on: macos-26-intel
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify immutable original evidence and read it with xcresulttool
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/qa/native-auth-session/inspect-auth92-original.py
+      - name: Retain filtered inspection results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: auth92-original-inspection
+          path: |
+            original-inspection/*.json
+            original-inspection/*.stdout
+            original-inspection/*.stderr
+            original-inspection/export-attachments/**/*.png
+            original-inspection/export-attachments/**/manifest.json
+            original-inspection/export-diagnostics/**/*.log
+            original-inspection/export-diagnostics/**/*.txt
+          if-no-files-found: error
+          retention-days: 7
