@@ -7,25 +7,26 @@ export function bounds() {
   return { top, bottom: nav.top };
 }
 export async function control(locator) {
-  await locator.evaluate((e, src) => {
-    const band = (() => {
+  // Filling or validating a field may finish restoring focus after the first
+  // scroll. Prepare and measure inside the existing bounded poll, so a stale
+  // preparation cannot strand an otherwise reachable control below navigation.
+  await expect.poll(() => locator.evaluate(async (e, src) => {
+    const band = () => {
       const top = Math.max(0, ...[...document.querySelectorAll("body *")].filter((e2) => {
         const s = getComputedStyle(e2), r2 = e2.getBoundingClientRect();
         return ["fixed", "sticky"].includes(s.position) && r2.top <= 24 && r2.bottom > 0 && r2.bottom < innerHeight / 2 && r2.width > innerWidth / 2;
       }).map((e2) => e2.getBoundingClientRect().bottom)), nav = document.querySelector(".product-app-nav").getBoundingClientRect();
       return { top, bottom: nav.top };
-    })(), r = e.getBoundingClientRect();
-    scrollTo({ top: scrollY + r.y + r.height / 2 - (band.top + band.bottom) / 2, behavior: "instant" });
-  }, bounds.toString());
-  await expect.poll(() => locator.evaluate((e, src) => {
-    const b = (() => {
-      const top = Math.max(0, ...[...document.querySelectorAll("body *")].filter((e2) => {
-        const s = getComputedStyle(e2), r2 = e2.getBoundingClientRect();
-        return ["fixed", "sticky"].includes(s.position) && r2.top <= 24 && r2.bottom > 0 && r2.bottom < innerHeight / 2 && r2.width > innerWidth / 2;
-      }).map((e2) => e2.getBoundingClientRect().bottom)), nav = document.querySelector(".product-app-nav").getBoundingClientRect();
-      return { top, bottom: nav.top };
-    })(), r = e.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2, hit = document.elementFromPoint(x, y);
-    return r.width >= 44 && r.height >= 44 && y - 22 >= b.top - 1 && y + 22 <= b.bottom + 1 && !!hit && (e === hit || e.contains(hit));
+    };
+    const initial = e.getBoundingClientRect(), visible = band();
+    scrollTo({ top: scrollY + initial.y + initial.height / 2 - (visible.top + visible.bottom) / 2, behavior: "instant" });
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const first = e.getBoundingClientRect();
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const b = band(), r = e.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2, hit = document.elementFromPoint(x, y);
+    return Math.abs(first.x - r.x) < 0.1 && Math.abs(first.y - r.y) < 0.1 &&
+      Math.abs(first.width - r.width) < 0.1 && Math.abs(first.height - r.height) < 0.1 &&
+      r.width >= 44 && r.height >= 44 && y - 22 >= b.top - 1 && y + 22 <= b.bottom + 1 && !!hit && (e === hit || e.contains(hit));
   }, bounds.toString())).toBe(true);
 }
 export async function click(locator) {
