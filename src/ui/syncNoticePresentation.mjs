@@ -61,8 +61,61 @@ export function createSyncNoticePresentation({ document = globalThis.document, r
 }
 
 const pendingSummaryNodes = new WeakMap();
+const pendingSummaryInteractions = new WeakMap();
+function pendingSummaryInteraction(document) {
+  if (typeof document.addEventListener !== "function") return null;
+  let interaction = pendingSummaryInteractions.get(document);
+  if (interaction) return interaction;
+  const pointers = new Set(), deferred = new Map();
+  let settling = false, scheduled = false;
+  const schedule = document.defaultView?.setTimeout?.bind(document.defaultView) || globalThis.setTimeout;
+  const settle = () => {
+    settling = true;
+    if (scheduled) return;
+    scheduled = true;
+    // Native mouseup/click activation must finish before new copy can reflow
+    // the pressed control. Keep only the latest presentation for each notice.
+    schedule(() => {
+      scheduled = false;
+      if (pointers.size) return;
+      settling = false;
+      const updates = [...deferred];
+      deferred.clear();
+      for (const [target, render] of updates) if (target.isConnected) render();
+    }, 0);
+  };
+  const release = event => {
+    if (pointers.delete(event.pointerId ?? "pointer")) settle();
+  };
+  const cancel = () => {
+    if (!pointers.size && !deferred.size) return;
+    pointers.clear();
+    settle();
+  };
+  document.addEventListener("pointerdown", event => {
+    if (event.button != null && event.button !== 0) return;
+    pointers.add(event.pointerId ?? "pointer");
+  }, true);
+  document.addEventListener("pointerup", release, true);
+  document.addEventListener("pointercancel", release, true);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") cancel();
+  }, true);
+  document.defaultView?.addEventListener?.("blur", cancel);
+  interaction = { active: () => pointers.size > 0 || settling, defer: (target, render) => deferred.set(target, render) };
+  pendingSummaryInteractions.set(document, interaction);
+  return interaction;
+}
 export function renderPendingSyncSummary(target, message, { pendingEventIds = [], failureDetails = {}, document = target.ownerDocument } = {}) {
   const ids = Array.isArray(pendingEventIds) ? [...new Set(pendingEventIds)] : [];
+  const interaction = pendingSummaryInteraction(document);
+  if (interaction?.active()) {
+    const captured = { ...failureDetails, eventFailures: Array.isArray(failureDetails.eventFailures)
+      ? failureDetails.eventFailures.map(item => item && typeof item === "object" ? { ...item } : item)
+      : failureDetails.eventFailures };
+    interaction.defer(target, () => renderPendingSyncSummary(target, message, { pendingEventIds: ids, failureDetails: captured, document }));
+    return;
+  }
   let supplied = [];
   try {
     const parsed = JSON.parse(target.dataset.syncAccountEvents || "[]");

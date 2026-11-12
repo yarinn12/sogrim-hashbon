@@ -17,14 +17,17 @@ class Node {
   scrollIntoView() { this.scrolled++; }
 }
 function harness() {
-  const frames=[],document={createElement(){return new Node(document);},createTextNode(textContent){return{textContent}},querySelectorAll(){return[]}};
+  const frames=[],tasks=[],listeners=new Map(),windowListeners=new Map(),document={createElement(){return new Node(document);},createTextNode(textContent){return{textContent}},querySelectorAll(){return[]},visibilityState:'visible'};
+  const listen=(map,type,callback)=>{if(!map.has(type))map.set(type,[]);map.get(type).push(callback);};
+  document.addEventListener=(type,callback)=>listen(listeners,type,callback);
+  document.defaultView={setTimeout(callback){tasks.push(callback);return tasks.length;},addEventListener:(type,callback)=>listen(windowListeners,type,callback)};
   const app=new Node(document),screen=new Node(document),header=new Node(document);screen.append(header);
   screen.querySelector=selector=>selector===':scope > .top'?header:null;
   app.querySelector=selector=>selector===':scope > .screen'?screen:null;
   document.body=new Node(document);
   document.querySelector=selector=>selector==='#app'?app:document.body.children.find(node=>node.dataset.syncStatus!==undefined)||screen.children.find(node=>node.dataset.syncStatus!==undefined)||null;
   const view=createSyncNoticePresentation({document,requestFrame:cb=>frames.push(cb)});
-  return{document,app,screen,view,frames,flush(){while(frames.length)frames.shift()()}};
+  return{document,app,screen,view,frames,flush(){while(frames.length)frames.shift()()},flushTasks(){while(tasks.length)tasks.shift()()},dispatch(type,event={}){for(const callback of listeners.get(type)||[])callback(event);},dispatchWindow(type,event={}){for(const callback of windowListeners.get(type)||[])callback(event);}};
 }
 test('sync notice is a polite independently owned live region with source close and escaped text',()=>{
  const h=harness(),node=h.view.render({status:'offline',message:'<img onerror="bad"> & שגיאה'});
@@ -162,4 +165,47 @@ test('pending review refreshes names in place and removes stale actions when des
 
 test('sync presentation has no data or server dependency and ships in both offline inventories',()=>{
  const source=readFileSync('src/ui/syncNoticePresentation.mjs','utf8');assert.doesNotMatch(source,/from ["'][^"']*(?:data|domain|server)\//);assert.equal(readFileSync('sw.js','utf8').split('"/src/ui/syncNoticePresentation.mjs"').length-1,2);
+});
+
+function gestureSummary(){return summary([{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'},{id:'b',failureKind:'permission'}]});}
+const explanation=h=>descendants(h.target).find(n=>n.className==='sync-pending-explanation');
+const changedReceipt=h=>({...h.options,failureDetails:{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'},{id:'b',failureKind:'rejected'}]}});
+
+test('a receipt keeps the pressed summary stationary until native activation has completed',()=>{
+ const h=gestureSummary(),copy=explanation(h),before=copy.textContent,details=descendants(h.target).find(n=>n.dataset?.syncEventDetails!==undefined);
+ h.dispatch('pointerdown',{pointerId:1,button:0});renderPendingSyncSummary(h.target,'פרטי הכשל החדשים',changedReceipt(h));
+ assert.equal(copy.textContent,before,'reflow must not happen between pointerdown and pointerup');
+ h.dispatch('pointerup',{pointerId:1});assert.equal(copy.textContent,before,'mouseup/click still owns the old geometry');
+ details.open=true;h.flushTasks();assert.match(copy.textContent,/פרטי הכשל החדשים/);assert.equal(details.open,true);
+});
+test('only the newest receipt is displayed after a gesture and caller mutations do not change it',()=>{
+ const h=gestureSummary(),copy=explanation(h),before=copy.textContent;
+ h.dispatch('pointerdown',{pointerId:1,button:0});renderPendingSyncSummary(h.target,'תשובה מוקדמת',changedReceipt(h));
+ const latest=changedReceipt(h);renderPendingSyncSummary(h.target,'התשובה האחרונה',latest);
+ latest.pendingEventIds.length=0;latest.failureDetails.eventFailures[1].failureKind='permission';
+ assert.equal(copy.textContent,before);h.dispatch('pointerup',{pointerId:1});h.flushTasks();
+ assert.match(copy.textContent,/התשובה האחרונה/);assert.doesNotMatch(copy.textContent,/תשובה מוקדמת/);
+ assert.deepEqual(descendants(h.target).filter(n=>n.dataset?.action==='open-event').map(n=>n.dataset.eventId),['a','b']);
+});
+test('overlapping pointers and a new press before the queued task cannot release a receipt early',()=>{
+ const h=gestureSummary(),copy=explanation(h),before=copy.textContent;
+ h.dispatch('pointerdown',{pointerId:1,button:0});h.dispatch('pointerdown',{pointerId:2,button:0});renderPendingSyncSummary(h.target,'הודעה שממתינה למחווה',changedReceipt(h));
+ h.dispatch('pointerup',{pointerId:1});h.flushTasks();assert.equal(copy.textContent,before);
+ h.dispatch('pointerup',{pointerId:2});h.dispatch('pointerdown',{pointerId:3,button:0});h.flushTasks();assert.equal(copy.textContent,before);
+ h.dispatch('pointerup',{pointerId:3});h.flushTasks();assert.match(copy.textContent,/מחווה/);
+});
+test('pointer cancellation, window blur and a hidden document release the pending presentation',()=>{
+ for(const release of [h=>h.dispatch('pointercancel',{pointerId:1}),h=>h.dispatchWindow('blur'),h=>{h.document.visibilityState='hidden';h.dispatch('visibilitychange');}]){
+  const h=gestureSummary(),copy=explanation(h),before=copy.textContent;h.dispatch('pointerdown',{pointerId:1,button:0});
+  renderPendingSyncSummary(h.target,'תשובה אחרי ביטול',changedReceipt(h));assert.equal(copy.textContent,before);
+  release(h);h.flushTasks();assert.match(copy.textContent,/אחרי ביטול/);
+ }
+});
+test('a removed notice is never repainted by a stale gesture callback',()=>{
+ const h=gestureSummary(),copy=explanation(h),before=copy.textContent;h.dispatch('pointerdown',{pointerId:1,button:0});
+ renderPendingSyncSummary(h.target,'תשובה ליעד ישן',changedReceipt(h));assert.equal(copy.textContent,before);
+ h.target.isConnected=false;h.dispatch('pointerup',{pointerId:1});h.flushTasks();assert.equal(copy.textContent,before);
+ const fresh=new Node(h.document);fresh.dataset.syncAccountEvents=h.target.dataset.syncAccountEvents;
+ renderPendingSyncSummary(fresh,'תשובה למסך חדש',{...changedReceipt(h),document:h.document});
+ assert.match(descendants(fresh).find(n=>n.className==='sync-pending-explanation').textContent,/למסך חדש/);
 });
