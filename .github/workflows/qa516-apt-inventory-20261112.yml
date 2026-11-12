@@ -1,0 +1,42 @@
+name: QA516 read-only hosted APT inventory
+
+on:
+  push:
+    branches: [codex/qa516-apt-inventory-20261112]
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.event_name == 'push' && github.ref == 'refs/heads/codex/qa516-apt-inventory-20261112' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2]
+    steps:
+      - name: Read only the public Ubuntu archive configuration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, platform, stat
+          assert platform.system() == 'Linux' and platform.machine() == 'x86_64'
+          for key, value in {'GITHUB_ACTIONS':'true', 'RUNNER_OS':'Linux', 'RUNNER_ARCH':'X64', 'RUNNER_ENVIRONMENT':'github-hosted'}.items():
+              assert os.environ.get(key) == value, key
+          files = []
+          for path in ['/etc/os-release', '/etc/apt/sources.list.d/ubuntu.sources', '/etc/apt/apt-mirrors.txt']:
+              # os-release is commonly an image-owned symlink; the APT inputs must be regular.
+              if path == '/etc/os-release':
+                  with open(path, 'rb') as stream:
+                      raw = stream.read(65537)
+              else:
+                  with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as stream:
+                      info = os.fstat(stream.fileno())
+                      assert stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022
+                      raw = stream.read(65537)
+              assert 0 < len(raw) <= 65536, path
+              files.append({'path':path, 'bytes':len(raw), 'sha256':hashlib.sha256(raw).hexdigest(), 'base64':base64.b64encode(raw).decode('ascii')})
+          print(json.dumps({'scope':'READ_ONLY_PUBLIC_HOSTED_UBUNTU_APT_CONFIGURATION', 'imageVersion':os.environ.get('ImageVersion'), 'imageOS':os.environ.get('ImageOS'), 'files':files, 'checkout':False, 'writes':False, 'aptExecuted':False, 'privateCredentialsRead':False}))
+          PY
