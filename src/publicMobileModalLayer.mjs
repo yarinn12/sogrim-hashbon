@@ -647,10 +647,10 @@ function setupKeyboardViewport() {
     }
     if (keyboardOpen && modal) {
       // A scroll made after this frame was scheduled is newer than its layout
-      // measurement. Let the user read the title until another editing or
-      // viewport action explicitly asks to reveal the focused field again.
+      // measurement. Let the user read the title or reach the actions in either
+      // direction until a newer editing/viewport action asks to reveal the field.
       if (pendingScroll?.modal === modal
-        && modal.scrollTop < pendingScroll.top - 1) {
+        && Math.abs(modal.scrollTop - pendingScroll.top) > 1) {
         userScrollModal = modal;
         userScrollSequence = ++intentSequence;
       }

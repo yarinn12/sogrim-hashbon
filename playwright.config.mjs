@@ -58,7 +58,7 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: `node server.mjs ${port}`,
+    command: `node scripts/qa/serve-browser-qa.mjs ${port}`,
     url: `${baseURL}/api/health`,
     reuseExistingServer: false,
     timeout: 30_000,
