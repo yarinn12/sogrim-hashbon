@@ -62,10 +62,17 @@ jobs:
           source build/probe/simulator.env
           # Finish Xcode runtime scanning/cache generation before guest boot.
           xcrun simctl runtime dyld_shared_cache update --all > build/probe/runtime-cache-preparation.log 2>&1
-          xcrun simctl boot "$PROBE_UDID"
-          xcrun simctl bootstatus "$PROBE_UDID" -b
+          # Compile before guest boot so the simulator and compiler do not
+          # compete for the standard runner's memory. Keep a clean guest for
+          # the actual system-session return and persisted-account assertions.
           set -o pipefail
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$PROBE_UDID" -derivedDataPath build/probe/derived build-for-testing CODE_SIGNING_ALLOWED=NO | tee build/probe/build.log
+          xcrun simctl shutdown "$PROBE_UDID" || true
+          state="$(xcrun simctl list devices -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["state"] for a in d["devices"].values() for x in a if x["udid"]==sys.argv[1]))' "$PROBE_UDID")"
+          test "$state" = Shutdown
+          xcrun simctl erase "$PROBE_UDID"
+          xcrun simctl boot "$PROBE_UDID"
+          xcrun simctl bootstatus "$PROBE_UDID" -b
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -destination "platform=iOS Simulator,id=$PROBE_UDID" -derivedDataPath build/probe/derived -resultBundlePath build/probe/result.xcresult test-without-building CODE_SIGNING_ALLOWED=NO | tee build/probe/test.log
           grep -q PROBE_HTTP_REDIRECT build/probe/server.log
           xcrun simctl io "$PROBE_UDID" screenshot build/probe/simulator.png

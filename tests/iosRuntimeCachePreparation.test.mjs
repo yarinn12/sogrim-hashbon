@@ -23,17 +23,20 @@ function scriptFromWorkflow({file,step}) {
 // Run the actual preparation step with synthetic tool processes. A failed
 // cache operation must stop GitHub's `bash -e` before any boot/build/test.
 // No Apple executable, simulator, app, network request or provider key is used.
-function executePreparation(workflow,cacheExit) {
+function executePreparation(workflow,cacheExit,options={}) {
   const base=realpathSync(tmpdir());
   const cwd=mkdtempSync(join(base,'ios-cache-'));
   try {
     mkdirSync(join(cwd,'bin'));mkdirSync(join(cwd,'build/native-parity'),{recursive:true});
-    writeFileSync(join(cwd,'calls.log'),'');writeFileSync(join(cwd,'state.txt'),'Booted\n');
+    writeFileSync(join(cwd,'calls.log'),'');writeFileSync(join(cwd,'state.txt'),options.coldBuild?'Shutdown\n':'Booted\n');
     const stubs={
       xcrun:`#!/bin/bash
 printf '%s\\n' "xcrun $*" >> "$CASE_CALLS"
 if [[ "$*" == 'simctl runtime dyld_shared_cache update --all' ]]; then exit "$CACHE_EXIT"; fi
-if [[ "$1 $2" == 'simctl shutdown' || "$1 $2" == 'simctl erase' ]]; then printf 'Shutdown\\n' > "$CASE_STATE"; fi
+if [[ "$1 $2" == 'simctl shutdown' ]]; then
+  if [[ "$SHUTDOWN_STUCK" != '1' ]]; then printf 'Shutdown\\n' > "$CASE_STATE"; fi
+fi
+if [[ "$1 $2" == 'simctl erase' ]]; then printf 'Shutdown\\n' > "$CASE_STATE"; fi
 if [[ "$1 $2" == 'simctl boot' ]]; then printf 'Booted\\n' > "$CASE_STATE"; fi
 if [[ "$1 $2" == 'simctl list' ]]; then printf '{}\\n'; fi
 `,
@@ -43,6 +46,14 @@ if [[ "$1" == '-c' ]]; then cat "$CASE_STATE"; else printf 'PROBE_UDID=00000000-
 `,
       xcodebuild:`#!/bin/bash
 printf '%s\\n' "xcodebuild $*" >> "$CASE_CALLS"
+if [[ "$COLD_BUILD" == '1' && "$*" == *'build-for-testing'* ]]; then
+  if [[ "$(cat "$CASE_STATE")" != 'Shutdown' ]]; then
+    printf 'Compilation overlapped a running simulator\\n' >&2; exit 73
+  fi
+  # Some Xcode preparation can start a guest. The real step must shut it down
+  # and erase only its owned device before the measured authentication test.
+  printf 'Booted\\n' > "$CASE_STATE"
+fi
 `,
       node:`#!/bin/bash
 printf 'PROBE_HTTP_READY\\nPROBE_HTTP_REDIRECT\\n'
@@ -52,7 +63,7 @@ printf 'PROBE_HTTP_READY\\nPROBE_HTTP_REDIRECT\\n'
     const script=`export CASE_CALLS="$PWD/calls.log" CASE_STATE="$PWD/state.txt" PROBE_FIXTURES="$PWD/fixtures" GITHUB_WORKSPACE="$PWD"\nexport PATH="$PWD/bin:$PATH"\n`+scriptFromWorkflow(workflow);
     writeFileSync(join(cwd,'setup.sh'),script);
     const env=Object.fromEntries(['PATH','SystemRoot','WINDIR','COMSPEC','TEMP','TMP','TMPDIR','HOME','USERPROFILE'].filter(k=>process.env[k]).map(k=>[k,process.env[k]]));
-    Object.assign(env,{CACHE_EXIT:String(cacheExit),SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD:'1'});
+    Object.assign(env,{CACHE_EXIT:String(cacheExit),COLD_BUILD:options.coldBuild?'1':'0',SHUTDOWN_STUCK:options.shutdownStuck?'1':'0',SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD:'1'});
     const r=spawnSync(bash,['--noprofile','--norc','-e','setup.sh'],{cwd,env,encoding:'utf8',windowsHide:true,timeout:30_000});
     assert.ifError(r.error);assert.equal(r.signal,null);
     return {status:r.status,stderr:r.stderr,calls:readFileSync(join(cwd,'calls.log'),'utf8').trim().split(/\r?\n/).filter(Boolean)};
@@ -63,6 +74,27 @@ printf 'PROBE_HTTP_READY\\nPROBE_HTTP_REDIRECT\\n'
     rmSync(cwd,{recursive:true,force:true});
   }
 }
+
+test('AuthReturn compiles without a running guest, then shuts down, verifies, erases and boots the owned simulator before XCTest',()=>{
+  const r=executePreparation(workflows[0],0,{coldBuild:true});
+  assert.equal(r.status,0,r.stderr);
+  const build=r.calls.findIndex(line=>line.startsWith('xcodebuild ')&&line.includes('build-for-testing'));
+  const shutdown=r.calls.indexOf('xcrun simctl shutdown 00000000-0000-4000-8000-000000000001');
+  const erase=r.calls.indexOf('xcrun simctl erase 00000000-0000-4000-8000-000000000001');
+  const boot=r.calls.indexOf('xcrun simctl boot 00000000-0000-4000-8000-000000000001');
+  const ready=r.calls.indexOf('xcrun simctl bootstatus 00000000-0000-4000-8000-000000000001 -b');
+  const run=r.calls.findIndex(line=>line.startsWith('xcodebuild ')&&line.includes('test-without-building'));
+  assert.ok(build>=0&&shutdown>build&&erase>shutdown&&boot>erase&&ready>boot&&run>ready,JSON.stringify(r.calls));
+  assert.equal(r.calls.filter(line=>line.startsWith('xcodebuild ')&&line.includes('build-for-testing')).length,1);
+  assert.equal(r.calls.filter(line=>line.startsWith('xcodebuild ')&&line.includes('test-without-building')).length,1);
+});
+
+test('AuthReturn refuses to erase or test when its owned simulator did not shut down after compilation',()=>{
+  const r=executePreparation(workflows[0],0,{coldBuild:true,shutdownStuck:true});
+  assert.notEqual(r.status,0);
+  assert.ok(r.calls.some(line=>line.startsWith('xcrun simctl shutdown ')));
+  assert.ok(!r.calls.some(line=>line.startsWith('xcrun simctl erase ')||line.startsWith('xcrun simctl boot ')||line.includes('test-without-building')));
+});
 
 for(const workflow of workflows) {
   test(workflow.file+': complete cache preparation once before the simulator boots',()=>{
