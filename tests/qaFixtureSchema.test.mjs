@@ -12,6 +12,7 @@ async function emittedState(file, title, runBeforeEach = true) {
   Object.assign(register, { beforeEach(callback) { hooks.push(callback); }, afterEach() {}, use() {} });
   const capture = async value => { captured = JSON.parse(JSON.stringify(value)); throw sentinel; };
   const context = createContext({ test: register, expect() { throw new Error('UI reached before schema check'); }, structuredClone, calculateSettlement,
+    requireHeldHomeReadiness() {},
     resetLocalQaStateFresh: async () => {}, writeLocalQaStateFresh: (_origin, value) => capture(value) });
   const text = readFileSync(new URL('../e2e/'+file, import.meta.url), 'utf8');
   runInContext(text.replace(/^import .*;\r?\n/gm, ''), context, { filename: file });
@@ -23,19 +24,63 @@ async function emittedState(file, title, runBeforeEach = true) {
   return captured;
 }
 
-for (const [file, title, runBeforeEach] of [
+for (const [file, title, runBeforeEach, expectsContacts = true] of [
   ['account-upgrades-ui.spec.mjs', null],
   ['account-upgrades-ui.spec.mjs', 'shared notes and bottom participant action remain visible'],
   ['home-event-options.spec.mjs', null],
   ['new-event-friend-visibility.spec.mjs', null],
   // This case augments the seed inside its body. Inspect that actual write,
   // rather than stopping on the empty friend list emitted by beforeEach.
-  ['mobile-layout.spec.mjs', 'adding a saved friend requires an explicit confirmation and keeps the picker on-brand', false]
+  ['mobile-layout.spec.mjs', 'adding a saved friend requires an explicit confirmation and keeps the picker on-brand', false],
+  ['home-responsive.spec.mjs', 'an old event joined today appears first on home', false, false]
 ]) test(`actual ${file} ${title || 'initial setup'} is accepted by the unchanged server schema`, async () => {
   const value = await emittedState(file, title, runBeforeEach);
   assert.doesNotThrow(() => assertValidSharedStatePayload(value));
-  assert.ok(value.friendContacts.length > 0);
+  if (expectsContacts) assert.ok(value.friendContacts.length > 0);
   assert.equal(new Set(value.friendContacts.map(contact => contact.id)).size, value.friendContacts.length);
+  if (file === 'home-responsive.spec.mjs') {
+    assert.equal(value.events.length, 2);
+    assert.notEqual(value.events[1].createdByParticipantId, value.currentParticipantId,
+      'the event must still belong to somebody else when the current account joins');
+    assert.equal(value.events[1].membershipUpdatedAtByParticipant[value.currentParticipantId], '2026-08-29T12:00:00.000Z');
+  }
+});
+
+test('explicit event creators belong to the member lists in fresh-server seed fixtures', () => {
+  const missing = []; let examined = 0;
+  for (const directory of ['e2e', 'e2e-parity']) {
+    const root = new URL('../' + directory + '/', import.meta.url);
+    for (const name of readdirSync(root, { recursive: true }).filter(name => name.endsWith('.spec.mjs'))) {
+      const file = directory + '/' + name.replaceAll('\\', '/');
+      const source = ts.createSourceFile(file, readFileSync(new URL(name.replaceAll('\\', '/'), root), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+      let writesFreshServerSeed = false;
+      function findSeedWriter(node) {
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) &&
+            ['writeLocalQaStateFresh', 'prepareMobileLayoutFixture'].includes(node.expression.text)) writesFreshServerSeed = true;
+        ts.forEachChild(node, findSeedWriter);
+      }
+      findSeedWriter(source);
+      // Intentionally stale browser-only caches are different from a canonical
+      // fixture submitted to the server; retain their recovery test scenarios.
+      if (!writesFreshServerSeed) continue;
+      const key = node => node.getText(source).replaceAll(/['"]/g, '');
+      function visit(node) {
+        if (ts.isObjectLiteralExpression(node)) {
+          const properties = Object.fromEntries(node.properties.filter(ts.isPropertyAssignment).map(property => [key(property.name), property.initializer]));
+          const creator = properties.createdByParticipantId, members = properties.participantIds;
+          const simple = value => ts.isStringLiteral(value) || ts.isIdentifier(value);
+          if (creator && members && ts.isArrayLiteralExpression(members) && simple(creator) && members.elements.every(simple)) {
+            examined++;
+            if (!members.elements.map(key).includes(key(creator))) missing.push(file + ':' + (source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1));
+          }
+        }
+        ts.forEachChild(node, visit);
+      }
+      visit(source);
+    }
+  }
+  assert.ok(examined > 0, 'fresh-server event fixtures must be inspected');
+  assert.deepEqual(missing, [], 'explicit fixture event creators must be event members');
 });
 
 test('inline friend contacts across every browser fixture include their required record identity', () => {

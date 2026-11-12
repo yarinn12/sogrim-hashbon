@@ -55,7 +55,7 @@ const newlyJoinedOldEvent = {
   name: "אירוע ישן שהצטרפתי אליו עכשיו",
   eventType: "standard",
   currency: "ILS",
-  participantIds: [OWNER_ID],
+  participantIds: [OWNER_ID, "another-account"],
   adminIds: [],
   createdByParticipantId: "another-account",
   createdAt: "2024-07-03T08:00:00.000Z",
@@ -268,6 +268,11 @@ test("hero-edge action respects large text and inline feedback", async ({ page }
 async function assertRecentlyJoinedOldEventAppearsFirst(page, fixtureBaseURL) {
   const syncedState = {
     ...populatedAccountState,
+    participants: [...populatedAccountState.participants, {
+      id: newlyJoinedOldEvent.createdByParticipantId,
+      displayName: "יוצר האירוע",
+      kind: "user"
+    }],
     events: [...populatedAccountState.events, newlyJoinedOldEvent]
   };
   await writeLocalQaStateFresh(fixtureBaseURL, syncedState);
