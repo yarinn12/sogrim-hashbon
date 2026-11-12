@@ -351,6 +351,7 @@ test("adding a saved friend requires an explicit confirmation and keeps the pick
   augmentedState.participants.push(availableFriend);
   augmentedState.friendContacts = [
     {
+      id: "fixture-contact-noa-mobile-layout",
       participantId: AVAILABLE_FRIEND_ID,
       active: true,
       source: "account",
