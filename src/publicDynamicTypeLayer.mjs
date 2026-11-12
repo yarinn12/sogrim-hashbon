@@ -114,6 +114,7 @@ export function watchAppleDynamicType(root = globalThis.document?.documentElemen
     view.requestAnimationFrame(() => {
       pending = false;
       refreshDynamicType(root);
+      refreshDynamicTypeControls(root);
     });
   });
   observer.observe(probe);
@@ -1525,8 +1526,9 @@ export function refreshDynamicTypeControls(root = globalThis.document?.documentE
   return { stacked, navCount: navs.length };
 }
 
-function watchDynamicTypeControls(root = document.documentElement) {
-  const view = root.ownerDocument.defaultView;
+export function watchDynamicTypeControls(root = document.documentElement) {
+  const document = root.ownerDocument;
+  const view = document.defaultView;
   const observed = new Set();
   let pending = false;
   const schedule = () => {
@@ -1543,13 +1545,21 @@ function watchDynamicTypeControls(root = document.documentElement) {
     });
   };
   const observer = view.ResizeObserver ? new view.ResizeObserver(schedule) : null;
-  document.addEventListener("settle-friends:screen-rendered", schedule);
-  document.addEventListener("settle-friends:accessibility-preferences-changed", schedule);
-  view.addEventListener("resize", schedule);
-  view.addEventListener("pageshow", schedule);
-  document.fonts?.ready?.then(schedule);
-  document.fonts?.addEventListener?.("loadingdone", schedule);
-  schedule();
+  // Render and typography events must resolve visible glyph overflow before
+  // returning, even when an observation frame is already pending. Keep writes
+  // originating in ResizeObserver deferred to avoid its delivery-cycle loop.
+  const refreshAndSchedule = () => {
+    refreshDynamicTypeControls(root);
+    schedule();
+  };
+  document.addEventListener("settle-friends:screen-rendered", refreshAndSchedule);
+  document.addEventListener("settle-friends:primary-navigation-rendered", refreshAndSchedule);
+  document.addEventListener("settle-friends:accessibility-preferences-changed", refreshAndSchedule);
+  view.addEventListener("resize", refreshAndSchedule);
+  view.addEventListener("pageshow", refreshAndSchedule);
+  document.fonts?.ready?.then(refreshAndSchedule);
+  document.fonts?.addEventListener?.("loadingdone", refreshAndSchedule);
+  refreshAndSchedule();
 }
 
 
@@ -1567,10 +1577,13 @@ function initializeDynamicType() {
 }
 
 function refreshAccessibleText() {
-  if (globalThis.Capacitor?.getPlatform?.() === "android") {
-    return refreshAndroidDynamicType().catch(() => refreshDynamicType());
-  }
-  return Promise.resolve(refreshDynamicType());
+  const refreshed = globalThis.Capacitor?.getPlatform?.() === "android"
+    ? refreshAndroidDynamicType().catch(() => refreshDynamicType())
+    : Promise.resolve(refreshDynamicType());
+  return refreshed.then(level => {
+    refreshDynamicTypeControls();
+    return level;
+  });
 }
 
 if (typeof document !== "undefined") {

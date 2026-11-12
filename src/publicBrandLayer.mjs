@@ -207,6 +207,7 @@ function syncHeaderNavState() {
     nav?.remove();
     return;
   }
+  const navigationAdded = !nav;
   if (!nav) {
     identity.insertAdjacentHTML("beforeend", renderHeaderNav());
     nav = identity.querySelector(":scope > .product-app-nav");
@@ -217,6 +218,9 @@ function syncHeaderNavState() {
 
   syncNotificationNavBadge(nav);
   setPrimaryNavigationActiveDestination(nav, activeDestination);
+  // Branding may add the navigation after the screen-rendered listeners ran.
+  // Let typography fit its actual labels before this new bar can be painted.
+  if (navigationAdded) document.dispatchEvent(new CustomEvent("settle-friends:primary-navigation-rendered"));
 }
 
 function syncIdentityRouteControls(screen, identity) {
