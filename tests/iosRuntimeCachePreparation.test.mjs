@@ -42,9 +42,12 @@ if [[ "$1 $2" == 'simctl erase' ]]; then printf 'Shutdown\\n' > "$CASE_STATE"; f
 if [[ "$1 $2" == 'simctl boot' ]]; then printf 'Booted\\n' > "$CASE_STATE"; fi
 if [[ "$1 $2" == 'simctl bootstatus' ]]; then
   if [[ "$BOOT_STATUS_EXIT" != '0' ]]; then exit "$BOOT_STATUS_EXIT"; fi
-  owner="$3"; if [[ "$BOOT_TRANSCRIPT" == foreign ]]; then owner=00000000-0000-4000-8000-000000000002; fi
+  owner="$3"; if [[ "$BOOT_TRANSCRIPT" == foreign || "$BOOT_TRANSCRIPT" == already-booted-foreign ]]; then owner=00000000-0000-4000-8000-000000000002; fi
   printf 'Monitoring boot status for Synthetic native probe (%s).\\n' "$owner"
-  if [[ "$BOOT_TRANSCRIPT" == migration-failed ]]; then printf 'Status=3, isTerminal=YES, Elapsed=14:48.\\n\\tData Migration Failed\\n';
+  if [[ "$BOOT_TRANSCRIPT" == already-booted || "$BOOT_TRANSCRIPT" == already-booted-foreign ]]; then printf 'Device already booted, nothing to do.\\n';
+  elif [[ "$BOOT_TRANSCRIPT" == already-booted-failed ]]; then printf 'Status=3, isTerminal=YES, Elapsed=00:05.\\n\\tData Migration Failed\\nDevice already booted, nothing to do.\\n';
+  elif [[ "$BOOT_TRANSCRIPT" == already-booted-incomplete ]]; then printf 'Status=2, isTerminal=NO, Elapsed=00:05.\\nDevice already booted, nothing to do.\\n';
+  elif [[ "$BOOT_TRANSCRIPT" == migration-failed ]]; then printf 'Status=3, isTerminal=YES, Elapsed=14:48.\\n\\tData Migration Failed\\n';
   elif [[ "$BOOT_TRANSCRIPT" == incomplete ]]; then printf 'Status=2, isTerminal=NO, Elapsed=00:05.\\n\\tWaiting on Data Migration\\n';
   else printf 'Status=4294967295, isTerminal=YES, Elapsed=00:05.\\n\\tFinished\\n'; fi
 fi
@@ -108,7 +111,12 @@ test('AuthReturn refuses to erase or test when its owned simulator did not shut 
 });
 
 for(const workflow of workflows) {
-  for(const bootTranscript of ['migration-failed','incomplete','foreign'])test(workflow.file+': zero-exit '+bootTranscript+' boot status blocks native measurement',()=>{
+  test(workflow.file+': exact owned-device already-booted success permits native measurement',()=>{
+    const r=executePreparation(workflow,0,{bootTranscript:'already-booted'});assert.equal(r.status,0,r.stderr);
+    assert.ok(r.calls.some(line=>line.startsWith('xcrun simctl bootstatus ')));
+    if(workflow.file==='ios-auth-return-qa.yml')assert.ok(r.calls.some(line=>line.includes('test-without-building')));
+  });
+  for(const bootTranscript of ['migration-failed','incomplete','foreign','already-booted-foreign','already-booted-failed','already-booted-incomplete'])test(workflow.file+': zero-exit '+bootTranscript+' boot status blocks native measurement',()=>{
     const r=executePreparation(workflow,0,{bootTranscript});assert.notEqual(r.status,0,r.stderr);
     assert.ok(r.calls.some(line=>line.startsWith('xcrun simctl bootstatus ')));
     assert.ok(!r.calls.some(line=>line.includes('test-without-building')));

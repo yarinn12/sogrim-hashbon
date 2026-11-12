@@ -14,16 +14,21 @@ export function verifyBootTranscript(bytes,udid){
  assert.equal(headers.length,1,'Expected one owned simulator boot monitor');
  assert(headers[0].endsWith(' ('+udid+').'),'Boot transcript belongs to another simulator');
  assert(!/Data Migration Failed/i.test(text),'Simulator data migration failed before native measurement');
- const states=[...text.matchAll(/\bStatus=(\d+), isTerminal=(YES|NO),/g)].map(m=>({status:m[1],terminal:m[2]}));
- assert(states.length>0,'Missing simulator boot states');
- assert(states.every(s=>['1','2','4','4294967295'].includes(s.status)),'Unknown or failed simulator boot state');
- const terminals=states.filter(s=>s.terminal==='YES');
- assert.equal(terminals.length,1,'Missing or duplicate terminal simulator boot state');
- assert.equal(states.at(-1),terminals[0],'Simulator boot continued after its terminal state');
- // This is the actual successful final marker retained from Auth91. Status 4
- // is still nonterminal (system-app preparation); it is not a success marker.
- assert.equal(terminals[0].status,'4294967295','Simulator boot did not finish');
- assert.equal(lines.at(-1),'Finished','Truncated or unfinished simulator boot transcript');
+ // QA518 observed the other successful CLI form: boot completed before the
+ // monitor attached. Accept only this exact two-line, same-device response.
+ // A failed, partial or contradictory transcript still follows the full gate.
+ const alreadyBooted=lines.length===2&&lines[1]==='Device already booted, nothing to do.';
+ if(!alreadyBooted){
+  const states=[...text.matchAll(/\bStatus=(\d+), isTerminal=(YES|NO),/g)].map(m=>({status:m[1],terminal:m[2]}));
+  assert(states.length>0,'Missing simulator boot states');
+  assert(states.every(s=>['1','2','4','4294967295'].includes(s.status)),'Unknown or failed simulator boot state');
+  const terminals=states.filter(s=>s.terminal==='YES');
+  assert.equal(terminals.length,1,'Missing or duplicate terminal simulator boot state');
+  assert.equal(states.at(-1),terminals[0],'Simulator boot continued after its terminal state');
+  // Status 4 is still nonterminal; the original Auth91 final marker is -1.
+  assert.equal(terminals[0].status,'4294967295','Simulator boot did not finish');
+  assert.equal(lines.at(-1),'Finished','Truncated or unfinished simulator boot transcript');
+ }
  return{scope:'OWNED_IOS_SIMULATOR_BOOT_ONLY',ready:true,transcriptSha256:createHash('sha256').update(bytes).digest('hex'),transcriptBytes:bytes.length,nativeAuthenticationPassed:false};
 }
 
