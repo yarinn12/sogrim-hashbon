@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {PATHS,PRIORITIES,prepareMirrorPriorities,main} from '../scripts/qa/prepare-playwright-apt-mirrors.mjs';
 
 const ROUTE='mirror+file:'+PATHS.mirrors;
@@ -20,6 +21,25 @@ function snapshot(){
    [PATHS.sources+'/microsoft-prod.list']:Buffer.from('deb [arch=amd64] https://packages.microsoft.com/ubuntu/24.04/prod noble main\n')}};
 }
 const hosted={GITHUB_ACTIONS:'true',RUNNER_OS:'Linux',RUNNER_ARCH:'X64',RUNNER_ENVIRONMENT:'github-hosted'};
+
+for (const [label, line, expected] of [
+ ['known archive with unsupported protocol', 'https://azure.archive.ubuntu.com/ubuntu/\tpriority:1', {hostname:'azure.archive.ubuntu.com',protocol:'https:',separator:[9],priority:'1'}],
+ ['unexpected whitespace', AZURE+' priority:1', {hostname:'azure.archive.ubuntu.com',protocol:'http:',separator:[32],priority:'1'}],
+ ['credentialed URI', 'http://synthetic-user:synthetic-secret@azure.archive.ubuntu.com/ubuntu/?code=synthetic-code\tpriority:1', {hostname:'azure.archive.ubuntu.com',protocol:'http:',hasCredentials:true,hasQuery:true}],
+ ['foreign endpoint', 'https://private-synthetic.invalid/ubuntu/\tpriority:1', {hostname:'[unrecognized]',protocol:'https:'}]
+]) test('rejected mirror diagnostic reports bounded format facts without exposing URI credentials: '+label,()=>{
+ const s=snapshot();s.mirrors=Buffer.from(line+'\n'+ARCHIVE+'\tpriority:2\n'+SECURITY+'\tpriority:3\n');
+ let error;try{prepareMirrorPriorities(s);}catch(value){error=value;}
+ assert.ok(error,'Unknown input must remain rejected');
+ assert.match(error.message,/Unknown mirror URI, protocol, metadata or priority/);
+ const marker='mirrorDiagnostic=';assert.ok(error.message.includes(marker),'Preserve the rejected format facts for original-run diagnosis');
+ const facts=JSON.parse(error.message.slice(error.message.indexOf(marker)+marker.length));
+ assert.equal(facts.lineSha256,createHash('sha256').update(Buffer.from(line,'latin1')).digest('hex'));
+ assert.equal(facts.lineBytes,Buffer.byteLength(line,'latin1'));
+ for(const[key,value]of Object.entries(expected))assert.deepEqual(facts[key],value);
+ for(const value of ['synthetic-user','synthetic-secret','synthetic-code','private-synthetic.invalid'])assert.ok(!error.message.includes(value));
+ assert.ok(error.message.length<1200,'Diagnostic must remain bounded');
+});
 test('strict noble mirror preparation never runs on the mutable ubuntu-latest image',()=>{
  const root=new URL('../.github/workflows/',import.meta.url);let prepared=0;
  for(const name of readdirSync(root).filter(name=>name.endsWith('.yml'))){
