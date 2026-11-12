@@ -29,10 +29,17 @@ test("iOS measures its independent system body size and normalizes the UI before
   let probe;
   const classes = new Set();
   const styles = new Map();
+  const labels = [42, 72, 94, 75].map(width => ({ width }));
+  const navigation = {
+    clientWidth: 320,
+    getBoundingClientRect: () => ({ width: 320, height: classes.has('dynamic-type-nav-stacked') ? 160 : 82 }),
+    querySelectorAll: () => labels
+  };
   const view = {
     CSS: { supports: () => true },
     matchMedia: () => ({ matches: true }),
-    getComputedStyle: element => ({ fontSize: element === probe ? `${systemBodySize}px` : '16px' }),
+    getComputedStyle: element => ({ fontSize: element === probe ? `${systemBodySize}px` : '16px',
+      paddingLeft: '8px', paddingRight: '8px', columnGap: '2px' }),
     ResizeObserver: class {
       constructor(callback) { this.callback = callback; }
       observe(element) { assert.equal(element, probe); }
@@ -42,12 +49,19 @@ test("iOS measures its independent system body size and normalizes the UI before
   const document = {
     defaultView: view,
     getElementById: () => probe,
+    querySelectorAll: () => [navigation],
+    querySelector: () => null,
+    createRange() {
+      let element;
+      return { selectNodeContents: value => { element = value; }, getBoundingClientRect: () => ({ width: element.width }) };
+    },
     createElement: () => ({ style: {}, setAttribute() {} }),
     body: { append(element) { probe = element; } }
   };
   const root = {
     ownerDocument: document,
     classList: {
+      contains: name => classes.has(name),
       toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); },
       remove(...names) { names.forEach(name => classes.delete(name)); }
     },
@@ -87,6 +101,8 @@ test("iOS measures its independent system body size and normalizes the UI before
   frames.shift()();
   assert.equal(root.dataset.dynamicType, 'large');
   assert.ok(Math.abs(16 * Number(root.style.getPropertyValue('--apple-font-scale')) - 16 * 23 / 17) < 0.01);
+  assert.equal(classes.has('dynamic-type-nav-stacked'), true, 'the system font and actual navigation layout update in the same frame');
+  assert.equal(styles.get('--dynamic-type-measured-nav-block'), '160px');
 });
 
 test("Android font scale maps system accessibility sizes to the same reflow levels", () => {
