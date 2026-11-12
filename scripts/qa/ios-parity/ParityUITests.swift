@@ -1,7 +1,8 @@
 import XCTest
 
 final class ParityProbeUITests: XCTestCase {
-    func testNativeTypographyKeyboardSaveRotationAndRelaunch() throws {
+    @MainActor
+    func testNativeTypographyKeyboardSaveRotationAndRelaunch() async throws {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "com.sogrimhashbon.app")
         app.launch()
@@ -43,7 +44,7 @@ final class ParityProbeUITests: XCTestCase {
             systemScreenshot("failure-\(name)")
             XCTFail("Timed out: \(name). State: \(state())")
         }
-        func waitForNativeBackground(deadline: Date) -> Bool {
+        func waitForNativeBackground(deadline: Date) async -> Bool {
             let remaining = max(0, deadline.timeIntervalSinceNow)
             guard remaining > 0 else {
                 systemScreenshot("failure-native background")
@@ -51,11 +52,12 @@ final class ParityProbeUITests: XCTestCase {
                 return false
             }
             var lastOSState: String? = nil
-            // XCUIApplication.state is delivered asynchronously. XCTest must
-            // process its observer updates while Home completes; sleep polling
-            // can retain the stale foreground value until a later UI action.
-            // https://developer.apple.com/documentation/xcuiautomation/xcuiapplication/state-swift.property
+            // Apple guarantees main-actor predicate evaluation with async
+            // fulfillment. The previous synchronous waiter observed only the
+            // initial foreground value in QA519; its actor was not recorded.
+            // https://developer.apple.com/documentation/xctest/xctnspredicateexpectation
             let background = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                XCTAssertTrue(Thread.isMainThread, "Native lifecycle state must be observed on the main actor")
                 let osState = String(describing: app.state.rawValue)
                 if lastOSState != osState {
                     print("NATIVE_LIFECYCLE_OS_STATE: native background state=\(osState) remaining=\(deadline.timeIntervalSinceNow)")
@@ -63,10 +65,11 @@ final class ParityProbeUITests: XCTestCase {
                 }
                 return app.state == .runningBackground || app.state == .runningBackgroundSuspended
             }, object: nil)
-            let result = XCTWaiter.wait(for: [background], timeout: remaining)
-            guard result == .completed, Date() < deadline else {
+            await fulfillment(of: [background], timeout: remaining)
+            guard Date() < deadline,
+                  app.state == .runningBackground || app.state == .runningBackgroundSuspended else {
                 systemScreenshot("failure-native background")
-                XCTFail("Timed out: native background. Waiter: \(result), OS state \(app.state.rawValue)")
+                XCTFail("Timed out: native background. OS state \(app.state.rawValue)")
                 return false
             }
             return true
@@ -125,7 +128,7 @@ final class ParityProbeUITests: XCTestCase {
         let priorForegrounds = priorNative["foregrounds"] as? Int ?? 0
         let lifecycleDeadline = Date().addingTimeInterval(35)
         XCUIDevice.shared.press(.home)
-        guard waitForNativeBackground(deadline: lifecycleDeadline) else { return }
+        guard await waitForNativeBackground(deadline: lifecycleDeadline) else { return }
         app.activate()
         wait("native background and foreground", deadline: lifecycleDeadline) {
             guard app.state == .runningForeground else { return false }

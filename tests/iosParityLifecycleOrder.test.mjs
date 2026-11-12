@@ -9,6 +9,7 @@ const bridgeSource = await readFile(process.env.IOS_PARITY_BRIDGE_SOURCE ||
   new URL('../scripts/qa/ios-parity/ParityBridge.swift', import.meta.url), 'utf8');
 
 const backgroundFailure = JSON.parse(await readFile(new URL('./fixtures/ios-background-state-qa461.json',import.meta.url),'utf8'));
+const background519 = JSON.parse(await readFile(new URL('./fixtures/ios-background-state-qa519.json',import.meta.url),'utf8'));
 
 function planFromXCTest(swift) {
   const start = swift.indexOf('wait("acknowledged save"');
@@ -23,7 +24,7 @@ function planFromXCTest(swift) {
     .map(match => match[0].includes('press') ? 'home' : match[0].includes('activate') ? 'activate' :
       match[0].includes('and foreground') ? 'await-resume' : 'await-background');
   const backgroundDeadline = helper
-    ? /guard waitForNativeBackground\(deadline: lifecycleDeadline\) else \{ return \}/.test(path) &&
+    ? /guard (?:await )?waitForNativeBackground\(deadline: lifecycleDeadline\) else \{ return \}/.test(path) &&
       /let remaining = max\(0, deadline\.timeIntervalSinceNow\)/.test(helper)
     : /wait\("native background", deadline: lifecycleDeadline(?:, readWebState: false)?\)/.test(path);
   const sharedDeadline = /let end = deadline \?\? Date\(\)\.addingTimeInterval\(timeout\)/.test(swift) &&
@@ -31,7 +32,9 @@ function planFromXCTest(swift) {
     /wait\("native background and foreground", deadline: lifecycleDeadline\)/.test(path);
   return {
     actions, sharedDeadline, helper,
-    usesBackgroundWaiter: /XCTNSPredicateExpectation/.test(helper) && /XCTWaiter\.wait\(/.test(helper),
+    usesBackgroundWaiter: /XCTNSPredicateExpectation/.test(helper) &&
+      /await fulfillment\(of: \[background\], timeout: remaining\)/.test(helper) &&
+      /func waitForNativeBackground\(deadline: Date\) async -> Bool/.test(helper),
     observesBackground: /app\.state == \.runningBackground\b/.test(background),
     observesSuspendedBackground: /app\.state == \.runningBackgroundSuspended\b/.test(background),
     observesForeground: /app\.state == \.runningForeground/.test(path),
@@ -175,14 +178,17 @@ test('native resumed capture starts only after a new active callback', () => {
 });
 
 
-test('native background waiting processes asynchronous monitor delivery without AX or sleep polling',()=>{
+test('native background waiting uses main-actor predicate fulfillment without AX or sleep polling',()=>{
   const {helper} = planFromXCTest(source);
   assert.ok(helper,'the OS transition needs its own asynchronous expectation');
   assert.match(helper,/XCTNSPredicateExpectation/);
-  assert.match(helper,/XCTWaiter\.wait\(for: \[background\], timeout: remaining\)/);
+  assert.match(helper,/await fulfillment\(of: \[background\], timeout: remaining\)/);
+  assert.match(source,/@MainActor\s+func testNativeTypographyKeyboardSaveRotationAndRelaunch\(\) async throws/);
+  assert.match(helper,/XCTAssertTrue\(Thread\.isMainThread/);
   assert.doesNotMatch(helper,/Thread\.sleep|\bstate\(\)|staticTexts|status\./);
   assert.match(helper,/guard remaining > 0 else/);
-  assert.match(helper,/result == \.completed, Date\(\) < deadline/);
+  assert.match(helper,/guard Date\(\) < deadline/);
+  assert.doesNotMatch(helper,/XCTWaiter\.wait\(/);
 });
 
 test('QA461 queued background state arrives inside the original shared budget',()=>{
@@ -202,4 +208,21 @@ test('a queued suspended-background observation also reaches the single activati
   const result=runLifecycle(planFromXCTest(source),{asynchronousStateMonitor:true,homeState:'suspended',homeDelay:1});
   assert.equal(result.accepted,true,JSON.stringify(result));
   assert.equal(result.state,'foreground');
+});
+
+test('QA519 separates the observed stale predicate from the controlled actor-delivery case',()=>{
+  assert.equal(background519.source,'0c0353366a76d51099b4609944659b5872f1e75c');
+  assert.equal(background519.firstOSState,4);
+  assert.equal(background519.diagnosticOSState,3);
+  assert.equal(background519.predicateStateObservations,1);
+  assert.equal(background519.lastPhase,'saved');
+  assert.equal(background519.activationObserved,false);
+  assert.ok(background519.failureScreenshotAtSeconds-background519.homePressAtSeconds > 35);
+  assert.equal(background519.originalPredicateActorRecorded,false,
+    'the original run cannot establish which actor caused the stalled observation');
+  const plan=planFromXCTest(source), scenario={asynchronousStateMonitor:true,homeDelay:1};
+  const corrected=runLifecycle(plan,scenario);
+  assert.equal(corrected.accepted,true,JSON.stringify(corrected));
+  assert.equal(runLifecycle({...plan,usesBackgroundWaiter:false},scenario).accepted,false,
+    'a controlled observer that requires actor delivery must reject the synchronous path');
 });

@@ -1,0 +1,20 @@
+{
+  "source": "0c0353366a76d51099b4609944659b5872f1e75c",
+  "run": 43266574354,
+  "attempt": 1,
+  "job": 131352920324,
+  "artifact": 13968580599,
+  "artifactSize": 115496709,
+  "artifactSha256": "cd2251d7a9badd1bc8980ccab178aa9517ef9b1169761c6a9264fe94605d0c6d",
+  "category": "default",
+  "homePressAtSeconds": 96.39,
+  "firstOSState": 4,
+  "firstRemainingSeconds": 33.45432496070862,
+  "predicateStateObservations": 1,
+  "failureScreenshotAtSeconds": 138.55,
+  "diagnosticOSState": 3,
+  "lastPhase": "saved",
+  "activationObserved": false,
+  "originalPredicateActorRecorded": false,
+  "interpretation": "Exact original observations only. Actor-constrained delivery is a controlled regression model, not proof of the original timeout mechanism. Fresh full SDK/OS Native acceptance is required."
+}

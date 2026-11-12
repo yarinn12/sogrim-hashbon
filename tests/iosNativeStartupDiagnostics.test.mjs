@@ -86,8 +86,8 @@ test('a failed telemetry sink does not throw or publish readiness', () => {
 test('synthetic service and frozen native UI driver retain their exact content seals', () => {
   const baselines = {
     'synthetic-service.js': '0b9dce3a03526794b24063ff367370828fe1aa0594b3d5da4ae02467d7444bed',
-    // OS background waiting omits AX reads; action predicates and deadlines stay sealed.
-    'ParityUITests.swift': 'ed7d0bc029ab7f41202c7e827b930bafa5d3fd7f4420b4240b0d07dc5db35f37'
+    // QA519 uses main-actor async fulfillment; all action predicates and deadlines stay sealed.
+    'ParityUITests.swift': 'd32ebec6eeda462e1f5b83fb8dc2e6c56addec7c18a6fe8db824feab3fc5c6e4'
   };
   for (const [name, digest] of Object.entries(baselines)) {
     const source = readFileSync(new URL(name, dir), 'utf8');
