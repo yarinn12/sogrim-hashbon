@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 test.use({ serviceWorkers: "block" });
@@ -16,6 +18,7 @@ const state = {
     ...friends
   ],
   friendContacts: friends.map((friend) => ({
+    id: `visibility-contact-${friend.id}`,
     participantId: friend.id,
     active: true,
     source: "offline",
@@ -27,9 +30,9 @@ const state = {
   events: []
 };
 
-test("Hebrew ILS choice keeps the last selected friend visible and focused", async ({ page, request }, testInfo) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: state });
+test("Hebrew ILS choice keeps the last selected friend visible and focused", async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript(({ state, owner }) => {
     if (!localStorage.getItem("friend-visibility-seeded")) {
       localStorage.clear();

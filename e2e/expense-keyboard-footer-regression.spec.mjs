@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from '@playwright/test';
 import { openHeldRenderedHome, requireHeldHomeReadiness } from './helpers/heldHomeReadinessControl.mjs';
 
@@ -17,12 +19,12 @@ const state = {
 };
 
 for (const font of [16, 37.64706]) {
-  test(`focused expense name stays above the sticky footer after keyboard changes (${font}px)`, async ({ page, request }, testInfo) => {
+  test(`focused expense name stays above the sticky footer after keyboard changes (${font}px)`, async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
     // Browser boundary reproduction of the captured UIKit failure, not Native
     // acceptance: the layout viewport remains tall while visualViewport shrinks.
     await page.setViewportSize({ width: 393, height: 793 });
-    await request.post('/api/reset');
-    await request.put('/api/state', { data: state });
+    await resetLocalQaStateFresh(fixtureBaseURL);
+    await writeLocalQaStateFresh(fixtureBaseURL, state);
     await page.addInitScript(({ state, owner }) => {
       localStorage.clear(); sessionStorage.clear();
       localStorage.setItem('settle-friends-state', JSON.stringify(state));

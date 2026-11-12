@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
 
@@ -21,7 +23,7 @@ const emptyAccountState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }) => {
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
   runtimeIssues = [];
   page.on("pageerror", (error) => runtimeIssues.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
@@ -41,8 +43,8 @@ test.beforeEach(async ({ page, request }) => {
     }
   });
 
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: emptyAccountState });
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, emptyAccountState);
 
   await page.addInitScript(({ participantId, state }) => {
     localStorage.clear();

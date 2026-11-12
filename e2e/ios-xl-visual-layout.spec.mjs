@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from '@playwright/test';
 import { openRenderedHome } from './helpers/typographyReadiness.mjs';
 
@@ -23,10 +25,10 @@ const state = {
   }]
 };
 
-test.beforeEach(async ({ page, request }) => {
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
   await page.setViewportSize({ width: 393, height: 852 });
-  await request.post('/api/reset');
-  await request.put('/api/state', { data: state });
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript(({ state, owner }) => {
     localStorage.clear(); sessionStorage.clear();
     localStorage.setItem('settle-friends-state', JSON.stringify(state));

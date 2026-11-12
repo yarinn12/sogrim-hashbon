@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 const OWNER_ID = "person-home-options-owner";
@@ -11,7 +13,7 @@ const seededState = {
     { id: FRIEND_ID, displayName: "מאור כהן", kind: "user", avatarPreset: "avatar-2" }
   ],
   friendContacts: [
-    { participantId: FRIEND_ID, createdAt: "2026-08-27T08:00:00.000Z" }
+    { id: "contact-home-options-friend", participantId: FRIEND_ID, createdAt: "2026-08-27T08:00:00.000Z" }
   ],
   groups: [],
   events: [
@@ -35,9 +37,9 @@ const seededState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: seededState });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, seededState);
   await page.addInitScript(({ participantId, state }) => {
     localStorage.clear();
     sessionStorage.clear();

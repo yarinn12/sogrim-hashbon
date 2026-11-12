@@ -1,3 +1,5 @@
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
 import { expect, test } from '@playwright/test';
 import { openHeldRenderedHome, requireHeldHomeReadiness } from './helpers/heldHomeReadinessControl.mjs';
 
@@ -127,9 +129,9 @@ async function measure(page, mode, screen) {
   return value;
 }
 
-async function seed(page, request) {
-  await request.post('/api/reset');
-  await request.put('/api/state', { data: state });
+async function seed(page, fixtureBaseURL) {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript(({ state, owner }) => {
     if (!sessionStorage.getItem('spillover-seeded')) {
       localStorage.clear(); sessionStorage.clear();
@@ -157,9 +159,9 @@ async function openAtSize(page, mode) {
   }
 }
 
-test('rendered home, expenses, notes and profile text grow without clipping at 32 and AX-equivalent 37.647', async ({ page, request }, testInfo) => {
+test('rendered home, expenses, notes and profile text grow without clipping at 32 and AX-equivalent 37.647', async ({ page, request , baseURL: nestedFixtureBaseURL}, testInfo) => {
   test.setTimeout(150_000);
-  await seed(page, request);
+  await seed(page, nestedFixtureBaseURL);
 
   const samples = {};
   for (const mode of ['normal', '32', 'AX-active']) {
@@ -233,9 +235,9 @@ test('rendered home, expenses, notes and profile text grow without clipping at 3
   }
 });
 
-test('short Hebrew workspace tab words remain whole and inside their controls at 393 and 320', async ({ page, request }, testInfo) => {
+test('short Hebrew workspace tab words remain whole and inside their controls at 393 and 320', async ({ page, request , baseURL: nestedFixtureBaseURL}, testInfo) => {
   test.setTimeout(150_000);
-  await seed(page, request);
+  await seed(page, nestedFixtureBaseURL);
   const samples = [];
   for (const width of [393, 320]) {
     await page.setViewportSize({ width, height: 852 });

@@ -1,12 +1,14 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { test, expect } from "@playwright/test";
 import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
 requireHeldHomeReadiness(test);
 test.use({ serviceWorkers: "block" });
 const owner = "currency-country-owner", eventId = "currency-country-event";
 const state = { currentParticipantId: owner, participants: [{ id: owner, displayName: "בודק מטבע", kind: "user" }], friendContacts: [], groups: [], deletedEvents: [], deletedParticipants: [], events: [{ id: eventId, name: "בדיקת חיפוש מדינה", eventType: "outing", currency: "ILS", participantIds: [owner], adminIds: [owner], createdByParticipantId: owner, createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", expenses: [], transfers: [], notes: [], deletedNotes: [], activityLog: [] }] };
-test.beforeEach(async ({ page, request }, info) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: state });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}, info) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript((state2) => {
     localStorage.clear();
     sessionStorage.clear();

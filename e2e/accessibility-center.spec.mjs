@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 const OWNER_ID = "person-accessibility-owner";
@@ -19,9 +21,9 @@ const emptyState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }, testInfo) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: emptyState });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, emptyState);
   await page.addInitScript(({ participantId, state, skipProfileSeed }) => {
     if (
       !skipProfileSeed &&

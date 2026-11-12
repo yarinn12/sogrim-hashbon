@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
 
@@ -10,7 +12,7 @@ test.afterEach(async ({ page }) => {
   expect(runtimeErrors.get(page) ?? []).toEqual([]);
 });
 
-test.beforeEach(async ({ page, request }) => {
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
   const owner = "person-return-focus-owner", eventId = "event-return-focus";
   const state = {
     currentParticipantId: owner,
@@ -21,8 +23,8 @@ test.beforeEach(async ({ page, request }) => {
       createdAt: "2026-09-01T08:00:00.000Z", updatedAt: "2026-09-01T08:00:00.000Z",
       expenses: [], transfers: [], notes: [], activityLog: [] }]
   };
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: state });
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript(({ state, owner }) => {
     localStorage.clear(); sessionStorage.clear();
     localStorage.setItem("settle-friends-state", JSON.stringify(state));

@@ -1,3 +1,4 @@
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
 import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
@@ -19,7 +20,7 @@ test("validation feedback cannot redirect continued note typing into the wrong f
       expenses: [], transfers: [], notes: [], activityLog: [] }]
   };
   await resetLocalQaStateFresh(baseURL);
-  await request.put("/api/state", { data: state });
+  await writeLocalQaStateFresh(baseURL, state);
   await page.addInitScript(({ state, owner }) => {
     localStorage.clear(); sessionStorage.clear();
     localStorage.setItem("settle-friends-state", JSON.stringify(state));

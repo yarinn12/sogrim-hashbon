@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 test.use({ serviceWorkers: "block" });
@@ -19,11 +21,11 @@ for (const device of [
   { name: "large", width: 430, height: 932, visible: 480 },
   { name: "iPhone 16 accessibility XL equivalent", width: 393, height: 852, visible: 476, dynamicType: 37.64706 }
 ]) {
-  test(`expense remains editable above a keyboard that only shrinks the visual viewport (${device.name})`, async ({ page, request }, testInfo) => {
+  test(`expense remains editable above a keyboard that only shrinks the visual viewport (${device.name})`, async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
     test.skip(!testInfo.project.use.hasTouch, "a touch keyboard viewport regression");
     await page.setViewportSize({ width: device.width, height: device.height });
-    await request.post("/api/reset");
-    await request.put("/api/state", { data: state });
+    await resetLocalQaStateFresh(fixtureBaseURL);
+    await writeLocalQaStateFresh(fixtureBaseURL, state);
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
     await page.addInitScript(({ state, owner }) => {

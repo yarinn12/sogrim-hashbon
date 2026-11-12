@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 const owner = "account-upgrade-owner";
@@ -12,6 +14,7 @@ const state = {
   currentParticipantId: owner,
   participants: [{ id: owner, displayName: "יוצר האירוע", kind: "user", avatarPreset: "avatar-1" }, ...friends],
   friendContacts: friends.map((friend) => ({
+    id: `upgrade-contact-${friend.id}`,
     participantId: friend.id, active: true, source: "offline", updatedAt: "2026-10-01T08:00:00.000Z"
   })),
   groups: [], deletedEvents: [], deletedParticipants: [],
@@ -23,7 +26,7 @@ const state = {
   }]
 };
 
-test.beforeEach(async ({ page, request }, testInfo) => {
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
   const caseState=structuredClone(state);
   // This visibility journey requires a real note; other journeys keep their original empty fixture.
   if(testInfo.title === "shared notes and bottom participant action remain visible")caseState.events[0].notes=[{
@@ -34,8 +37,8 @@ test.beforeEach(async ({ page, request }, testInfo) => {
     }];
   runtimeErrors = [];
   page.on("pageerror", (error) => runtimeErrors.push(error.message));
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: caseState });
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, caseState);
   await page.addInitScript(({ state }) => {
     if (!localStorage.getItem("qa-upgrade-ui-seeded")) {
       localStorage.clear();

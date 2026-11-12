@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from '@playwright/test';
 import { openHeldRenderedHome, requireHeldHomeReadiness } from './helpers/heldHomeReadinessControl.mjs';
 
@@ -33,9 +35,9 @@ async function readGlyphs(page, selector) {
   }));
 }
 
-test('system text at startup grows real Home glyphs without clipping, collisions or hidden final rows', async ({ page, request }) => {
-  await request.post('/api/reset');
-  await request.put('/api/state', { data: state });
+test('system text at startup grows real Home glyphs without clipping, collisions or hidden final rows', async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript(({ state, owner }) => {
     localStorage.clear();
     sessionStorage.clear();

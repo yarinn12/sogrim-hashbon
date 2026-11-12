@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
 
@@ -15,9 +17,9 @@ const state = {
     createdAt: date, updatedAt: date, expenses: [], transfers: [], notes: [], deletedNotes: [], activityLog: [] }]
 };
 
-test.beforeEach(async ({ page, request }) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: state });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript(state => {
     localStorage.clear(); sessionStorage.clear();
     localStorage.setItem("settle-friends-state", JSON.stringify(state));

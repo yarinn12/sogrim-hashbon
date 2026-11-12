@@ -1,3 +1,5 @@
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
 import { expect, test } from '@playwright/test';
 import { calculateSettlement } from '../src/domain/settlement.mjs';
 import { openTypographyHome } from './helpers/typographyReadiness.mjs';
@@ -34,9 +36,9 @@ const state = {
     expenses, transfers, activityLog: [] }]
 };
 
-async function installTypographyFixture(page, request) {
-  await request.post('/api/reset');
-  await request.put('/api/state', { data: state });
+async function installTypographyFixture(page, fixtureBaseURL) {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript(({ ownerId, initialState }) => {
     localStorage.clear();
     sessionStorage.clear();
@@ -49,10 +51,10 @@ async function installTypographyFixture(page, request) {
   }, { ownerId: owner, initialState: state });
 }
 
-test('summary and header text grow with system text and leave long copy readable', async ({ page, request }, testInfo) => {
+test('summary and header text grow with system text and leave long copy readable', async ({ page, request , baseURL: nestedFixtureBaseURL}, testInfo) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await installTypographyFixture(page, request);
+  await installTypographyFixture(page, nestedFixtureBaseURL);
 
   await page.setViewportSize({ width: 393, height: 852 });
   await openTypographyHome(page);

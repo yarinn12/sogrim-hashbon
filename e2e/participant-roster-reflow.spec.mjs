@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
 import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
@@ -28,8 +30,8 @@ const state = {
 
 for (const orientation of ["portrait", "landscape"]) {
   test(`a long event title leaves the entire participant roster reachable in ${orientation}`, async ({ page, request, browserName, baseURL }, testInfo) => {
-    await request.post("/api/reset");
-    await request.put("/api/state", { data: state });
+    await resetLocalQaStateFresh(baseURL);
+    await writeLocalQaStateFresh(baseURL, state);
     await page.addInitScript(({ state, ownerId }) => {
       localStorage.clear(); sessionStorage.clear();
       localStorage.setItem("settle-friends-state", JSON.stringify(state));

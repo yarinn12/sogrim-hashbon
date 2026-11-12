@@ -1,9 +1,11 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 test.use({ serviceWorkers: "block" });
 
 for (const expenseCount of [49, 50]) {
-  test(`every expense menu action remains reachable with ${expenseCount} expenses`, async ({ page, request }, testInfo) => {
+  test(`every expense menu action remains reachable with ${expenseCount} expenses`, async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
     const owner = "person-ledger-audit";
     const eventId = "event-ledger-audit";
     const state = {
@@ -19,8 +21,8 @@ for (const expenseCount of [49, 50]) {
           createdByParticipantId: owner, occurredOn: "2026-09-09", updatedAt: "2026-09-09T00:00:00.000Z"
         })) }]
     };
-    await request.post("/api/reset");
-    await request.put("/api/state", { data: state });
+    await resetLocalQaStateFresh(fixtureBaseURL);
+    await writeLocalQaStateFresh(fixtureBaseURL, state);
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
     await page.addInitScript(({ state, owner }) => {

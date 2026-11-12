@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { resetLocalQaState } from "./helpers/resetLocalQaState.mjs";
 
@@ -128,7 +130,7 @@ test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
       : seededState;
 
   await resetLocalQaState(request, baseURL);
-  await request.put("/api/state", { data: stateForTest });
+  await writeLocalQaStateFresh(baseURL, stateForTest);
   await page.addInitScript(({ participantId, state }) => {
     localStorage.clear();
     sessionStorage.clear();

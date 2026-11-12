@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
 import { convertExpenseInput, FX_LEGACY_ECB_SOURCE } from "../src/domain/expenseFx.mjs";
@@ -7,13 +9,13 @@ const owner="fx-presentation-owner",eventId="fx-presentation-event";
 const initial={currentParticipantId:owner,participants:[{id:owner,displayName:"משתמש בדיקה",kind:"user"}],friendContacts:[],groups:[],deletedEvents:[],deletedParticipants:[],events:[{id:eventId,name:"אירוע בדיקה",eventType:"outing",currency:"ILS",participantIds:[owner],adminIds:[owner],createdByParticipantId:owner,createdAt:"2026-10-11T00:00:00Z",updatedAt:"2026-10-11T00:00:00Z",expenses:[],transfers:[],notes:[],deletedNotes:[],activityLog:[]}]};
 function response(){const last=Math.floor(Date.now()/1000)-3600;return {result:"success",provider:"https://www.exchangerate-api.com",base_code:"USD",time_last_update_unix:last,time_next_update_unix:last+86400,time_eol_unix:0,rates:{USD:1,ILS:3.5}};}
 
-test.beforeEach(async({page,request},info)=>{
+test.beforeEach(async({page,request, baseURL: fixtureBaseURL},info)=>{
  const state=structuredClone(initial);
  if(info.title.startsWith("legacy quote")){
   const now=new Date().toISOString();const converted=convertExpenseInput({sourceCurrency:"USD",targetCurrency:"ILS",sourceAmount:"10",sourcePayers:[{participantId:owner,amount:"10"}],rate:"3.5",mode:"automatic",rateSource:FX_LEGACY_ECB_SOURCE,sourceDate:now.slice(0,10),fetchedAt:now});
   state.events[0].expenses=[{id:"legacy-fx",name:"הוצאה קודמת",...converted,sharedByParticipantIds:[owner],createdByParticipantId:owner,occurredOn:now.slice(0,10),updatedAt:now}];
  }
- await request.post('/api/reset');await request.put('/api/state',{data:state});
+ await resetLocalQaStateFresh(fixtureBaseURL);await writeLocalQaStateFresh(fixtureBaseURL, state);
  await page.addInitScript(state=>{localStorage.clear();sessionStorage.clear();localStorage.setItem('settle-friends-state',JSON.stringify(state));localStorage.setItem('settle-friends-current-participant',state.currentParticipantId);localStorage.setItem('settle-friends-local-profile',JSON.stringify({participantId:state.currentParticipantId,displayName:'משתמש בדיקה'}));sessionStorage.setItem('settle-friends-skip-next-splash','1');},state);
  await page.route('**/v6/latest/USD',route=>route.fulfill({contentType:'application/json',body:JSON.stringify(response())}));await openHeldRenderedHome(page);await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
  if(state.events[0].expenses.length){const row=page.locator('[data-expense-id="legacy-fx"]');await row.locator('.expense-row-actions-menu > summary').click();await row.locator('[data-action="edit-expense"]').click();await page.locator('.expense-progress-step-button[data-step="amount"]').click();}

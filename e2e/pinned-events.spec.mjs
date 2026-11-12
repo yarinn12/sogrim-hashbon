@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { personalPinsCloud } from "./helpers/personalPinsCloud.mjs";
 import { readLocalQaState } from "./helpers/readLocalQaState.mjs";
@@ -67,9 +69,9 @@ async function pin(page, id, pinned) {
   await expect(row(page, id).locator('[aria-label="אירוע מוצמד"]')).toHaveCount(pinned ? 1 : 0);
 }
 
-test.beforeEach(async ({ request }) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: state });
+test.beforeEach(async ({ request , baseURL: fixtureBaseURL}) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
 });
 
 test("pin and unpin several events consecutively, preserve normal order and survive reload", async ({ page, request }) => {

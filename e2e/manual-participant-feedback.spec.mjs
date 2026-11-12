@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 const ownerId = "manual-feedback-owner";
@@ -10,9 +12,9 @@ const initialState = {
   friendContacts: [], groups: [], events: [], deletedEvents: [], deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }, testInfo) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: initialState });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, initialState);
   await page.addInitScript(({ ownerId, initialState }) => {
     // Seed once: reload assertions must read what the application actually saved.
     if (!localStorage.getItem("settle-friends-local-profile")) {

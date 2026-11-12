@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
 import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
@@ -69,9 +71,9 @@ const newlyJoinedOldEvent = {
   activityLog: []
 };
 
-test.beforeEach(async ({ page, request }) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: emptyAccountState });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, emptyAccountState);
 
   await page.addInitScript(({ participantId, state }) => {
     localStorage.clear();
@@ -203,12 +205,12 @@ test("home centers new-event across the hero edge in narrow and tablet layouts",
   expect(errors).toEqual([]);
 });
 
-test("the first-event action is identical to the regular new-event action", async ({ page, request }, testInfo) => {
+test("the first-event action is identical to the regular new-event action", async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
   await openHeldRenderedHome(page);
   const emptyAction = await homeCreateActionPresentation(page);
   await expectCenteredHomeCreateAction(page);
 
-  await request.put("/api/state", { data: populatedAccountState });
+  await writeLocalQaStateFresh(fixtureBaseURL, populatedAccountState);
   const populatedPage = await page.context().newPage();
   await populatedPage.addInitScript((state) => {
     localStorage.clear();
@@ -263,12 +265,12 @@ test("hero-edge action respects large text and inline feedback", async ({ page }
   await expect(page.locator('[data-screen-kind="new-event"]')).toBeVisible();
 });
 
-async function assertRecentlyJoinedOldEventAppearsFirst(page, request) {
+async function assertRecentlyJoinedOldEventAppearsFirst(page, fixtureBaseURL) {
   const syncedState = {
     ...populatedAccountState,
     events: [...populatedAccountState.events, newlyJoinedOldEvent]
   };
-  await request.put("/api/state", { data: syncedState });
+  await writeLocalQaStateFresh(fixtureBaseURL, syncedState);
   await page.addInitScript((state) => {
     localStorage.setItem("settle-friends-state", JSON.stringify(state));
   }, syncedState);
@@ -282,14 +284,14 @@ async function assertRecentlyJoinedOldEventAppearsFirst(page, request) {
   );
 }
 
-test("an old event joined today appears first on home", async ({ page, request }) => {
-  await assertRecentlyJoinedOldEventAppearsFirst(page, request);
+test("an old event joined today appears first on home", async ({ page, request , baseURL: nestedFixtureBaseURL}) => {
+  await assertRecentlyJoinedOldEventAppearsFirst(page, nestedFixtureBaseURL);
 });
 
 test("a newly joined old event appears first before a nonessential image loads", async ({ page, request, baseURL }) => {
   const heldImage = await holdNonessentialHomeImage(page, baseURL);
   try {
-    await assertRecentlyJoinedOldEventAppearsFirst(page, request);
+    await assertRecentlyJoinedOldEventAppearsFirst(page, baseURL);
     expect(heldImage.requested, "the held image must actually be requested").toBe(true);
     expect(await page.evaluate(() => document.readyState)).toBe("interactive");
   } finally {
@@ -298,8 +300,8 @@ test("a newly joined old event appears first before a nonessential image loads",
 });
 
 // The user retired lifecycle chips. Keep the approved Events/Archive tabs usable.
-test("home events and archive labels fit touch targets and retain their selection", async ({ page, request }, testInfo) => {
-  await request.put("/api/state", { data: populatedAccountState });
+test("home events and archive labels fit touch targets and retain their selection", async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
+  await writeLocalQaStateFresh(fixtureBaseURL, populatedAccountState);
   await page.addInitScript(state => {
     localStorage.setItem("settle-friends-state", JSON.stringify(state));
   }, populatedAccountState);
@@ -447,8 +449,8 @@ async function waitForHomePresentation(page) {
 }
 
 
-test("events and archive tabs fill equal halves with centered labels", async ({ page, request }) => {
-  await request.put("/api/state", { data: populatedAccountState });
+test("events and archive tabs fill equal halves with centered labels", async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await writeLocalQaStateFresh(fixtureBaseURL, populatedAccountState);
   await page.addInitScript(state => {
     localStorage.setItem("settle-friends-state", JSON.stringify(state));
   }, populatedAccountState);

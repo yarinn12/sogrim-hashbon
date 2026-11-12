@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
 
@@ -26,12 +28,12 @@ test.use({
   hasTouch: false
 });
 
-test("large and normal text take effect immediately with reduced motion", async ({ page, request }) => {
+test("large and normal text take effect immediately with reduced motion", async ({ page, request , baseURL: fixtureBaseURL}) => {
   // The project device profile can override test.use media settings. Apply the
   // requested OS preference to this page before the app styles load.
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: state });
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript(({ owner, initialState }) => {
     localStorage.clear();
     sessionStorage.clear();

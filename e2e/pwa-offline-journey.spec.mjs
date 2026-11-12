@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import {test,expect} from '@playwright/test';
 import {createServer,request as proxyRequest} from 'node:http';
 test.use({serviceWorkers:'allow'});
@@ -84,9 +86,9 @@ async function assertWorkspaceNavigationRecoversAfterLateGeometry(page) {
   await page.setViewportSize(initialViewport);
 }
 
-test('a fresh PWA preserves editable data through disconnected-client or origin-outage reloads',async({page,context,request,browserName},testInfo)=>{
+test('a fresh PWA preserves editable data through disconnected-client or origin-outage reloads',async({page,context,request,browserName, baseURL: fixtureBaseURL},testInfo)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await request.post('/api/reset');await request.put('/api/state',{data:state});
+  await resetLocalQaStateFresh(fixtureBaseURL);await writeLocalQaStateFresh(fixtureBaseURL, state);
   await context.addInitScript(({state,owner})=>{
     if(localStorage.getItem('offline-shell-seeded'))return;
     localStorage.setItem('offline-shell-seeded','1');

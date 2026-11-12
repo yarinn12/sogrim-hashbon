@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import {
@@ -53,9 +55,9 @@ const seededState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: seededState });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, seededState);
   await page.addInitScript(({ participantId, state }) => {
     if (sessionStorage.getItem("event-settings-flow-seeded") === "1") {
       sessionStorage.setItem("settle-friends-skip-next-splash", "1");

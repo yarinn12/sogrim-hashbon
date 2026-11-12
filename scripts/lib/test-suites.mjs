@@ -11,7 +11,8 @@ export const integrationFiles = [
   "offlineSyncResilience", "sharedEventStore", "sharedStateMerge", "stateStore",
   "broadcastNotifications", "productMetrics", "serverEventInvites", "serverGoogleAuth",
   "serverHealth", "serverNativeAuthReturn", "serverSensitiveRateLimit",
-  "serverStateIsolation", "serverStaticSecurity", "serverVideoRange"
+  "serverStateIsolation", "serverStaticSecurity", "serverVideoRange",
+  "platformFixtureTransportBoundary", "qaFixtureSchema"
 ].map(name => `tests/${name}.test.mjs`);
 
 export function requestedSuite(args) {

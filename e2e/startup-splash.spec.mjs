@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 const OWNER_ID = "person-splash-owner";
@@ -31,9 +33,9 @@ const accountState = {
 test.describe("startup splash", () => {
   test.use({ reducedMotion: "no-preference" });
 
-  test.beforeEach(async ({ page, request }) => {
-    await request.post("/api/reset");
-    await request.put("/api/state", { data: accountState });
+  test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
+    await resetLocalQaStateFresh(fixtureBaseURL);
+    await writeLocalQaStateFresh(fixtureBaseURL, accountState);
 
     await page.addInitScript(({ participantId, state }) => {
       localStorage.clear();

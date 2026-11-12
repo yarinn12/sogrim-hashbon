@@ -1,3 +1,6 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
+import { readLocalQaHtmlFresh } from "./helpers/readLocalQaHtmlFresh.mjs";
 import {measureSettledExpenseParticipants} from "./helpers/expenseParticipantPresentation.mjs";
 import measureExpensePayer from "./helpers/expensePayerPresentation.mjs";
 import measureExpenseName from "./helpers/expenseNamePresentation.mjs";
@@ -143,8 +146,8 @@ test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
     scenarioState.events[0].expenses[0].total=99999999;
     scenarioState.events[0].expenses[0].payers[0].amount=99999999;
   }
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: scenarioState });
+  await resetLocalQaStateFresh(baseURL);
+  await writeLocalQaStateFresh(baseURL, scenarioState);
   if (testInfo.title === HELD_IMAGE_READINESS_TEST) {
     let releaseImage;
     const imageGate = new Promise(resolve => { releaseImage = resolve; });
@@ -157,9 +160,9 @@ test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
     });
     const homeOrigin = new URL(baseURL).origin;
     await page.route(url => url.origin === homeOrigin && url.pathname === "/", async route => {
-      const response = await route.fetch();
-      const html = await response.text();
-      await route.fulfill({ response, body: html.replace("</body>",
+      const response = await readLocalQaHtmlFresh(baseURL, route.request().url());
+      const html = response.body.toString("utf8");
+      await route.fulfill({ status: response.status, headers: response.headers, body: html.replace("</body>",
         '<img src="/__qa_held_nonessential_image" alt="" hidden></body>') });
     });
   }
@@ -180,9 +183,9 @@ test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
     });
     const homeOrigin = new URL(baseURL).origin;
     await page.route(url => url.origin === homeOrigin && url.pathname === "/", async route => {
-      const response = await route.fetch();
-      const html = await response.text();
-      await route.fulfill({ response, body: html.replace("</body>",
+      const response = await readLocalQaHtmlFresh(baseURL, route.request().url());
+      const html = response.body.toString("utf8");
+      await route.fulfill({ status: response.status, headers: response.headers, body: html.replace("</body>",
         '<script defer src="/__qa_held_nonessential_defer.js"></script></body>') });
     });
   }
@@ -381,9 +384,9 @@ test("account-pending notifications and empty friends return to the previous scr
   expect(errors).toEqual([]);
 });
 
-test("desktop 32px roster exposes the last participant and add action above navigation", async ({ page, request, browserName }, testInfo) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: rosterState });
+test("desktop 32px roster exposes the last participant and add action above navigation", async ({ page, request, browserName , baseURL: fixtureBaseURL}, testInfo) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, rosterState);
   await page.evaluate(next => localStorage.setItem("settle-friends-state", JSON.stringify(next)), rosterState);
   await page.setViewportSize({ width: 1280, height: 900 });
   await openTypographyHome(page, { path: "/?dynamic-type-preview=32" });
@@ -472,7 +475,7 @@ test(DELAYED_MODULE_READINESS_TEST, async ({ page }) => {
   expect(marks["first-screen-rendered"]).toBeGreaterThanOrEqual(marks["app-module-ready"]);
 });
 
-async function openNoteEditorForDelayedHistory(page, request) {
+async function openNoteEditorForDelayedHistory(page, fixtureBaseURL) {
   const note = {
     id: "note-platform-coherence-history-race", title: "פרטי נסיעה שנשמרו",
     body: "הפתק חייב להישאר גם אחרי ניווט וחזרת היסטוריה מאוחרת.", pinned: true,
@@ -481,7 +484,7 @@ async function openNoteEditorForDelayedHistory(page, request) {
   };
   const noteState = { ...state, events: state.events.map(event => event.id === OPEN_EVENT
     ? { ...event, notes: [note] } : event) };
-  await request.put("/api/state", { data: noteState });
+  await writeLocalQaStateFresh(fixtureBaseURL, noteState);
   await page.evaluate(next => localStorage.setItem("settle-friends-state", JSON.stringify(next)), noteState);
   await openTypographyHome(page);
   await openEvent(page, OPEN_EVENT);
@@ -548,8 +551,8 @@ async function closeNoteEditorWithHeldHistory(page) {
   return pending;
 }
 
-test('late note-dialog popstate cannot replace newer profile, home and event navigation', async ({ page, request }, testInfo) => {
-  const note = await openNoteEditorForDelayedHistory(page, request);
+test('late note-dialog popstate cannot replace newer profile, home and event navigation', async ({ page, request , baseURL: nestedFixtureBaseURL}, testInfo) => {
+  const note = await openNoteEditorForDelayedHistory(page, nestedFixtureBaseURL);
   const pending = await closeNoteEditorWithHeldHistory(page);
   await page.locator('.product-app-identity [data-action="edit-profile"]').first().click();
   await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
@@ -577,8 +580,8 @@ test('late note-dialog popstate cannot replace newer profile, home and event nav
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
 });
 
-test('note-dialog history rewind without newer navigation returns to notes', async ({ page, request }) => {
-  const note = await openNoteEditorForDelayedHistory(page, request);
+test('note-dialog history rewind without newer navigation returns to notes', async ({ page, request , baseURL: nestedFixtureBaseURL}) => {
+  const note = await openNoteEditorForDelayedHistory(page, nestedFixtureBaseURL);
   const pending = await closeNoteEditorWithHeldHistory(page);
   expect(pending.pushes).toBe(0);
   await page.evaluate(() => window.__qaReleaseDialogHistory());
@@ -596,8 +599,8 @@ test('note-dialog history rewind without newer navigation returns to notes', asy
   await expect(page.locator('.event-note-modal')).toHaveCount(0);
 });
 
-test('new navigation after late dialog-history replay keeps its own Back destination', async ({ page, request }) => {
-  await openNoteEditorForDelayedHistory(page, request);
+test('new navigation after late dialog-history replay keeps its own Back destination', async ({ page, request , baseURL: nestedFixtureBaseURL}) => {
+  await openNoteEditorForDelayedHistory(page, nestedFixtureBaseURL);
   await closeNoteEditorWithHeldHistory(page);
   await page.locator('.product-app-identity [data-action="edit-profile"]').first().click();
   await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
@@ -610,8 +613,8 @@ test('new navigation after late dialog-history replay keeps its own Back destina
   await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
 });
 
-test('draft typed while dialog-history rewind waits survives replay, next route and Back', async ({ page, request }) => {
-  await openNoteEditorForDelayedHistory(page, request);
+test('draft typed while dialog-history rewind waits survives replay, next route and Back', async ({ page, request , baseURL: nestedFixtureBaseURL}) => {
+  await openNoteEditorForDelayedHistory(page, nestedFixtureBaseURL);
   await closeNoteEditorWithHeldHistory(page);
   await page.locator('[data-nav-destination="home"]').first().click();
   await page.locator('[data-action="new-event"]').first().click();
@@ -671,8 +674,8 @@ test('late multi-step expense-save rewind returns to the latest route and preser
   await expect(page.locator('.expense-row').filter({ hasText: 'נסיעה שנשמרה לפני החזרה המאוחרת' })).toHaveCount(1);
 });
 
-test('two note-editor closes before the first Back settles never reopen either editor', async ({ page, request }) => {
-  const note = await openNoteEditorForDelayedHistory(page, request);
+test('two note-editor closes before the first Back settles never reopen either editor', async ({ page, request , baseURL: nestedFixtureBaseURL}) => {
+  const note = await openNoteEditorForDelayedHistory(page, nestedFixtureBaseURL);
   await closeNoteEditorWithHeldHistory(page);
   await page.locator('.event-note-open').click();
   await expect(page.locator('.event-note-modal')).toBeVisible();
@@ -1327,8 +1330,8 @@ test('expense progress bars guard required fields and retain draft on direct nav
  await bar('participants').click();await expect(dialog.locator('[data-action="expense-shared"]:checked')).toHaveCount(2);
 });
 
-test('expense long participant roster remains reachable at enlarged text',async({page,request})=>{
- await request.put('/api/state',{data:rosterState});await page.evaluate(next=>localStorage.setItem('settle-friends-state',JSON.stringify(next)),rosterState);await openTypographyHome(page,{path:'/?dynamic-type-preview=32'});await openEvent(page,ROSTER_EVENT);
+test('expense long participant roster remains reachable at enlarged text',async({page,request, baseURL: fixtureBaseURL})=>{
+ await writeLocalQaStateFresh(fixtureBaseURL, rosterState);await page.evaluate(next=>localStorage.setItem('settle-friends-state',JSON.stringify(next)),rosterState);await openTypographyHome(page,{path:'/?dynamic-type-preview=32'});await openEvent(page,ROSTER_EVENT);
  await page.getByRole('button',{name:'הוסף הוצאה לטיול',exact:true}).click();const dialog=page.locator('.expense-step-modal');
  await dialog.locator('[data-action="expense-total"]').fill('120');await dialog.locator('[data-action="expense-step-next"]').click();await dialog.locator('[data-action="expense-name"]').fill('בדיקת רשימה ארוכה');
  await dialog.locator('[data-action="expense-step-next"]').click();await dialog.locator('[data-action="expense-step-next"]').click();

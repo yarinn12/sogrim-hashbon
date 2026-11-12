@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 import { openHeldRenderedHome, requireHeldHomeReadiness } from './helpers/heldHomeReadinessControl.mjs';
@@ -20,9 +22,9 @@ const state = {
     roundSettlementTransfers: true, expenses: [], transfers: [], activityLog: [] }]
 };
 
-test.beforeEach(async ({ page, request }, testInfo) => {
-  await request.post('/api/reset');
-  await request.put('/api/state', { data: state });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript(({ owner, state }) => {
     localStorage.clear(); sessionStorage.clear();
     localStorage.setItem('settle-friends-state', JSON.stringify(state));

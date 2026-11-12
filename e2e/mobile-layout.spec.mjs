@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 import { calculateSettlement } from "../src/domain/settlement.mjs";
@@ -287,7 +289,7 @@ test("new event actions stay below participant choices without covering them", a
 test("participant pictures never cover the event title or participant count", async ({
   page,
   request
-}) => {
+, baseURL: fixtureBaseURL}) => {
   const largeState = structuredClone(seededState);
   const extraParticipants = Array.from({ length: 121 }, (_, index) => ({
     id: `person-scale-${index + 1}`,
@@ -298,7 +300,7 @@ test("participant pictures never cover the event title or participant count", as
   largeState.events[0].participantIds.push(
     ...extraParticipants.map((participant) => participant.id)
   );
-  await request.put("/api/state", { data: largeState });
+  await writeLocalQaStateFresh(fixtureBaseURL, largeState);
   await settleServiceWorkerBeforeReload(page);
   await page.addInitScript((nextState) => {
     localStorage.setItem("settle-friends-state", JSON.stringify(nextState));
@@ -336,7 +338,7 @@ test("participant pictures never cover the event title or participant count", as
 test("adding a saved friend requires an explicit confirmation and keeps the picker on-brand", async ({
   page,
   request
-}) => {
+, baseURL: fixtureBaseURL}) => {
   const availableFriend = {
     id: AVAILABLE_FRIEND_ID,
     displayName: "נועה חברה",
@@ -355,7 +357,7 @@ test("adding a saved friend requires an explicit confirmation and keeps the pick
       updatedAt: "2026-08-03T20:05:00.000Z"
     }
   ];
-  await request.put("/api/state", { data: augmentedState });
+  await writeLocalQaStateFresh(fixtureBaseURL, augmentedState);
   await settleServiceWorkerBeforeReload(page);
   await page.addInitScript((nextState) => {
     localStorage.setItem("settle-friends-state", JSON.stringify(nextState));
@@ -414,11 +416,11 @@ test("adding a saved friend requires an explicit confirmation and keeps the pick
   ).toBeVisible();
 });
 
-test("an event without expenses presents one clear empty summary card", async ({ page, request }) => {
+test("an event without expenses presents one clear empty summary card", async ({ page, request , baseURL: fixtureBaseURL}) => {
   const emptyState = structuredClone(seededState);
   emptyState.events[0].expenses = [];
   emptyState.events[0].transfers = [];
-  await request.put("/api/state", { data: emptyState });
+  await writeLocalQaStateFresh(fixtureBaseURL, emptyState);
   await settleServiceWorkerBeforeReload(page);
   await page.addInitScript((nextState) => {
     localStorage.setItem("settle-friends-state", JSON.stringify(nextState));
@@ -3136,13 +3138,13 @@ test("new event participants keep enlarged identity text, contextual routes and 
 });
 
 
-test("friends picker scales real name glyphs and retains selection at enlarged text sizes", async ({ page, request }) => {
+test("friends picker scales real name glyphs and retains selection at enlarged text sizes", async ({ page, request , baseURL: fixtureBaseURL}) => {
   const friendState = structuredClone(seededState);
   friendState.friendContacts = friendState.participants.slice(1).map(person => ({
     id: `contact-${person.id}`, participantId: person.id, active: true,
     source: person.kind === "user" ? "account" : "offline", updatedAt: "2026-08-03T20:05:00.000Z"
   }));
-  await request.put("/api/state", { data: friendState });
+  await writeLocalQaStateFresh(fixtureBaseURL, friendState);
   await settleServiceWorkerBeforeReload(page);
   await page.addInitScript(state => localStorage.setItem("settle-friends-state", JSON.stringify(state)), friendState);
   for (const rootSize of [16, 20, 32]) {
@@ -3190,13 +3192,13 @@ test("friends picker scales real name glyphs and retains selection at enlarged t
 });
 
 
-test("manual participant editor has one clear explanation and preserves additions with enlarged text", async ({ page, request }) => {
+test("manual participant editor has one clear explanation and preserves additions with enlarged text", async ({ page, request , baseURL: fixtureBaseURL}) => {
   const manualState = structuredClone(seededState);
   manualState.friendContacts = manualState.participants.slice(1).map(person => ({
     id: `manual-contact-${person.id}`, participantId: person.id, active: true,
     source: person.kind === "user" ? "account" : "offline", updatedAt: "2026-08-03T20:05:00.000Z"
   }));
-  await request.put("/api/state", { data: manualState });
+  await writeLocalQaStateFresh(fixtureBaseURL, manualState);
   await settleServiceWorkerBeforeReload(page);
   await page.addInitScript(state => localStorage.setItem("settle-friends-state", JSON.stringify(state)), manualState);
   const name = 'משתתף בדיקה עם שם משפחה ארוך';

@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
 import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
@@ -29,8 +31,8 @@ const state = {
 };
 
 test.use({ serviceWorkers: "block" });
-test.beforeEach(async ({ page, request }) => {
-  await request.post("/api/reset");
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
   const seed = await request.put("/api/state", { data: state });
   expect(seed.ok(), `navigation fixture seed failed: ${await seed.text()}`).toBe(true);
   const stored = await request.get("/api/state");

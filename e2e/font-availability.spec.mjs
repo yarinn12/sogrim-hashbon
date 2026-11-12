@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
 
@@ -12,10 +14,10 @@ const seededState = {
 
 test.use({ serviceWorkers: "block" });
 
-test("Hebrew and numeric brand fonts load when Google Fonts is unreachable", async ({ page, request }) => {
+test("Hebrew and numeric brand fonts load when Google Fonts is unreachable", async ({ page, request , baseURL: fixtureBaseURL}) => {
   await page.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: seededState });
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, seededState);
   await page.addInitScript(({ state, participantId }) => {
     localStorage.clear();
     sessionStorage.clear();
