@@ -2,6 +2,7 @@ import {test,expect} from "@playwright/test";
 import {readFileSync} from "node:fs";
 import {geometry,hit,stable,readable} from "./helpers/installGuidePresentation.mjs";
 import {installSyntheticSystemText} from "./helpers/accessibilityPresentation.mjs";
+import {coverAddedInstallationRowOnScroll} from "./helpers/installGuideNewRowControl.mjs";
 const fixture=readFileSync(new URL("./fixtures/profileRewardBootstrap.js",import.meta.url),"utf8"),evidence=new WeakMap();
 test.use({serviceWorkers:"block"});
 test.beforeEach(async({page})=>{
@@ -131,21 +132,15 @@ for(const moving of [false,true])test("installation description rejects text cov
 test("installation description rejects a new covered line after the initial row count",async({page})=>{
   await page.setViewportSize({width:393,height:852});await open(page,true,16);
   const description=page.locator(".install-app-description");
-  await description.evaluate(e=>{
-    const dialog=e.closest(".install-app-dialog"),descriptor=Object.getOwnPropertyDescriptor(Element.prototype,"scrollTop");
-    Object.defineProperty(dialog,"scrollTop",{configurable:true,get(){return descriptor.get.call(this)},set(value){
-      descriptor.set.call(this,value);
-      if(window.__installAddedRow)return;
-      window.__installAddedRow=true;
-      e.append(document.createElement("br"),"שורה חדשה שאסור להחמיץ");
-      const text=e.lastChild,range=document.createRange();range.selectNodeContents(text);
-      const rect=range.getBoundingClientRect(),blocker=document.createElement("div");
-      blocker.dataset.installNewRowBlocker="";
-      blocker.style.cssText=`position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;z-index:2147483647;pointer-events:auto`;
-      document.body.append(blocker);
-    }});
-  });
+  await description.evaluate(coverAddedInstallationRowOnScroll);
   await expect(readable(description)).rejects.toThrow();
+  // Force a post-count layout shift. The synthetic occluder must keep covering
+  // only the added text instead of retaining an earlier viewport rectangle.
+  await description.evaluate(e=>{
+    const range=document.createRange();range.selectNodeContents(e.lastChild);
+    const distance=range.getBoundingClientRect().height+24;
+    e.closest('.install-app-dialog').style.setProperty('transform',`translateY(-${distance}px)`,'important');
+  });
   expect(await description.evaluate(e=>{
     if(!window.__installAddedRow)return false;
     const text=e.lastChild,range=document.createRange();range.selectNodeContents(text);

@@ -7,6 +7,8 @@ import base from "./playwright.config.mjs";
 const journeys = [
   "e2e/dialog-readable-glyphs.spec.mjs",
   "e2e/static-visual-geometry.spec.mjs",
+  "e2e/dynamic-type-nav-first-frame.spec.mjs",
+  "e2e/system-text-reflow.spec.mjs",
   "e2e/cover-image-presentation.spec.mjs",
   "e2e/blocked-user-feedback-scope.spec.mjs",
   "e2e/crop-invite-block-presentation.spec.mjs",
