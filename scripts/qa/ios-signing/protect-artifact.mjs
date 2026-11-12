@@ -6,8 +6,8 @@ import {fileURLToPath} from 'node:url';
 
 const CONTEXT = 'sogrim-ios-private-artifact-v1';
 const SOURCE = process.env.SOURCE_SHA;
-const TREE = '350001cdc7554050b34b89d36e3e63ffa460de41';
-assert.equal(SOURCE, 'dc137971e3e47769cfda7e2af7ed4293fb3d7962', 'Expected the coordinator frozen release source');
+const TREE = 'e99024ebe73bf54ea9a3edd67412392d3768bb4b';
+assert.equal(SOURCE, '04630c8ad22f4250d591ff476c2487ff13e76380', 'Expected the coordinator frozen release source');
 const hash = data => createHash('sha256').update(data).digest('hex');
 
 // Public package facts needed to bind the next stage without decrypting the archive.
