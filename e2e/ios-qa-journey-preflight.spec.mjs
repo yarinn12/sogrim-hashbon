@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { openRenderedHome } from './helpers/typographyReadiness.mjs';
 import { holdNonessentialHomeDefer } from './helpers/heldHomeDefer.mjs';
+import { readLocalQaHtmlFresh } from './helpers/readLocalQaHtmlFresh.mjs';
 
 // Run the QA fixture and navigation script themselves. Only the Capacitor
 // identity and screenshot acknowledgement are simulated in this browser test.
@@ -76,9 +77,9 @@ test('preflight home is ready before an unrelated deferred script completes', as
   });
   const homeOrigin = new URL(baseURL).origin;
   await page.route(url => url.origin === homeOrigin && url.pathname === '/', async route => {
-    const response = await route.fetch();
-    const html = await response.text();
-    await route.fulfill({ response, body: html.replace('</body>',
+    const response = await readLocalQaHtmlFresh(baseURL, route.request().url());
+    const html = response.body.toString('utf8');
+    await route.fulfill({ ...response, body: html.replace('</body>',
       '<script defer src="/__qa_held_preflight_defer.js"></script></body>') });
   });
   try {

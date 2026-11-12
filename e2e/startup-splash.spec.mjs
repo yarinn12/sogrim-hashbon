@@ -1,6 +1,7 @@
 import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
 import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
+import { readLocalQaHtmlFresh } from "./helpers/readLocalQaHtmlFresh.mjs";
 
 const OWNER_ID = "person-splash-owner";
 const CONTENT_RENDER_BUDGET_MS = 2_500;
@@ -143,11 +144,11 @@ test.describe("startup splash", () => {
     // WebKit can play the MP4 without passing its media request through page.route.
     // Replace the document source so this test always exercises a failed video.
     await page.route(new URL("/", testInfo.project.use.baseURL).href, async (route) => {
-      const response = await route.fetch();
-      const html = await response.text();
+      const response = await readLocalQaHtmlFresh(testInfo.project.use.baseURL, route.request().url());
+      const html = response.body.toString('utf8');
       const originalSource = 'src="./assets/sogrim-heshbon-loading-loop-v2.mp4"';
       documentVideoBlocked = html.includes(originalSource);
-      await route.fulfill({ response, body: html.replace(originalSource, `src="${blockedVideoSource}"`) });
+      await route.fulfill({ ...response, body: html.replace(originalSource, `src="${blockedVideoSource}"`) });
     });
     await page.addInitScript(() => {
       const probe = { source: "", fallbackSeen: false, videoReadySeen: false, errorCode: null };

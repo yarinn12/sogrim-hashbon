@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createDeniedSessionDocumentBoundary } from "./helpers/denied-session-document.mjs";
+import { readLocalQaHtmlFresh } from "./helpers/readLocalQaHtmlFresh.mjs";
 
 test.use({ serviceWorkers: "block" });
 
@@ -78,12 +79,12 @@ async function verifyGoogleSession({ page }, testInfo, {
     });
     await page.route(/^http:\/\/127\.0\.0\.1:\d+\/\?pwa_release=403$/, async route => {
       documentResponses += 1;
-      const response = await route.fetch();
-      if (documentResponses !== 2) return route.fulfill({ response });
-      const body = (await response.text()).replace(
+      const response = await readLocalQaHtmlFresh(new URL(route.request().url()).origin, route.request().url());
+      if (documentResponses !== 2) return route.fulfill({ ...response });
+      const body = response.body.toString('utf8').replace(
         "</body>", '<img src="/__qa_held_signed_in_image__" alt=""></body>'
       );
-      return route.fulfill({ response, body });
+      return route.fulfill({ ...response, body });
     });
   }
 
