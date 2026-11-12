@@ -1,0 +1,15 @@
+name: Native main-actor qualification
+
+on:
+  push:
+    branches: [codex/qa519-actor-native-probe-20261112]
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/qa519-actor-native-probe-20261112' && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false && github.run_attempt == 1 }}
+    uses: ./.github/workflows/ios-parity-qa.yml
+    with:
+      app_sha: 0250290da45813a17fb188518dfcb89b461a7562
