@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,realpathSync,lstatSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,realpathSync,lstatSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname,basename} from 'node:path';
 import {spawnSync} from 'node:child_process';
@@ -28,6 +28,8 @@ function executePreparation(workflow,cacheExit,options={}) {
   const cwd=mkdtempSync(join(base,'ios-cache-'));
   try {
     mkdirSync(join(cwd,'bin'));mkdirSync(join(cwd,'build/native-parity'),{recursive:true});
+    const bootVerifier=new URL('../scripts/qa/native-auth-session/verify-ios-simulator-boot.mjs',import.meta.url);
+    if(existsSync(bootVerifier)){mkdirSync(join(cwd,'scripts/qa/native-auth-session'),{recursive:true});writeFileSync(join(cwd,'scripts/qa/native-auth-session/verify-ios-simulator-boot.mjs'),readFileSync(bootVerifier));}
     writeFileSync(join(cwd,'calls.log'),'');writeFileSync(join(cwd,'state.txt'),options.coldBuild?'Shutdown\n':'Booted\n');
     const stubs={
       xcrun:`#!/bin/bash
@@ -38,6 +40,14 @@ if [[ "$1 $2" == 'simctl shutdown' ]]; then
 fi
 if [[ "$1 $2" == 'simctl erase' ]]; then printf 'Shutdown\\n' > "$CASE_STATE"; fi
 if [[ "$1 $2" == 'simctl boot' ]]; then printf 'Booted\\n' > "$CASE_STATE"; fi
+if [[ "$1 $2" == 'simctl bootstatus' ]]; then
+  if [[ "$BOOT_STATUS_EXIT" != '0' ]]; then exit "$BOOT_STATUS_EXIT"; fi
+  owner="$3"; if [[ "$BOOT_TRANSCRIPT" == foreign ]]; then owner=00000000-0000-4000-8000-000000000002; fi
+  printf 'Monitoring boot status for Synthetic native probe (%s).\\n' "$owner"
+  if [[ "$BOOT_TRANSCRIPT" == migration-failed ]]; then printf 'Status=3, isTerminal=YES, Elapsed=14:48.\\n\\tData Migration Failed\\n';
+  elif [[ "$BOOT_TRANSCRIPT" == incomplete ]]; then printf 'Status=2, isTerminal=NO, Elapsed=00:05.\\n\\tWaiting on Data Migration\\n';
+  else printf 'Status=4294967295, isTerminal=YES, Elapsed=00:05.\\n\\tFinished\\n'; fi
+fi
 if [[ "$1 $2" == 'simctl list' ]]; then printf '{}\\n'; fi
 `,
       python3:`#!/bin/bash
@@ -56,6 +66,7 @@ if [[ "$COLD_BUILD" == '1' && "$*" == *'build-for-testing'* ]]; then
 fi
 `,
       node:`#!/bin/bash
+if [[ "$1" == 'scripts/qa/native-auth-session/verify-ios-simulator-boot.mjs' ]]; then exec "$REAL_TEST_NODE" "$@"; fi
 printf 'PROBE_HTTP_READY\\nPROBE_HTTP_REDIRECT\\n'
 `
     };
@@ -63,7 +74,7 @@ printf 'PROBE_HTTP_READY\\nPROBE_HTTP_REDIRECT\\n'
     const script=`export CASE_CALLS="$PWD/calls.log" CASE_STATE="$PWD/state.txt" PROBE_FIXTURES="$PWD/fixtures" GITHUB_WORKSPACE="$PWD"\nexport PATH="$PWD/bin:$PATH"\n`+scriptFromWorkflow(workflow);
     writeFileSync(join(cwd,'setup.sh'),script);
     const env=Object.fromEntries(['PATH','SystemRoot','WINDIR','COMSPEC','TEMP','TMP','TMPDIR','HOME','USERPROFILE'].filter(k=>process.env[k]).map(k=>[k,process.env[k]]));
-    Object.assign(env,{CACHE_EXIT:String(cacheExit),COLD_BUILD:options.coldBuild?'1':'0',SHUTDOWN_STUCK:options.shutdownStuck?'1':'0',SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD:'1'});
+    Object.assign(env,{CACHE_EXIT:String(cacheExit),COLD_BUILD:options.coldBuild?'1':'0',SHUTDOWN_STUCK:options.shutdownStuck?'1':'0',SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD:'1',BOOT_TRANSCRIPT:options.bootTranscript??'finished',BOOT_STATUS_EXIT:String(options.bootStatusExit??0),REAL_TEST_NODE:process.execPath.replaceAll('\\','/')});
     const r=spawnSync(bash,['--noprofile','--norc','-e','setup.sh'],{cwd,env,encoding:'utf8',windowsHide:true,timeout:30_000});
     assert.ifError(r.error);assert.equal(r.signal,null);
     return {status:r.status,stderr:r.stderr,calls:readFileSync(join(cwd,'calls.log'),'utf8').trim().split(/\r?\n/).filter(Boolean)};
@@ -97,6 +108,15 @@ test('AuthReturn refuses to erase or test when its owned simulator did not shut 
 });
 
 for(const workflow of workflows) {
+  for(const bootTranscript of ['migration-failed','incomplete','foreign'])test(workflow.file+': zero-exit '+bootTranscript+' boot status blocks native measurement',()=>{
+    const r=executePreparation(workflow,0,{bootTranscript});assert.notEqual(r.status,0,r.stderr);
+    assert.ok(r.calls.some(line=>line.startsWith('xcrun simctl bootstatus ')));
+    assert.ok(!r.calls.some(line=>line.includes('test-without-building')));
+  });
+  test(workflow.file+': a nonzero bootstatus remains a failure before native measurement',()=>{
+    const r=executePreparation(workflow,0,{bootStatusExit:77});assert.equal(r.status,77,r.stderr);
+    assert.ok(!r.calls.some(line=>line.includes('test-without-building')));
+  });
   test(workflow.file+': complete cache preparation once before the simulator boots',()=>{
     const r=executePreparation(workflow,0);assert.equal(r.status,0,r.stderr);
     const cache=r.calls.indexOf('xcrun simctl runtime dyld_shared_cache update --all');

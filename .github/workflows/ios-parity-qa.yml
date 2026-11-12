@@ -119,7 +119,8 @@ jobs:
           xcrun simctl erase "$PROBE_UDID" > build/native-parity/erase.log 2>&1
           test "$(simulator_state)" = Shutdown
           xcrun simctl boot "$PROBE_UDID"
-          xcrun simctl bootstatus "$PROBE_UDID" -b
+          xcrun simctl bootstatus "$PROBE_UDID" -b | tee build/native-parity/bootstatus.log
+          node scripts/qa/native-auth-session/verify-ios-simulator-boot.mjs --log build/native-parity/bootstatus.log --udid "$PROBE_UDID"
       - name: Verify normal and real OS accessibility sizes, keyboard, native taps and persistence
         working-directory: app
         env:
