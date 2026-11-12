@@ -8,8 +8,8 @@ import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {readAppleReadiness} from './apple-read-retry.mjs';
 
-export const RELEASE_SOURCE = 'a2f3c0cecea36915f883f6d2ce9ae274c62a1c07';
-export const RELEASE_TREE = 'c2da1d5e4b3e64ed2ca6f3e48b62d0ab61a059be';
+export const RELEASE_SOURCE = '7b1d4259adbfef2e5684c2d61c1847518db7db78';
+export const RELEASE_TREE = 'dea545ed58ce4a9446b94102dbcc1ecd6a8ce909';
 export const SOURCE = process.env.SOURCE_SHA;
 export const ARTIFACT_NAME = 'sogrim-ios-4.59-196-encrypted';
 export const APPLE_APP_ID = '6809952514';
