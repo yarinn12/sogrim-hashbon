@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
   "application": {
-    "sourceSha": "e79ab08682681477f80f8ed1898e01ffe8676a2e",
-    "sourceTree": "16693278dd4b42573b0846d8476edcf0be3c78ca",
+    "sourceSha": "8a425792ab1672eaa8a76ae20317138d801f1c52",
+    "sourceTree": "c62a7cdd507800020c0dca1b2caf633e535dc13b",
     "branch": "codex/test-release-459-20261104",
     "pwa": "532",
     "ciRuns": {
-      "SOURCE_QA_RUN": "43190711055",
-      "SOURCE_WINDOWS_QA_RUN": "43190710860",
-      "SOURCE_FONT_QA_RUN": "43190710995",
-      "SOURCE_AUTH_QA_RUN": "43190710823"
+      "SOURCE_QA_RUN": "43196321373",
+      "SOURCE_WINDOWS_QA_RUN": "43196321090",
+      "SOURCE_FONT_QA_RUN": "43196321269",
+      "SOURCE_AUTH_QA_RUN": "43196321371"
     }
   },
   "signing": {
-    "toolsSha": "7d38c9c3c15d7472a3bcff8ae65933e42769317e",
+    "toolsSha": "29b28e618474479123e10113642cbecb063be70d",
     "runId": "PENDING",
     "runNumber": "PENDING",
     "jobId": "PENDING",
@@ -26,8 +26,8 @@
     "ciphertextSize": "PENDING",
     "controls": {
       "firstCreation": "8ea1339ef9822cef3a4f5f8b942d65b3bf6150c0c1c42315a29c5c28737e7595",
-      "sourceGuard": "4a98a5f894f003a773b29ba622ab8924c8cb46deeb73b43d830169922f125d92",
-      "workflow": "c23b6300531e9c6c9b6290e97bab0970bc74ecc06034842c1cc072cb237d1834",
+      "sourceGuard": "45a5a39da7f988e22b060b5c143a89be86bf63c47b5987ac05a4f524772deb8d",
+      "workflow": "b9016355d5cf8c37eddbc251ba4dce3d2c6e3b4cc8345a1ce60aa11f6e9acf88",
       "requiredJobs": "62b035d2e175acc5e6006a548fb5bb2167d679dc2c9be680ca2f517d14c83db3"
     }
   }

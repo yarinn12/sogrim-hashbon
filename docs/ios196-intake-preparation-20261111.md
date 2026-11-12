@@ -1,6 +1,6 @@
 # iOS196 intake preparation
 
-Application4.59 is frozen at `e79ab08682681477f80f8ed1898e01ffe8676a2e`, tree `16693278dd4b42573b0846d8476edcf0be3c78ca`. The producer tools are `7d38c9c3c15d7472a3bcff8ae65933e42769317e`. All four original source CI runs, including every required job, must pass before signing or intake. Preparation is local and unpublished. The intake workflow is explicitly disabled and all original artifact bindings remain `PENDING`.
+Application4.59 is frozen at `8a425792ab1672eaa8a76ae20317138d801f1c52`, tree `c62a7cdd507800020c0dca1b2caf633e535dc13b`. The producer tools are `29b28e618474479123e10113642cbecb063be70d`. All four original source CI runs, including every required job, must pass before signing or intake. Preparation is local and unpublished. The intake workflow is explicitly disabled and all original artifact bindings remain `PENDING`.
 
 The intake-specific source, first-creation, original-archive, envelope and decryption checks remain intact. They are not replaced with the producer's encryption-only entry point. Candidate release bindings move to196; the producer first-creation verifier is byte-identical to the reviewed producer. The68-job contract remains unchanged. Legacy194-only producer controls remain historical and unchanged.
 
