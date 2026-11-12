@@ -143,7 +143,8 @@ for(const target of ['disclosure','event'])test('sync feedback preserves '+targe
    __pendingReceiptPress.sameControl=control.isConnected&&document.querySelector(selector)===control;
   },true);
  },selector);
- await page.locator(selector).click();
+ if(info.project.use.hasTouch)await page.locator(selector).tap();
+ else await page.locator(selector).click();
  expect(await page.evaluate(()=>__pendingReceiptPress)).toEqual({received:1,sameControl:true});
  const pressGeometry=await page.evaluate(()=>__pendingReceiptGeometry);
  expect(Math.abs(pressGeometry.afterTop-pressGeometry.beforeTop)).toBeLessThanOrEqual(0.1);

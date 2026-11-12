@@ -27,7 +27,7 @@ function harness() {
   document.body=new Node(document);
   document.querySelector=selector=>selector==='#app'?app:document.body.children.find(node=>node.dataset.syncStatus!==undefined)||screen.children.find(node=>node.dataset.syncStatus!==undefined)||null;
   const view=createSyncNoticePresentation({document,requestFrame:cb=>frames.push(cb)});
-  return{document,app,screen,view,frames,flush(){while(frames.length)frames.shift()()},flushTasks(){while(tasks.length)tasks.shift()()},dispatch(type,event={}){for(const callback of listeners.get(type)||[])callback(event);},dispatchWindow(type,event={}){for(const callback of windowListeners.get(type)||[])callback(event);}};
+  return{document,app,screen,view,frames,flush(){while(frames.length)frames.shift()()},flushTasks(){while(tasks.length)tasks.shift()()},dispatch(type,event={}){for(const callback of windowListeners.get(type)||[])callback(event);for(const callback of listeners.get(type)||[])callback(event);},dispatchWindow(type,event={}){for(const callback of windowListeners.get(type)||[])callback(event);}};
 }
 test('sync notice is a polite independently owned live region with source close and escaped text',()=>{
  const h=harness(),node=h.view.render({status:'offline',message:'<img onerror="bad"> & שגיאה'});
@@ -193,6 +193,11 @@ test('overlapping pointers and a new press before the queued task cannot release
  h.dispatch('pointerup',{pointerId:1});h.flushTasks();assert.equal(copy.textContent,before);
  h.dispatch('pointerup',{pointerId:2});h.dispatch('pointerdown',{pointerId:3,button:0});h.flushTasks();assert.equal(copy.textContent,before);
  h.dispatch('pointerup',{pointerId:3});h.flushTasks();assert.match(copy.textContent,/מחווה/);
+ const touch=gestureSummary(),touchCopy=explanation(touch),beforeTouch=touchCopy.textContent,details=descendants(touch.target).find(n=>n.dataset?.syncEventDetails!==undefined),control=details.children[0];control.closest=()=>control;
+ touch.dispatch('pointerdown',{pointerId:4,button:0,target:control,isPrimary:true});touch.dispatch('pointerdown',{pointerId:5,button:0,target:control,isPrimary:false});
+ renderPendingSyncSummary(touch.target,'תשובה למחווה הראשית',changedReceipt(touch));touch.dispatch('pointerup',{pointerId:4,target:control});touch.dispatch('pointerup',{pointerId:5,target:control});touch.flushTasks();
+ assert.equal(touchCopy.textContent,beforeTouch,'a secondary contact does not prove the primary activation has completed');
+ touch.dispatchWindow('click',{pointerId:4,target:control});details.open=true;touch.flushTasks();assert.match(touchCopy.textContent,/הראשית/);
 });
 test('pointer cancellation, window blur and a hidden document release the pending presentation',()=>{
  for(const release of [h=>h.dispatch('pointercancel',{pointerId:1}),h=>h.dispatchWindow('blur'),h=>{h.document.visibilityState='hidden';h.dispatch('visibilitychange');}]){
@@ -208,4 +213,28 @@ test('a removed notice is never repainted by a stale gesture callback',()=>{
  const fresh=new Node(h.document);fresh.dataset.syncAccountEvents=h.target.dataset.syncAccountEvents;
  renderPendingSyncSummary(fresh,'תשובה למסך חדש',{...changedReceipt(h),document:h.document});
  assert.match(descendants(fresh).find(n=>n.className==='sync-pending-explanation').textContent,/למסך חדש/);
+});
+
+test('a delayed native touch click retains the old geometry across tasks after pointerup',()=>{
+ const h=gestureSummary(),copy=explanation(h),before=copy.textContent,details=descendants(h.target).find(n=>n.dataset?.syncEventDetails!==undefined),control=details.children[0];
+ control.closest=()=>control;
+ h.dispatch('pointerdown',{pointerId:7,button:0,target:control,pointerType:'touch'});renderPendingSyncSummary(h.target,'תשובת מגע חדשה',changedReceipt(h));
+ h.dispatch('pointerup',{pointerId:7,target:control,pointerType:'touch'});h.flushTasks();
+ assert.equal(copy.textContent,before,'a task boundary is not proof that native touch activation happened');
+ h.dispatchWindow('click',{target:control});details.open=true;h.flushTasks();
+ assert.match(copy.textContent,/תשובת מגע חדשה/);assert.equal(details.open,true);
+});
+test('non-activating releases and canceled touch or context menus cannot retain a stale presentation',()=>{
+ for(const kind of ['outside','disabled','contextmenu','canceled-touchend','late-pointercancel']){
+  const h=gestureSummary(),copy=explanation(h),details=descendants(h.target).find(n=>n.dataset?.syncEventDetails!==undefined),control=details.children[0];control.closest=()=>control;
+  h.dispatch('pointerdown',{pointerId:8,button:0,target:control,pointerType:'touch'});renderPendingSyncSummary(h.target,'תשובה אחרי ביטול מגע',changedReceipt(h));
+  if(kind==='contextmenu')h.dispatch('contextmenu');
+  else{
+   if(kind==='disabled')control.disabled=true;
+   h.dispatch('pointerup',{pointerId:8,target:kind==='outside'?{closest:()=>null}:control,pointerType:'touch'});
+   if(kind==='canceled-touchend')h.dispatch('touchend',{defaultPrevented:true});
+   if(kind==='late-pointercancel')h.dispatch('pointercancel',{pointerId:8,target:control});
+  }
+  h.flushTasks();assert.match(copy.textContent,/אחרי ביטול מגע/,kind);
+ }
 });

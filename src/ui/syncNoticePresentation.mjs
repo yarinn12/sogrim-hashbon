@@ -66,43 +66,75 @@ function pendingSummaryInteraction(document) {
   if (typeof document.addEventListener !== "function") return null;
   let interaction = pendingSummaryInteractions.get(document);
   if (interaction) return interaction;
-  const pointers = new Set(), deferred = new Map();
-  let settling = false, scheduled = false;
+  const pointers = new Map(), awaitingClick = new Map(), deferred = new Map();
+  let settling = false, scheduled = false, generation = 0;
   const schedule = document.defaultView?.setTimeout?.bind(document.defaultView) || globalThis.setTimeout;
+  const eventRoot = typeof document.defaultView?.addEventListener === "function" ? document.defaultView : document;
+  const listen = (type, handler) => eventRoot.addEventListener(type, handler, true);
+  const controlFor = event => {
+    const control = event.target?.closest?.('button, summary, a[href]');
+    return control?.closest?.(".sync-pending-context") ? control : null;
+  };
   const settle = () => {
     settling = true;
     if (scheduled) return;
     scheduled = true;
-    // Native mouseup/click activation must finish before new copy can reflow
-    // the pressed control. Keep only the latest presentation for each notice.
+    // Compatibility clicks from touch can arrive in a later task than pointerup.
+    // Wait for activation itself, then let its native default action finish.
     schedule(() => {
       scheduled = false;
-      if (pointers.size) return;
+      if (pointers.size || awaitingClick.size) return;
       settling = false;
       const updates = [...deferred];
       deferred.clear();
       for (const [target, render] of updates) if (target.isConnected) render();
     }, 0);
   };
-  const release = event => {
-    if (pointers.delete(event.pointerId ?? "pointer")) settle();
+  const release = (event, canceled = false) => {
+    const id = event.pointerId ?? "pointer", press = pointers.get(id), wasAwaiting = awaitingClick.has(id);
+    pointers.delete(id);
+    if (canceled) awaitingClick.delete(id);
+    else if (press?.expectsClick && !press.activated && press.control?.isConnected && !press.control.disabled &&
+      press.control.getAttribute?.("aria-disabled") !== "true" && controlFor(event) === press.control) {
+      awaitingClick.set(id, press.control);
+    }
+    if ((press || wasAwaiting) && !pointers.size && !awaitingClick.size) settle();
   };
   const cancel = () => {
-    if (!pointers.size && !deferred.size) return;
+    if (!pointers.size && !awaitingClick.size && !deferred.size) return;
     pointers.clear();
+    awaitingClick.clear();
     settle();
   };
-  document.addEventListener("pointerdown", event => {
+  const activated = event => {
+    const control = controlFor(event);
+    for (const press of pointers.values()) if (press.control === control) press.activated = true;
+    let id = event.pointerId;
+    if (!awaitingClick.has(id)) id = [...awaitingClick].find(([, target]) => target === control)?.[0];
+    if (id !== undefined) awaitingClick.delete(id);
+    else if (awaitingClick.size) awaitingClick.clear();
+    if (!pointers.size && !awaitingClick.size && deferred.size) settle();
+  };
+  listen("pointerdown", event => {
     if (event.button != null && event.button !== 0) return;
-    pointers.add(event.pointerId ?? "pointer");
-  }, true);
-  document.addEventListener("pointerup", release, true);
-  document.addEventListener("pointercancel", release, true);
+    generation++;
+    pointers.set(event.pointerId ?? "pointer", { control: controlFor(event), expectsClick: event.isPrimary !== false, activated: false });
+  });
+  listen("pointerup", release);
+  listen("pointercancel", event => release(event, true));
+  listen("click", activated);
+  listen("contextmenu", cancel);
+  listen("dragstart", cancel);
+  listen("touchend", event => {
+    const endedGeneration = generation;
+    schedule(() => { if (event.defaultPrevented && generation === endedGeneration) cancel(); }, 0);
+  });
+  listen("touchcancel", cancel);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") cancel();
   }, true);
   document.defaultView?.addEventListener?.("blur", cancel);
-  interaction = { active: () => pointers.size > 0 || settling, defer: (target, render) => deferred.set(target, render) };
+  interaction = { active: () => pointers.size > 0 || awaitingClick.size > 0 || settling, defer: (target, render) => deferred.set(target, render) };
   pendingSummaryInteractions.set(document, interaction);
   return interaction;
 }
