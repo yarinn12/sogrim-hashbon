@@ -21,6 +21,24 @@ const ROUTE='mirror+file:'+PATHS.mirrors;
 const DIRECT_SECURITY=new Set(['http://security.ubuntu.com/ubuntu','http://security.ubuntu.com/ubuntu/',
   'https://security.ubuntu.com/ubuntu','https://security.ubuntu.com/ubuntu/']);
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+// Preserve only bounded format facts when a hosted image changes. Never print
+// a raw URI, credentials, query, fragment or an unrecognized host/path.
+function rejectedMirrorDiagnostic(line){
+  const token=/^\S+/.exec(line)?.[0]??'';
+  const result={lineSha256:sha(Buffer.from(line,'latin1')),lineBytes:Buffer.byteLength(line,'latin1'),
+    separator:[...(/^\s+/.exec(line.slice(token.length))?.[0]??'')].slice(0,16).map(c=>c.charCodeAt(0)),
+    priority:/\bpriority:([0-9]{1,6})(?=\s|$)/.exec(line)?.[1]??'[unrecognized]'};
+  try{
+    const url=new URL(token);
+    Object.assign(result,{
+      protocol:['http:','https:'].includes(url.protocol)?url.protocol:'[unrecognized]',
+      hostname:url.hostname.length<=255&&/^(?:[a-z0-9-]+\.)*ubuntu\.com$/.test(url.hostname)?url.hostname:'[unrecognized]',
+      pathname:['/ubuntu','/ubuntu/'].includes(url.pathname)?url.pathname:'[unrecognized]',
+      hasCredentials:Boolean(url.username||url.password),hasQuery:Boolean(url.search),hasFragment:Boolean(url.hash)
+    });
+  }catch{result.uriParseable=false;}
+  return result;
+}
 const active=text=>text.split(/\r?\n/).filter(line=>line.trim()&&!line.trimStart().startsWith('#')).join('\n');
 function bytes(value,limit){
   assert.ok(Buffer.isBuffer(value),'Expected original filesystem bytes');
@@ -80,7 +98,8 @@ export function prepareMirrorPriorities(snapshot){
     const line=raw.replace(/\r?\n$/,'');
     if(line.trim()&&!line.trimStart().startsWith('#')){
       const match=/^(\S+)(\tpriority:)([1-3])$/.exec(line);
-      assert.ok(match&&Object.hasOwn(PRIORITIES,match[1]),'Unknown mirror URI, protocol, metadata or priority');
+      assert.ok(match&&Object.hasOwn(PRIORITIES,match[1]),
+        'Unknown mirror URI, protocol, metadata or priority; mirrorDiagnostic='+JSON.stringify(rejectedMirrorDiagnostic(line)));
       const url=match[1];assert.ok(!seen.has(url),'Duplicate mirror URI');seen.set(url,Number(match[3]));
       if(Number(match[3])!==PRIORITIES[url])edits.push({offset:offset+match[1].length+match[2].length,value:PRIORITIES[url]});
     }
