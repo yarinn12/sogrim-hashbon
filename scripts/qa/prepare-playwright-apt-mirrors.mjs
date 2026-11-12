@@ -15,6 +15,16 @@ export const PRIORITIES=Object.freeze({
   'https://security.ubuntu.com/ubuntu/':2
 });
 const ORIGINAL=Object.freeze(Object.fromEntries(Object.keys(PRIORITIES).map((url,i)=>[url,i+1])));
+// Fonts109 on the hosted AWS image rejected this exact URI (line digest retained
+// in the regression). Keep it a separate, exact three-mirror profile: never mix
+// clouds, infer another region, change a URI, or accept arbitrary Ubuntu hosts.
+const OBSERVED_EC2='http://us-east-2.ec2.archive.ubuntu.com/ubuntu/';
+const EC2_PRIORITIES=Object.freeze({
+  [OBSERVED_EC2]:3,
+  'https://archive.ubuntu.com/ubuntu/':1,
+  'https://security.ubuntu.com/ubuntu/':2
+});
+const EC2_ORIGINAL=Object.freeze(Object.fromEntries(Object.keys(EC2_PRIORITIES).map((url,i)=>[url,i+1])));
 const ROUTE='mirror+file:'+PATHS.mirrors;
 // Hosted Ubuntu images can retain the official direct security stanza while
 // routing the main archive through the mirror file. Neither source is rewritten.
@@ -93,25 +103,27 @@ export function prepareMirrorPriorities(snapshot){
       'Additional/duplicate Ubuntu mirror configuration');
   }
   const before=bytes(snapshot.mirrors,16384),text=before.toString('latin1'),seen=new Map(),edits=[];
+  const ec2=text.split(/\r?\n/).some(line=>line.startsWith(OBSERVED_EC2+'\tpriority:'));
+  const priorities=ec2?EC2_PRIORITIES:PRIORITIES,original=ec2?EC2_ORIGINAL:ORIGINAL;
   let offset=0;
   for(const raw of text.match(/[^\n]*\n|[^\n]+$/g)??[]){
     const line=raw.replace(/\r?\n$/,'');
     if(line.trim()&&!line.trimStart().startsWith('#')){
       const match=/^(\S+)(\tpriority:)([1-3])$/.exec(line);
-      assert.ok(match&&Object.hasOwn(PRIORITIES,match[1]),
+      assert.ok(match&&Object.hasOwn(priorities,match[1]),
         'Unknown mirror URI, protocol, metadata or priority; mirrorDiagnostic='+JSON.stringify(rejectedMirrorDiagnostic(line)));
       const url=match[1];assert.ok(!seen.has(url),'Duplicate mirror URI');seen.set(url,Number(match[3]));
-      if(Number(match[3])!==PRIORITIES[url])edits.push({offset:offset+match[1].length+match[2].length,value:PRIORITIES[url]});
+      if(Number(match[3])!==priorities[url])edits.push({offset:offset+match[1].length+match[2].length,value:priorities[url]});
     }
     offset+=raw.length;
   }
   assert.equal(seen.size,3,'Missing known mirror');
   const mapping=Object.fromEntries(seen);
   const matches=want=>Object.keys(want).every(url=>mapping[url]===want[url]);
-  assert.ok(matches(ORIGINAL)||matches(PRIORITIES),'Unknown/mixed priority configuration');
+  assert.ok(matches(original)||matches(priorities),'Unknown/mixed priority configuration');
   const after=Buffer.from(before);
   for(const edit of edits)after[edit.offset]=String(edit.value).charCodeAt(0);
-  return {before,after,edits,changed:edits.length>0};
+  return {before,after,edits,changed:edits.length>0,priorities};
 }
 function regular(adapter,path){
   const stat=adapter.lstatSync(path);
@@ -160,7 +172,7 @@ export function main({adapter=fs,env=process.env,argv=process.argv.slice(2),
     const final=adapter.fstatSync(fd);
     for(const key of ['dev','ino','size','mode','uid','gid','nlink'])assert.equal(final[key],stat[key],'Mirror metadata changed');
     const receipt={scope:'EPHEMERAL_GITHUB_UBUNTU24_APT_PRIORITIES_ONLY',changed:plan.changed,
-      beforeSha256:sha(plan.before),afterSha256:sha(after),priorities:PRIORITIES,
+      beforeSha256:sha(plan.before),afterSha256:sha(after),priorities:plan.priorities,
       aptExecuted:false,speedImprovementVerified:false};
     log(JSON.stringify(receipt));return receipt;
   }finally{adapter.closeSync(fd);}

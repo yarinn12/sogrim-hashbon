@@ -9,6 +9,9 @@ const AZURE='http://azure.archive.ubuntu.com/ubuntu/';
 const ARCHIVE='https://archive.ubuntu.com/ubuntu/';
 const SECURITY='https://security.ubuntu.com/ubuntu/';
 const oldMirrors=()=>Buffer.from(AZURE+'\tpriority:1\n'+ARCHIVE+'\tpriority:2\n'+SECURITY+'\tpriority:3\n');
+const OBSERVED_EC2='http://us-east-2.ec2.archive.ubuntu.com/ubuntu/';
+const observedEc2Line=OBSERVED_EC2+'\tpriority:1';
+function ec2Snapshot(){const s=snapshot();s.mirrors=Buffer.from(observedEc2Line+'\n'+ARCHIVE+'\tpriority:2\n'+SECURITY+'\tpriority:3\n');return s;}
 const stanza=suites=>[
   'Types: deb','URIs: '+ROUTE,'Suites: '+suites,
   'Components: main restricted universe multiverse',
@@ -97,6 +100,44 @@ function httpsFirst(bytes){
  assert.equal(entries[1][0],SECURITY,'HTTPS security must be second');
  assert.equal(entries[2][0],AZURE,'Azure must remain the third fallback');
 }
+
+test('the exact rejected EC2 line from Fonts109 is supported with the same priority-only edit',()=>{
+ // This first line is reconstructed exactly from the original bounded diagnostic.
+ // Its following two lines are the unchanged known Ubuntu archive/security rows;
+ // this is a controlled profile fixture, not a claim that the complete AWS file was captured.
+ assert.equal(Buffer.byteLength(observedEc2Line,'latin1'),58);
+ assert.equal(createHash('sha256').update(Buffer.from(observedEc2Line,'latin1')).digest('hex'),'ed8f7f23d335015d9e16540435a9b1afa1adf34ba6222ed6dd975dfc1f7ec118');
+ const s=ec2Snapshot(),p=prepareMirrorPriorities(s);unchangedExceptPriorities(s.mirrors,p.after);
+ assert.deepEqual(p.after,Buffer.from(OBSERVED_EC2+'\tpriority:3\n'+ARCHIVE+'\tpriority:1\n'+SECURITY+'\tpriority:2\n'));
+});
+
+test('the actual preparation body preserves all non-mirror bytes and metadata for the observed EC2 profile',()=>{
+ const s=ec2Snapshot(),f=fake(s),before=new Map([...f.files].map(([p,b])=>[p,Buffer.from(b)]));
+ const r=f.run();assert.equal(r.changed,true);assert.equal(f.writes.length,3);
+ assert.deepEqual(r.priorities,{[OBSERVED_EC2]:3,[ARCHIVE]:1,[SECURITY]:2});
+ for(const[path,b]of before)if(path!==PATHS.mirrors)assert.ok(b.equals(f.files.get(path)),path);
+ unchangedExceptPriorities(before.get(PATHS.mirrors),f.files.get(PATHS.mirrors));
+ assert.equal(r.aptExecuted,false);assert.equal(r.speedImprovementVerified,false);
+});
+
+test('the observed EC2 profile remains idempotent after physical reordering with zero writes',()=>{
+ const s=ec2Snapshot();s.mirrors=Buffer.from(ARCHIVE+'\tpriority:1\n'+SECURITY+'\tpriority:2\n'+OBSERVED_EC2+'\tpriority:3\n');
+ const f=fake(s),r=f.run();assert.equal(r.changed,false);assert.equal(f.writes.length,0);assert.ok(f.files.get(PATHS.mirrors).equals(s.mirrors));
+});
+
+test('mixed Azure and EC2 lists remain rejected before any priority write',()=>{
+ for(const mirrors of [Buffer.concat([oldMirrors(),Buffer.from(observedEc2Line+'\n')]),Buffer.from(AZURE+'\tpriority:1\n'+OBSERVED_EC2+'\tpriority:2\n'+SECURITY+'\tpriority:3\n')]){
+  const s=snapshot();s.mirrors=mirrors;const f=fake(s);assert.throws(()=>f.run());assert.equal(f.writes.length,0);assert.equal(f.logs.length,0);
+ }
+});
+
+test('unobserved EC2 regions, protocols, paths and URI credentials remain rejected before writes',()=>{
+ for(const uri of ['http://us-west-2.ec2.archive.ubuntu.com/ubuntu/','https://us-east-2.ec2.archive.ubuntu.com/ubuntu/',
+  'http://us-east-2.ec2.archive.ubuntu.com.evil.invalid/ubuntu/','http://us-east-2.ec2.archive.ubuntu.com/other/',
+  'http://user:synthetic@us-east-2.ec2.archive.ubuntu.com/ubuntu/','http://us-east-2.ec2.archive.ubuntu.com/ubuntu/?code=synthetic']){
+  const s=ec2Snapshot();s.mirrors=Buffer.from(s.mirrors.toString().replace(OBSERVED_EC2,uri));const f=fake(s);assert.throws(()=>f.run());assert.equal(f.writes.length,0);assert.equal(f.logs.length,0);
+ }
+});
 test('OLD unchanged runner priorities fail HTTPS-first assertion; FINAL passes without a speed claim',()=>{
  const s=snapshot();assert.throws(()=>httpsFirst(s.mirrors),/HTTPS archive must be first/);
  const p=prepareMirrorPriorities(s);assert.equal(p.changed,true);httpsFirst(p.after);unchangedExceptPriorities(s.mirrors,p.after);
