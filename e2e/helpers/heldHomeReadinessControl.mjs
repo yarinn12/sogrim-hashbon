@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
 import { holdNonessentialHomeImage } from './heldHomeImage.mjs';
 import { openRenderedHome } from './typographyReadiness.mjs';
+import { readLocalQaHtmlFresh } from './readLocalQaHtmlFresh.mjs';
 
 const checkedPages = new WeakSet();
 const heldGates = new WeakMap();
@@ -35,9 +36,9 @@ async function holdNonessentialDeferredScript(page, baseURL) {
     await route.fulfill({ status: 200, contentType: 'text/javascript', body: '' });
   });
   await page.route(url => url.origin === origin && url.pathname === '/', async route => {
-    const response = await route.fetch();
-    const html = await response.text();
-    await route.fulfill({ response, body: html.replace('</body>',
+    const response = await readLocalQaHtmlFresh(baseURL, route.request().url());
+    const html = response.body.toString('utf8');
+    await route.fulfill({ ...response, body: html.replace('</body>',
       `<script defer src="${scriptPath}"></script></body>`) });
   });
   return {

@@ -1,3 +1,5 @@
+import { readLocalQaHtmlFresh } from './readLocalQaHtmlFresh.mjs';
+
 // Hold only a deliberately unrelated deferred script. The application itself
 // must render a fresh home before this script and DOMContentLoaded complete.
 export async function holdNonessentialHomeDefer(page, baseURL) {
@@ -17,9 +19,9 @@ export async function holdNonessentialHomeDefer(page, baseURL) {
     await route.fulfill({ status: 200, contentType: 'text/javascript', body: '' });
   });
   await page.route(url => url.origin === origin && url.pathname === '/', async route => {
-    const response = await route.fetch();
-    const html = await response.text();
-    await route.fulfill({ response, body: html.replace('</body>',
+    const response = await readLocalQaHtmlFresh(baseURL, route.request().url());
+    const html = response.body.toString('utf8');
+    await route.fulfill({ ...response, body: html.replace('</body>',
       '<script defer src="/__qa_held_home_defer.js"></script></body>') });
   });
   return {
