@@ -49,8 +49,8 @@ class OriginalPrivateReaderTests(unittest.TestCase):
     def test_system_log_read_is_pinned_to_original_device_window_and_readonly_command(self):
         export=self.root/'export';archive=export/'simctl_diagnostics/84B7C49B-39FE-4868-A0AB-3DED388DBDF0/system.logarchive';archive.mkdir(parents=True)
         argv=tool.original_system_log_argv(export)
-        self.assertEqual(argv[:4],['/usr/bin/log','show','--style','json'])
-        self.assertEqual(argv[argv.index('--start')+1],'2026-11-12 22:07:10');self.assertEqual(argv[argv.index('--end')+1],'2026-11-12 22:08:20')
+        self.assertEqual(argv[:2],['/usr/bin/log','show']);self.assertEqual(argv[argv.index('--style')+1],'json')
+        self.assertEqual(argv[argv.index('--start')+1],'2026-11-12 22:07:10+0000');self.assertEqual(argv[argv.index('--end')+1],'2026-11-12 22:08:20+0000')
         self.assertEqual(argv[argv.index('--timezone')+1],'UTC');self.assertEqual(Path(argv[-1]),archive.resolve())
         self.assertIn('WebPrivacy',argv[argv.index('--predicate')+1]);self.assertNotIn('xcrun',argv);self.assertNotIn('simctl',argv)
     def test_system_log_refuses_wrong_device_or_ambiguous_archives(self):
@@ -64,5 +64,18 @@ class OriginalPrivateReaderTests(unittest.TestCase):
         target=self.root/'text-payload.tar.gz';tool.pack(private,target,0)
         with tarfile.open(target)as t:self.assertEqual(sorted(t.getnames()),['export/original-system-log.stdout','inspection-status.json','read.log'])
         self.assertEqual(binary.read_bytes(),b'original binary unchanged')
+    def test_native_command_passes_exact_guard_and_rejects_time_or_device_changes(self):
+        export=self.root/'export';archive=export/'simctl_diagnostics/84B7C49B-39FE-4868-A0AB-3DED388DBDF0/system.logarchive';archive.mkdir(parents=True)
+        bounded=tool.bounded_system_log_reader();argv=tool.original_system_log_argv(export);bounded.validate_command(argv)
+        changed=list(argv);changed[changed.index('--start')+1]='2026-11-12 22:07:09+0000'
+        with self.assertRaises(bounded.InspectionError):bounded.validate_command(changed)
+        changed=list(argv);changed[-1]=str(archive.parent.parent/'foreign/system.logarchive')
+        with self.assertRaises(bounded.InspectionError):bounded.validate_command(changed)
+    def test_json_footer_is_accepted_only_for_exact_original_device_archive(self):
+        bounded=tool.bounded_system_log_reader();archive='/tmp/export/simctl_diagnostics/84B7C49B-39FE-4868-A0AB-3DED388DBDF0/system.logarchive'
+        body='[{"timestamp":"2026-11-12 22:07:33+0000","eventMessage":"synthetic original event"}]'
+        raw=(body+'==========\n'+archive+'\n==========\n').encode()
+        self.assertEqual(bounded.log_event_count(raw,expected_archive=archive),1)
+        self.assertIsNone(bounded.log_event_count(raw,expected_archive=archive.replace('84B7C49B-39FE-4868-A0AB-3DED388DBDF0','foreign')))
 
 if __name__=='__main__':unittest.main()

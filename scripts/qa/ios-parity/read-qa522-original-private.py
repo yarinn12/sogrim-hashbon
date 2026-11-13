@@ -56,6 +56,17 @@ def read_original(private):
     reader.write_json(output/'original-receipt.json',dict(source=SOURCE,tree=TREE,originalRun=RUN,originalJob=JOB,artifact=ARTIFACT,archiveSha256=DIGEST,archiveBytes=SIZE,**extraction,originalEvidenceOnly=True,newAppRun=False,ciRerun=False,sourceAccepted=False,newCost=False,unavailableCommands=manifest['unavailableOrFailed']))
     decode_original_system_log(private,output)
 
+def bounded_system_log_reader():
+    path=ROOT/'scripts/qa/native-auth-session/inspect-original-system-log.py'
+    spec=importlib.util.spec_from_file_location('bounded_qa522_original_log',path);bounded=importlib.util.module_from_spec(spec);spec.loader.exec_module(bounded)
+    # Rebind the reusable command guard to this verified original archive. Keep
+    # its complete argument allowlist, output caps, timeout and footer checks.
+    bounded.UDID='84B7C49B-39FE-4868-A0AB-3DED388DBDF0'
+    bounded.START_UTC='2026-11-12 22:07:10'
+    bounded.END_UTC='2026-11-12 22:08:20'
+    bounded.PREDICATE='(process == "App" OR process CONTAINS[c] "WebKit" OR process CONTAINS[c] "WebPrivacy" OR subsystem CONTAINS[c] "WebKit" OR subsystem CONTAINS[c] "WebPrivacy" OR eventMessage CONTAINS[c] "WebPrivacy") AND subsystem != "com.apple.dt.xctest"'
+    return bounded
+
 def original_system_log_argv(export):
     export=Path(export).resolve(strict=True)
     archives=list(export.rglob('system.logarchive'))
@@ -68,19 +79,17 @@ def original_system_log_argv(export):
         cursor=cursor/part
         assert not cursor.is_symlink()
     assert archive.is_dir()and archive.resolve(strict=True).is_relative_to(export)
-    predicate='(process == "App" OR process CONTAINS[c] "WebKit" OR process CONTAINS[c] "WebPrivacy" OR subsystem CONTAINS[c] "WebKit" OR subsystem CONTAINS[c] "WebPrivacy" OR eventMessage CONTAINS[c] "WebPrivacy") AND subsystem != "com.apple.dt.xctest"'
-    return ['/usr/bin/log','show','--style','json','--timezone','UTC','--info','--debug','--start','2026-11-12 22:07:10','--end','2026-11-12 22:08:20','--predicate',predicate,'--archive',str(archive)]
+    return bounded_system_log_reader().log_show_argv(archive)
 
 def decode_original_system_log(private,output):
-    path=ROOT/'scripts/qa/native-auth-session/inspect-original-system-log.py'
-    spec=importlib.util.spec_from_file_location('bounded_original_log',path);bounded=importlib.util.module_from_spec(spec);spec.loader.exec_module(bounded)
+    bounded=bounded_system_log_reader()
     argv=original_system_log_argv(output/'export-diagnostics')
     result=bounded.run_bounded(argv,private/'system-log-raw','original-system-log',120,24000000,2000000,bounded.clean_environment(os.environ))
+    events=bounded.log_event_count(result['rawPaths']['stdout'].read_bytes(),expected_archive=argv[-1])
     published=bounded.publish_result(result,output)
-    (output/'original-system-log-manifest.json').write_text(json.dumps(dict(command=published,originalArtifact=ARTIFACT,originalRun=RUN,sourceAccepted=False,newAppRun=False,plaintextPublished=False),indent=2),encoding='utf-8')
+    (output/'original-system-log-manifest.json').write_text(json.dumps(dict(command=published,eventCount=events,originalArtifact=ARTIFACT,originalRun=RUN,sourceAccepted=False,newAppRun=False,plaintextPublished=False),indent=2),encoding='utf-8')
     assert result['exitCode']==0 and not result['timedOut']and not result['outputTruncated']
-    events=json.loads((output/'original-system-log.stdout').read_bytes())
-    assert isinstance(events,list)and len(events)>0
+    assert isinstance(events,int)and events>0
 
 def extract_original_result(archive,extracted,reader):
     assert not extracted.exists()
