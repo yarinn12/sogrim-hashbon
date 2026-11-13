@@ -1,13 +1,13 @@
-name: Read original QA522 native result with encrypted output
+name: Read original QA522 system logs with encrypted output
 on:
   push:
-    branches: [codex/qa522-native-private-reader-20261113]
+    branches: [codex/qa522-native-log-reader-20261113]
 permissions:
   contents: read
   actions: read
 jobs:
   inspect:
-    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/qa522-native-private-reader-20261113' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false }}
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/qa522-native-log-reader-20261113' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false }}
     runs-on: macos-26-intel
     timeout-minutes: 10
     steps:

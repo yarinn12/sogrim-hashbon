@@ -19,7 +19,7 @@ JOB=131513559031
 ARTIFACT=13987898538
 DIGEST='41511f37d07b3d823d803f2fb952dc4c6fb26c18247f327d452a5bc0db6f2736'
 SIZE=111906730
-BRANCH='codex/qa522-native-private-reader-20261113'
+BRANCH='codex/qa522-native-log-reader-20261113'
 ROOT=Path(__file__).resolve().parents[3]
 
 def api(path):
@@ -54,6 +54,33 @@ def read_original(private):
     manifest=reader.inspect_result(extracted/'result.xcresult',output)
     assert any(row['label']=='summary'and row['exitCode']==0 for row in manifest['commands'])
     reader.write_json(output/'original-receipt.json',dict(source=SOURCE,tree=TREE,originalRun=RUN,originalJob=JOB,artifact=ARTIFACT,archiveSha256=DIGEST,archiveBytes=SIZE,**extraction,originalEvidenceOnly=True,newAppRun=False,ciRerun=False,sourceAccepted=False,newCost=False,unavailableCommands=manifest['unavailableOrFailed']))
+    decode_original_system_log(private,output)
+
+def original_system_log_argv(export):
+    export=Path(export).resolve(strict=True)
+    archives=list(export.rglob('system.logarchive'))
+    assert len(archives)==1
+    archive=archives[0]
+    relative=archive.relative_to(export)
+    assert relative.parts[-3:]==('simctl_diagnostics','84B7C49B-39FE-4868-A0AB-3DED388DBDF0','system.logarchive')
+    cursor=export
+    for part in relative.parts:
+        cursor=cursor/part
+        assert not cursor.is_symlink()
+    assert archive.is_dir()and archive.resolve(strict=True).is_relative_to(export)
+    predicate='(process == "App" OR process CONTAINS[c] "WebKit" OR process CONTAINS[c] "WebPrivacy" OR subsystem CONTAINS[c] "WebKit" OR subsystem CONTAINS[c] "WebPrivacy" OR eventMessage CONTAINS[c] "WebPrivacy") AND subsystem != "com.apple.dt.xctest"'
+    return ['/usr/bin/log','show','--style','json','--timezone','UTC','--info','--debug','--start','2026-11-12 22:07:10','--end','2026-11-12 22:08:20','--predicate',predicate,'--archive',str(archive)]
+
+def decode_original_system_log(private,output):
+    path=ROOT/'scripts/qa/native-auth-session/inspect-original-system-log.py'
+    spec=importlib.util.spec_from_file_location('bounded_original_log',path);bounded=importlib.util.module_from_spec(spec);spec.loader.exec_module(bounded)
+    argv=original_system_log_argv(output/'export-diagnostics')
+    result=bounded.run_bounded(argv,private/'system-log-raw','original-system-log',120,24000000,2000000,bounded.clean_environment(os.environ))
+    published=bounded.publish_result(result,output)
+    (output/'original-system-log-manifest.json').write_text(json.dumps(dict(command=published,originalArtifact=ARTIFACT,originalRun=RUN,sourceAccepted=False,newAppRun=False,plaintextPublished=False),indent=2),encoding='utf-8')
+    assert result['exitCode']==0 and not result['timedOut']and not result['outputTruncated']
+    events=json.loads((output/'original-system-log.stdout').read_bytes())
+    assert isinstance(events,list)and len(events)>0
 
 def extract_original_result(archive,extracted,reader):
     assert not extracted.exists()
@@ -78,7 +105,9 @@ def extract_original_result(archive,extracted,reader):
     return dict(resultMembers=result_count,uncompressedBytes=total,allOriginalCrcsPassed=True)
 
 def pack(private,destination,exit_code):
-    assert not destination.exists();files=[p for p in(private/'export').rglob('*')if p.is_file()]if(private/'export').exists()else[]
+    # Original binary archive remains in the source artifact and previous encrypted
+    # inspection. Keep the derived text here without copying that archive again.
+    assert not destination.exists();files=[p for p in(private/'export').rglob('*')if p.is_file()and 'system.logarchive'not in p.relative_to(private/'export').parts]if(private/'export').exists()else[]
     if(private/'read.log').is_file():files.append(private/'read.log')
     assert files and len(files)<20000 and sum(p.stat().st_size for p in files)<=256*1024*1024
     status=private/'inspection-status.json';assert not status.exists();status.write_text(json.dumps(dict(readerExit=exit_code,sourceAccepted=False,newAppRun=False)),encoding='utf-8');files.append(status)

@@ -46,5 +46,23 @@ class OriginalPrivateReaderTests(unittest.TestCase):
     def test_pack_refuses_an_empty_inspection(self):
         private=self.root/'private';private.mkdir()
         with self.assertRaises(AssertionError):tool.pack(private,self.root/'payload.tar.gz',1)
+    def test_system_log_read_is_pinned_to_original_device_window_and_readonly_command(self):
+        export=self.root/'export';archive=export/'simctl_diagnostics/84B7C49B-39FE-4868-A0AB-3DED388DBDF0/system.logarchive';archive.mkdir(parents=True)
+        argv=tool.original_system_log_argv(export)
+        self.assertEqual(argv[:4],['/usr/bin/log','show','--style','json'])
+        self.assertEqual(argv[argv.index('--start')+1],'2026-11-12 22:07:10');self.assertEqual(argv[argv.index('--end')+1],'2026-11-12 22:08:20')
+        self.assertEqual(argv[argv.index('--timezone')+1],'UTC');self.assertEqual(Path(argv[-1]),archive.resolve())
+        self.assertIn('WebPrivacy',argv[argv.index('--predicate')+1]);self.assertNotIn('xcrun',argv);self.assertNotIn('simctl',argv)
+    def test_system_log_refuses_wrong_device_or_ambiguous_archives(self):
+        export=self.root/'export';wrong=export/'simctl_diagnostics/foreign/system.logarchive';wrong.mkdir(parents=True)
+        with self.assertRaises(AssertionError):tool.original_system_log_argv(export)
+        correct=export/'simctl_diagnostics/84B7C49B-39FE-4868-A0AB-3DED388DBDF0/system.logarchive';correct.mkdir(parents=True)
+        with self.assertRaises(AssertionError):tool.original_system_log_argv(export)
+    def test_text_pack_excludes_only_copied_logarchive_and_keeps_derived_text(self):
+        private=self.root/'private';binary=private/'export/export-diagnostics/simctl_diagnostics/device/system.logarchive/Persist/source.tracev3';binary.parent.mkdir(parents=True);binary.write_bytes(b'original binary unchanged')
+        (private/'export/original-system-log.stdout').write_text('[{"eventMessage":"synthetic original event"}]');(private/'read.log').write_text('reader log')
+        target=self.root/'text-payload.tar.gz';tool.pack(private,target,0)
+        with tarfile.open(target)as t:self.assertEqual(sorted(t.getnames()),['export/original-system-log.stdout','inspection-status.json','read.log'])
+        self.assertEqual(binary.read_bytes(),b'original binary unchanged')
 
 if __name__=='__main__':unittest.main()
