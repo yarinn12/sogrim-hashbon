@@ -88,6 +88,7 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
         observeStartup("capacitorDidLoad-super", startupWebState())
         let controller = webView!.configuration.userContentController
         controller.add(self, name: "iosParity")
+        controller.add(self, name: "iosStartupBoundary")
         for name in ["startup-diagnostics", "synthetic-service", "input-trace", "journey"] {
             let url = Bundle.main.resourceURL!.appendingPathComponent("public/ios-parity-\(name).js")
             let script = try! String(contentsOf: url, encoding: .utf8)
@@ -247,6 +248,13 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
         }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "iosStartupBoundary" {
+            guard message.frameInfo.isMainFrame,
+                  let boundary = message.body as? [String: Any], boundary.count == 1,
+                  boundary["stage"] as? String == "observer-enter" else { return }
+            observeStartup("observer-enter")
+            return
+        }
         guard var record = message.body as? [String: Any] else { return }
         if record["kind"] as? String == "startup-diagnostic" {
             guard message.frameInfo.isMainFrame, let item = record["startup"] as? [String: Any],
