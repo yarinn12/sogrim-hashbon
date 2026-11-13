@@ -1,0 +1,46 @@
+name: Read original QA522 native result with encrypted output
+on:
+  push:
+    branches: [codex/qa522-native-private-reader-20261113]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/qa522-native-private-reader-20261113' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false }}
+    runs-on: macos-26-intel
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Read original result and encrypt private output
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          private="$RUNNER_TEMP/qa522-original-private"
+          mkdir "$private"
+          set +e
+          python3 scripts/qa/ios-parity/read-qa522-original-private.py read "$private" > "$private/read.log" 2>&1
+          reader_exit=$?
+          set -e
+          if ! python3 scripts/qa/ios-parity/read-qa522-original-private.py pack "$private" "$RUNNER_TEMP/private-inspection.tar.gz" "$reader_exit" > "$private/pack.log" 2>&1; then
+            echo 'Private inspection packaging failed; no diagnostic contents printed.'
+            exit 1
+          fi
+          node scripts/qa/ios-parity/private-inspection-envelope.mjs encrypt "$RUNNER_TEMP/private-inspection.tar.gz" scripts/qa/ios-parity/native-reader-public-key.pem private-inspection-envelope.json
+          exit "$reader_exit"
+      - name: Retain encrypted output only
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: qa522-original-private-inspection
+          path: private-inspection-envelope.json
+          if-no-files-found: error
+          retention-days: 1

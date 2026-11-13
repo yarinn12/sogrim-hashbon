@@ -3,6 +3,7 @@
   "version": 2,
   "git": {
     "deploymentEnabled": {
+      "codex/qa522-native-private-reader-20261113": false,
       "codex/ios-auth76-system-log-footer-20261107": false,
       "codex/ios-auth76-system-log-focused-20261107": false,
       "codex/ios-auth76-system-log-help-20261107": false,
