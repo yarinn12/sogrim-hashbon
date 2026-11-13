@@ -86,8 +86,8 @@ test('a failed telemetry sink does not throw or publish readiness', () => {
 test('synthetic service and frozen native UI driver retain their exact content seals', () => {
   const baselines = {
     'synthetic-service.js': '0b9dce3a03526794b24063ff367370828fe1aa0594b3d5da4ae02467d7444bed',
-    // QA519 uses main-actor async fulfillment; all action predicates and deadlines stay sealed.
-    'ParityUITests.swift': 'd32ebec6eeda462e1f5b83fb8dc2e6c56addec7c18a6fe8db824feab3fc5c6e4'
+    // Reviewed startup-failure stop; original action/deadline seal checked below.
+    'ParityUITests.swift': '0ce7b08cc7780c53e76d6ae96da78093067eb4eecbeb40a0d446405085f0fc5e'
   };
   for (const [name, digest] of Object.entries(baselines)) {
     const source = readFileSync(new URL(name, dir), 'utf8');
@@ -96,6 +96,23 @@ test('synthetic service and frozen native UI driver retain their exact content s
   }
   const uiTests = readFileSync(new URL('ParityUITests.swift', dir), 'utf8');
   assert.notEqual(canonicalHash(uiTests.replace('timeout: 35', 'timeout: 36')), baselines['ParityUITests.swift']);
+});
+
+test('reviewed startup stop is the sole change from the sealed native action driver', () => {
+  const source = readFileSync(new URL('ParityUITests.swift', dir), 'utf8').replace(/\r\n/g, '\n');
+  const reviewedStop = [
+    '        // Async XCTest methods can continue after an assertion has failed.',
+    '        // Preserve the failure and its evidence, then stop before any native',
+    '        // input can be rejected by XCTest because of that earlier failure.',
+    '        guard statusExists else { return }',
+    ''
+  ].join('\n');
+  assert.equal(source.split(reviewedStop).length, 2, 'one explicit startup stop is required');
+  const original = source.replace(reviewedStop, '');
+  assert.equal(canonicalHash(original), 'd32ebec6eeda462e1f5b83fb8dc2e6c56addec7c18a6fe8db824feab3fc5c6e4',
+    'all original assertions, action predicates and deadlines must remain byte-identical');
+  assert.match(source, /XCTAssertTrue\(statusExists\)\n[\s\S]*?guard statusExists else \{ return \}\n        func state\(\)/);
+  assert.notEqual(canonicalHash(original), canonicalHash(source), 'removing the stop must invalidate the current seal');
 });
 
 test('journey retains original font, frame, native ACK and action deadlines', () => {
