@@ -1,7 +1,8 @@
 // Observations only: no readiness value, fetch, polling timer or DOM mutation.
 (() => {
-  // This separate native boundary uses no document clock or readiness state.
-  try { globalThis.webkit?.messageHandlers?.iosStartupBoundary?.postMessage({ stage: 'observer-enter' }); }
+  // Keep the JS send time independent of the document performance clock and
+  // native callback delivery. This observation never publishes readiness.
+  try { globalThis.webkit?.messageHandlers?.iosStartupBoundary?.postMessage({ stage: 'observer-enter', epochMs: Date.now() }); }
   catch { /* Observing script entry cannot prevent the original diagnostics. */ }
   const documentTimeOriginMs = performance.timeOrigin;
   const stages = new Set(['script-injected', 'dom-content-loaded', 'window-loaded',

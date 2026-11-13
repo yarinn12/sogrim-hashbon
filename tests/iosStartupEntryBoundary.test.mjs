@@ -20,7 +20,7 @@ function run({handler = 'present', holdClock = false} = {}) {
     order.push('boundary'); boundaries.push(value);
     if (handler === 'throwing') throw Error('CONTROL_BOUNDARY_SINK_UNAVAILABLE');
   }};
-  const context = vm.createContext({Date, URL, Set, Object, Number, performance,
+  const context = vm.createContext({Date: {now: () => 1794521253000}, URL, Set, Object, Number, performance,
     document: {readyState: 'loading', addEventListener() {}},
     location: {href: 'capacitor://localhost/', origin: 'null'},
     addEventListener() {}, PerformanceObserver: class {observe() {}},
@@ -60,9 +60,9 @@ test('a failed native entry sink does not prevent the original diagnostics', () 
   assert.equal(p.diagnostics[0].startup.stage, 'script-injected');
 });
 
-test('entry observations contain only a fixed stage and cannot publish readiness', () => {
+test('entry observations contain only a fixed stage and independent wall time without publishing readiness', () => {
   const p = run();
-  assert.equal(JSON.stringify(p.boundaries), '[{"stage":"observer-enter"}]');
+  assert.equal(JSON.stringify(p.boundaries), '[{"stage":"observer-enter","epochMs":1794521253000}]');
   assert.equal(p.context.nativeStatusReady, undefined);
   assert.equal(p.context.__iosParityLive, undefined);
   assert.equal(p.context.fetch, undefined);
@@ -75,8 +75,9 @@ test('native entry receiver requires its own channel, main frame and closed sche
   assert.ok(start > 0 && end > start);
   const receiver = bridge.slice(start, end);
   assert.match(receiver, /guard message\.frameInfo\.isMainFrame/);
-  assert.match(receiver, /boundary\.count == 1/);
+  assert.match(receiver, /boundary\.count == 2/);
   assert.match(receiver, /boundary\["stage"\] as\? String == "observer-enter"/);
-  assert.match(receiver, /observeStartup\("observer-enter"\)/);
+  assert.match(receiver, /let epochMs = boundary\["epochMs"\] as\? Double, epochMs\.isFinite, epochMs >= 0/);
+  assert.match(receiver, /observeStartup\("observer-enter", \["epochMs": epochMs\]\)/);
   assert.doesNotMatch(receiver, /refreshStatus|status\.text|report\[|evaluateJavaScript|capture|timer/i);
 });

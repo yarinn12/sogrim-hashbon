@@ -250,9 +250,10 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "iosStartupBoundary" {
             guard message.frameInfo.isMainFrame,
-                  let boundary = message.body as? [String: Any], boundary.count == 1,
-                  boundary["stage"] as? String == "observer-enter" else { return }
-            observeStartup("observer-enter")
+                  let boundary = message.body as? [String: Any], boundary.count == 2,
+                  boundary["stage"] as? String == "observer-enter",
+                  let epochMs = boundary["epochMs"] as? Double, epochMs.isFinite, epochMs >= 0 else { return }
+            observeStartup("observer-enter", ["epochMs": epochMs])
             return
         }
         guard var record = message.body as? [String: Any] else { return }
