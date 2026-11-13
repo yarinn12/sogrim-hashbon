@@ -19,6 +19,10 @@ final class ParityProbeUITests: XCTestCase {
             print("NATIVE_STATUS_MISSING: app-wide identifier count=\(identifierCount)")
         }
         XCTAssertTrue(statusExists)
+        // Async XCTest methods can continue after an assertion has failed.
+        // Preserve the failure and its evidence, then stop before any native
+        // input can be rejected by XCTest because of that earlier failure.
+        guard statusExists else { return }
         func state() -> [String: Any] {
             // Relaunch hides the status until the restored capture is acknowledged.
             // Poll absence as unready instead of resolving a nonexistent label.
