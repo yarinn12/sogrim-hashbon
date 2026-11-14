@@ -1,5 +1,5 @@
 name: iOS197 4.59 private signed one-day artifact only
-run-name: iOS signed artifact 4.59 (197) from c107773f815151a4eb1d33fa59866b11de7b5a2b
+run-name: iOS signed artifact 4.59 (197) from 806291ca3dd81a352aaa049bd9640769917b26a9
 
 on:
   push:
@@ -24,12 +24,12 @@ jobs:
         shell: bash
         working-directory: app
     env:
-      SOURCE_SHA: "c107773f815151a4eb1d33fa59866b11de7b5a2b"
-      SOURCE_TREE: "c4cae21ff58c5b23e4335ebf8ad514fcaeb4e835"
-      SOURCE_QA_RUN: "43645025934"
-      SOURCE_WINDOWS_QA_RUN: "43645025922"
-      SOURCE_FONT_QA_RUN: "43645025920"
-      SOURCE_AUTH_QA_RUN: "43645025926"
+      SOURCE_SHA: "806291ca3dd81a352aaa049bd9640769917b26a9"
+      SOURCE_TREE: "6f376900ae12ac443ddcd1ec6ce34a5091286d35"
+      SOURCE_QA_RUN: "43650276655"
+      SOURCE_WINDOWS_QA_RUN: "43650276620"
+      SOURCE_FONT_QA_RUN: "43650276631"
+      SOURCE_AUTH_QA_RUN: "43650276672"
       WORKFLOW_COMMIT: ${{ github.workflow_sha }}
       WORKFLOW_REF: ${{ github.workflow_ref }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
@@ -64,12 +64,12 @@ jobs:
       - name: Validate mandatory frozen source and release inputs
         working-directory: ${{ github.workspace }}
         run: |
-          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"c107773f815151a4eb1d33fa59866b11de7b5a2b");a.equal(process.env.IOS_VERSION,"4.59");a.equal(process.env.IOS_BUILD,"197");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
+          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"806291ca3dd81a352aaa049bd9640769917b26a9");a.equal(process.env.IOS_VERSION,"4.59");a.equal(process.env.IOS_BUILD,"197");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
 
       - name: Checkout the frozen application source explicitly
         uses: actions/checkout@v6
         with:
-          ref: "c107773f815151a4eb1d33fa59866b11de7b5a2b"
+          ref: "806291ca3dd81a352aaa049bd9640769917b26a9"
           path: app
           persist-credentials: false
 
@@ -235,7 +235,7 @@ jobs:
       - name: Record preparation outcome
         run: |
           printf '%s\n' \
-            'Signed iOS 4.59 (197) artifact prepared from c107773f815151a4eb1d33fa59866b11de7b5a2b.' \
+            'Signed iOS 4.59 (197) artifact prepared from 806291ca3dd81a352aaa049bd9640769917b26a9.' \
             'The retained artifact is encrypted and requires the existing App Store API private key to decrypt.' \
             'No TestFlight upload, App Review submission, device acceptance or build-number reservation was performed.' \
             >> "$GITHUB_STEP_SUMMARY"
