@@ -24,6 +24,40 @@ test("dynamic type layout thresholds use normalized UI pixels", () => {
   assert.equal(classifyDynamicTypeSize("invalid"), "normal");
 });
 
+for (const [systemBodySize, level] of [[23, 'large'], [40, 'extra-large']]) {
+  test(`unchanged Apple ${level} sizing retains reflow while the real probe is measured`, () => {
+    const reflow = `dynamic-type-${level}`;
+    const classes = new Set(['dynamic-type-active', 'dynamic-type-apple', reflow]);
+    const styles = new Map([['--apple-font-scale', String(systemBodySize / 17)]]);
+    const probe = {};
+    const root = {
+      dataset: { dynamicType: level },
+      classList: {
+        toggle(name, enabled) { enabled ? classes.add(name) : classes.delete(name); },
+        remove(...names) { names.forEach(name => classes.delete(name)); }
+      },
+      style: {
+        setProperty(name, value) { styles.set(name, value); },
+        removeProperty(name) { styles.delete(name); }
+      },
+      ownerDocument: {
+        getElementById: () => probe,
+        defaultView: {
+          CSS: { supports: () => true }, matchMedia: () => ({ matches: true }),
+          getComputedStyle(element) {
+            assert.equal(element, probe);
+            assert.equal(classes.has(reflow), true, 'a layout read must retain the current bottom-space rules');
+            return { fontSize: `${systemBodySize}px` };
+          }
+        },
+        body: {}
+      }
+    };
+    assert.equal(refreshDynamicType(root), level);
+    assert.equal(classes.has(reflow), true);
+  });
+}
+
 test("iOS measures its independent system body size and normalizes the UI before classifying reflow", () => {
   let systemBodySize = 17;
   let probe;

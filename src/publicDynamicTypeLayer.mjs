@@ -75,15 +75,18 @@ export function refreshDynamicType(root = globalThis.document?.documentElement) 
   root.classList.toggle(APPLE_CLASS, supported);
   root.classList.remove(ANDROID_CLASS);
   root.style.removeProperty("--android-font-scale");
-  root.classList.remove(LARGE_CLASS, EXTRA_LARGE_CLASS);
 
   if (!supported) {
+    root.classList.remove(LARGE_CLASS, EXTRA_LARGE_CLASS);
     root.classList.remove(ACTIVE_CLASS);
     root.style.removeProperty("--apple-font-scale");
     root.dataset.dynamicType = "normal";
     return "normal";
   }
 
+  // Measuring the independent probe flushes layout. Keep the current reflow
+  // rules until that read completes: removing them first can shrink the page
+  // and clamp WebKit's scroll position even when the system size is unchanged.
   const systemBodySize = appleSystemBodySize(root);
   const scale = systemBodySize / 17;
   root.style.setProperty("--apple-font-scale", String(scale));

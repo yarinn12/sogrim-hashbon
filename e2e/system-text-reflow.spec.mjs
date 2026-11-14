@@ -129,6 +129,23 @@ test('system text at startup grows real Home glyphs without clipping, collisions
       await expect.poll(() => page.locator('.event-row').last().evaluate(element =>
         document.querySelector('.product-app-nav').getBoundingClientRect().top
         - element.getBoundingClientRect().bottom)).toBeGreaterThanOrEqual(12);
+
+      // A repeated system-size refresh must not temporarily drop the reflow
+      // class while measuring the probe: WebKit clamps scroll to the shorter
+      // document and does not restore it when the same class is re-added.
+      const refreshed = await page.evaluate(() => {
+        const before = window.scrollY;
+        window.dispatchEvent(new Event('pageshow'));
+        return { before, after: window.scrollY, classes: document.documentElement.className };
+      });
+      await test.info().attach(`system-refresh-scroll-${width}-${size}`, {
+        body: JSON.stringify(refreshed), contentType: 'application/json'
+      });
+      expect(Math.abs(refreshed.after - refreshed.before),
+        'an unchanged system size retains the current scroll position').toBeLessThanOrEqual(1);
+      await expect.poll(() => page.locator('.event-row').last().evaluate(element =>
+        document.querySelector('.product-app-nav').getBoundingClientRect().top
+        - element.getBoundingClientRect().bottom)).toBeGreaterThanOrEqual(12);
     }
   }
 });
