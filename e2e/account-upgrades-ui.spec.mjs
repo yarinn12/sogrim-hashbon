@@ -1,6 +1,9 @@
 import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
 import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from './helpers/heldHomeReadinessControl.mjs';
+
+requireHeldHomeReadiness(test);
 
 const owner = "account-upgrade-owner";
 let runtimeErrors = [];
@@ -53,7 +56,7 @@ test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => 
   }, { state:caseState });
   const fontSize = testInfo.project.metadata.dynamicTypePreview ||
     (testInfo.project.metadata.reflowScale ? 32 : 16);
-  await page.goto(`/?dynamic-type-preview=${fontSize}`);
+  await openHeldRenderedHome(page, { path: `/?dynamic-type-preview=${fontSize}` });
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
 });
 
