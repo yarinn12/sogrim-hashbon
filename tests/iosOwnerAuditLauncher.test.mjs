@@ -17,7 +17,8 @@ const text=name=>readFileSync(new URL(name,ROOT_FILES),'utf8');
 const H=b=>createHash('sha256').update(b).digest('hex'),J=x=>Buffer.from(JSON.stringify(x)+'\n');
 const url=s=>'data:text/javascript;base64,'+Buffer.from(s).toString('base64');
 const ROOT='scripts/qa/ios-signing/',API='https://api.github.com/repos/yarinn12/sogrim-hashbon',REPO='yarinn12/sogrim-hashbon';
-const P=text('signed-audit-policy.mjs'),B=text('audit-prekey-bootstrap.mjs'),X=text('audit-execution-context.mjs'),G=text('intake-source-guard.mjs');
+const P=text('signed-audit-policy.mjs'),B=text('audit-prekey-bootstrap.mjs'),X=text('audit-execution-context.mjs'),G=readFileSync(new URL('./fixtures/ios194-2cf-intake-source-guard.mjs.txt',import.meta.url),'utf8');
+assert.equal(H(G),'b0bab132d535a412f9934d0b2491cd99dd50f64a977979184ec4cbd14ba3b2b5');
 let helper=F.slice(0,F.indexOf("test('PENDING anchors before"));
 for(const [name,value] of Object.entries({policySource:P,bootstrapSource:B,contextSource:X,guardSource:G,appleReadRetrySource:text('apple-read-retry.mjs')}))
   helper=helper.replace(new RegExp('const '+name+'=readFileSync[^\\n]+;'),()=> 'const '+name+'='+JSON.stringify(value)+';');
@@ -278,6 +279,9 @@ function fullFixture(mode) {
     assert.ok(begin>=0&&end>begin);
     cli=cli.slice(0,begin)+'export const INITIAL_TOOLKIT=Object.freeze('+JSON.stringify(initial)+');\n'+cli.slice(end);
     cli=cli.replace('mkdirSync,writeFileSync}','mkdirSync,writeFileSync,appendFileSync}');
+    // Only this fully synthetic child may expose a bounded assertion stage.
+    // Production controller errors remain redacted and all gates still execute.
+    cli=cli.replace("catch {console.error('Independent owner audit failed;", "catch(error) {console.error('SYNTHETIC_ONLY_STAGE:'+String(error.stack).slice(0,1800));console.error('Independent owner audit failed;");
     const call='runOwnerAuditLauncher(CONTROLLER_PUBLIC_ANCHORS,{githubToken:process.env.GH_TOKEN})';
     assert.equal(cli.split(call).length-1,1);
     cli=cli.replace(call,()=> 'runOwnerAuditLauncher(CONTROLLER_PUBLIC_ANCHORS,{githubToken:process.env.GH_TOKEN,pythonExecutable:'+

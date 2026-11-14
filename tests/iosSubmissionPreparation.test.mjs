@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generateKeyPairSync, verify } from "node:crypto";
+import { createHash, generateKeyPairSync, verify } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -53,13 +53,16 @@ function assertPrivateSigningContract(raw) {
 let signingGuardPromise;
 async function signingGuard() {
   signingGuardPromise ??= (async () => {
-    const url = new URL("../scripts/qa/ios-signing/source-guard.mjs", import.meta.url);
+    const url = new URL("./fixtures/ios194-2cf-source-guard.mjs.txt", import.meta.url);
     const text = await readFile(url, "utf8");
+    assert.equal(createHash('sha256').update(text).digest('hex'), 'c026899ea753d499fdd93c93486a750d09bbe1f3af691fadfb7014d78356dfd0');
+    const retryUrl = new URL('../scripts/qa/ios-signing/apple-read-retry.mjs', import.meta.url).href;
+    const executable = text.replace("from './apple-read-retry.mjs'", "from '" + retryUrl + "'");
     const source = text.match(/export const RELEASE_SOURCE = '([0-9a-f]{40})'/)?.[1];
     assert.match(source ?? "", /^[0-9a-f]{40}$/);
     const prior = process.env.SOURCE_SHA;
     process.env.SOURCE_SHA = source; // Synthetic import context only; no guard CLI or API is invoked.
-    try { return await import(url.href); }
+    try { return await import('data:text/javascript;base64,' + Buffer.from(executable).toString('base64')); }
     finally {
       if (prior === undefined) delete process.env.SOURCE_SHA;
       else process.env.SOURCE_SHA = prior;
@@ -68,10 +71,10 @@ async function signingGuard() {
   return signingGuardPromise;
 }
 
-test("private iOS signing remains source-gated, encrypted-artifact-only and separate from intake", async () => {
+test("historical194 signing remains source-gated, encrypted-artifact-only and separate from intake", async () => {
   const [packageJson, workflow, oneShot, intakeWorkflow, script, workflowEnv, iconScript, submissionCheck, artifactCheck, liveReview, association, appleSecret, csrScript, p12Script, project, info, appDelegate, launchScreen, privacy, metadata, appleSetup, checklist, handoff, accessibility, reviewNotes, exampleEnv] = await Promise.all([
     readFile("package.json", "utf8").then(JSON.parse),
-    readFile(".github/workflows/ios-testflight.yml", "utf8"),
+    readFile("tests/fixtures/ios194-2cf-disabled-signing-workflow.yml.txt", "utf8"),
     readFile(".github/workflows/ios194-2cf-root-sign-only.yml", "utf8"),
     readFile("scripts/qa/ios-signing/intake-workflow-template.yml", "utf8"),
     readFile("scripts/prepare-ios-release.mjs", "utf8"),

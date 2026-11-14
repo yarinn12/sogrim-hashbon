@@ -7,12 +7,15 @@ import {spawn as realSpawn} from 'node:child_process';
 const policySource=readFileSync(new URL('../scripts/qa/ios-signing/signed-audit-policy.mjs',import.meta.url),'utf8');
 const bootstrapSource=readFileSync(new URL('../scripts/qa/ios-signing/audit-prekey-bootstrap.mjs',import.meta.url),'utf8');
 const contextSource=readFileSync(new URL('../scripts/qa/ios-signing/audit-execution-context.mjs',import.meta.url),'utf8');
-const guardSource=readFileSync(new URL('../scripts/qa/ios-signing/intake-source-guard.mjs',import.meta.url),'utf8');
+// This signed-policy scaffold and its18-role API fixture describe historical194.
+// The current196 guard remains covered by the separate68-role intake controls.
+const guardSource=readFileSync(new URL('./fixtures/ios194-2cf-intake-source-guard.mjs.txt',import.meta.url),'utf8');
 const appleReadRetrySource=readFileSync(new URL('../scripts/qa/ios-signing/apple-read-retry.mjs',import.meta.url),'utf8');
 const url=s=>'data:text/javascript;base64,'+Buffer.from(s).toString('base64');
 const policyModule=await import(url(policySource));
 const contextModule=await import(url(contextSource));
 const H=(b,a='sha256')=>createHash(a).update(b).digest('hex');
+assert.equal(H(guardSource),'b0bab132d535a412f9934d0b2491cd99dd50f64a977979184ec4cbd14ba3b2b5');
 const J=x=>Buffer.from(JSON.stringify(x)+'\n');
 const API='https://api.github.com/repos/yarinn12/sogrim-hashbon';
 const REPO='yarinn12/sogrim-hashbon';

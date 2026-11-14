@@ -53,6 +53,8 @@ if (testFiles.length === 0) {
 
 const result = spawnSync(process.execPath, [
   "--test",
+  // The PENDING operational-body regression uses Node's isolated VM modules.
+  "--experimental-vm-modules",
   ...(withCoverage ? ["--experimental-test-coverage"] : []),
   // Absolute paths repeat the workspace prefix for every file and can exceed
   // Windows' process command-line limit before any tests are launched.
