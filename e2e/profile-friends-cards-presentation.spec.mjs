@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {readFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {profileFriendsCardsBootstrap} from './fixtures/profileFriendsCardsBootstrap.mjs';
 import {installSyntheticSystemText} from './helpers/accessibilityPresentation.mjs';
 import {presentationReach as reach,presentationClick as click} from './helpers/profileFriendsCardsPresentation.mjs';
@@ -24,6 +24,39 @@ test.beforeEach(async({page,baseURL})=>{
 test.afterEach(async({page})=>{expect(logs.get(page).errors).toEqual([]);expect(logs.get(page).external).toEqual([])});
 
 const records=page=>page.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-state:friend-invitation-space')).events.map(e=>({id:e.id,name:e.name,currency:e.currency,expenses:e.expenses,transfers:e.transfers,participantIds:e.participantIds,adminIds:e.adminIds,createdByParticipantId:e.createdByParticipantId})));
+
+for(const size of [{width:393,root:16},{width:393,root:20},{width:320,root:16}])test(`[regression] short home cards keep a compact readable layout ${size.width} root${size.root}`,async({page},testInfo)=>{
+ await page.setViewportSize({width:size.width,height:852});
+ await page.goto('/?review=1&preview=short-cards'+(size.root>16?'&dynamic-type-preview='+size.root:''));
+ await expect(page.locator('.event-row')).toHaveCount(3);
+ await page.evaluate(()=>document.fonts.ready);
+ const before=await records(page), row=page.locator('.event-row').first();
+ await row.scrollIntoViewIfNeeded();
+ const metrics=await row.evaluate(e=>{
+  const rect=s=>{const r=e.querySelector(s).getBoundingClientRect();return {top:r.top,bottom:r.bottom,width:r.width,height:r.height}};
+  return {cardHeight:e.getBoundingClientRect().height,avatars:rect('.avatar-stack'),meta:rect('.event-row-meta'),root:parseFloat(getComputedStyle(document.documentElement).fontSize),fonts:[...e.querySelectorAll('.event-row-title strong,.event-row-state,.event-row-details')].map(n=>parseFloat(getComputedStyle(n).fontSize)),boxes:['.event-row-open','.event-row-main','.event-row-title','.event-row-context','.event-row-state','.event-row-details'].map(s=>{const n=e.querySelector(s),style=getComputedStyle(n);return {selector:s,box:rect(s),padding:style.padding,gap:style.gap,minWidth:style.minWidth,minHeight:style.minHeight}})};
+ });
+ writeFileSync(testInfo.outputPath('compact-card-metrics.json'),JSON.stringify(metrics,null,2));
+ await testInfo.attach('compact-card-metrics',{body:JSON.stringify(metrics,null,2),contentType:'application/json'});
+ await page.screenshot({path:testInfo.outputPath('home.png'),fullPage:true});
+ await row.screenshot({path:testInfo.outputPath('card.png')});
+ expect(metrics.cardHeight,'compact short-name card, including full status and details').toBeLessThanOrEqual(size.root*7+40);
+ for(const font of metrics.fonts)expect(font).toBeGreaterThanOrEqual(size.root*.875);
+ const unreadable=await row.evaluate(e=>{
+  const box=e.getBoundingClientRect(),bad=[];
+  for(const item of e.querySelectorAll('.event-row-title strong,.event-row-state,.event-row-details')){
+   const own=item.getBoundingClientRect(),walker=document.createTreeWalker(item,NodeFilter.SHOW_TEXT);
+   if(!own.width||!own.height){bad.push(item.textContent);continue}
+   let n;while(n=walker.nextNode())if(n.textContent.trim()){
+    const range=document.createRange();range.selectNodeContents(n);
+    for(const r of range.getClientRects())if(r.width&&r.height&&(r.left<Math.max(box.left,own.left)-1||r.right>Math.min(box.right,own.right)+1||r.top<Math.max(box.top,own.top)-1||r.bottom>Math.min(box.bottom,own.bottom)+1))bad.push(n.textContent.trim());
+   }
+  }
+  return bad;
+ });
+ expect(unreadable,'every short-card label remains visible at the requested font size').toEqual([]);
+ expect(await records(page)).toEqual(before);
+});
 async function open(page,view,{width=393,height=852,root=16,system=false,unbroken=false}={}){
  await page.setViewportSize({width,height});if(system)await page.addInitScript(installSyntheticSystemText);
  await page.goto('/?review=1&preview='+view+(root>16&&!system?'&dynamic-type-preview='+root:'')+(unbroken?'&unbroken=1':''));

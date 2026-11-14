@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { runInNewContext } from "node:vm";
 import { nativeStaticCssTemplatePattern } from "../scripts/nativeStaticCssTemplates.mjs";
+import { transform as minifyCss } from "lightningcss";
 
 
 
@@ -1148,6 +1149,21 @@ test("native CSS keeps approved image/search labels scalable and event names unc
   assert.ok(css.includes("min-width:min(100%,12rem)!important"));
   // Landscape header flow and navigation stacking have a dedicated regression
   // below: static positioning hid the fixed navigation behind profile content.
+});
+
+test("native CSS preserves the compact home-card container through real minification", async () => {
+  const files=new Map(),ledger=resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const api=await factory(readFile,async(path,value)=>files.set(path,value),join,resolve,minifyCss,root,nativeStaticCssTemplatePattern);
+  await api.extractNativeStaticCss([{path:ledger}],"compact-home-native");
+  const css=files.get(join("compact-home-native","native-layers.css"));
+  const start=css.indexOf("@container home-event-card");
+  assert.ok(start>=0,"The packaged stylesheet must retain the compact home-card rule");
+  const compact=css.slice(start);
+  // Lightning CSS writes the equivalent range query and grid-area shorthand.
+  assert.match(compact,/\(width>=calc\(12rem \+ 70px\)\)/);
+  assert.match(compact,/\.event-row-context\{display:contents!important\}/);
+  assert.match(compact,/\.event-row-meta\{grid-area:2\/1\/auto\/-1!important;width:100%!important\}/);
+  assert.ok(css.indexOf("container:home-event-card/inline-size!important")<start);
 });
 
 test("native CSS retains approved home options and scalable filter row flow after legacy rules", async () => {

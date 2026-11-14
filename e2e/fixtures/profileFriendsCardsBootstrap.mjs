@@ -18,4 +18,13 @@ export const profileFriendsCardsBootstrap=homeArchiveBootstrap.replace(marker,`
     canonicalRow.state.events[0].name=state.events[0].name;
     qa.seedFinancialEvents=structuredClone(state.events);
   }
+  if(params.get('preview')==='short-cards'){
+    for(const [i,e] of state.events.entries()){
+      e.name=['קוריאה','פיליפינים','לובי מאיה'][i];
+      e.participantIds=state.participants.slice(0,i===0?4:5).map(p=>p.id);
+    }
+    canonicalRow.state.participants=structuredClone(state.participants);
+    canonicalRow.state.events[0]=structuredClone(state.events[0]);
+    qa.seedFinancialEvents=structuredClone(state.events);
+  }
 `+marker).replace(profileResponse,"if(url.pathname.endsWith('/user_profiles')){if(method==='PATCH'){qa.profileWrites.push(body);Object.assign(owner,body)}return response([owner,person,itay,...extraPeople])}");

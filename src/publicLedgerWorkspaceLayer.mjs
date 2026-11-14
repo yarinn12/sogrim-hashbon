@@ -24407,22 +24407,34 @@ html.ledger-workspace-v1 #app#app .friends-people-panel .friends-search-field {f
 html.ledger-workspace-v1 #app#app .friends-people-panel .friends-search-field>span {font-size:.875rem!important;line-height:1.5!important}
 html.ledger-workspace-v1 #app#app .friends-people-panel .friends-add-trigger {flex:0 1 auto!important;max-width:100%!important;min-height:44px!important;font-size:1rem!important;line-height:1.5!important;white-space:normal!important}
 
-html.ledger-workspace-v1 #app#app .long-event-card-review.long-event-card-review {display:grid!important;grid-template-columns:minmax(0,1fr) 44px!important;gap:0!important;min-width:0!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review.long-event-card-review {display:grid!important;grid-template-columns:minmax(0,1fr) 44px!important;gap:0!important;min-width:0!important;container:home-event-card / inline-size!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-open {display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:12px!important;min-width:0!important;width:100%!important;padding:16px 10px 16px 16px!important;text-align:start!important;overflow:visible!important;max-height:none!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-main {display:flex!important;flex-direction:column!important;align-items:stretch!important;justify-content:flex-start!important;gap:12px!important;min-width:0!important;width:100%!important;max-width:none!important;height:auto!important;min-height:0!important;padding:0!important;margin:0!important;overflow:visible!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-title {display:flex!important;align-items:flex-start!important;justify-content:flex-start!important;gap:8px!important;width:100%!important;min-width:0!important;overflow:visible!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-title strong {display:block!important;flex:1!important;min-width:0!important;width:auto!important;max-width:none!important;font-size:1.0625rem!important;line-height:1.45!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;word-break:normal!important;overflow-wrap:anywhere!important;-webkit-line-clamp:unset!important;line-clamp:unset!important;max-height:none!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-context {display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:12px!important;width:100%!important;min-width:0!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .avatar-stack {flex:0 0 auto!important;align-self:center!important;margin:0!important;max-width:100%!important}
-html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-meta {display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:6px!important;flex:1 1 9.5rem!important;min-width:min(100%,9.5rem)!important;max-width:100%!important;white-space:normal!important;overflow:visible!important;font-size:.875rem!important;line-height:1.5!important}
+/* Share the available line with the pictures until a complete word no longer
+   fits. A 9.5rem minimum stacked even short names on ordinary phone widths. */
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-meta {display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:6px!important;flex:1 1 min-content!important;min-width:0!important;max-width:100%!important;white-space:normal!important;overflow:visible!important;font-size:.875rem!important;line-height:1.5!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-state {font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;max-width:100%!important;word-break:normal!important;overflow-wrap:normal!important;text-align:start!important}
-html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details {display:flex!important;flex-direction:column!important;gap:3px!important;align-items:flex-start!important;max-width:100%!important;white-space:normal!important;font-size:.875rem!important;line-height:1.5!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details {display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:3px .5em!important;align-items:flex-start!important;max-width:100%!important;white-space:normal!important;font-size:.875rem!important;line-height:1.5!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details span,html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details time {font-size:inherit!important;line-height:inherit!important;white-space:normal!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details time {white-space:nowrap!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details .event-row-date-time {display:inline-flex!important;flex-wrap:wrap!important;gap:0 6px!important;align-items:center!important;max-width:100%!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-note-pin {flex:none!important;margin:3px 0 0!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-status-toggle {width:44px!important;min-width:44px!important;min-height:44px!important;padding:0!important;align-self:stretch!important;display:grid!important;place-items:center!important}
 html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-options-chevron {display:grid!important;place-items:center!important;width:24px!important;height:24px!important;margin:0!important}
+/* Keep a short title and the pictures on one line, then give all metadata the
+   full content width. With large type on a narrow card, retain the full-width
+   title and natural reflow above instead of squeezing or shrinking its words. */
+@container home-event-card (min-width:calc(12rem + 70px)) {
+ html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-main {display:grid!important;grid-template-columns:minmax(0,1fr) 104px!important;gap:8px 12px!important;align-items:center!important}
+ html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-title {grid-column:1!important;grid-row:1!important;align-self:center!important}
+ html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-context {display:contents!important}
+ html.ledger-workspace-v1 #app#app .long-event-card-review .avatar-stack {grid-column:2!important;grid-row:1!important}
+ html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-meta {grid-column:1 / -1!important;grid-row:2!important;width:100%!important}
+}
 @media (max-height:450px) and (orientation:landscape) {
  /* Remain in document flow while keeping the header z-index effective.
     A static isolated header traps fixed navigation below later profile rows. */
