@@ -6,8 +6,8 @@ import {fileURLToPath} from 'node:url';
 
 const CONTEXT = 'sogrim-ios-private-artifact-v1';
 const SOURCE = process.env.SOURCE_SHA;
-const TREE = '4d5792fee5cf5043f1528a38f70becf4697b3dc4';
-assert.equal(SOURCE, '6d7b90a1a15e4e6c2a5af3cf17558d993322f45e', 'Expected the coordinator frozen release source');
+const TREE = '4c965e7b6893f358defe0b05704b625a1a4c4ae0';
+assert.equal(SOURCE, '7b12de0129e4f272d237d208bfcba3d3c9eee604', 'Expected the coordinator frozen release source');
 const hash = data => createHash('sha256').update(data).digest('hex');
 
 // Public package facts needed to bind the next stage without decrypting the archive.
@@ -31,7 +31,7 @@ export function protect(plaintext, pem, identity) {
   assert.equal(identity.sourceCommit, SOURCE);
   assert.equal(identity.sourceTree, TREE);
   assert.equal(identity.version, '4.59');
-  assert.equal(identity.build, '196');
+  assert.equal(identity.build, '197');
   const aad = JSON.stringify({context: CONTEXT, ...identity});
   const salt = randomBytes(32), iv = randomBytes(12), key = derive(pem, salt, aad);
   try {
@@ -54,7 +54,7 @@ export function unprotect(ciphertext, envelope, pem) {
   assert.equal(identity.sourceCommit, SOURCE);
   assert.equal(identity.sourceTree, TREE);
   assert.equal(identity.version, '4.59');
-  assert.equal(identity.build, '196');
+  assert.equal(identity.build, '197');
   const salt = Buffer.from(envelope.salt, 'base64'), iv = Buffer.from(envelope.iv, 'base64'), tag = Buffer.from(envelope.tag, 'base64');
   assert.equal(salt.length, 32); assert.equal(iv.length, 12); assert.equal(tag.length, 16);
   const key = derive(pem, salt, envelope.aad);

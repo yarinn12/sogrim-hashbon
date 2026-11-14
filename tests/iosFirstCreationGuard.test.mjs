@@ -11,7 +11,7 @@ import {CONTRACT as C,githubJsonGet,validateCreationContext,verifyFirstCreation,
 
 const clone=value=>structuredClone(value);
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8').replaceAll('\r\n','\n');
-const next=read('../.github/workflows/ios196-459-private-sign-one-day-20261114.yml');
+const next=read('../.github/workflows/ios197-459-private-sign-one-day-20261114.yml');
 const old=JSON.parse(read('./fixtures/ios195-first-creation-old.json'));
 const input=name=>new RegExp('^      '+name+': "([^"]+)"$','m').exec(next)?.[1];
 const sha='2a62c846ed397b93dd68fe0363da0dd148ca9a8e';
@@ -179,7 +179,7 @@ test('source guard requires the exact checksummed first-creation receipt before 
  assert.ok(main.indexOf('verifySigningFirstCreation(')<main.indexOf('await verifyCommit'));
  assert.ok(main.includes('...source, firstCreation, phase, ci, apple, artifactSlot'));
  const fakeGit=args=>args[1]==='HEAD'?guard.RELEASE_SOURCE:guard.RELEASE_TREE;
- const appText=path=>path==='src/pwaBootstrap.mjs'?'const PWA_RELEASE = "532";':JSON.stringify({version:{number:'4.59',build:'196'}});
+ const appText=path=>path==='src/pwaBootstrap.mjs'?'const PWA_RELEASE = "532";':JSON.stringify({version:{number:'4.59',build:'197'}});
  assert.equal(guard.verifyCheckout(fakeGit,appText,{...context(),APPLE_TEAM_ID:'MA9S4L7WKS'}).sourceCommit,guard.RELEASE_SOURCE);
 });
 test('actual CLI writes GET evidence on acceptance and rejects a changed push before any GET',()=>{

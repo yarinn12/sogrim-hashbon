@@ -12,8 +12,8 @@ import tempfile
 import zipfile
 
 SOURCE = os.environ.get('SOURCE_SHA', '')
-TREE = '4d5792fee5cf5043f1528a38f70becf4697b3dc4'
-if SOURCE != '6d7b90a1a15e4e6c2a5af3cf17558d993322f45e':
+TREE = '4c965e7b6893f358defe0b05704b625a1a4c4ae0'
+if SOURCE != '7b12de0129e4f272d237d208bfcba3d3c9eee604':
     raise ValueError('Expected the coordinator frozen release source')
 TEAM = 'MA9S4L7WKS'
 BUNDLE = 'com.sogrimhashbon.app'
@@ -153,7 +153,7 @@ def inspect_zip(archive, expected):
     app = info_paths[0][:-len('Info.plist')]
     info = plistlib.loads(archive.read(info_paths[0]))
     require(info.get('CFBundleIdentifier') == BUNDLE, 'Wrong IPA bundle')
-    require(info.get('CFBundleShortVersionString') == '4.59' and info.get('CFBundleVersion') == '196', 'Wrong IPA version/build')
+    require(info.get('CFBundleShortVersionString') == '4.59' and info.get('CFBundleVersion') == '197', 'Wrong IPA version/build')
     prefix = app + 'public/'
     public = {name[len(prefix):]: digest(archive.read(name)) for name in names if name.startswith(prefix) and not name.endswith('/')}
     require(public == expected['iosPublic'], 'IPA web assets do not exactly match the newly built source')
@@ -218,7 +218,7 @@ def verify(root, expected):
     require(before['sourceCommit'] == after['sourceCommit'] == SOURCE, 'Source proof mismatch')
     require(before['sourceTree'] == after['sourceTree'] == TREE, 'Source tree proof mismatch')
     require(before['packageSha256'] == after['packageSha256'] and before['packageLockSha256'] == after['packageLockSha256'], 'Package declarations changed during build')
-    proof = {'sourceCommit': SOURCE, 'sourceTree': before['sourceTree'], 'pwaRelease': '532', 'version': '4.59', 'build': '196', 'ipaSha256': sha, 'wwwFileCount': len(expected['www']), 'ipaWebFileCount': len(expected['iosPublic']), 'everyWwwAssetMatches': True, 'everyWwwAssetMatchesCanonicalGitBuild': True, 'canonicalGitInputCount': expected['canonicalGit']['gitInputCount'], 'noUnexpectedWebAssets': True, 'noRemoteServerUrl': True, 'signatureVerified': True, 'signingCertificateSha256': CERT_SHA256, 'privacyManifestSemanticallyMatches': True, 'profile': profile_proof, 'ci': after['ci'], 'appleBuildReadback': after['apple'], 'physicalDeviceAcceptance': False, 'appleUploadPerformed': False, 'verifiedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    proof = {'sourceCommit': SOURCE, 'sourceTree': before['sourceTree'], 'pwaRelease': '532', 'version': '4.59', 'build': '197', 'ipaSha256': sha, 'wwwFileCount': len(expected['www']), 'ipaWebFileCount': len(expected['iosPublic']), 'everyWwwAssetMatches': True, 'everyWwwAssetMatchesCanonicalGitBuild': True, 'canonicalGitInputCount': expected['canonicalGit']['gitInputCount'], 'noUnexpectedWebAssets': True, 'noRemoteServerUrl': True, 'signatureVerified': True, 'signingCertificateSha256': CERT_SHA256, 'privacyManifestSemanticallyMatches': True, 'profile': profile_proof, 'ci': after['ci'], 'appleBuildReadback': after['apple'], 'physicalDeviceAcceptance': False, 'appleUploadPerformed': False, 'verifiedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
     (root / 'build/ios/artifact-verification.json').write_text(json.dumps(proof, indent=2) + '\n')
     manifest.update(proof)
     (root / 'build/ios/release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
