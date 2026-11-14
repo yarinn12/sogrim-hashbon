@@ -19,9 +19,9 @@ function run({launchError=false}={}) {
 
 test('the full test command fits the Windows command-line limit and includes every test file',()=>{
   const h=run(),command=h.calls.at(-1);
-  assert.equal(command.args[0],'--test');
+  assert.deepEqual(command.args.slice(0,2),['--test','--experimental-vm-modules']);
   const discovered=readdirSync('tests',{recursive:true}).filter(f=>f.endsWith('.test.mjs')).map(f=>resolve('tests',f)).sort();
-  assert.deepEqual(command.args.slice(1).map(f=>resolve(f)).sort(),discovered);
+  assert.deepEqual(command.args.slice(2).map(f=>resolve(f)).sort(),discovered);
   const commandLength=command.executable.length+command.args.map(arg=>arg.length+3).reduce((a,b)=>a+b,0);
   assert.ok(commandLength<32767,`Windows cannot launch the complete ${commandLength}-character test command`);
   assert.deepEqual(h.exits,[0]);
