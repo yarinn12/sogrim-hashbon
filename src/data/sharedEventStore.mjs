@@ -36,6 +36,7 @@ import {
 } from "./fetchTimeout.mjs";
 import { loadStoredAccountSession } from "./accountAuth.mjs";
 import { jsonValuesEqual } from "./localIdentity.mjs";
+import { preserveCanonicalClosedExpenseOrder } from "../domain/canonicalClosedExpenseOrder.mjs";
 import { reconcileSettlementTransfers, settlementOptionsForEvent } from "../domain/settlement.mjs";
 import { mergeSettlementPlanMemory, restoreRememberedSettlementPlan } from "../domain/settlementPlanMemory.mjs";
 
@@ -360,7 +361,7 @@ export function mergeSharedEventWriteState(remoteState, localState, runtimeConfi
   const merged = mergeSharedStates(remoteState, applyCanonicalEventAccountLinks(localState,remoteState));
   const remoteEvent = remoteState?.events?.[0];
   merged.events = merged.events.map(event => event.id === remoteEvent?.id
-    ? preserveCanonicalSettlementPlan(event, remoteEvent, remoteState.participants)
+    ? preserveCanonicalSettlementPlan(preserveCanonicalClosedExpenseOrder(event, remoteEvent), remoteEvent, remoteState.participants)
     : event);
   const configuredUserId = String(
     runtimeConfig?.storage?.account?.userId ?? ""

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { isDeepStrictEqual } from "node:util";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
@@ -1235,6 +1236,51 @@ for (const personalStatus of [403, 409]) {
   }, { workspaceStatus: attempt => attempt === 1 ? personalStatus : 200 }));
 }
 
+
+for(const scenario of ['acknowledged','offline','real-edit'])test(`legacy closed-event hold ${scenario} keeps all pending intent until real acknowledgements`,async()=>fixture(async h=>{
+ h.recover();
+ for(const event of h.state.events){
+  Object.assign(event,{locked:true,closedAt:stamp,notes:[],expenses:['a','b'].map(s=>({id:event.id+'-'+s,name:s,total:100,payers:[{participantId:h.state.currentParticipantId,amount:100}],sharedByParticipantIds:[h.state.currentParticipantId]}))});
+  const queued=h.pending.events.find(e=>e.id===event.id);Object.assign(queued,structuredClone(event));queued.expenses.reverse();
+  h.canonical.set(event.sharedSpaceId,buildSharedEventState(h.state,event.id));
+ }
+ h.pending.participants[0].displayName='Pending self profile';
+ if(scenario==='real-edit')h.pending.events.find(e=>e.id==='failing').expenses[0].name='Keep this real edit';
+ const key=`settle-friends-pending-sync:${h.workspaceId}`,marker=`settle-friends-pending-sync-failure:${h.workspaceId}`,raw=JSON.stringify(h.pending);
+ h.storage.setItem(key,raw);h.storage.setItem(marker,JSON.stringify({version:1,payload:raw,blocked:{version:1,accountUserId:'partial-a',blockAll:false,failureKind:'permission',deferredFailures:['healthy','failing'].map(id=>({kind:'event',id,status:403,code:''}))}}));
+ const transport=globalThis.fetch,attempts=[];let offline=scenario==='offline';
+ globalThis.fetch=async(url,options={})=>{
+  if(String(url).endsWith('/rpc/update_shared_event_snapshot')){
+   const body=JSON.parse(options.body);attempts.push(structuredClone(body));
+   if(offline)return {ok:false,status:503};
+   const canonical=h.canonical.get(body.p_snapshot_id);
+   // PostgreSQL JSONB ignores object-key order but preserves array order.
+   if(!isDeepStrictEqual(body.p_state.events[0].expenses,canonical.events[0].expenses)){
+    return {ok:false,status:403,json:async()=>({message:'Expenses cannot be changed while the event is locked'})};
+   }
+  }
+  return transport(url,options);
+ };
+ const store=await import(`../src/data/localStore.mjs?closed-order-hold-${scenario}=${crypto.randomUUID()}`);
+ assert.equal((await store.flushPendingSharedState({automatic:true})).blocked,true);
+ assert.equal(attempts.length,0);assert.equal(h.storage.getItem(key),raw,'upgrade alone cannot discard or acknowledge an old held update');
+ const result=await store.flushPendingSharedState();
+ if(scenario==='acknowledged')assert.deepEqual(attempts.map(body=>body.p_state.events[0].expenses),attempts.map(body=>h.canonical.get(body.p_snapshot_id).events[0].expenses),'final queued expense payloads must match the canonical JSONB values');
+ if(scenario==='offline'){
+  assert.equal(result.ok,false);assert.ok(h.storage.getItem(key));offline=false;
+  assert.equal((await store.flushPendingSharedState()).ok,true);
+ }else if(scenario==='real-edit'){
+  assert.equal(result.ok,false);const pending=JSON.parse(h.storage.getItem(key));
+  assert.equal(pending.events.find(e=>e.id==='failing').expenses[0].name,'Keep this real edit');
+  assert.deepEqual(pending.__pendingSync.selection,{eventIds:['failing'],deletedEventIds:[]});
+  assert.equal(h.canonical.get('space-partial-failing').events[0].expenses[0].name,'a');
+  const attemptCount=attempts.length;assert.equal((await store.flushPendingSharedState({automatic:true})).blocked,true);assert.equal(attempts.length,attemptCount);
+ }else assert.equal(result.ok,true);
+ for(const body of attempts.filter(b=>b.p_snapshot_id==='space-partial-healthy'))assert.deepEqual(body.p_state.events[0].expenses,h.state.events[0].expenses);
+ assert.equal(h.canonical.get('space-partial-healthy').participants[0].displayName,'Pending self profile');
+ assert.ok(h.workspaceWrites.length,'the personal workspace also requires its real acknowledgement');
+ if(scenario!=='real-edit'){assert.equal(h.storage.getItem(key),null);assert.equal(h.storage.getItem(marker),null);assert.equal(h.canonical.get('space-partial-failing').participants[0].displayName,'Pending self profile')}
+}));
 
 test("a known permission rejection stays blocked after restart until an explicit retry", async () => fixture(async h => {
   const key = `settle-friends-pending-sync:${h.workspaceId}`;

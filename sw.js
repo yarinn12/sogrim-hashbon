@@ -173,6 +173,7 @@ const CACHE_FILES = [
   "/src/domain/avatarPresets.mjs",
   "/src/domain/profileAvatarSync.mjs",
   "/src/domain/cloudSpace.mjs",
+  "/src/domain/canonicalClosedExpenseOrder.mjs",
   "/src/domain/compactInvite.mjs",
   "/src/domain/currencies.mjs",
   "/src/domain/dateLabels.mjs",

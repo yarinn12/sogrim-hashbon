@@ -573,6 +573,68 @@ async function withSnapshot(actor, run, prepare = value => value) {
   } finally { await db.exec("rollback"); }
 }
 
+for(const variant of ['expenses','deletedExpenses','nested','cas'])test(`SQL locked event ${variant} ordering preserves pending payments and exact canonical expense records`,async()=>{
+ await withSnapshot(ids.admin,async(initial,save)=>{
+  const local=markPaid(initial,ids.admin);
+  local.currentParticipantId=ids.admin;
+  Object.assign(local.events[0],{sharedSpaceId:snapshotId,sharedSpaceKey:spaceKey});
+  if(variant!=='deletedExpenses')local.events[0].expenses.reverse();
+  if(variant!=='expenses')local.events[0].deletedExpenses.reverse();
+  if(variant==='nested')for(const expense of local.events[0].expenses)expense.sharedByParticipantIds.reverse();
+  const before=structuredClone(local),payloads=[],acks=[];
+  const response=value=>({ok:true,status:200,json:async()=>value});
+  const result=await saveSharedEventState({storage:{mode:'supabase',url:'https://closed-order.example.invalid',table:'app_snapshots',anonKey:'synthetic',account:{userId:ids.admin.slice(8),accessToken:'synthetic'}}},local,'integrity-probe',async(url,options={})=>{
+   if(url.includes('/rpc/update_shared_event_snapshot')){
+    const body=JSON.parse(options.body);payloads.push(body.p_state);
+    if(variant==='cas'&&payloads.length===1)assert.equal((await save(initial,body.p_expected_updated_at)).status,'updated');
+    const ack=await save(body.p_state,body.p_expected_updated_at);acks.push(ack.status);return response(ack);
+   }
+   assert.equal(options.method??'GET','GET');
+   return response((await db.query('select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1',[snapshotId])).rows);
+  });
+  assert.deepEqual(acks,variant==='cas'?['conflict','updated']:['updated']);
+  const saved=(await db.query('select state from public.app_snapshots where id=$1',[snapshotId])).rows[0].state;
+  for(const value of [...payloads,result,saved]){
+   assert.deepEqual(value.events[0].expenses,initial.events[0].expenses,'read-side ordering is not a locked expense mutation');
+   assert.deepEqual(value.events[0].deletedExpenses,initial.events[0].deletedExpenses);
+   assert.equal(value.events[0].transfers[0].status,'paid','the pending payment must reach the final write and acknowledgement');
+   assert.equal(value.events[0].transfers[0].markedPaidByParticipantId,ids.admin);
+   assert.equal(value.events[0].locked,true);
+  }
+  assert.deepEqual(local,before,'the queued source must not be mutated');
+ },baseline=>{
+  const original=baseline.events[0].expenses[0];
+  baseline.events[0].expenses=['a','b'].map(s=>({...original,id:'expense-'+s,total:100,payers:[{participantId:ids.recipient,amount:100}]}));
+  Object.assign(baseline.events[0],{locked:true,closedAt:'2026-08-24T09:00:00.000Z',deletedExpenses:['a','b'].map(s=>({id:'removed-'+s,deletedAt:'2026-08-23T09:00:00.000Z'}))});
+  return baseline;
+ });
+});
+
+for(const mutation of ['name','amount','remove'])test(`SQL locked event still rejects a real pending expense ${mutation} without changing records`,async()=>{
+ await withSnapshot(ids.admin,async(initial,save)=>{
+  const local=markPaid(initial,ids.admin);local.currentParticipantId=ids.admin;
+  Object.assign(local.events[0],{sharedSpaceId:snapshotId,sharedSpaceKey:spaceKey});
+  if(mutation==='name')local.events[0].expenses[0].title='Keep this pending edit';
+  if(mutation==='amount'){local.events[0].expenses[0].total++;local.events[0].expenses[0].payers[0].amount++}
+  if(mutation==='remove'){const removed=local.events[0].expenses.pop();local.events[0].deletedExpenses.push({id:removed.id,deletedAt:new Date().toISOString()})}
+  const before=structuredClone(local),payloads=[],sqlErrors=[];
+  await db.exec('savepoint rejected_locked_write');
+  await assert.rejects(saveSharedEventState({storage:{mode:'supabase',url:'https://closed-denied.example.invalid',table:'app_snapshots',anonKey:'synthetic',account:{userId:ids.admin.slice(8),accessToken:'synthetic'}}},local,'integrity-probe',async(url,options={})=>{
+   if(url.includes('/rpc/update_shared_event_snapshot')){
+    const body=JSON.parse(options.body);payloads.push(body.p_state);
+    try {const ack=await save(body.p_state,body.p_expected_updated_at);return {ok:true,status:200,json:async()=>ack}}
+    catch(error){sqlErrors.push(error.code);return {ok:false,status:403,json:async()=>({code:error.code,message:error.message})}}
+   }
+   return {ok:true,status:200,json:async()=>(await db.query('select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1',[snapshotId])).rows};
+  }),{status:403});
+  await db.exec('rollback to savepoint rejected_locked_write');
+  assert.deepEqual(sqlErrors,['42501']);
+  assert.equal(payloads.length,1);assert.deepEqual(payloads[0].events[0].expenses,before.events[0].expenses);
+  assert.deepEqual(local,before,'the rejected pending edit remains intact');
+  assert.deepEqual((await db.query('select state from public.app_snapshots where id=$1',[snapshotId])).rows[0].state,initial);
+ },baseline=>{Object.assign(baseline.events[0],{locked:true,closedAt:'2026-08-24T09:00:00.000Z',deletedExpenses:[]});return baseline});
+});
+
 function convertedSnapshot(baseline) {
   baseline.events[0].expenses[0] = { ...baseline.events[0].expenses[0],
     name: "Lunch", ...convertExpenseInput({ sourceCurrency: "USD", targetCurrency: "ILS",

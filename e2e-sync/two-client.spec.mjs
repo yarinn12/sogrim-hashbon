@@ -1,5 +1,7 @@
 import {test, expect, chromium, webkit, devices} from '@playwright/test';
 import {recordBrowserErrors} from './browser-error-recorder.mjs';
+import {isDeepStrictEqual} from 'node:util';
+import {readFileSync} from 'node:fs';
 import {repaymentModeFixture, stableRepaymentFixture, reversePaymentFixture, reverseObjectKeys} from '../tests/helpers/repaymentModeFixture.mjs';
 import {selectRememberedSettlementPlan} from '../src/domain/settlementPlanMemory.mjs';
 
@@ -14,7 +16,7 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withReversePaymentPlan = false, withRoundedStablePlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null, withSelfLeave = false} = {}) {
+async function fixture(testInfo, {withExpense = false, withClosedExpenseOrder = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withReversePaymentPlan = false, withRoundedStablePlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null, withSelfLeave = false} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errorRecorders = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
@@ -83,6 +85,10 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
       markedPaidAt:version,markedPaidByParticipantId:participants[1].id}));
     event.transferStatusUpdates = event.transfers.map(t => ({id:t.id,status:'paid',updatedAt:version,
       markedAt:version,markedPaidByParticipantId:participants[1].id}));
+  }
+  if (withClosedExpenseOrder) {
+    const expense=event.expenses[0];expect(expense.total).toBe(12000);
+    event.expenses=['a','b'].map(s=>({...structuredClone(expense),id:'seed-expense-'+s,total:6000,payers:[{participantId:participants[0].id,amount:6000}]}));
   }
   if (withAccountLink) {
     const guest = {id:'guest-existing-person',displayName:'אורח לפני חיבור',kind:'guest'};
@@ -166,6 +172,7 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
       const request = route.request(), url = new URL(request.url());
       const reply = (json, status = 200) => route.fulfill({headers, json, status});
       if (url.origin === new URL(baseURL).origin) {
+        if(withClosedExpenseOrder && process.env.CLOSED_ORDER_BASELINE_SOURCE && url.pathname==='/src/data/sharedEventStore.mjs')return route.fulfill({contentType:'text/javascript',body:readFileSync(process.env.CLOSED_ORDER_BASELINE_SOURCE,'utf8')});
         if (url.pathname === '/api/config') return reply({publicUrl: baseURL, launch: {cloudStorageReady: true,authEmailDeliveryReady:true},
           storage: {mode: 'supabase', url: origin, anonKey: 'fixture-anon', table: 'app_snapshots'}});
         if (joiningClient !== null && url.pathname === '/api/event-invites/redeem') {
@@ -289,6 +296,11 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
         }
         if (body.p_snapshot_id !== sharedId) return reply({message: 'Unexpected snapshot'}, 403);
         if (body.p_expected_updated_at !== canonical.updated_at) { conflicts++; return reply({status: 'conflict'}); }
+        if(withClosedExpenseOrder && canonical.state.events[0].locked &&
+          !isDeepStrictEqual(body.p_state.events[0]?.expenses,canonical.state.events[0].expenses)) {
+          rejectedSharedWrites.push({client:i,body,reason:'locked-expense-mutation'});
+          return reply({code:'42501',message:'Expenses cannot be changed while the event is locked'},403);
+        }
         if(body.p_state.deletedEvents?.some(item=>item.id===eventId) && body.p_state.events.length===0) {
           // Real role/paid-history enforcement is covered by databaseIntegrity.
           if(!canonical.state.events[0]?.adminIds.includes(`account-${ids[i]}`) || body.p_state.participants.length)
@@ -1090,6 +1102,40 @@ test('an offline edit cannot resurrect a note deleted by the other device', asyn
     expect(f.canonical.state.events[0].deletedNotes.filter(note=>note.id===id)).toHaveLength(1);
     expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
   } finally { await f.close(); }
+});
+
+for(const author of [0,1])test(`closed event ordering delivers the retained offline payment from ${author?'iPhone':'Android'} after restart`,async({},testInfo)=>{
+ const f=await fixture(testInfo,{withExpense:true,withClosedExpenseOrder:true}),page=f.pages[author],peer=f.pages[1-author];
+ const action=(p,name)=>p.locator(`.settlement-transfer-board [data-action="${name}"]`);
+ const pending=()=>page.evaluate(id=>JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${id}`)||'null'),f.personal[author].id);
+ try{
+  for(const p of f.pages)await p.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+  await f.pages[0].locator('[data-action="close-event"]').first().click();await f.pages[0].locator('[data-action="confirm-close-event"]').click();
+  await expect(action(page,'mark-paid')).toHaveCount(1);
+  const expenses=structuredClone(f.canonical.state.events[0].expenses);
+  f.cloudUnavailable(author,true);await action(page,'mark-paid').click();
+  await expect.poll(()=>pending().then(s=>s?.events[0]?.transfers.some(t=>t.status==='paid')||false)).toBe(true);
+  // Model the representation retained by an older replica, keeping all actual
+  // UI-created payment intent. No amount, expense field or receipt is edited.
+  await page.evaluate(({space,eventId})=>{
+   for(const key of [`settle-friends-state:${space}`,`settle-friends-pending-sync:${space}`]){
+    const state=JSON.parse(localStorage.getItem(key));state.events.find(e=>e.id===eventId).expenses.reverse();localStorage.setItem(key,JSON.stringify(state));
+   }
+  },{space:f.personal[author].id,eventId});
+  await f.reloadClient(author);await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  expect((await pending()).events.find(e=>e.id===eventId).transfers.some(t=>t.status==='paid')).toBe(true);
+  expect(f.canonical.state.events[0].transfers.every(t=>t.status==='pending')).toBe(true);
+  f.cloudUnavailable(author,false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+  await expect.poll(()=>f.canonical.state.events[0].transfers.some(t=>t.status==='paid')).toBe(true);
+  await expect.poll(pending).toBeNull();
+  await expect(action(peer,'mark-pending')).toHaveCount(1);
+  expect(f.canonical.state.events[0].expenses).toEqual(expenses);expect(f.canonical.state.events[0].locked).toBe(true);
+  expect(f.rejectedSharedWrites.filter(w=>w.reason==='locked-expense-mutation')).toEqual([]);
+  expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+ }finally{
+  await testInfo.attach('closed-order-delivery',{body:JSON.stringify({author,rejected:f.rejectedSharedWrites.filter(w=>w.reason==='locked-expense-mutation').length}),contentType:'application/json'});
+  await f.close();
+ }
 });
 
 test('offline payment confirmation survives peer reopening and preserves the same transfer with undo', async ({},testInfo) => {
