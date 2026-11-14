@@ -435,19 +435,66 @@ test("a delayed startup user response cannot rotate the same expired session twi
   }
 });
 
-test("sign-out removes the saved session and returns to usable native login options", async ({ page }) => {
+async function holdNextSignOutDocumentImport(page) {
+  // Reproduce the original iPad trace: the signed-out document has committed,
+  // but a required module is still pending. Keep the original 8s UI assertion
+  // and 90s journey budget; this synthetic network delay belongs to navigation.
+  const pattern = '**/src/ui/accountEntryPresentation.mjs';
+  let releaseImport, releaseTimer, inFlight;
+  let requested = false;
+  const held = new Promise(resolve => { releaseImport = resolve; });
+  const handler = route => {
+    inFlight = (async () => {
+      requested = true;
+      releaseTimer = setTimeout(releaseImport, 9_000);
+      await held;
+      await route.fallback();
+    })();
+    return inFlight;
+  };
+  await page.route(pattern, handler);
+  return {
+    get requested() { return requested; },
+    async dispose() {
+      clearTimeout(releaseTimer);
+      releaseImport();
+      await inFlight;
+      await page.unroute(pattern, handler);
+    }
+  };
+}
+
+test("sign-out removes the saved session and returns to usable native login options", async ({ page }, testInfo) => {
   const { counts } = await prepare(page);
   await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();
   await expectAccount(page);
   await page.locator('[data-nav-destination="profile"]').click();
   await expect(page.locator('[data-account-controls]')).toBeVisible();
   await page.locator('[data-account-controls] summary').click();
-  await page.getByRole("button", { name: "התנתק", exact: true }).click();
-  await expect(page.getByRole("button", { name: "המשך עם Apple", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "המשך עם Google", exact: true })).toBeEnabled();
-  expect(await page.evaluate(() => localStorage.getItem("settle-friends-account-session"))).toBeNull();
-  expect(counts.logout).toBe(1);
-  await expect(page.getByText(eventName, { exact: true })).toBeHidden();
+  const held = await holdNextSignOutDocumentImport(page);
+  try {
+    // Sign-out reloads the document. Begin the existing UI checks only after
+    // that new document has finished parsing its required module graph.
+    await Promise.all([
+      page.waitForEvent('domcontentloaded'),
+      page.getByRole("button", { name: "התנתק", exact: true }).click()
+    ]);
+    await expect(page.getByRole("button", { name: "המשך עם Apple", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "המשך עם Google", exact: true })).toBeEnabled();
+    expect(await page.evaluate(() => localStorage.getItem("settle-friends-account-session"))).toBeNull();
+    expect(counts.logout).toBe(1);
+    await expect(page.getByText(eventName, { exact: true })).toBeHidden();
+    expect(held.requested, 'the new signed-out document requested its real required import').toBe(true);
+  } finally {
+    await testInfo.attach('signout-document-readiness', {
+      body: Buffer.from(JSON.stringify({ requiredImportRequested: held.requested,
+        ...await page.evaluate(() => ({ readyState: document.readyState,
+          sessionCleared: localStorage.getItem('settle-friends-account-session') === null,
+          loginGateVisible: Boolean(document.querySelector('#public-account-auth-gate')) })) })),
+      contentType: 'application/json'
+    });
+    await held.dispose();
+  }
 });
 
 test("password recovery from email returns through the native callback and survives reload", async ({ page }) => {
