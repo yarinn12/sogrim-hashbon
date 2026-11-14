@@ -10,7 +10,7 @@ export const SIGNING_STEPS=Object.freeze([
  'Recheck exact source CI and current unused number after export',
  'Require all packaged web assets, release entitlements and valid distribution profile',
  'Encrypt only the verified IPA and its evidence for private retention',
- 'Retain only encrypted release output for seven days'
+ 'Retain only encrypted release output for one day'
 ]);
 export const CONTROL_PATHS=Object.freeze({
  firstCreation:'scripts/qa/ios-signing/first-creation-guard.mjs',

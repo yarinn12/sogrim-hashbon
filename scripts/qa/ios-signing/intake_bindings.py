@@ -3,11 +3,11 @@ REPO='yarinn12/sogrim-hashbon'
 REPO_ID=1247836328
 VERSION='4.59'
 BUILD='196'
-SIGNING_BRANCH='codex/ios196-459-signing-20261111'
-SIGNING_PATH='.github/workflows/ios196-459-private-sign-only-20261111.yml'
-SIGNING_NAME='iOS196 4.59 private signed artifact only'
+SIGNING_BRANCH='codex/ios196-459-signing-one-day-20261114'
+SIGNING_PATH='.github/workflows/ios196-459-private-sign-one-day-20261114.yml'
+SIGNING_NAME='iOS196 4.59 private signed one-day artifact only'
 SIGNING_REF=REPO+'/'+SIGNING_PATH+'@refs/heads/'+SIGNING_BRANCH
-VERIFIER_SHA='8ea1339ef9822cef3a4f5f8b942d65b3bf6150c0c1c42315a29c5c28737e7595'
+VERIFIER_SHA='51fc0186ad240f654c40b9442c9ed97bf0c3da7c09a44925fa21bc2e976d5d8f'
 STEPS=[
  'Require first branch creation and two complete workflow histories',
  'Require all four successful source CI runs before signing secrets',
@@ -15,7 +15,7 @@ STEPS=[
  'Recheck exact source CI and current unused number after export',
  'Require all packaged web assets, release entitlements and valid distribution profile',
  'Encrypt only the verified IPA and its evidence for private retention',
- 'Retain only encrypted release output for seven days']
+ 'Retain only encrypted release output for one day']
 CI_PATHS={
  'SOURCE_QA_RUN':'.github/workflows/qa.yml',
  'SOURCE_WINDOWS_QA_RUN':'.github/workflows/qa-windows.yml',

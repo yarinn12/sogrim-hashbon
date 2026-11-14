@@ -13,21 +13,21 @@
     }
   },
   "signing": {
-    "toolsSha": "16ef1f3c2c81d987b5d3b5dcc259c8f73234c798",
-    "runId": "PENDING",
-    "runNumber": "PENDING",
-    "jobId": "PENDING",
-    "artifactId": "PENDING",
-    "artifactSize": "PENDING",
-    "zipSha256": "PENDING",
-    "ipaSha256": "PENDING",
-    "ipaSize": "PENDING",
-    "ciphertextSha256": "PENDING",
-    "ciphertextSize": "PENDING",
+    "toolsSha": "b12ac3ff4dc030a8c27d1e3037d785045e5ec6ed",
+    "runId": "43621803389",
+    "runNumber": 1,
+    "jobId": 132528922930,
+    "artifactId": "14124457546",
+    "artifactSize": 13710155,
+    "zipSha256": "eb3f44d3c630f0cd0db94052087bd9f4774ae79f508c1b7aa47c906bd4d7fc94",
+    "ipaSha256": "df2ce559fcb504aeb9935da887ea97a03a4de9ec77904c1d6b9a08dad54223c8",
+    "ipaSize": 12797258,
+    "ciphertextSha256": "f3853c9804f0c07fa390668e54cb3092ee26bd63dc1d6eb6a5db4cfa0cf88006",
+    "ciphertextSize": 13705216,
     "controls": {
-      "firstCreation": "8ea1339ef9822cef3a4f5f8b942d65b3bf6150c0c1c42315a29c5c28737e7595",
-      "sourceGuard": "632c2a447877e815a205fcfa5acebb933a1be8764cb859b9a89c8e5088e49f1a",
-      "workflow": "025a92c97b1d1e7348e5e20033d5727e37e458e09ed4d123c571431467cfe611",
+      "firstCreation": "51fc0186ad240f654c40b9442c9ed97bf0c3da7c09a44925fa21bc2e976d5d8f",
+      "sourceGuard": "68be5a21e79659615eb0e4ba01cce4391e92df04ffa14033c1a921cd85f1122e",
+      "workflow": "acb3195d6a301e72e0f4c314badca8431ef7c5ce476e22a87cd5c10ab1177f79",
       "requiredJobs": "62b035d2e175acc5e6006a548fb5bb2167d679dc2c9be680ca2f517d14c83db3"
     }
   }

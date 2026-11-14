@@ -13,7 +13,7 @@ jobs:
   upload-original:
     # Bound to the original successful successor signing run and exact encrypted
     # artifact; guards recheck source, all CI and zero distribution before upload.
-    if: ${{ false && github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios196-459-private-intake-20261111' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios196-459-private-intake-20261111' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
     runs-on: macos-26
     timeout-minutes: 45
     defaults:
@@ -28,17 +28,17 @@ jobs:
       SOURCE_WINDOWS_QA_RUN: "43586734354"
       SOURCE_FONT_QA_RUN: "43586734326"
       SOURCE_AUTH_QA_RUN: "43586734332"
-      SIGNING_TOOLS_SHA: "16ef1f3c2c81d987b5d3b5dcc259c8f73234c798"
-      SIGNED_RUN_ID: "PENDING"
-      SIGNED_RUN_NUMBER: "PENDING"
-      SIGNED_JOB_ID: "PENDING"
-      SIGNED_ARTIFACT_ID: "PENDING"
-      SIGNED_ARTIFACT_SIZE: "PENDING"
-      SIGNED_IPA_SHA256: "PENDING"
-      SIGNED_IPA_SIZE: "PENDING"
-      SIGNED_ARTIFACT_ZIP_SHA256: "PENDING"
-      SIGNED_CIPHERTEXT_SHA256: "PENDING"
-      SIGNED_CIPHERTEXT_SIZE: "PENDING"
+      SIGNING_TOOLS_SHA: "b12ac3ff4dc030a8c27d1e3037d785045e5ec6ed"
+      SIGNED_RUN_ID: "43621803389"
+      SIGNED_RUN_NUMBER: "1"
+      SIGNED_JOB_ID: "132528922930"
+      SIGNED_ARTIFACT_ID: "14124457546"
+      SIGNED_ARTIFACT_SIZE: "13710155"
+      SIGNED_IPA_SHA256: "df2ce559fcb504aeb9935da887ea97a03a4de9ec77904c1d6b9a08dad54223c8"
+      SIGNED_IPA_SIZE: "12797258"
+      SIGNED_ARTIFACT_ZIP_SHA256: "eb3f44d3c630f0cd0db94052087bd9f4774ae79f508c1b7aa47c906bd4d7fc94"
+      SIGNED_CIPHERTEXT_SHA256: "f3853c9804f0c07fa390668e54cb3092ee26bd63dc1d6eb6a5db4cfa0cf88006"
+      SIGNED_CIPHERTEXT_SIZE: "13705216"
       WORKFLOW_COMMIT: ${{ github.workflow_sha }}
       WORKFLOW_REF: ${{ github.workflow_ref }}
       APPLE_TEAM_ID: MA9S4L7WKS
@@ -168,4 +168,4 @@ jobs:
             app/build/ios/original-artifact-before-upload.json
             app/build/ios/testflight-completion.json
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1

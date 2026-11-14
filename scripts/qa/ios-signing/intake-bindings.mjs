@@ -5,13 +5,13 @@ import {fileURLToPath} from 'node:url';
 
 export const CONTRACT=Object.freeze({
  repository:'yarinn12/sogrim-hashbon',repositoryId:1247836328,version:'4.59',build:'196',
- signingBranch:'codex/ios196-459-signing-20261111',
- signingPath:'.github/workflows/ios196-459-private-sign-only-20261111.yml',
- signingName:'iOS196 4.59 private signed artifact only',
+ signingBranch:'codex/ios196-459-signing-one-day-20261114',
+ signingPath:'.github/workflows/ios196-459-private-sign-one-day-20261114.yml',
+ signingName:'iOS196 4.59 private signed one-day artifact only',
  intakeBranch:'codex/ios196-459-private-intake-20261111',
  intakePath:'.github/workflows/ios196-459-private-intake-only-20261111.yml',
  artifactName:'sogrim-ios-4.59-196-encrypted',
- producerVerifierSha256:'8ea1339ef9822cef3a4f5f8b942d65b3bf6150c0c1c42315a29c5c28737e7595'
+ producerVerifierSha256:'51fc0186ad240f654c40b9442c9ed97bf0c3da7c09a44925fa21bc2e976d5d8f'
 });
 const freeze=value=>{for(const item of Object.values(value??{}))if(item&&typeof item==='object')freeze(item);return Object.freeze(value);};
 export const INTAKE_BINDINGS=freeze(JSON.parse(readFileSync(new URL('./intake-bindings.json',import.meta.url),'utf8')));
