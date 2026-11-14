@@ -44,6 +44,6 @@
   };
   globalThis.__nativeAuthProbeState=()=>{
     const signedIn=JSON.parse(localStorage.getItem('settle-friends-account-session')??'null')?.user?.id===user.id;
-    return {signedIn,gate:!!document.getElementById('public-account-auth-gate'),eventVisible:document.body.textContent.includes('אירוע החשבון המחובר'),pkce:Number(localStorage.getItem('probe-pkce')||0),bound:localStorage.getItem('probe-pkce-bound')==='1',writes:Number(localStorage.getItem('probe-writes')||0),writeValid:localStorage.getItem('probe-write-valid')==='1'};
+    return {started:localStorage.getItem('probe-started')==='1',signedIn,gate:!!document.getElementById('public-account-auth-gate'),eventVisible:document.body.textContent.includes('אירוע החשבון המחובר'),pkce:Number(localStorage.getItem('probe-pkce')||0),bound:localStorage.getItem('probe-pkce-bound')==='1',writes:Number(localStorage.getItem('probe-writes')||0),writeValid:localStorage.getItem('probe-write-valid')==='1'};
   };
 })();

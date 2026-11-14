@@ -39,6 +39,7 @@ probe=r'''
 class SogrimProbeBridgeViewController: BASE_CLASS {
     var probeTimer: Timer?
     var probeTicks = 0
+    var probeAuthStartTick = 0
     var probeEvaluating = false
     var probeSawSafari = false
     var probeCompleted = false
@@ -81,7 +82,16 @@ class SogrimProbeBridgeViewController: BASE_CLASS {
                 state["safari"] = self.probeSawSafari
                 let signedIn = state["signedIn"] as? Bool == true
                 let ready = signedIn && state["gate"] as? Bool == false && state["eventVisible"] as? Bool == true && (state["writes"] as? Int ?? 0) > 0 && state["writeValid"] as? Bool == true
-                if ready || (self.probeTicks >= 45 && self.probeSawSafari) || self.probeTicks >= 90 {
+                // Loading the document is not an authentication attempt. Keep
+                // the original startup90, authentication90, hard150 and outer
+                // XCTest130 bounds; measure auth from the real single click.
+                if self.probeAuthStartTick == 0 && state["started"] as? Bool == true {
+                    self.probeAuthStartTick = self.probeTicks
+                }
+                let authTicks = self.probeAuthStartTick > 0 ? self.probeTicks - self.probeAuthStartTick : 0
+                state["probeTicks"] = self.probeTicks
+                state["authTicks"] = authTicks
+                if ready || (authTicks >= 45 && self.probeSawSafari) || authTicks >= 90 || (self.probeTicks >= 90 && self.probeAuthStartTick == 0) {
                     let result = try! JSONSerialization.data(withJSONObject: state, options: [.sortedKeys])
                     let report = String(data: result, encoding: .utf8)!
                     self.probeLabel.text = report
