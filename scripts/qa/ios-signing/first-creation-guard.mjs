@@ -5,11 +5,11 @@ import {pathToFileURL} from 'node:url';
 
 export const CONTRACT = Object.freeze({
   repository: 'yarinn12/sogrim-hashbon', repositoryId: 1247836328,
-  branch: 'codex/ios196-459-signing-20261111',
-  path: '.github/workflows/ios196-459-private-sign-only-20261111.yml',
-  name: 'iOS196 4.59 private signed artifact only',
+  branch: 'codex/ios196-459-signing-recovery-20261114',
+  path: '.github/workflows/ios196-459-private-sign-recovery-20261114.yml',
+  name: 'iOS196 4.59 private signed recovery artifact only',
   api: 'https://api.github.com', server: 'https://github.com',
-  version: '4.59', build: '196', pwa: '532', outputDirectory: 'ios196-first-creation-20261111',
+  version: '4.59', build: '196', pwa: '532', outputDirectory: 'ios196-first-creation-recovery-20261114',
   zero: '0'.repeat(40)
 });
 const requireValue=(value,message)=>{if(!value)throw new Error(message);};

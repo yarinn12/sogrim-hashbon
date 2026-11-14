@@ -137,9 +137,9 @@ export async function readUnusedBuild(request) {
 export function verifyCheckout(runGit, readText, env) {
   assert.equal(env.GITHUB_REPOSITORY, 'yarinn12/sogrim-hashbon');
   if (env.GITHUB_EVENT_NAME === 'push') {
-    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios196-459-signing-20261111');
+    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios196-459-signing-recovery-20261114');
     assert.equal(env.GITHUB_WORKFLOW_REF,
-      'yarinn12/sogrim-hashbon/.github/workflows/ios196-459-private-sign-only-20261111.yml@refs/heads/codex/ios196-459-signing-20261111');
+      'yarinn12/sogrim-hashbon/.github/workflows/ios196-459-private-sign-recovery-20261114.yml@refs/heads/codex/ios196-459-signing-recovery-20261114');
     assert.equal(String(env.GITHUB_RUN_ATTEMPT), '1', 'No signing retry');
     assert.match(String(env.GITHUB_RUN_NUMBER??''), /^[1-9][0-9]*$/, 'Invalid signing run counter');
     assert.ok(Number.isSafeInteger(Number(env.GITHUB_RUN_NUMBER)), 'Invalid signing run counter');
