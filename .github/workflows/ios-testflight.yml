@@ -101,7 +101,7 @@ jobs:
       - name: Check source CI, duplicate slots, application identity, encryption and web-asset rejection controls
         working-directory: ${{ github.workspace }}/release-tools/scripts/qa/ios-signing
         run: |
-          node --test preparation.test.mjs ../../../tests/iosSigningEnvelopeCli.test.mjs ../../../tests/iosReleaseAppleRead.test.mjs
+          node --test preparation.test.mjs ../../../tests/iosSigningEnvelopeCli.test.mjs ../../../tests/iosReleaseAppleRead.test.mjs ../../../tests/iosSigningRetention.test.mjs
           python3 test_web_assets.py
       - name: Check signing certificate command and rejection controls before Apple keys
         run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-signing-certificate.py"
@@ -224,7 +224,7 @@ jobs:
           node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/protect-artifact.mjs" encrypt \
             "$RUNNER_TEMP/sogrim-ios-release.tar" build/ios/private-artifact
 
-      - name: Retain only encrypted release output for seven days
+      - name: Retain only encrypted release output for one day
         id: private_artifact
         uses: actions/upload-artifact@v6
         with:
@@ -233,7 +233,7 @@ jobs:
             app/build/ios/private-artifact/release.tar.enc
             app/build/ios/private-artifact/envelope.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
       - name: Record preparation outcome
         run: |

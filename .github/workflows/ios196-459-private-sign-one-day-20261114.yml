@@ -1,9 +1,9 @@
-name: iOS196 4.59 private signed recovery artifact only
+name: iOS196 4.59 private signed one-day artifact only
 run-name: iOS signed artifact 4.59 (196) from 6d7b90a1a15e4e6c2a5af3cf17558d993322f45e
 
 on:
   push:
-    branches: [codex/ios196-459-signing-recovery-20261114]
+    branches: [codex/ios196-459-signing-one-day-20261114]
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build-export-verify-private:
-    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios196-459-signing-recovery-20261114' && github.workflow_ref == 'yarinn12/sogrim-hashbon/.github/workflows/ios196-459-private-sign-recovery-20261114.yml@refs/heads/codex/ios196-459-signing-recovery-20261114' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios196-459-signing-one-day-20261114' && github.workflow_ref == 'yarinn12/sogrim-hashbon/.github/workflows/ios196-459-private-sign-one-day-20261114.yml@refs/heads/codex/ios196-459-signing-one-day-20261114' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
     runs-on: macos-26
     timeout-minutes: 75
     defaults:
@@ -59,7 +59,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node "$GITHUB_WORKSPACE/release-bootstrap/scripts/qa/ios-signing/first-creation-guard.mjs" --output "$RUNNER_TEMP/ios196-first-creation-recovery-20261114"
+        run: node "$GITHUB_WORKSPACE/release-bootstrap/scripts/qa/ios-signing/first-creation-guard.mjs" --output "$RUNNER_TEMP/ios196-first-creation-one-day-20261114"
 
       - name: Validate mandatory frozen source and release inputs
         working-directory: ${{ github.workspace }}
@@ -92,7 +92,7 @@ jobs:
       - name: Check source CI, duplicate slots, application identity, encryption and web-asset rejection controls
         working-directory: ${{ github.workspace }}/release-tools/scripts/qa/ios-signing
         run: |
-          node --test preparation.test.mjs ../../../tests/iosSigningEnvelopeCli.test.mjs ../../../tests/iosReleaseAppleRead.test.mjs ../../../tests/iosFirstCreationGuard.test.mjs
+          node --test preparation.test.mjs ../../../tests/iosSigningEnvelopeCli.test.mjs ../../../tests/iosReleaseAppleRead.test.mjs ../../../tests/iosSigningRetention.test.mjs ../../../tests/iosFirstCreationGuard.test.mjs
           python3 test_web_assets.py
       - name: Check signing certificate command and rejection controls before Apple keys
         run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-signing-certificate.py"
@@ -221,7 +221,7 @@ jobs:
           node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/protect-artifact.mjs" encrypt \
             "$RUNNER_TEMP/sogrim-ios-release.tar" build/ios/private-artifact
 
-      - name: Retain only encrypted release output for seven days
+      - name: Retain only encrypted release output for one day
         id: private_artifact
         uses: actions/upload-artifact@v6
         with:
@@ -230,7 +230,7 @@ jobs:
             app/build/ios/private-artifact/release.tar.enc
             app/build/ios/private-artifact/envelope.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
       - name: Record preparation outcome
         run: |

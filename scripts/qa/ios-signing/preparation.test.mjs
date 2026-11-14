@@ -177,7 +177,7 @@ test('artifact-only preparation preserves exact checkout and gates signing while
  }
  assert.ok(!/upload-testflight-build|complete-ios-testflight|reviewSubmission|appStoreVersionReleaseRequest/.test(next));
  assert.ok(next.includes('sogrim-ios-4.59-196-encrypted'));
- assert.ok(next.includes('retention-days: 7'));
+ assert.ok(next.includes('retention-days: 1'));
  assert.ok(next.includes('persist-credentials: false'));
 });
 test('previous build193 and PWA514 cannot be signed as196',()=>{
@@ -199,8 +199,8 @@ for (const name of names) {
 }
 
 const oneShotEnv={...env,GITHUB_EVENT_NAME:'push',
- GITHUB_REF:'refs/heads/codex/ios196-459-signing-recovery-20261114',
- GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios196-459-private-sign-recovery-20261114.yml@refs/heads/codex/ios196-459-signing-recovery-20261114',
+ GITHUB_REF:'refs/heads/codex/ios196-459-signing-one-day-20261114',
+ GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios196-459-private-sign-one-day-20261114.yml@refs/heads/codex/ios196-459-signing-one-day-20261114',
  GITHUB_RUN_NUMBER:'3',GITHUB_RUN_ATTEMPT:'1'};
 test('one-shot artifact preparation accepts only the explicitly frozen push scope',()=>{
  assert.equal(verifyCheckout(git,readText,oneShotEnv).sourceCommit,RELEASE_SOURCE);
@@ -211,10 +211,10 @@ for(const [name,change] of [['branch',{GITHUB_REF:'refs/heads/main'}],
  test('one-shot preparation rejects wrong '+name,()=>assert.throws(()=>verifyCheckout(git,readText,{...oneShotEnv,...change})));
 test('actual one-shot workflow keeps signing gates and creates encrypted artifact only',()=>{
  const original=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
- const actual=readFileSync(new URL('../../../.github/workflows/ios196-459-private-sign-recovery-20261114.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
+ const actual=readFileSync(new URL('../../../.github/workflows/ios196-459-private-sign-one-day-20261114.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
  assert.ok(!actual.includes('github.run_number == 1')&&actual.includes('github.run_attempt == 1'));
  assert.ok(actual.includes('github.event.created == true')&&actual.includes("github.event.before == '"+'0'.repeat(40)+"'"));
- assert.ok(actual.includes('branches: [codex/ios196-459-signing-recovery-20261114]'));
+ assert.ok(actual.includes('branches: [codex/ios196-459-signing-one-day-20261114]'));
  assert.ok(actual.indexOf('source-guard.mjs" ci-only')<actual.indexOf('secrets.APPSTORE'));
  const normalized=actual.replaceAll("          IOS_FIRST_CREATION_RECEIPT: ${{ steps.first_creation.outputs.receipt_path }}\n          IOS_FIRST_CREATION_SHA256: ${{ steps.first_creation.outputs.receipt_sha256 }}\n","")
   .replace(' ../../../tests/iosFirstCreationGuard.test.mjs','');
@@ -261,7 +261,7 @@ for(const name of ['cross-platform-shard-1 (1)','cross-platform-shard-2 (9)'])
  });
 
 test('4.59 one-shot binds the exact application tree and all four coordinator run IDs',()=>{
- const raw=readFileSync(new URL('../../../.github/workflows/ios196-459-private-sign-recovery-20261114.yml',import.meta.url),'utf8');
+ const raw=readFileSync(new URL('../../../.github/workflows/ios196-459-private-sign-one-day-20261114.yml',import.meta.url),'utf8');
  assert.equal(RELEASE_SOURCE,'6d7b90a1a15e4e6c2a5af3cf17558d993322f45e');
  assert.equal(RELEASE_TREE,'4d5792fee5cf5043f1528a38f70becf4697b3dc4');
  for(const [name,value]of [['SOURCE_SHA',RELEASE_SOURCE],['SOURCE_QA_RUN',env.SOURCE_QA_RUN],
