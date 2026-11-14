@@ -9,7 +9,10 @@ permissions:
   contents: read
 jobs:
   native:
-    runs-on: macos-26-intel
+    # Align with the standard Apple Silicon host used by Native parity/signing.
+    # Auth103 could not connect its Intel test runner before the job deadline.
+    # The complete original SDK/OS scenario below remains mandatory.
+    runs-on: macos-26
     timeout-minutes: 35
     env:
       PROBE_MODE: custom
@@ -37,6 +40,9 @@ jobs:
       - name: Select Xcode and prepare the actual native SDK
         working-directory: app
         run: |
+          auth_host_arch="$(uname -m)"
+          printf 'NativeAuthHostArchitecture=%s\n' "$auth_host_arch"
+          test "$auth_host_arch" = arm64
           sudo xcode-select -s /Applications/Xcode_26.6.app
           npm ci
           npm run native:prepare

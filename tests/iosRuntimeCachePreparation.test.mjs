@@ -11,6 +11,41 @@ const workflows=[
   {file:'ios-parity-qa.yml',step:'Build unsigned Debug before booting a clean iPhone 15 or 16',output:'build/native-parity/runtime-cache-preparation.log'}
 ];
 
+// Execute the real SDK-selection step with synthetic commands. A runner that
+// does not match the selected Apple Silicon environment must stop before any
+// Xcode, dependency or native preparation operation. This guards host drift;
+// only the original SDK/OS CI scenario can establish an actual auth result.
+function executeAuthHostSelection(architecture) {
+  const base=realpathSync(tmpdir()),cwd=mkdtempSync(join(base,'ios-auth-host-'));
+  try {
+    writeFileSync(join(cwd,'calls.log'),'');
+    const script=`export CASE_CALLS="$PWD/calls.log"\n`
+      + `uname(){ printf '%s\\n' "$CASE_ARCH"; }\n`
+      + `sudo(){ printf '%s\\n' "sudo $*" >> "$CASE_CALLS"; }\n`
+      + `npm(){ printf '%s\\n' "npm $*" >> "$CASE_CALLS"; }\n`
+      + `node(){ printf '%s\\n' "node $*" >> "$CASE_CALLS"; }\n`
+      + `python3(){ printf '%s\\n' "python3 $*" >> "$CASE_CALLS"; }\n`
+      + scriptFromWorkflow({file:'ios-auth-return-qa.yml',step:'Select Xcode and prepare the actual native SDK'});
+    writeFileSync(join(cwd,'host.sh'),script);
+    const env=Object.fromEntries(['PATH','SystemRoot','WINDIR','COMSPEC','TEMP','TMP','TMPDIR','USERPROFILE'].filter(k=>process.env[k]).map(k=>[k,process.env[k]]));
+    Object.assign(env,{CASE_ARCH:architecture,PROBE_FIXTURES:'/synthetic/auth-probe',SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD:'1'});
+    const r=spawnSync(bash,['--noprofile','--norc','-e','host.sh'],{cwd,env,encoding:'utf8',windowsHide:true,timeout:30_000});
+    assert.ifError(r.error);assert.equal(r.signal,null);
+    return {status:r.status,stderr:r.stderr,calls:readFileSync(join(cwd,'calls.log'),'utf8').trim().split(/\r?\n/).filter(Boolean)};
+  } finally {
+    assert.equal(realpathSync(dirname(cwd)),base);assert.match(basename(cwd),/^ios-auth-host-/);assert.equal(lstatSync(cwd).isSymbolicLink(),false);
+    rmSync(cwd,{recursive:true,force:true});
+  }
+}
+
+test('AuthReturn host preflight permits arm64 and retains the full native preparation sequence',()=>{
+  const r=executeAuthHostSelection('arm64');assert.equal(r.status,0,r.stderr);
+  assert.deepEqual(r.calls,['sudo xcode-select -s /Applications/Xcode_26.6.app','npm ci','npm run native:prepare','node scripts/prepare-ios-release.mjs','python3 /synthetic/auth-probe/native-auth-session-probe.py']);
+});
+for(const architecture of ['x86_64','','unexpected'])test(`AuthReturn host preflight rejects ${architecture||'missing architecture'} before native operations`,()=>{
+  const r=executeAuthHostSelection(architecture);assert.notEqual(r.status,0);assert.deepEqual(r.calls,[]);
+});
+
 function scriptFromWorkflow({file,step}) {
   const lines=readFileSync(new URL('../.github/workflows/'+file,import.meta.url),'utf8').split(/\r?\n/);
   const start=lines.indexOf('      - name: '+step);assert.ok(start>=0,'missing native preparation step');
