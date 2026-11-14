@@ -107,6 +107,8 @@ export async function requireUnusedArtifactSlot(fetchImpl, token) {
 }
 
 export async function readUnusedBuild(request) {
+  const candidate = Number(CONTRACT.build);
+  assert.ok(Number.isSafeInteger(candidate) && candidate > 0, 'Invalid intake candidate build');
   const app = (await request('/v1/apps/' + APPLE_APP_ID, {method: 'GET'})).data;
   assert.equal(app?.attributes?.bundleId, 'com.sogrimhashbon.app');
   let next = '/v1/builds?' + new URLSearchParams({
@@ -131,8 +133,8 @@ export async function readUnusedBuild(request) {
     next = response.links?.next;
   }
   assert.ok(!next, 'Apple pagination incomplete');
-  assert.ok(maximum < 195, '195 is no longer unused; coordinator must select a new candidate');
-  return {appId: APPLE_APP_ID, maximumUploadedBuild: maximum, candidateBuild: 195,
+  assert.ok(maximum < candidate, `${candidate} is no longer unused; coordinator must select a new candidate`);
+  return {appId: APPLE_APP_ID, maximumUploadedBuild: maximum, candidateBuild: candidate,
     reserved: false, checkedAt: new Date().toISOString()};
 }
 
