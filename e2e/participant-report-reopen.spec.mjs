@@ -1,0 +1,14 @@
+import{test,expect}from'@playwright/test';import{readFileSync}from'node:fs';
+import{openSafety,chooseReason,pointClick,state,financial,account}from'./helpers/participantSafetyPresentation.mjs';
+const fixture=readFileSync(new URL('./fixtures/eventNotesBatchBootstrap.js',import.meta.url),'utf8');
+test.use({serviceWorkers:'block'});
+test('reopening a report while its earlier request is pending unlocks after the earlier acknowledgement',async({page})=>{
+ const errors=[],external=[];page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():(external.push(r.request().url()),r.abort()));await page.addInitScript({content:fixture});
+ const d=await openSafety(page,'report'),before=financial(await state(page));await chooseReason(page,d,'סיבה אחרת');await d.locator('textarea').fill('הדיווח הראשון');await page.evaluate(()=>__friendInviteQa.reportMode='hold');await pointClick(d.locator('[data-action="submit-participant-report"]'));await expect(d.locator('textarea')).toBeDisabled();
+ await pointClick(d.locator('[data-action="back-to-participant-profile"]'));const detail=page.locator('[data-participant-detail-view="account"][data-participant-id="'+account+'"]');await expect(detail).toBeVisible();const privacy=detail.locator('.relationship-safety-management');
+ // Returning restores focus to the report opener and opens its parent details.
+ // Reading closed and then clicking later can close that restored disclosure.
+ const reportEntry=detail.locator('[data-action="open-participant-report"]');await expect(privacy).toHaveAttribute('open','');await expect(reportEntry).toBeFocused();await pointClick(reportEntry);await expect(d.locator('textarea')).toBeDisabled();
+ await page.evaluate(()=>__friendInviteQa.releaseSafety());await expect(d.locator('textarea')).toBeEnabled();await expect(d.locator('select')).toBeEnabled();await expect(d.locator('textarea')).toHaveValue('');expect(await page.evaluate(()=>__friendInviteQa.safetyRequests.length)).toBe(1);
+ await chooseReason(page,d,'סיבה אחרת');await d.locator('textarea').fill('דיווח חדש מפורש');await pointClick(d.locator('[data-action="submit-participant-report"]'));await expect(detail).toContainText('הדיווח נשלח');expect(await page.evaluate(()=>__friendInviteQa.safetyRequests.filter(r=>r.rpc==='submit_user_report').map(r=>r.body.p_details))).toEqual(['הדיווח הראשון','דיווח חדש מפורש']);expect(financial(await state(page))).toEqual(before);expect(errors).toEqual([]);expect(external).toEqual([]);
+});

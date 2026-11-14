@@ -1,3 +1,5 @@
+import {renderPendingFriendRowView} from "../src/ui/friendRequestsPresentation.mjs";
+import {renderBlockedUsersView} from "../src/ui/blockedUsersPresentation.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -10,9 +12,13 @@ test("friends hub keeps blocked accounts in a collapsed reversible privacy secti
 
   assert.ok(start >= 0);
   assert.ok(end > start);
-  assert.match(panel, /<details class="friend-privacy-note blocked-users-panel">/);
-  assert.match(panel, /משתמשים חסומים/);
-  assert.match(panel, /data-action="unblock-connected-user"/);
+  assert.match(panel, /renderBlockedUsersView\(/);
+  const view=renderBlockedUsersView({users:[{targetUserId:'blocked-user',displayName:'דנה',username:'dana'}],ownerScope:'synthetic-owner'});
+  assert.match(view, /<details class="friend-privacy-note blocked-users-panel"/);
+  assert.doesNotMatch(view, /<details[^>]*\bopen(?:\s|>)/);
+  assert.match(view, /משתמשים חסומים/);
+  assert.match(view, /data-action="unblock-connected-user"/);
+  assert.match(view, /data-target-user-id="blocked-user"/);
   assert.match(panel, /friendNetwork\.blockedUsers/);
 });
 
@@ -51,7 +57,8 @@ test("friend requests stay out of the main friends roster", async () => {
   assert.match(requestsPanel, /renderFriendRequestSection/);
   assert.match(requestsPanel, /בקשות שקיבלת/);
   assert.match(requestsPanel, /בקשות ששלחת/);
-  assert.match(requestsPanel, /אין בקשות שממתינות עכשיו/);
+  const requestsView = await readFile("src/ui/friendRequestsPresentation.mjs", "utf8");
+  assert.match(requestsView, /אין בקשות חברות שממתינות/);
 });
 
 test("the requests tab remains a real route instead of falling back to people", async () => {
@@ -108,9 +115,10 @@ test("participant pictures alone open the approved relationship statistics route
   assert.match(networkRow, /data-action="remove-network-friend"/);
   assert.doesNotMatch(networkRow, /חבר מאושר/);
   assert.doesNotMatch(networkRow, /משתמש מחובר · אפשר לצרף/);
-  assert.match(friendProfile, /friend-relationship-screen/);
-  assert.match(friendProfile, /event-participant-relationship/);
-  assert.match(friendProfile, /renderParticipantRelationshipScorecard/);
+  const profileView = await readFile("src/ui/friendRelationshipProfilePresentation.mjs", "utf8");
+  assert.match(profileView, /friend-relationship-screen/);
+  assert.match(profileView, /event-participant-relationship/);
+  assert.match(friendProfile, /renderFriendRelationshipProfileView/);
   assert.doesNotMatch(friendProfile, /event-participant-profile-account/);
   assert.match(friendProfile, /renderParticipantRelationshipHabit/);
   assert.match(friendProfile, /renderParticipantRelationshipFacts/);
@@ -135,13 +143,14 @@ test("participant pictures alone open the approved relationship statistics route
 
 test("shared events and groups never create friendship without approval", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const requests = await readFile("src/ui/friendRequestsPresentation.mjs", "utf8");
 
   assert.match(app, /<details class="friend-privacy-note">/);
   assert.match(app, /איך נשמרת הפרטיות/);
   assert.match(app, /רק אחרי אישור הדדי/);
   assert.match(app, /data-action="send-friend-request"/);
-  assert.match(app, /data-action="accept-friend-request"/);
-  assert.match(app, /data-action="decline-friend-request"/);
+  assert.match(requests, /data-action="accept-friend-request"/);
+  assert.match(requests, /data-action="decline-friend-request"/);
   assert.match(app, /data-action="remove-network-friend"/);
 });
 
@@ -196,8 +205,8 @@ test("friends and groups keep destructive actions compact without hiding them", 
 
   assert.ok(peoplePanel.indexOf("friends-roster") < peoplePanel.indexOf("friend-privacy-note"));
   assert.match(app, /class="friend-remove-button"[\s\S]*?title="הסר חבר"/);
-  assert.match(commandIcons, /"remove-network-friend": "user-minus"/);
-  assert.match(commandIcons, /"remove-offline-friend": "user-minus"/);
+  assert.match(commandIcons, /"remove-network-friend": "trash"/);
+  assert.match(commandIcons, /"remove-offline-friend": "trash"/);
   assert.match(groupRow, /class="secondary-button danger-button group-archive-button"/);
   assert.match(commandIcons, /"archive-group": "archive"/);
 });
@@ -226,11 +235,42 @@ test("online friends use unique usernames without changing offline names", async
   assert.match(app, /<span>שם משתמש<\/span>/);
   assert.doesNotMatch(app, /placeholder="@yarin"/);
   assert.doesNotMatch(app, /placeholder="לדוגמה: דני כהן"/);
-  assert.match(app, /data-action="friend-code"[\s\S]+placeholder="@username"/);
+  assert.match(app, /data-action="friend-code"[\s\S]+placeholder="username"/);
   assert.match(app, /class="friend-username"/);
-  assert.match(app, /\[profile\.display_name, username\]/);
+  // Verify rendered identity and actual filtering below, including pasted @ handles.
   assert.match(layer, /\.friend-username/);
   assert.match(layer, /\.profile-username-section/);
+  const { runInNewContext } = await import("node:vm");
+  const field = app.slice(app.indexOf("function renderProfileUsernameField()"), app.indexOf("function renderProfileSetup()"));
+  for (const [draft, visible] of [["Yarin_12", "Yarin_12"], ["@yarin_12", "yarin_12"], ["", ""]]) {
+    const context = { friendNetworkAvailable: () => true, runtimeConfig: {}, friendNetwork: { status: "ready" }, profileUsernameDraft: draft, profileUsernameError: "", escapeAttribute: String, escapeHtml: String };
+    const rendered = runInNewContext(`${field}\nrenderProfileUsernameField()`, context);
+    assert.match(rendered, new RegExp(`value="${visible}"`));
+    assert.doesNotMatch(rendered, /value="@/);
+    assert.equal(context.profileUsernameDraft, draft, "Rendering must not rewrite the stored identity or draft");
+  }
+  const { formatUsername, profileUsername } = await import("../src/domain/usernames.mjs");
+  const networkRow = app.slice(app.indexOf("function renderNetworkFriendRow("), app.indexOf("function renderFriendRelationshipProfile("));
+  const pendingRow = app.slice(app.indexOf("function renderPendingFriendRow("), app.indexOf("function renderFriendIdentitySection("));
+  const filter = app.slice(app.indexOf("function filterFriendRows("), app.indexOf("function participantCandidateFilter("));
+  const profile = { user_id: "qa-friend", display_name: "דנה לוי", username: "qa_friend", username_customized: true };
+  const renderContext = { renderPendingFriendRowView, friendProfileForRelationship: () => profile, publicProfileUsername: profileUsername, formatUsername, renderFriendProfileAvatar: () => "", friendNetworkBusyAction: false, escapeAttribute: String, escapeHtml: String };
+  const rows = runInNewContext(`${networkRow}\n${pendingRow}\n[renderNetworkFriendRow({id:'qa'}),renderPendingFriendRow({id:'qa'},'incoming'),renderPendingFriendRow({id:'qa'},'outgoing')]`, renderContext);
+  for (const html of rows) {
+    assert.match(html, /class="friend-username" dir="ltr">qa_friend<\/bdi>/);
+    const row = { dataset: { friendName: html.match(/data-friend-name="([^"]+)"/)[1] }, hidden: false };
+    const empty = { hidden: false }, roster = { querySelectorAll: (selector) => selector === "[data-friend-name]" ? [row] : [], querySelector: () => empty };
+    for (const query of ["qa_friend", "@qa_friend", "דנה"]) {
+      runInNewContext(`${filter}\nfilterFriendRows(input)`, { input: { value: query, closest: () => ({ querySelector: () => roster }) }, setSearchResultHidden: (target, hidden) => { target.hidden = hidden; } });
+      assert.equal(row.hidden, false, `Existing username search must still find ${query}`);
+      assert.equal(empty.hidden, true);
+    }
+  }
+  const participantFunctions = app.slice(app.indexOf("function participantUsernameLabel("), app.indexOf("function renderParticipantPill("));
+  const participantContext = { formatUsername, state: { currentParticipantId: "qa-owner" }, currentFriendUsername: () => "qa_owner", profileUsernameDraft: "", escapeHtml: String };
+  const participant = runInNewContext(`${participantFunctions}\n({label:renderParticipantUsername({id:'qa-friend',username:'qa_friend'}),search:participantSearchIdentity({id:'qa-friend',username:'qa_friend'},'דנה לוי')})`, participantContext);
+  assert.match(participant.label, />qa_friend<\/bdi>/);
+  assert.equal(participant.search, "דנה לוי @qa_friend");
 });
 
 test("friends hub only highlights duplicate names when identity matching finds them", async () => {
@@ -354,4 +394,66 @@ test("relationship statistics use the app surface system and readable fact rows"
     layer,
     /\.relationship-fact \{[\s\S]*?grid-template-columns: 40px minmax\(0, 1fr\) auto !important;[\s\S]*?text-align: start !important;/
   );
+});
+
+
+test("friend activity counts explain shared events and retain visibility and history", async () => {
+  const { runInNewContext } = await import("node:vm");
+  const { visibleEventsForParticipant } = await import("../src/domain/personalMemory.mjs");
+  const app = await readFile("src/app.mjs", "utf8");
+  const row = app.slice(app.indexOf("function renderFriendRow("), app.indexOf("function mergeableDuplicateParticipantGroups()"));
+  const count = app.slice(app.indexOf("function formatCount("), app.indexOf("function creationDate("));
+  const friend = { id: "caption-friend", displayName: "דנה לוי" };
+  const owner = "caption-owner";
+  const event = (id, extra = {}) => ({ id, participantIds: [owner, friend.id], ...extra });
+  const shared = [event("open"), event("closed", { locked: true }), event("archived", { archivedAt: "2026-09-01" }), event("fourth"), event("fifth")];
+  const unrelated = [event("not-mine", { participantIds: [friend.id, "other"] }), event("not-friend", { participantIds: [owner, "other"] }), event("inactive", { inactiveParticipantIds: [owner] })];
+  for (const [events, caption] of [[shared, "5 אירועים משותפים"], [[shared[0]], "1 אירוע משותף"], [[], "שם ידני"]]) {
+    const state = { currentParticipantId: owner, participants: [friend], events: [...events, ...unrelated] };
+    const before = JSON.stringify(state);
+    const render = runInNewContext(`${count}\n${row}\nrenderFriendRow`, {
+      state, visibleEventsForParticipant,
+      participantConnectionStatus: () => ({ connected: false }),
+      mergeableDuplicateParticipantGroups: () => [],
+      renderAvatar: () => "", renderParticipantConnectionBadge: () => "",
+      escapeHtml: String, escapeAttribute: String
+    });
+    assert.match(render(friend), new RegExp(`<small>${caption}</small>`));
+    assert.equal(JSON.stringify(state), before, "rendering the activity caption must not mutate events or identity");
+  }
+});
+
+
+test("add-friend instructions focus on the friend username and explain manual names", async () => {
+ const {runInNewContext}=await import("node:vm"),app=await readFile("src/app.mjs","utf8");
+ const add=app.slice(app.indexOf("function renderFriendAdd()"),app.indexOf("function renderOfflineFriendAddStep()"));
+ const network=app.slice(app.indexOf("function renderFriendNetworkPanel()"),app.indexOf("function renderConnectedFriendSection("));
+ const offline=app.slice(app.indexOf("function renderOfflineFriendAddStep()"),app.indexOf("function renderFriendsRequestsTab("));
+ const render=(friendNetwork,username="",invite="")=>{
+  const context={friendNetwork,friendNetworkBusyAction:false,friendCodeDraft:"friend_qa",friendsNewOfflineName:"שם לבדיקה",friendInviteUrl:()=>invite,currentFriendUsername:()=>username,formatUsername:x=>x,escapeHtml:String,escapeAttribute:String,friendsAddMode:"online",renderAppBackButton:()=>"",renderNotice:()=>"",renderCommandIcon:()=>""};
+  return runInNewContext(`${add}\n${network}\n${offline}\n({online:renderFriendNetworkPanel(),offline:renderOfflineFriendAddStep(),screen:renderFriendAdd()})`,context);
+ };
+ for(const username of ["","@qa_owner"])for(const invite of ["","https://example.test/?friend=abcdefabcdefabcdefab"])for(const stale of [false,true]){
+  const friendNetwork={status:"ready",stale},before=JSON.stringify(friendNetwork),result=render(friendNetwork,username,invite);
+  assert.match(result.online,/מזינים את שם המשתמש של החבר\. החברות תושלם אחרי שיאשר\./);
+  assert.match(result.online,/<span>שם המשתמש של החבר<\/span>/);
+  assert.match(result.online,/<strong>שליחת בקשת חברות<\/strong>/);
+  assert.doesNotMatch(result.online,/friend-add-kind|friend-username|משתמש מחובר|קישור שקיבלת|qa_owner/);
+  assert.match(result.online,/data-action="send-friend-request"/);assert.match(result.online,/value="friend_qa"/);
+  assert.equal(result.online.includes('data-action="copy-friend-link"'),Boolean(invite));
+  assert.equal(result.online.includes('class="friend-network-stale"'),stale);
+  assert.match(result.offline,/איך קוראים לחבר\?/);assert.match(result.offline,/שומרים שם לשימוש באירועים, בלי לפתוח חשבון או לשלוח הזמנה\./);
+  assert.match(result.offline,/placeholder="שם החבר"/);assert.match(result.offline,/data-action="friends-add-offline"/);assert.match(result.offline,/value="שם לבדיקה"/);assert.doesNotMatch(result.offline,/friend-add-kind/);
+  assert.match(result.screen,/<h1>הוספת חבר<\/h1>/);assert.doesNotMatch(result.screen,/בוחרים סוג אחד|class="muted"/);
+  assert.match(result.screen,/משתמש באפליקציה<\/strong><small>נדרש אישור של החבר/);assert.match(result.screen,/שם ידני<\/strong><small>בלי חשבון באפליקציה/);
+  assert.match(result.screen,/data-mode="online"/);assert.match(result.screen,/data-mode="offline"/);assert.match(result.screen,/role="tablist"/);assert.equal(JSON.stringify(friendNetwork),before);
+ }
+ const request=app.slice(app.indexOf("async function sendFriendRequest()"),app.indexOf("async function sendEventFriendRequest("));
+ const invalid={notice:"",renders:0,focuses:0,friendRequestTargetFromDraft:()=>null,beginFriendNetworkAction:()=>{throw new Error("Invalid input must not start a request")}};
+ invalid.render=()=>{invalid.renders+=1};invalid.app={querySelector:()=>({focus:()=>{invalid.focuses+=1}})};
+ await runInNewContext(`${request}\nsendFriendRequest()`,invalid);
+ assert.equal(invalid.notice,"צריך להזין שם משתמש תקין של החבר.");assert.equal(invalid.renders,1);assert.equal(invalid.focuses,1);
+ for(const [status,expected] of [["loading",/טוענים את החברים הפרטיים שלך/],["signed-out",/בקשות חברות זמינות למשתמשים מחוברים/],["error",/data-action="friends-retry-network"/]]){
+  const result=render({status});assert.match(result.online,expected);assert.doesNotMatch(result.online,/data-action="send-friend-request"/);
+ }
 });

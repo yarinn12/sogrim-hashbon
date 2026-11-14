@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { personalEventPinsKey, loadPersonalEventPins, setPersonalEventPin, pinnedEventsFirst } from "../src/data/personalEventPins.mjs";
+import { personalEventPinsKey, loadPersonalEventPins, setPersonalEventPin, pinnedEventIdsForState, pendingLegacyAccountPins, acknowledgeLegacyAccountPins, migrateLegacyAccountPins, updateAccountEventPin, pinnedEventsFirst } from "../src/data/personalEventPins.mjs";
+import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
+import { saveCloudStateWithConflictRetry } from "../src/data/cloudConflictRetry.mjs";
 
 function storageFixture() {
   const values = new Map(), writes = [];
@@ -91,4 +93,172 @@ test("missing participant or event identity never writes a shared anonymous pref
     assert.throws(() => setPersonalEventPin(participantId, eventId, true, storage), /identity/i);
   }
   assert.deepEqual(storage.writes, []);
+});
+
+test("two account devices merge pin and unpin records without changing another account", () => {
+  const firstStorage = storageFixture();
+  const secondStorage = storageFixture();
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  const first = updateAccountEventPin(base, "trip", true, firstStorage, 1000);
+  const second = updateAccountEventPin(base, "dinner", true, secondStorage, 2000);
+  const combined = mergeSharedStates(first, second);
+  assert.deepEqual([...pinnedEventIdsForState(combined)].sort(), ["dinner", "trip"]);
+
+  const unpinned = updateAccountEventPin(combined, "trip", false, firstStorage, 3000);
+  const staleReplica = mergeSharedStates(unpinned, first);
+  assert.deepEqual([...pinnedEventIdsForState(staleReplica)], ["dinner"]);
+  assert.equal(staleReplica.personalEventPinPreferences.updates.trip.pinned, false);
+
+  const otherAccount = { currentParticipantId: "account-bob", participants: [], events: [] };
+  const isolated = mergeSharedStates(unpinned, otherAccount);
+  assert.equal(isolated.personalEventPinPreferences, undefined);
+  assert.deepEqual([...pinnedEventIdsForState(isolated, secondStorage)], []);
+});
+
+test("conflict retry sends and acknowledges the final per-account pin payload", async () => {
+  const storage = storageFixture();
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  const remote = updateAccountEventPin(base, "remote", true, storage, 1000);
+  const local = updateAccountEventPin(base, "offline", true, storage, 2000);
+  let attempts = 0;
+  let finalWrite;
+  const result = await saveCloudStateWithConflictRetry({
+    state: local,
+    loadLatest: async () => remote,
+    save: async (candidate) => {
+      attempts += 1;
+      if (attempts === 1) throw Object.assign(new Error("conflict"), { code: "CLOUD_STATE_CONFLICT" });
+      finalWrite = structuredClone(candidate);
+    },
+    retryDelay: () => 0
+  });
+  assert.equal(attempts, 2);
+  assert.deepEqual([...pinnedEventIdsForState(finalWrite)].sort(), ["offline", "remote"]);
+  assert.deepEqual(result.state.personalEventPinPreferences, finalWrite.personalEventPinPreferences);
+  assert.equal(result.conflictCount, 1);
+});
+
+test("legacy local pins migrate only when the authenticated snapshot has no synced preferences", () => {
+  const storage = storageFixture();
+  setPersonalEventPin("account-alice", "legacy", true, storage);
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  assert.deepEqual([...pinnedEventIdsForState(base, storage)], ["legacy"]);
+  const migrated = migrateLegacyAccountPins(base, storage);
+  assert.deepEqual([...pinnedEventIdsForState(migrated, storage)], ["legacy"]);
+  assert.equal(migrateLegacyAccountPins(migrated, storage), migrated);
+  const updated = updateAccountEventPin(base, "new", true, storage, 2000);
+  assert.deepEqual([...pinnedEventIdsForState(updated, storage)].sort(), ["legacy", "new"]);
+  const remoteUnpin = updateAccountEventPin(base, "legacy", false, storage, 3000);
+  assert.deepEqual([...pinnedEventIdsForState(mergeSharedStates(remoteUnpin, updated))], ["new"]);
+});
+
+test("unreadable legacy pins cannot be silently replaced by an empty account preference", () => {
+  const storage = { getItem() { throw new Error("SecurityError"); } };
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  assert.throws(() => migrateLegacyAccountPins(base, storage), /SecurityError/);
+  assert.throws(() => updateAccountEventPin(base, "event", true, storage, 1000), /SecurityError/);
+  assert.equal(base.personalEventPinPreferences, undefined);
+});
+
+test("a legacy pin remains visible and migrates beside an existing cloud pin, but a cloud unpin wins", () => {
+  const storage = storageFixture();
+  setPersonalEventPin("account-alice", "device-only", true, storage);
+  setPersonalEventPin("account-alice", "cloud-unpinned", true, storage);
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  const cloudStorage = storageFixture();
+  const cloud = updateAccountEventPin(
+    updateAccountEventPin(base, "cloud-only", true, cloudStorage, 1000),
+    "cloud-unpinned", false, cloudStorage, 2000
+  );
+  assert.deepEqual([...pinnedEventIdsForState(cloud, storage)].sort(), ["cloud-only", "device-only"]);
+  const migrated = migrateLegacyAccountPins(cloud, storage);
+  assert.deepEqual([...pinnedEventIdsForState(migrated, storage)].sort(), ["cloud-only", "device-only"]);
+  assert.equal(migrated.personalEventPinPreferences.updates["device-only"].pinned, true);
+  assert.equal(migrated.personalEventPinPreferences.updates["cloud-unpinned"].pinned, false);
+});
+
+test("a fast clock cannot restore a pin after its causally later unpin", () => {
+  const storage = storageFixture();
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  const fastPin = updateAccountEventPin(base, "trip", true, storage, 4_000_000_000_000);
+  const slowUnpin = updateAccountEventPin(fastPin, "trip", false, storage, 1000);
+  const merged = mergeSharedStates(slowUnpin, fastPin);
+  assert.equal(merged.personalEventPinPreferences.updates.trip.pinned, false);
+  assert.deepEqual([...pinnedEventIdsForState(merged)], []);
+});
+
+test("concurrent offline pin and unpin have a deterministic unpin-wins policy", () => {
+  const storage = storageFixture();
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  const pin = updateAccountEventPin(base, "trip", true, storage, 4_000_000_000_000);
+  const unpin = updateAccountEventPin(base, "trip", false, storage, 1000);
+  for (const [remote, local] of [[pin, unpin], [unpin, pin]]) {
+    assert.equal(mergeSharedStates(remote, local).personalEventPinPreferences.updates.trip.pinned, false);
+  }
+});
+
+test("legacy migration remains pending until a confirmed cloud receipt and stays account scoped", () => {
+  const storage = storageFixture();
+  setPersonalEventPin("account-alice", "device-only", true, storage);
+  setPersonalEventPin("account-bob", "bob-only", true, storage);
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  const migrated = migrateLegacyAccountPins(base, storage);
+  assert.deepEqual([...pendingLegacyAccountPins("account-alice", storage)], ["device-only"]);
+  assert.deepEqual([...pendingLegacyAccountPins("account-bob", storage)], ["bob-only"]);
+  // Merely constructing and locally saving a candidate does not acknowledge it.
+  assert.deepEqual([...pendingLegacyAccountPins("account-alice", storage)], ["device-only"]);
+  assert.deepEqual([...pinnedEventIdsForState(base, storage)], ["device-only"]);
+  acknowledgeLegacyAccountPins("account-alice", ["device-only"], storage);
+  assert.deepEqual([...pendingLegacyAccountPins("account-alice", storage)], []);
+  assert.deepEqual([...pendingLegacyAccountPins("account-bob", storage)], ["bob-only"]);
+  assert.equal(migrateLegacyAccountPins(base, storage), base);
+  assert.deepEqual([...pinnedEventIdsForState(migrated, storage)], ["device-only"]);
+});
+
+test("an unreadable device store does not hide already confirmed account pins", () => {
+  const unreadable = { getItem() { throw new Error("SecurityError"); } };
+  const state = {
+    currentParticipantId: "account-alice",
+    personalEventPinPreferences: {
+      ownerParticipantId: "account-alice",
+      updates: { cloud: { pinned: true, updatedAt: "2026-09-03T08:00:00.000Z" } }
+    }
+  };
+  assert.deepEqual([...pinnedEventIdsForState(state, unreadable)], ["cloud"]);
+  assert.throws(() => migrateLegacyAccountPins(state, unreadable), /SecurityError/);
+});
+
+test("CAS retry rebases a fast-clock stale pin onto a newer cloud unpin", async () => {
+  const storage = storageFixture();
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  const prior = updateAccountEventPin(base, "trip", true, storage, 1000);
+  const remote = updateAccountEventPin(prior, "trip", false, storage, 2000);
+  const stale = updateAccountEventPin(prior, "trip", true, storage, 4_000_000_000_000);
+  let attempts = 0;
+  const result = await saveCloudStateWithConflictRetry({
+    state: stale, loadLatest: async () => remote,
+    save: async () => { if (++attempts === 1) throw Object.assign(new Error("conflict"), { code: "CLOUD_STATE_CONFLICT" }); },
+    retryDelay: () => 0
+  });
+  assert.equal(attempts, 2);
+  assert.equal(result.state.personalEventPinPreferences.updates.trip.pinned, false);
+});
+
+test("a causally newer re-pin wins, while old timestamp-only conflicts do not trust clocks", () => {
+  const storage = storageFixture();
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  const pin = updateAccountEventPin(base, "trip", true, storage, 1000);
+  const unpin = updateAccountEventPin(pin, "trip", false, storage, 2000);
+  const repin = updateAccountEventPin(unpin, "trip", true, storage, 3000);
+  assert.equal(mergeSharedStates(unpin, repin).personalEventPinPreferences.updates.trip.pinned, true);
+  assert.equal(mergeSharedStates(repin, pin).personalEventPinPreferences.updates.trip.pinned, true);
+  const oldFastPin = { ...base, personalEventPinPreferences: {
+    ownerParticipantId: "account-alice",
+    updates: { trip: { pinned: true, updatedAt: "2099-01-01T00:00:00.000Z" } }
+  } };
+  const oldSlowUnpin = { ...base, personalEventPinPreferences: {
+    ownerParticipantId: "account-alice",
+    updates: { trip: { pinned: false, updatedAt: "2020-01-01T00:00:00.000Z" } }
+  } };
+  assert.equal(mergeSharedStates(oldFastPin, oldSlowUnpin).personalEventPinPreferences.updates.trip.pinned, false);
 });

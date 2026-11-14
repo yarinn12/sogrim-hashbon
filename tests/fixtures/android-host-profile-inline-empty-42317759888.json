@@ -1,0 +1,7 @@
+{
+  "sourceRun": 42317759888,
+  "sourceArtifact": 13552666441,
+  "fullRawSha256": "578a5c45768ba0446dc9c48fab6b3f4a9b9ec729f1de609eb0c7e50fb9a7e725",
+  "scope": "Selected verbatim lines from the preserved raw stream; not a complete capture or accepted diagnostic",
+  "output": "Attaching 4 probes...\nSOGRIM_PROFILE_READY 3620 15518\nSOGRIM_PROFILE_STOPPED\n@samples[361, 3801, \n5573c424789f\n]: 1\n@samples[878, 3803, \n5573c42477d8\n]: 1\n@samples[767, 5708, ]: 1\n@samples[389, 3668, ]: 49\n"
+}

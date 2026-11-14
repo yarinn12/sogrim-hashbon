@@ -154,12 +154,14 @@ final class AuthProbeUITests: XCTestCase {
             return false
         }
         let app = XCUIApplication(bundleIdentifier: "com.sogrimhashbon.app")
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         app.launch()
         let result = app.staticTexts["native-auth-probe-result"]
         let deadline = Date().addingTimeInterval(130)
         while Date() < deadline && (!result.exists || !result.label.contains("signedIn")) {
-            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
             for container in [app,springboard] {
+                // Avoid four AX button searches when this container has no alert.
+                guard container.alerts.firstMatch.exists else { continue }
                 for label in ["Continue","המשך","Allow","אפשר"] {
                     let button = container.alerts.buttons[label].firstMatch
                     if button.exists { button.tap() }

@@ -16,7 +16,12 @@ test("mobile modal layer loads last so phone dialogs open full screen", async ()
       index.lastIndexOf("publicDynamicTypeLayer.mjs")
   );
   assert.match(sw, /publicMobileModalLayer\.mjs/);
-  assert.match(layer, /@media \(max-width: 1024px\), \(hover: none\) and \(pointer: coarse\)/);
+  const viewportRuleStart = layer.indexOf("@media (max-width: 1366px) {");
+  assert.ok(viewportRuleStart >= 0, "dialog canvas follows the 1366px viewport boundary");
+  const viewportRules = layer.slice(viewportRuleStart, layer.indexOf("/* Safari can leave", viewportRuleStart));
+  assert.match(viewportRules, /\.expense-modal-backdrop,[\s\S]*?\.event-modal-backdrop[\s\S]*?position: fixed !important;[\s\S]*?inset: 0 !important;/);
+  assert.match(viewportRules, /\.expense-modal,[\s\S]*?\.event-modal[\s\S]*?height: 100dvh !important;[\s\S]*?overflow-y: auto !important;/);
+  assert.match(viewportRules, /scroll-padding-block: calc\(88px \+ env\(safe-area-inset-top\)\) calc\(96px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(layer, /\.expense-modal-backdrop/);
   assert.match(layer, /\.event-modal-backdrop/);
   assert.match(layer, /html\.product-v1-live \.expense-modal/);
@@ -50,7 +55,7 @@ test("dialogs reset scroll, trap focus, and restore focus when they close", asyn
   assert.match(layer, /body\.app-dialog-open/);
 });
 
-test("touch tablets use a responsive canvas instead of a phone-width shell", async () => {
+test("721–1366px viewports use a responsive tablet canvas regardless of pointer", async () => {
   const layer = await readFile("src/publicMobileModalLayer.mjs", "utf8");
 
   assert.match(layer, /responsive-tablet-shell/);
@@ -58,6 +63,27 @@ test("touch tablets use a responsive canvas instead of a phone-width shell", asy
   assert.match(layer, /width: min\(520px, calc\(100vw - 48px\)\) !important/);
   assert.match(layer, /width: min\(calc\(100vw - 32px\), 960px\) !important/);
   assert.match(layer, /classList\.remove\("compact-tablet-phone-shell"\)/);
+  const setup = layer.slice(layer.indexOf("function syncResponsiveTabletShell()"),
+    layer.indexOf("function injectMobileModalStyles()"));
+  assert.match(setup, /window\.innerWidth >= 721 && window\.innerWidth <= 1366/);
+  assert.match(setup, /"responsive-tablet-shell",\s*isTabletViewport\s*\)/);
+  assert.doesNotMatch(setup, /maxTouchPoints|hasTouch|navigator\.userAgent/);
+  assert.match(layer, /@media \(min-width: 1025px\) \{[\s\S]*?\.event-participant-roster-modal \{[\s\S]*?overflow-y: auto !important;[\s\S]*?scroll-padding-block: 12px !important;/);
+});
+
+test("keyboard state retains safe-area clipping, controls, scroll and footer at every width", async () => {
+  const layer = await readFile("src/publicMobileModalLayer.mjs", "utf8");
+  const start = layer.indexOf("/* Safari can leave 100dvh unchanged");
+  const end = layer.indexOf("/* Desktop layouts keep the same bottom navigation", start);
+  assert.ok(start >= 0 && end > start);
+  const keyboard = layer.slice(start, end);
+  assert.doesNotMatch(keyboard, /@media \(max-width: 1024px\)|@media \(max-width: 1366px\)/);
+  assert.match(keyboard, /html\.app-software-keyboard-open\.ledger-workspace-v1 body #app[\s\S]*?top: var\(--app-keyboard-viewport-top\) !important;[\s\S]*?height: var\(--app-keyboard-viewport-height\) !important;/);
+  assert.match(keyboard, /--app-keyboard-safe-top: max\(0px, var\(--app-keyboard-safe-area-top, env\(safe-area-inset-top\)\)\)/);
+  assert.match(keyboard, /\.expense-modal-step-header[\s\S]*?:is\(\.expense-accessibility-button, \.modal-section-back-button\)[\s\S]*?position: fixed !important;/);
+  assert.match(keyboard, /\.expense-step-modal \{[\s\S]*?overflow-y: auto !important;[\s\S]*?scroll-padding-block: 72px 104px !important;/);
+  assert.match(keyboard, /\.expense-modal-actions \{[\s\S]*?position: sticky !important;[\s\S]*?bottom: 0 !important;/);
+  assert.match(keyboard, /:is\(\.product-app-nav, \.event-route-primary-nav\)[\s\S]*?visibility: hidden !important;[\s\S]*?pointer-events: none !important;/);
 });
 
 test("expense entry focuses the first useful money control", async () => {

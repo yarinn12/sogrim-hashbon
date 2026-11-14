@@ -90,7 +90,9 @@ async function initializeInviteImport() {
   const config = await loadRuntimeConfig();
   if (generation !== versionedReadCacheSessionGeneration() || !inviteImportOwnerIsActive(config)) return;
   runtimeConfig = config;
-  const imported = await importIncomingSharedEvent(config);
+  const imported = await importIncomingSharedEvent(config, undefined, {
+    reportTemporaryFailure: true
+  });
   if (generation !== versionedReadCacheSessionGeneration() || !inviteImportOwnerIsActive(config)) return;
   if (imported) {
     resetPendingInviteRetry();
@@ -165,7 +167,7 @@ async function copyResolvedInviteUrl(button, inviteUrl) {
   const copied = await copyText(inviteUrl);
   button.textContent = copied ? "הועתק" : "לא הועתק";
   window.setTimeout(() => {
-    if (button.isConnected) button.textContent = "העתק";
+    if (button.isConnected) button.textContent = button.dataset.copyRestLabel || "העתק";
   }, 1400);
 }
 
@@ -366,7 +368,8 @@ function rememberRedeemedInvite(eventId, config) {
 
 async function importIncomingSharedEvent(
   config,
-  inviteUrl = pendingInviteUrl(window.location.href)
+  inviteUrl = pendingInviteUrl(window.location.href),
+  { reportTemporaryFailure = false } = {}
 ) {
   const generation = versionedReadCacheSessionGeneration();
   const requestIsCurrent = () => generation === versionedReadCacheSessionGeneration() &&
@@ -377,7 +380,17 @@ async function importIncomingSharedEvent(
   let credentials = null;
   try {
     credentials = await resolveEventInviteCredentials(config, url);
-  } catch {
+  } catch (error) {
+    if (reportTemporaryFailure && requestIsCurrent() &&
+      (error?.retryable || Number(error?.status) >= 500)) {
+      document.dispatchEvent(new CustomEvent("settle-friends:account-notice-request", {
+        detail: {
+          message: error?.code === "EVENT_INVITES_UNAVAILABLE"
+            ? "ההזמנות אינן זמינות כרגע. כדאי לנסות שוב בעוד רגע."
+            : "לא הצלחנו לפתוח את קישור ההצטרפות כרגע. כדאי לנסות שוב בעוד רגע."
+        }
+      }));
+    }
     return false;
   }
   if (!eventId || !credentials) return false;

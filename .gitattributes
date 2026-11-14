@@ -1,0 +1,19 @@
+# Preserve exact recorded SDK command bytes for cross-platform hash checks.
+tests/fixtures/android-native-7b969f8-close-raw.txt -text
+tests/fixtures/android-native-7b969f8-pull-raw.txt -text
+tests/fixtures/android-native-qa466-sample300.json -text
+tests/fixtures/android-native-qa467-sample284.json -text
+tests/fixtures/android-native-qa468-sample552.json -text
+
+tests/fixtures/android-native-qa469-sample421.json -text
+tests/fixtures/android-native-qa469-host-summary.json -text
+tests/fixtures/android-native-qa469-target-anr.txt -text
+
+# Recorded evidence and SDK manifests are hashed as their original raw bytes.
+tests/fixtures/android-native-qa496-esrch-frame128.json -text
+scripts/qa/android-host-profile/reference-sdk-binaries.json -text
+scripts/qa/android-swangle-compatibility/reference-sdk-binaries.json -text
+
+# Preserve exact Auth76 CLI evidence bytes across Windows checkout.
+tests/fixtures/auth76/log-show-json-footer-sample.txt -text
+tests/fixtures/auth76/log-help-show-macos26.6.1.stderr.txt -text

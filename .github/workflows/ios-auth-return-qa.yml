@@ -2,16 +2,14 @@ name: iOS authentication return QA
 # Actual SDK and OS callback with synthetic account data; no Apple account sign-in.
 on:
   pull_request:
-    paths: [ios/**, src/publicNativeBridgeLayer.mjs, src/server/nativeAuthReturn.mjs, scripts/qa/native-auth-session/**, .github/workflows/ios-auth-return-qa.yml]
   push:
     branches: [main]
-    paths: [ios/**, src/publicNativeBridgeLayer.mjs, src/server/nativeAuthReturn.mjs, scripts/qa/native-auth-session/**, .github/workflows/ios-auth-return-qa.yml]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   native:
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 35
     env:
       PROBE_MODE: custom
@@ -19,8 +17,8 @@ jobs:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
-      IOS_VERSION: "4.55"
-      IOS_BUILD: "191"
+      IOS_VERSION: "4.59"
+      IOS_BUILD: "195"
       SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
     steps:
       - uses: actions/checkout@v6
@@ -62,10 +60,20 @@ jobs:
           print('PROBE_UDID='+udid)
           PY
           source build/probe/simulator.env
-          xcrun simctl boot "$PROBE_UDID"
-          xcrun simctl bootstatus "$PROBE_UDID" -b
+          # Finish Xcode runtime scanning/cache generation before guest boot.
+          xcrun simctl runtime dyld_shared_cache update --all > build/probe/runtime-cache-preparation.log 2>&1
+          # Compile before guest boot so the simulator and compiler do not
+          # compete for the standard runner's memory. Keep a clean guest for
+          # the actual system-session return and persisted-account assertions.
           set -o pipefail
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$PROBE_UDID" -derivedDataPath build/probe/derived build-for-testing CODE_SIGNING_ALLOWED=NO | tee build/probe/build.log
+          xcrun simctl shutdown "$PROBE_UDID" || true
+          state="$(xcrun simctl list devices -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["state"] for a in d["devices"].values() for x in a if x["udid"]==sys.argv[1]))' "$PROBE_UDID")"
+          test "$state" = Shutdown
+          xcrun simctl erase "$PROBE_UDID"
+          xcrun simctl boot "$PROBE_UDID"
+          xcrun simctl bootstatus "$PROBE_UDID" -b | tee build/probe/bootstatus.log
+          node scripts/qa/native-auth-session/verify-ios-simulator-boot.mjs --log build/probe/bootstatus.log --udid "$PROBE_UDID"
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -destination "platform=iOS Simulator,id=$PROBE_UDID" -derivedDataPath build/probe/derived -resultBundlePath build/probe/result.xcresult test-without-building CODE_SIGNING_ALLOWED=NO | tee build/probe/test.log
           grep -q PROBE_HTTP_REDIRECT build/probe/server.log
           xcrun simctl io "$PROBE_UDID" screenshot build/probe/simulator.png

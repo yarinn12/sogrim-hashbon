@@ -4,12 +4,12 @@ import {
 } from "./domain/avatarPresets.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 import { renderPrimaryNavigation } from "./primaryNavigation.mjs";
+import { primaryNavigationDestinationForScreen } from "./ui/primaryNavigationState.mjs";
 
 const STYLE_ID = "public-brand-layer-style";
 const APP_NAME = "סוגרים חשבון";
 const APP_TAGLINE = "חובות בין חברים, בלי כאב ראש";
 let scheduledBranding = false;
-let preferredHomeDestination = "home";
 let lastResolvedHeaderProfileIdentity = { displayName: "", avatarSource: "" };
 
 injectBrandStyle();
@@ -207,28 +207,20 @@ function syncHeaderNavState() {
     nav?.remove();
     return;
   }
+  const navigationAdded = !nav;
   if (!nav) {
     identity.insertAdjacentHTML("beforeend", renderHeaderNav());
     nav = identity.querySelector(":scope > .product-app-nav");
   }
   if (!nav) return;
 
-  const eventDestinations = new Set(["event", "settlement", "join-event"]);
-  const activeDestination =
-    kind === "notifications"
-      ? "notifications"
-      : kind === "profile"
-        ? "profile"
-        : kind === "admin"
-          ? "profile"
-          : kind === "home"
-            ? preferredHomeDestination
-            : eventDestinations.has(kind)
-              ? "events"
-              : "";
+  const activeDestination = primaryNavigationDestinationForScreen(kind);
 
   syncNotificationNavBadge(nav);
   setPrimaryNavigationActiveDestination(nav, activeDestination);
+  // Branding may add the navigation after the screen-rendered listeners ran.
+  // Let typography fit its actual labels before this new bar can be painted.
+  if (navigationAdded) document.dispatchEvent(new CustomEvent("settle-friends:primary-navigation-rendered"));
 }
 
 function syncIdentityRouteControls(screen, identity) {
@@ -306,7 +298,6 @@ function handlePrimaryNavigationIntent(event) {
     destination
   );
   if (destination === "home") {
-    preferredHomeDestination = "home";
     requestAnimationFrame(() => {
       window.scrollTo({
         top: 0,
@@ -316,27 +307,6 @@ function handlePrimaryNavigationIntent(event) {
     return;
   }
 
-  if (destination === "events") {
-    preferredHomeDestination = "events";
-    requestAnimationFrame(focusHomeEvents);
-  }
-}
-
-function focusHomeEvents() {
-  const screen = document.querySelector('#app .screen[data-screen-kind="home"]');
-  const section =
-    screen?.querySelector(".event-list")?.closest(".section") ??
-    screen?.querySelector(".home-empty-events");
-  if (!section) return;
-
-  const heading = section.querySelector("h2");
-  if (heading && !heading.hasAttribute("tabindex")) heading.tabIndex = -1;
-  section.scrollIntoView({
-    block: "start",
-    behavior: prefersReducedMotion() ? "auto" : "smooth"
-  });
-  heading?.focus({ preventScroll: true });
-  syncHeaderNavState();
 }
 
 function prefersReducedMotion() {
@@ -371,7 +341,8 @@ function enhanceScreenHeroArtwork() {
 function detectBrandScreenKind(screen) {
   const explicitKind = screen.dataset.screenKind;
   if (explicitKind === "event-notes") return "event";
-  if (["home", "event", "settlement", "join-event", "new-event", "groups", "notifications"].includes(explicitKind)) {
+  if (explicitKind === "feedback") return "profile";
+  if (["home", "event", "settlement", "join-event", "new-event", "groups", "friend-invite", "notifications"].includes(explicitKind)) {
     return explicitKind;
   }
   if (explicitKind === "admin") return explicitKind;
@@ -448,7 +419,8 @@ function syncEmptyEventIllustration(eventSection, shouldShow) {
 
   if (!emptyState) return;
 
-  if (!shouldShow) {
+  // The approved first-event view owns its existing library icon and copy.
+  if (!shouldShow || emptyState.classList?.contains("home-first-event-empty")) {
     existing?.remove();
     return;
   }

@@ -54,7 +54,7 @@ test("event share dialog can send the invite link through WhatsApp", async () =>
   assert.match(styles, /grid-template-columns: minmax\(0, 1fr\) auto auto/);
 });
 
-test("home keeps only the referral benefit while event joining stays inside events", async () => {
+test("home keeps event tasks focused while referral rewards live in friends", async () => {
   const [app, referralLayer] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
     readFile("src/publicReferralRewardsLayer.mjs", "utf8")
@@ -64,12 +64,14 @@ test("home keeps only the referral benefit while event joining stays inside even
   assert.ok(home);
   assert.doesNotMatch(app, /function renderHomeEventTools/);
   assert.doesNotMatch(home[0], /data-action="join-existing-event"/);
-  assert.match(referralLayer, /referralRewardCard\("home"\)/);
+  assert.doesNotMatch(referralLayer, /referralRewardCard\("home"\)/);
+  assert.match(referralLayer, /referralRewardCard\("friends"\)/);
   assert.match(referralLayer, /data-referral-context="\$\{context\}"/);
   assert.doesNotMatch(home[0], /data-action="home-share-event"/);
   assert.match(app, /data-action="open-event-share"/);
-  assert.match(app, /data-action="share-invite-whatsapp"/);
-  assert.match(app, /data-action="copy-invite"/);
+  const shareView = await readFile("src/ui/eventSharePresentation.mjs", "utf8");
+  assert.match(shareView, /data-action="share-invite-whatsapp"/);
+  assert.match(shareView, /data-action="copy-invite"/);
 });
 
 test("native invitation sharing uses the share button and leaves copy as copy", async () => {

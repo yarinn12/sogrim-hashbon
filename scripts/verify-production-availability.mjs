@@ -1,3 +1,4 @@
+import { productionRequestOptions } from "./lib/production-request-options.mjs";
 const DEFAULT_BASE_URL = "https://sogrim-hesbon-app.vercel.app";
 const REQUEST_TIMEOUT_MS = 10_000;
 const STRICT = process.argv.includes("--strict");
@@ -163,12 +164,12 @@ async function request(url, options = {}) {
     return await fetch(url, {
       ...options,
       cache: "no-store",
-      redirect: "follow",
       signal: controller.signal,
-      headers: {
-        "user-agent": "sogrim-production-monitor/1.0",
-        ...(options.headers ?? {})
-      }
+      ...productionRequestOptions(url, {
+        headers: { "user-agent": "sogrim-production-monitor/1.0", ...(options.headers ?? {}) },
+        trustedDeploymentUrl: process.env.VERCEL_DEPLOYMENT_URL,
+        bypassSecret: process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+      })
     });
   } finally {
     clearTimeout(timeoutId);

@@ -1,0 +1,558 @@
+import {spawn,spawnSync} from 'node:child_process';
+import {mkdirSync,readFileSync,writeFileSync,appendFileSync,readdirSync,existsSync,statSync,lstatSync,openSync,closeSync} from 'node:fs';
+import {resolve,join,basename} from 'node:path';
+import {pathToFileURL,fileURLToPath} from 'node:url';
+import {createHash,randomBytes} from 'node:crypto';
+import {HOST_COHORT_CONTRACT,classifyHostCohort,isTaskGoneCode,recordHostCohortInventory as recordHostInventory,requireHostCohortCoverage as requireHostInventoryCoverage} from './cohort-observation-coverage.mjs';
+import {DIAGNOSTIC_CONTRACT,diagnosticMetadata,requireDiagnosticMetadata,ownedHostStopRequest,verifyOwnedHostStop,addHostObservationError,addHostWindowError,setHostObservationStatus,verifyHostObservationStatus} from './diagnostic-contract.mjs';
+export {recordHostInventory,requireHostInventoryCoverage};
+
+const target='com.sogrimhashbon.app.debug',hostIntervalMs=1000,maxHostBytes=64*1024*1024,maxTraceBytes=512*1024*1024;
+const {version:hostCoverageVersion,scope:hostCoverageScope,name:hostCoverageContract,selection:cohortSelection}=HOST_COHORT_CONTRACT;
+const now=()=>new Date().toISOString(),delay=ms=>new Promise(done=>setTimeout(done,ms));
+const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+// v51.2 intentionally prints --help to stderr and returns 1 (PrintUsage then
+// return 1). Only this exact, recorded usage/version pair is a non-error exit.
+const sdk51HelpSha='c9baa85b9af0d72e9e1e532ea56842ac30ee3b9e4c5f2891e80cc024f18e2d4a';
+const readJson=file=>JSON.parse(readFileSync(file,'utf8'));
+function fileReceipt(file){const bytes=readFileSync(file);return{path:file,bytes:bytes.length,sha256:hash(bytes)};}
+
+export function parseProcStat(raw){
+  const match=/^(\d+) \((.*)\) (\S) (.*)$/.exec(raw.trim());
+  if(!match)throw new Error('Malformed actual proc stat');
+  const rest=match[4].split(/\s+/);
+  for(const index of [10,11,18])if(!/^\d+$/.test(rest[index]||''))throw new Error('Missing actual proc CPU/start counters');
+  return{pid:Number(match[1]),name:match[2],state:match[3],userTicks:rest[10],systemTicks:rest[11],startTicks:rest[18]};
+}
+function parseProcIdentity(raw){
+  const match=/^(\d+) \((.*)\) (\S) (.*)$/.exec(raw.trim()),startTicks=match?.[4].split(/\s+/)[18];
+  if(!match||!/^\d+$/.test(startTicks||''))throw new Error('Missing actual proc PID/start identity');
+  return{pid:Number(match[1]),startTicks};
+}
+function context(options){
+  const{adbPath,device,avd,source,emulatorPid,output}=options;
+  if(!adbPath||!/^emulator-\d+$/.test(device||'')||!/^sogrim_ci_[a-z0-9_]+$/.test(avd||'')||!/^[a-f0-9]{40}$/.test(source||'')||!Number.isSafeInteger(emulatorPid)||emulatorPid<=1||!output)throw new Error('Require exact source and explicit owned CI emulator/PID for trace');
+  return{adbPath,device,avd,source,emulatorPid,output:resolve(output)};
+}
+export function assertHostOwner(options,{read=readFileSync,procRoot='/proc',expectedStartTicks}={}){
+  const args=read(join(procRoot,String(options.emulatorPid),'cmdline'),'utf8').split('\0').filter(Boolean);
+  const stat=parseProcStat(read(join(procRoot,String(options.emulatorPid),'stat'),'utf8'));
+  if(!/^(?:emulator|qemu-system-[\w-]+)$/.test(basename(args[0]||''))||args[args.indexOf('-avd')+1]!==options.avd||args[args.indexOf('-port')+1]!==options.device.slice(9)||stat.pid!==options.emulatorPid||expectedStartTicks&&stat.startTicks!==expectedStartTicks)throw new Error('Refuse foreign or reused host emulator PID');
+  return{pid:stat.pid,startTicks:stat.startTicks,command:args};
+}
+export function sampleOwnedHost(options,deps={}){
+  let readCount=0,threadsScanned=0;
+  const rawRead=deps.read||readFileSync,read=(...args)=>{readCount++;return rawRead(...args);},list=deps.list||readdirSync,procRoot=deps.procRoot||'/proc';
+  const begin=performance.now(),owner=assertHostOwner(options,{...deps,read});
+  const taskRoot=join(procRoot,String(owner.pid),'task'),inventory=()=>{
+    const ids=list(taskRoot).filter(tid=>/^\d+$/.test(tid)).map(Number).sort((a,b)=>a-b);
+    if(ids.some(id=>!Number.isSafeInteger(id)||id<1)||new Set(ids).size!==ids.length||!ids.includes(owner.pid))throw new Error('Malformed owned host task inventory');
+    return ids;
+  };
+  const before=inventory(),threads=[],unavailable=[],lifecycle=[],observedNames=[],finalIdentities=[],identitiesAfterCounters=[];
+  function sampleTask(tid,phase){
+    threadsScanned++;const task=join(taskRoot,String(tid));let initial,rawInitial;
+    try{
+      rawInitial=read(join(task,'stat'),'utf8');initial=parseProcStat(rawInitial);
+      if(initial.pid!==tid||tid===owner.pid&&initial.startTicks!==owner.startTicks)throw new Error('Owned task PID/start identity mismatch');
+      observedNames.push(initial.name);
+    }catch(error){unavailable.push({tid,field:'stat',phase,code:error.code??null,error:error.message,...(rawInitial===undefined?{}:{raw:rawInitial})});return;}
+    const record={...initial,emulatorPid:owner.pid,emulatorStartTicks:owner.startTicks,countersVerified:false};
+    let scheduling,wchan,rawScheduling,rawWchan;
+    try{
+      rawScheduling=read(join(task,'schedstat'),'utf8');scheduling=rawScheduling.trim().split(/\s+/);
+      if(scheduling.length!==3||scheduling.some(x=>!/^\d+$/.test(x)))throw new Error('Malformed schedstat');
+      Object.assign(record,{runNs:scheduling[0],runQueueWaitNs:scheduling[1],timeslices:scheduling[2]});
+    }catch(error){scheduling=undefined;unavailable.push({tid,startTicks:initial.startTicks,field:'schedstat',phase,code:error.code??null,error:error.message,...(rawScheduling===undefined?{}:{raw:rawScheduling})});}
+    try{rawWchan=read(join(task,'wchan'),'utf8');wchan=rawWchan.trim();record.wchan=wchan;if(!wchan)throw new Error('Kernel wait channel is empty');if(wchan==='0')unavailable.push({tid,startTicks:initial.startTicks,field:'wchan',phase,code:'ZERO_WCHAN',error:'Kernel wait channel unavailable (0)'});}
+    catch(error){unavailable.push({tid,startTicks:initial.startTicks,field:'wchan',phase,code:error.code??null,error:error.message,...(rawWchan===undefined?{}:{raw:rawWchan})});}
+    let rawAfter;
+    try{
+      rawAfter=read(join(task,'stat'),'utf8');const after=parseProcStat(rawAfter);
+      identitiesAfterCounters.push({tid,pid:after.pid,startTicks:after.startTicks});
+      if(after.pid!==tid||after.startTicks!==initial.startTicks){
+        lifecycle.push({tid,kind:'tid-reused-during-read',beforeStartTicks:initial.startTicks,afterStartTicks:after.startTicks});
+        throw new Error('Owned task identity changed during scheduler read');
+      }
+      if(scheduling)record.countersVerified=true;
+    }catch(error){unavailable.push({tid,startTicks:initial.startTicks,field:'identity-after',phase,code:error.code??null,error:error.message,...(rawAfter===undefined?{}:{raw:rawAfter})});}
+    threads.push(record);
+  }
+  for(const tid of before)sampleTask(tid,'initial');
+  const afterDiscovery=inventory(),newborn=afterDiscovery.filter(tid=>!before.includes(tid));
+  const cohort=[...new Set([...before,...afterDiscovery])].sort((a,b)=>a-b);
+  // Exactly one counter pass for newly discovered tasks. Never retry a task
+  // from the original pass or repair an earlier read failure.
+  for(const tid of newborn)sampleTask(tid,'newborn');
+  const afterFinal=inventory();let finalIdentityReadCount=0;
+  for(const tid of afterFinal.filter(tid=>cohort.includes(tid))){
+    finalIdentityReadCount++;let rawFinal;
+    try{
+      rawFinal=read(join(taskRoot,String(tid),'stat'),'utf8');const identity=parseProcIdentity(rawFinal);
+      const measured=threads.find(t=>t.pid===tid),record={...identity,emulatorPid:owner.pid,emulatorStartTicks:owner.startTicks,identityVerified:false};
+      finalIdentities.push(record);
+      if(identity.pid!==tid||measured&&identity.startTicks!==measured.startTicks){
+        lifecycle.push({tid,kind:'tid-reused-before-final-identity',beforeStartTicks:measured?.startTicks??null,afterStartTicks:identity.startTicks});
+        throw new Error('Owned task identity changed before final closure');
+      }
+      if(!measured)throw new Error('Final task has no measured counter identity');
+      record.identityVerified=true;
+    }catch(error){unavailable.push({tid,field:'identity-final',phase:'closing',code:error.code??null,error:error.message,...(rawFinal===undefined?{}:{raw:rawFinal})});}
+  }
+  const terminal=inventory();
+  for(const tid of before)if(!afterDiscovery.includes(tid)||!afterFinal.includes(tid)){
+    const thread=threads.find(t=>t.pid===tid),gap=unavailable.find(g=>g.tid===tid&&g.field==='stat'&&g.phase==='initial'&&isTaskGoneCode(g.code));
+    if(!thread&&gap&&!afterDiscovery.includes(tid)&&!afterFinal.includes(tid))lifecycle.push({tid,kind:'unobserved-exit',startTicks:null,identity:null,counters:null});
+    else lifecycle.push({tid,kind:'exited-during-sample',startTicks:thread?.startTicks??null});
+  }
+  for(const tid of newborn){
+    const thread=threads.find(t=>t.pid===tid);
+    lifecycle.push({tid,kind:'born-during-sample',phase:'discovery',startTicks:thread?.startTicks??null});
+    if(!afterFinal.includes(tid))lifecycle.push({tid,kind:'exited-during-sample',startTicks:thread?.startTicks??null});
+  }
+  for(const tid of afterFinal)if(cohort.includes(tid)&&!afterDiscovery.includes(tid))lifecycle.push({tid,kind:'born-during-sample',phase:'final',startTicks:null});
+  for(const tid of [...new Set([...afterFinal,...terminal])].sort((a,b)=>a-b))if(!cohort.includes(tid))lifecycle.push({tid,kind:'observed-outside-cohort',phase:afterFinal.includes(tid)?'final':'terminal',startTicks:null,identity:null,counters:null});
+  assertHostOwner(options,{...deps,read,expectedStartTicks:owner.startTicks});
+  // This fourth observation confirms terminal absence, not a whole lifetime.
+  // Retain all counter/identity observations and read errors for classification.
+  const sample={atUtc:now(),monotonicNs:process.hrtime.bigint().toString(),owner,threads,observedNames:[...new Set(observedNames)],unavailable,lifecycle,finalIdentities,identitiesAfterCounters,
+    inventory:{before,afterDiscovery,afterFinal,terminal,cohort,cohortSelection,coverageComplete:false,coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,scope:hostCoverageScope,atomic:false,lifetimeCoverageProven:false,identityContinuityProven:false,allThreadsCoverageProven:false,rendererRoleProven:false},
+    readCount,threadsScanned,selectedThreads:threads.length,finalIdentityReadCount,sampleDurationMs:0};
+  sample.coverage=classifyHostCohort(sample);
+  sample.inventory.coverageComplete=sample.coverage.unresolvedGaps.length===0;
+  sample.sampleDurationMs=performance.now()-begin;
+  return sample;
+}
+
+export function appendHostInventory(data,sample,summary){
+  const line=JSON.stringify(sample)+'\n',current=existsSync(data)?statSync(data).size:0;
+  if(current+Buffer.byteLength(line)>=maxHostBytes){
+    summary.capReached={kind:'host-bytes',limit:maxHostBytes,attemptedSampleBytes:Buffer.byteLength(line)};
+    throw new Error('Host diagnostic disk cap reached before full sample append');
+  }
+  appendFileSync(data,line);
+  if(statSync(data).size!==current+Buffer.byteLength(line))throw new Error('Host journal append byte acknowledgement mismatch');
+}
+
+export function requireDataSources(query){
+  const required=['linux.ftrace','linux.process_stats','android.surfaceflinger.frametimeline'];
+  const missing=required.filter(name=>!query.split(/\r?\n/).some(line=>line.trim().split(/\s+/)[0]===name));
+  if(missing.length)throw new Error('Actual SDK trace providers unavailable: '+missing.join(', '));
+  return{required,advertised:true,eventCoverageValidated:false};
+}
+// Register the exact inode watch BEFORE signalling the owned client. A PID exit
+// alone is not a writer-close ACK. The guest script has its own bounded lifetime
+// and cleans up only its child inotifyd, including on timeout/error.
+export function closeWriteScript(start){
+  if(!Number.isSafeInteger(start.guestPid)||start.guestPid<=1||!/^\d+$/.test(start.guestStartTicks||'')||!/^\d+:\d+$/.test(start.traceIdentity||''))throw new Error('Require confirmed owned guest tracer for close-write');
+  requireOwnedPaths(start);
+  return String.raw`set -eu
+trace='${start.guestPath}'
+config='${start.configPath}'
+identity='${start.traceIdentity}'
+pid='${start.guestPid}'
+ticks='${start.guestStartTicks}'
+# Config reservation already proved this owned directory is shell-writable.
+# traced owns the trace directory; shell cannot create its journal there.
+events="$config.close-events"
+[ ! -e "$events" ] && [ ! -L "$events" ] || { echo 'Refuse existing close-watch journal' >&2; exit 2; }
+[ ! -L "$trace" ] && [ "$(toybox stat -c %d:%i "$trace")" = "$identity" ] || { echo 'Trace inode changed before watch' >&2; exit 5; }
+inode=$(toybox stat -c %i "$trace")
+hex=$(printf '%x' "$inode")
+umask 077
+set -C
+toybox inotifyd - "$trace:w" >"$events" &
+watcher=$!
+watch_ticks=''
+close_ack=0
+watcher_identity() {
+  [ -r "/proc/$watcher/stat" ] && [ -n "$watch_ticks" ] || return 1
+  if fields=$(toybox sed 's/.*) //' "/proc/$watcher/stat" 2>&1); then :;
+  else
+    # Exit may remove proc after the readable guard. Preserve a real read
+    # failure when the PID still exists; absence is rechecked before reaping.
+    [ ! -d "/proc/$watcher" ] || printf '%s\n' "$fields" >&2
+    return 1
+  fi
+  set -- $fields
+  [ "$#" -ge 20 ] || return 1
+  watch_state=$1
+  parent=$2
+  shift 19
+  [ "$parent" = "$$" ] && [ "$1" = "$watch_ticks" ]
+}
+watcher_command() {
+  if cmd=$(toybox tr '\000' '\n' 2>&1 <"/proc/$watcher/cmdline"); then :;
+  else
+    [ ! -d "/proc/$watcher" ] || printf '%s\n' "$cmd" >&2
+    return 1
+  fi
+  first=$(printf '%s\n' "$cmd" | toybox head -1)
+  case "$first" in toybox|*/toybox) ;; *) return 1;; esac
+  # Toybox splits FILE:MASK in its own argv buffer. /proc/cmdline then contains
+  # FILE<NUL>MASK. Require the complete exact argv, including program and mask.
+  [ "$cmd" = "$(printf '%s\ninotifyd\n-\n%s:w' "$first" "$trace")" ] ||
+    [ "$cmd" = "$(printf '%s\ninotifyd\n-\n%s\nw' "$first" "$trace")" ]
+}
+watcher_finished() {
+  [ ! -d "/proc/$watcher" ] && return 0
+  watcher_identity || { [ ! -d "/proc/$watcher" ]; return $?; }
+  [ "$watch_state" = Z ]
+}
+reap_finished_watcher() {
+  watcher_finished || return 1
+  wait "$watcher" 2>/dev/null || :
+}
+stop_watcher() {
+  if reap_finished_watcher; then return 0; fi
+  watcher_identity && watcher_command && watcher_identity || { reap_finished_watcher; return $?; }
+  kill -TERM "$watcher" 2>/dev/null || :
+  for n in $(toybox seq 1 20); do
+    if reap_finished_watcher; then return 0; fi
+    watcher_identity || { reap_finished_watcher; return $?; }
+    toybox sleep 0.05
+  done
+  # Revalidate before escalating only this direct child. Never wait on a live
+  # child indefinitely; the existing 15s guest / 20s ADB limits stay unchanged.
+  watcher_identity && watcher_command && watcher_identity || { reap_finished_watcher; return $?; }
+  kill -KILL "$watcher" 2>/dev/null || :
+  for n in $(toybox seq 1 20); do
+    if reap_finished_watcher; then return 0; fi
+    watcher_identity || { reap_finished_watcher; return $?; }
+    toybox sleep 0.05
+  done
+  return 1
+}
+cleanup() {
+  status=$?
+  trap - EXIT HUP INT TERM
+  if stop_watcher; then echo "WATCH_CLEANED $watcher $watch_ticks";
+  else
+    echo 'Owned close-watch cleanup unconfirmed' >&2
+    [ "$status" != 0 ] || status=7
+  fi
+  [ "$status" != 0 ] || [ "$close_ack" = 1 ] || status=7
+  exit "$status"
+}
+trap cleanup EXIT HUP INT TERM
+watch_ticks=$(toybox sed 's/.*) //' "/proc/$watcher/stat" | toybox cut -d ' ' -f20)
+case "$watch_ticks" in ''|*[!0-9]*) echo 'Close-watch PID identity unavailable' >&2; exit 3;; esac
+ready=0
+for n in $(toybox seq 1 40); do
+  for fd in /proc/$watcher/fdinfo/*; do
+    [ -r "$fd" ] || continue
+    fd_status=0
+    fd_error=$(toybox grep -Eq "^inotify wd:[[:xdigit:]]+ ino:$hex " "$fd" 2>&1) || fd_status=$?
+    if [ "$fd_status" = 0 ] && [ -z "$fd_error" ]; then ready=1; break; fi
+    if [ "$fd_status" = 1 ] && [ -z "$fd_error" ]; then continue; fi
+    # A transient descriptor may close after the readable guard. Suppress only
+    # the actual ENOENT diagnostic for that now-absent path while this same
+    # direct child still has the recorded PID birth and exact watch command.
+    # Other read errors, warnings, a surviving fd or lost ownership stay fatal.
+    if [ "$fd_status" = 2 ] && [ "$fd_error" = "grep: $fd: No such file or directory" ] &&
+       [ ! -e "$fd" ] && watcher_identity && watcher_command && watcher_identity; then continue; fi
+    [ -z "$fd_error" ] || printf '%s\n' "$fd_error" >&2
+    echo 'Owned close-watch fdinfo read failed' >&2
+    exit 3
+  done
+  [ "$ready" = 0 ] || break
+  toybox sleep 0.05
+done
+[ "$ready" = 1 ] || { echo 'Owned inode close-watch not registered' >&2; exit 3; }
+echo "WATCH_READY $inode $trace"
+[ "$(toybox sed 's/.*) //' "/proc/$pid/stat" | toybox cut -d ' ' -f20)" = "$ticks" ] || { echo 'Refuse reused tracer before signal' >&2; exit 4; }
+toybox tr '\000' '\n' <"/proc/$pid/cmdline" | toybox grep -Fx "$config" >/dev/null
+first=$(toybox tr '\000' '\n' <"/proc/$pid/cmdline" | toybox head -1)
+case "$first" in perfetto|*/perfetto) ;; *) echo 'Refuse foreign tracer before signal' >&2; exit 4;; esac
+[ ! -L "$trace" ] && [ "$(toybox stat -c %d:%i "$trace")" = "$identity" ] || { echo 'Trace inode changed before signal' >&2; exit 5; }
+kill -TERM "$pid"
+# This row is invariant. Avoid a shell fork in every acknowledgement poll;
+# preserve all 120 observations, their delay and the ownership/cleanup guards.
+expected_close_event=$(printf 'w\t%s' "$trace")
+for n in $(toybox seq 1 120); do
+  if toybox grep -Fx "$expected_close_event" "$events" >/dev/null; then
+    [ ! -L "$trace" ] && [ "$(toybox stat -c %d:%i "$trace")" = "$identity" ] || { echo 'Trace inode changed' >&2; exit 5; }
+    close_ack=1
+    echo "CLOSE_WRITE $inode $trace"
+    exit 0
+  fi
+  toybox sleep 0.05
+done
+echo 'Writer-close ACK unavailable; PID exit is insufficient' >&2
+toybox cat "$events"
+exit 6
+`;
+}
+export function verifyCloseWrite(output,start){
+  const lines=output.trim().split(/\r?\n/),ready=lines.find(line=>line.startsWith('WATCH_READY ')),closed=lines.find(line=>line.startsWith('CLOSE_WRITE '));
+  const match=/^WATCH_READY (\d+) (.+)$/.exec(ready||'');
+  if(!match||match[1]!==start.traceIdentity?.split(':')[1]||match[2]!==start.guestPath||closed!==`CLOSE_WRITE ${match[1]} ${start.guestPath}`||lines.indexOf(ready)>=lines.indexOf(closed))throw new Error('Actual owned writer-close acknowledgement missing/mismatched');
+  return{verified:true,inode:match[1],path:match[2],semanticCoverageValidated:false};
+}
+export function perfettoConfig(session){
+  if(!/^sogrim_ci_[a-z0-9_]+$/.test(session))throw new Error('Invalid owned trace name');
+  return `unique_session_name: "${session}"
+buffers { size_kb: 32768 fill_policy: RING_BUFFER }
+duration_ms: 1200000
+write_into_file: true
+output_path: "/data/misc/perfetto-traces/${session}.pftrace"
+file_write_period_ms: 5000
+max_file_size_bytes: ${maxTraceBytes}
+data_sources { config { name: "linux.ftrace" ftrace_config {
+  compact_sched { enabled: true }
+  ftrace_events: "sched/sched_switch"
+  ftrace_events: "sched/sched_waking"
+  ftrace_events: "sched/sched_process_exit"
+  ftrace_events: "task/task_newtask"
+  ftrace_events: "task/task_rename"
+  atrace_categories: "gfx"
+  atrace_categories: "view"
+  atrace_categories: "wm"
+  atrace_categories: "am"
+  atrace_categories: "input"
+  atrace_apps: "${target}"
+} } }
+data_sources { config { name: "linux.process_stats" process_stats_config { scan_all_processes_on_start: true } } }
+data_sources { config { name: "android.surfaceflinger.frametimeline" } }
+`;
+}
+function requireOwnedPaths(start){
+  if(!/^sogrim_ci_[a-z0-9_]+_[a-f0-9]{16}$/.test(start.session||'')||start.guestPath!==`/data/misc/perfetto-traces/${start.session}.pftrace`||start.configPath!==`/data/misc/perfetto-configs/${start.session}.pbtxt`)throw new Error('Refuse unowned guest trace/config path');
+}
+// Config is atomically created by shell noclobber. TraceConfig.output_path is
+// atomically created by traced with O_CREAT|O_EXCL, even on a collision/race.
+// Never pass -o: v51.2's CLI -o uses O_TRUNC and lacks --no-clobber.
+export function guestFilesScript(start,reserve=false){
+  requireOwnedPaths(start);const config=perfettoConfig(start.session);
+  return `set -eu
+config='${start.configPath}'
+trace='${start.guestPath}'
+${reserve?`[ ! -e "$trace" ] && [ ! -L "$trace" ] || { echo 'Refuse existing trace path' >&2; exit 2; }
+umask 077
+set -C
+cat >"$config" <<'SOGRIM_OWNED_CONFIG'
+${config}SOGRIM_OWNED_CONFIG
+`:''}[ -f "$config" ] && [ ! -L "$config" ] || { echo 'Refuse missing/nonregular config' >&2; exit 3; }
+digest=$(toybox sha256sum "$config")
+digest=\${digest%% *}
+[ "$digest" = '${hash(config)}' ] || { echo 'Owned config content changed' >&2; exit 4; }
+echo "CONFIG $(toybox stat -c %d:%i:%s "$config") $digest $config"
+${reserve?'':`[ -f "$trace" ] && [ ! -L "$trace" ] || { echo 'Refuse missing/nonregular trace' >&2; exit 5; }
+echo "TRACE $(toybox stat -c %d:%i "$trace") $trace"
+`}`;
+}
+function guestFiles(start,observe,reserve=false){
+  const text=observe(reserve?'perfetto-config-reserve':'perfetto-file-identity',['shell','sh','-s'],guestFilesScript(start,reserve)).trim().split(/\r?\n/);
+  const config=/^CONFIG (\d+:\d+:\d+) ([a-f0-9]{64}) (.+)$/.exec(text[0]||''),trace=/^TRACE (\d+:\d+) (.+)$/.exec(text[1]||'');
+  if(!config||config[2]!==start.configSha256||config[3]!==start.configPath||start.configIdentity&&config[1]!==start.configIdentity||text.length!==(reserve?1:2)||!reserve&&(!trace||trace[2]!==start.guestPath||start.traceIdentity&&trace[1]!==start.traceIdentity))throw new Error('Owned trace/config inode or provenance mismatch');
+  return{configIdentity:config[1],traceIdentity:trace?.[1],creation:'traced output_path O_CREAT|O_EXCL; config shell noclobber',configSha256:config[2]};
+}
+// Framing checks detect absent, text, truncated or metadata-only files. Semantic
+// coverage/loss and ANR causality still require Trace Processor on the real trace.
+export function inspectTrace(bytes){
+  function fields(buffer,visit){
+    let pos=0;
+    function varint(){let value=0n,shift=0n;for(let n=0;n<10;n++){if(pos>=buffer.length)throw new Error('Truncated trace varint');const b=buffer[pos++];value|=BigInt(b&127)<<shift;if(!(b&128))return value;shift+=7n;}throw new Error('Invalid trace varint');}
+    while(pos<buffer.length){const key=Number(varint()),field=key>>>3,wire=key&7;if(!field)throw new Error('Invalid trace field');let start=pos,end;
+      if(wire===0){const value=varint();visit(field,wire,null,value);continue;}
+      if(wire===2){const length=varint();if(length>BigInt(buffer.length-pos))throw new Error('Truncated trace packet');start=pos;end=pos+Number(length);}
+      else if(wire===1)end=pos+8;else if(wire===5)end=pos+4;else throw new Error('Unsupported trace wire type');
+      if(end>buffer.length)throw new Error('Truncated trace field');visit(field,wire,buffer.subarray(start,end));pos=end;
+    }
+  }
+  let packets=0,ftracePackets=0,processTreePackets=0,timestamps=0,compactSchedulingBundles=0,minTimestamp,maxTimestamp;
+  fields(bytes,(field,wire,packet)=>{if(field!==1||wire!==2)return;packets++;fields(packet,(id,type,data,value)=>{
+    if(id===1&&type===2&&data.length){ftracePackets++;fields(data,(bundleId,bundleWire,compact)=>{
+      if(bundleId===4&&bundleWire===2)fields(compact,(schedId,schedWire,packed)=>{if((schedId===1||schedId===7)&&schedWire===2&&packed.length)compactSchedulingBundles++;});
+    });}
+    if(id===2&&type===2&&data.length)processTreePackets++;
+    if(id===8&&type===0){timestamps++;if(minTimestamp===undefined||value<minTimestamp)minTimestamp=value;if(maxTimestamp===undefined||value>maxTimestamp)maxTimestamp=value;}
+  });});
+  if(!packets||!ftracePackets||!processTreePackets||!timestamps)throw new Error('Actual scheduling/process/timestamp trace payload is missing');
+  if(!compactSchedulingBundles)throw new Error('Requested compact scheduling payload absent; CPU metadata is insufficient');
+  return{packets,ftracePackets,processTreePackets,timestamps,compactSchedulingBundles,minTimestamp:minTimestamp.toString(),maxTimestamp:maxTimestamp.toString(),semanticCoverageValidated:false};
+}
+function observer(options,report,run){
+  return(name,args,input)=>{const row={name,args,startedAtUtc:now()};let result;
+    try{result=run(options.adbPath,['-s',options.device,...args],{encoding:'utf8',input,timeout:name==='perfetto-start'?35000:name==='perfetto-stop-close'?20000:10000,killSignal:'SIGKILL',windowsHide:true,maxBuffer:1024*1024});}catch(error){result={status:null,error};}
+    const stdout=result.stdout||'',stderr=result.stderr||'';
+    row.exitCode=result.status;row.error=result.error?.message;row.completedAtUtc=now();row.ok=!result.error&&result.status===0&&!stderr.trim();
+    if(name==='perfetto-help'&&!result.error&&[0,1].includes(result.status)&&report.perfettoVersion==='Perfetto v51.2 (N/A)'&&!stdout&&hash(stderr)===sdk51HelpSha){row.ok=true;row.acceptedExitReason='documented v51.2 usage exit; exact recorded stderr/version';}
+    // adb emits its successful single-file pull receipt on stderr. Accept only
+    // that exact protocol for this owned path, backed by the actual regular file.
+    if(name==='perfetto-pull'&&!result.error&&result.status===0&&!stdout&&args.length===3&&args[0]==='pull'&&args[1]===report.start?.guestPath&&args[2]===join(options.output,'guest.pftrace')){
+      const progress=/^(\/data\/misc\/perfetto-traces\/sogrim_ci_[a-z0-9_]+_[a-f0-9]{16}\.pftrace): 1 file pulled, 0 skipped\. (\d+(?:\.\d+)?) MB\/s \(([1-9]\d*) bytes in (\d+(?:\.\d+)?)s\)\r?\n?$/.exec(stderr);
+      if(progress&&progress[1]===args[1]){
+        try{
+          const file=lstatSync(args[2]),bytes=Number(progress[3]);
+          if(file.isFile()&&!file.isSymbolicLink()&&Number.isSafeInteger(bytes)&&bytes===file.size&&Number.isFinite(Number(progress[2]))&&Number.isFinite(Number(progress[4]))){
+            row.ok=true;row.acceptedExitReason='recognized adb single-file pull progress; exit0 and actual file byte count';
+            row.pullProgress={path:progress[1],bytes,megabytesPerSecond:progress[2],seconds:progress[4],actualFileSizeVerified:true};
+          }
+        }catch{/* Missing/unreadable file leaves the command rejected. */}
+      }
+    }
+    row.stdout={bytes:Buffer.byteLength(stdout),sha256:hash(stdout)};row.stderr={bytes:Buffer.byteLength(stderr),sha256:hash(stderr)};
+    const file=join(options.output,(report.finalizeStartedAtUtc?'finish-':'start-')+(report.commands.length+1)+'-'+name+'.txt');writeFileSync(file,stdout+(stderr?'\nSTDERR:\n'+stderr:''));row.output=fileReceipt(file);report.commands.push(row);
+    if(!row.ok)throw new Error(`Trace command ${name} failed: ${row.error||stderr||stdout}`);return /^perfetto-(?:help|version)$/.test(name)?stdout+stderr:stdout;
+  };
+}
+function ownerReadback(options,observe){
+  const owner=observe('owned-avd',['emu','avd','name']);if(owner.split(/\r?\n/)[0].trim()!==options.avd)throw new Error('Refuse trace on foreign/unreadable AVD');
+}
+function guestOwner(report,observe){
+  if(!Number.isSafeInteger(report.guestPid)||report.guestPid<=1)throw new Error('No confirmed owned Perfetto PID');
+  const args=observe('perfetto-owner-cmdline',['shell','cat',`/proc/${report.guestPid}/cmdline`]).split('\0').filter(Boolean);
+  const stat=parseProcStat(observe('perfetto-owner-stat',['shell','cat',`/proc/${report.guestPid}/stat`]));
+  if(basename(args[0]||'')!=='perfetto'||args.slice(1).join('\0')!==['--background-wait','--txt','-c',report.configPath].join('\0')||stat.pid!==report.guestPid||report.guestStartTicks&&stat.startTicks!==report.guestStartTicks)throw new Error('Refuse foreign or reused guest Perfetto PID');
+  return stat.startTicks;
+}
+async function waitFile(file,ms=5000){const end=Date.now()+ms;while(!existsSync(file)&&Date.now()<end)await delay(50);if(!existsSync(file))throw new Error('Owned host observer did not acknowledge '+basename(file));return readJson(file);}
+async function spawnHost(options,owner,onSpawn){
+  const fd=openSync(join(options.output,'host-observer.log'),'a');let child;
+  try{child=spawn(process.execPath,[fileURLToPath(import.meta.url),'host',options.output],{detached:true,stdio:['ignore',fd,fd],windowsHide:true});}finally{closeSync(fd);}
+  child.unref();writeFileSync(join(options.output,'host-observer.pid'),String(child.pid));onSpawn({pid:child.pid});
+  const ready=await waitFile(join(options.output,'host-ready.json'));requireDiagnosticMetadata(ready,DIAGNOSTIC_CONTRACT.host);if(ready.source!==options.source||ready.session!==options.session||ready.owner.pid!==owner.pid||ready.owner.startTicks!==owner.startTicks)throw new Error('Host observer readiness ownership mismatch');
+  return{pid:child.pid,ready};
+}
+export async function startOwnedTrace(raw,{run=spawnSync,platform=process.platform,hostRead=readFileSync,procRoot='/proc',launchHost=spawnHost}={}){
+  const options=context(raw);mkdirSync(options.output,{recursive:true});const stateFile=join(options.output,'trace-start.json');if(existsSync(stateFile))throw new Error('Refuse duplicate trace start or overwrite');
+  const report={...options,...diagnosticMetadata(DIAGNOSTIC_CONTRACT.start),startedAtUtc:now(),captureStarted:false,captureComplete:false,guestTransportStarted:false,guestTransportComplete:false,hostObservationIntegrity:false,hostCaptureWindowComplete:false,commands:[],errors:[],guestTransportErrors:[],hostObservationErrors:[],nativeAcceptance:false};const observe=observer(options,report,run);
+  try{
+    if(platform!=='linux')throw new Error('Host scheduling instrumentation requires owned Linux CI, not this local device');
+    ownerReadback(options,observe);report.hostOwner=assertHostOwner(options,{read:hostRead,procRoot});
+    report.perfettoVersion=observe('perfetto-version',['shell','perfetto','--version']).trim();
+    const help=observe('perfetto-help',['shell','perfetto','--help']);
+    if(report.perfettoVersion!=='Perfetto v51.2 (N/A)')throw new Error('Actual SDK Perfetto version not validated for exclusive output_path protocol');
+    if(!help.includes('--background-wait')||!help.includes('--config')||!help.includes('--query')||!help.includes('--txt'))throw new Error('Actual SDK Perfetto background/config options unavailable');
+    report.providers=requireDataSources(observe('perfetto-providers',['shell','perfetto','--query','--long']));
+    report.guestTools=observe('guest-trace-tools',['shell','toybox']).trim();
+    for(const tool of ['inotifyd','timeout','stat','sha256sum','sed','cut','grep','tr','head','seq','sleep','cat'])if(!report.guestTools.split(/\s+/).includes(tool))throw new Error('Actual guest close-watch tool unavailable: '+tool);
+    report.session=`${options.avd}_${randomBytes(8).toString('hex')}`;report.guestPath=`/data/misc/perfetto-traces/${report.session}.pftrace`;report.configPath=`/data/misc/perfetto-configs/${report.session}.pbtxt`;
+    const config=perfettoConfig(report.session);writeFileSync(join(options.output,'perfetto-config.pbtxt'),config);report.configSha256=hash(config);
+    writeFileSync(stateFile,JSON.stringify(report,null,2));
+    ownerReadback(options,observe);
+    Object.assign(report,guestFiles(report,observe,true));writeFileSync(stateFile,JSON.stringify(report,null,2));
+    ownerReadback(options,observe);
+    report.guestLaunchAttempted=true;writeFileSync(stateFile,JSON.stringify(report,null,2));
+    const started=observe('perfetto-start',['shell','perfetto','--background-wait','--txt','-c',report.configPath]).trim();
+    if(!/^\d+$/.test(started))throw new Error('Perfetto background PID acknowledgement is absent or ambiguous');
+    report.guestPid=Number(started);writeFileSync(stateFile,JSON.stringify(report,null,2));report.guestStartTicks=guestOwner(report,observe);
+    Object.assign(report,guestFiles(report,observe));report.guestTransportStarted=true;
+    writeFileSync(stateFile,JSON.stringify(report,null,2));report.hostLaunchAttempted=true;report.hostObserver=await launchHost({...options,session:report.session},report.hostOwner,host=>{report.hostObserver=host;writeFileSync(stateFile,JSON.stringify(report,null,2));});report.captureStarted=true;
+  }catch(error){report.errors.push(error.stack);(report.guestTransportStarted&&report.hostLaunchAttempted?report.hostObservationErrors:report.guestTransportErrors).push(error.stack);}
+  report.completedAtUtc=now();writeFileSync(stateFile,JSON.stringify(report,null,2));return report;
+}
+export async function finishOwnedTrace(raw,{run=spawnSync,stopHost=async(options,start)=>{writeFileSync(join(options.output,'host-stop'),JSON.stringify(ownedHostStopRequest(start)),{flag:'wx'});return waitFile(join(options.output,'host-summary.json'));}}={}){
+  const options=context(raw);mkdirSync(options.output,{recursive:true});let start;
+  const report={...options,...diagnosticMetadata(DIAGNOSTIC_CONTRACT.finish),finalizeStartedAtUtc:now(),captureComplete:false,guestTransportComplete:false,hostObservationIntegrity:false,hostCaptureWindowComplete:false,commands:[],errors:[],guestTransportErrors:[],hostObservationErrors:[],nativeAcceptance:false,traceAnalysisStatus:'pending actual Trace Processor scheduling/loss/coverage analysis'};const observe=observer(options,report,run);
+  const guestError=error=>{const text=error.stack??String(error);report.guestTransportErrors.push(text);report.errors.push(text);};
+  const hostError=error=>{const text=error.stack??String(error);report.hostObservationErrors.push(text);report.errors.push(text);};
+  try{start=readJson(join(options.output,'trace-start.json'));requireDiagnosticMetadata(start,DIAGNOSTIC_CONTRACT.start);for(const name of ['source','device','avd','emulatorPid'])if(start[name]!==options[name])throw new Error('Refuse mismatched trace source/ownership receipt');report.start=start;}catch(error){guestError(error);start=undefined;}
+  const guestLaunchAttempted=!!start&&(start.guestLaunchAttempted||start.commands?.some(x=>x.name==='perfetto-start'));
+  if(start?.errors?.length){
+    report.errors.push('Original startup errors: '+start.errors.join('\n'));
+    const classified=[...(start.guestTransportErrors||[]),...(start.hostObservationErrors||[])];
+    if(JSON.stringify([...classified].sort())!==JSON.stringify([...start.errors].sort()))guestError(new Error('Unclassified original startup errors remain incomplete'));
+    else{report.guestTransportErrors.push(...start.guestTransportErrors);report.hostObservationErrors.push(...start.hostObservationErrors);}
+  }
+  report.noCaptureStarted=!!start&&!guestLaunchAttempted&&!start.guestPid&&!start.hostObserver&&start.captureStarted===false;
+  if(report.noCaptureStarted){report.traceAnalysisStatus='unavailable: capture never started';guestError(new Error('No capture started; no guest tracer or host observer was launched'));}
+  else if(!start)report.traceAnalysisStatus='unavailable: no valid capture receipt';
+  else if(guestLaunchAttempted&&!start.guestPid){report.traceAnalysisStatus='unavailable: trace launch not acknowledged; no owned PID/inode';guestError(new Error('Trace launch attempted without an owned acknowledgement; refuse guessed PID or file'));}
+  // Host status and guest transport have independent failure buckets. Neither
+  // partial host observations nor transport framing constitutes Native acceptance.
+  if(start?.hostObserver){try{
+    report.host=await stopHost(options,start);Object.assign(report,verifyHostObservationStatus(report.host,start));
+    if(!report.hostObservationIntegrity||!report.hostCaptureWindowComplete)throw new Error('Owned host scheduling capture is missing/incomplete');
+  }catch(error){hostError(error);}}
+  if(start?.guestPid){
+    let owned=false;
+    try{
+      requireOwnedPaths(start);if(!start.session.startsWith(options.avd+'_')||!/^\d+:\d+$/.test(start.traceIdentity||''))throw new Error('Refuse unowned guest trace path or unconfirmed fresh inode');
+      ownerReadback(options,observe);guestFiles(start,observe);owned=true;guestOwner(start,observe);ownerReadback(options,observe);
+      const script=closeWriteScript(start);writeFileSync(join(options.output,'close-write.sh'),script);
+      report.writerClose=verifyCloseWrite(observe('perfetto-stop-close',['shell','toybox','timeout','15','sh','-s'],script),start);
+    }catch(error){guestError(error);}
+    if(owned){
+      try{
+        ownerReadback(options,observe);guestFiles(start,observe);const file=join(options.output,'guest.pftrace');if(existsSync(file))throw new Error('Refuse overwrite of pulled trace evidence');observe('perfetto-pull',['pull',start.guestPath,file]);report.trace=fileReceipt(file);if(report.trace.bytes>=maxTraceBytes)throw new Error('Trace hit diagnostic disk cap; coverage is incomplete');report.structure=inspectTrace(readFileSync(file));
+      }catch(error){guestError(error);}
+    }
+  }
+  report.guestTransportComplete=start?.guestTransportStarted===true&&!!report.writerClose?.verified&&!!report.trace&&!!report.structure&&report.guestTransportErrors.length===0;
+  report.captureComplete=!!start?.captureStarted&&report.guestTransportComplete&&report.hostObservationIntegrity&&report.hostCaptureWindowComplete&&report.errors.length===0;
+  report.finalizedAtUtc=now();writeFileSync(join(options.output,'trace-diagnostics.json'),JSON.stringify(report,null,2));return report;
+}
+export async function watchOwnedHost(output,{sample=sampleOwnedHost,append=appendHostInventory,clock=Date.now,sleep=delay,receipt=fileReceipt,persist=writeFileSync}={}){
+  const options=readJson(join(output,'trace-start.json'));requireDiagnosticMetadata(options,DIAGNOSTIC_CONTRACT.start);
+  const data=join(output,'host-scheduling.jsonl'),summary={...diagnosticMetadata(DIAGNOSTIC_CONTRACT.host),source:options.source,session:options.session,owner:options.hostOwner,startedAtUtc:now(),captureComplete:false,hostObservationIntegrity:false,hostCaptureWindowComplete:false,samples:0,errors:[],observationErrors:[],windowErrors:[],unavailableFields:0,maxSampleDurationMs:0,rendererNames:[],coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,coverageScope:hostCoverageScope,cohortSelection,inventoryAtomic:false,lifetimeCoverageProven:false,identityContinuityProven:false,allThreadsCoverageProven:false,cohortTasksTargeted:0,observedOutsideCohort:0,samplesWithOutsideCohort:0,coverageSamples:0,survivorsVerified:0,nonMainSurvivorsVerified:0,departedVerified:0,departedPartial:0,unresolvedGaps:0,counterRecordsVerified:0,historyGaps:[],rejectedSamples:[],nonMainTasksMeasured:0,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:0,rendererRoleProven:false};
+  const priorCounters=new Map(),stopFile=join(output,'host-stop'),journalDigest=createHash('sha256');let acknowledgedBytes=0;
+  const end=clock()+1200000,names=new Set(),cpuStart=process.cpuUsage(),timeStart=performance.now();
+  let durationExpired=false;
+  summary.limits={intervalMs:hostIntervalMs,durationMs:1200000,maxHostBytes,maxTraceBytes};summary.readCount=0;summary.threadsScanned=0;summary.maxThreadsScanned=0;summary.maxSelectedThreads=0;
+  try{
+    const journal=openSync(data,'wx');closeSync(journal);
+    do{
+      const frame=sample(options,{expectedStartTicks:options.hostOwner.startTicks});
+      const expectedLine=JSON.stringify(frame)+'\n';append(data,frame,summary);journalDigest.update(expectedLine);acknowledgedBytes+=Buffer.byteLength(expectedLine);
+      summary.samples++;summary.unavailableFields+=frame.unavailable.length;summary.maxSampleDurationMs=Math.max(summary.maxSampleDurationMs,frame.sampleDurationMs);
+      summary.readCount+=frame.readCount;summary.threadsScanned+=frame.threadsScanned;summary.maxThreadsScanned=Math.max(summary.maxThreadsScanned,frame.threadsScanned);summary.maxSelectedThreads=Math.max(summary.maxSelectedThreads,frame.selectedThreads);
+      for(const thread of frame.threads)if(/RenderThread|llvm|swift|gfx|angle|gpu/i.test(thread.name))names.add(thread.name);
+      recordHostInventory(summary,frame,priorCounters);
+      if(summary.samples===1)persist(join(output,'host-ready.json'),JSON.stringify({...diagnosticMetadata(DIAGNOSTIC_CONTRACT.host),source:options.source,session:options.session,owner:frame.owner}));
+      if(statSync(data).size>=maxHostBytes)throw new Error('Host diagnostic disk cap reached');
+      if(existsSync(stopFile)){durationExpired=clock()>=end;break;}
+      await sleep(hostIntervalMs);
+      durationExpired=clock()>=end;
+    }while(!durationExpired);
+    requireHostInventoryCoverage(summary);
+  }catch(error){addHostObservationError(summary,error);}
+  durationExpired=durationExpired||clock()>=end;
+  const stopPresent=existsSync(stopFile);let stopError;
+  if(stopPresent){
+    try{summary.rawStop=readFileSync(stopFile,'utf8');const request=verifyOwnedHostStop(JSON.parse(summary.rawStop),options);summary.ownedStop={...request,verified:true,observedAtUtc:now()};}
+    catch(error){stopError=error;}
+  }
+  durationExpired=durationExpired||clock()>=end;
+  if(durationExpired)addHostWindowError(summary,'DURATION_CAP',new Error('Host diagnostic duration cap reached before an owned stop was observed'));
+  if(stopError)addHostWindowError(summary,'INVALID_OWNED_STOP',stopError);
+  else if(!stopPresent&&!durationExpired)addHostWindowError(summary,'MISSING_OWNED_STOP',new Error('Host diagnostic window ended before an owned stop acknowledgement'));
+  summary.rendererNames=[...names];summary.kernelWaitChannelsComplete=summary.unavailableFields===0;summary.overhead={observerCpuMicroseconds:process.cpuUsage(cpuStart),elapsedMs:performance.now()-timeStart,rssBytes:process.memoryUsage().rss};summary.completedAtUtc=now();
+  summary.expectedJournal={bytes:acknowledgedBytes,sha256:journalDigest.digest('hex')};
+  try{if(!existsSync(data))throw new Error('Host journal is absent after sampling');summary.data=receipt(data);if(summary.data.bytes!==summary.expectedJournal.bytes||summary.data.sha256!==summary.expectedJournal.sha256)throw new Error('Host journal does not match the fully acknowledged observation sequence');}catch(error){addHostObservationError(summary,error);}
+  setHostObservationStatus(summary,options);persist(join(output,'host-summary.json'),JSON.stringify(summary,null,2));return summary;
+}
+// Cleanup also runs after an APK build failure, before an emulator PID exists.
+// Classify that absence without inventing a PID or entering guest/host cleanup.
+// Any recorded/residual capture remains unconfirmed and unsuccessful.
+function finishWithoutEmulatorPid(options){
+  mkdirSync(options.output,{recursive:true});
+  const report={...options,...diagnosticMetadata(DIAGNOSTIC_CONTRACT.finish),guestTransportComplete:false,hostObservationIntegrity:false,hostCaptureWindowComplete:false,mode:'finish',emulatorPidUnavailable:true,jobStatus:process.env.ANDROID_QA_JOB_STATUS,finalizeStartedAtUtc:now(),captureStarted:false,captureComplete:false,nativeAcceptance:false,noCaptureStarted:false,commands:[],errors:[]};
+  const validIdentity=!!options.adbPath&&/^emulator-\d+$/.test(options.device||'')&&/^sogrim_ci_[a-z0-9_]+$/.test(options.avd||'')&&/^[a-f0-9]{40}$/.test(options.source||'');
+  if(!validIdentity)report.errors.push('Require exact source and explicit owned CI emulator identity');
+  const startFile=join(options.output,'trace-start.json'),hasStart=existsSync(startFile);
+  if(hasStart){try{report.start=readJson(startFile);for(const name of ['source','device','avd'])if(report.start[name]!==options[name])throw new Error('Refuse mismatched trace source/ownership receipt');if(report.start.errors?.length)report.errors.push('Original startup errors: '+report.start.errors.join('\n'));}catch(error){report.errors.push(error.stack);}}
+  const unavailableStart=join(options.output,'trace-unavailable-start.json');
+  if(existsSync(unavailableStart)){try{report.originalStartupUnavailable=readJson(unavailableStart);if(report.originalStartupUnavailable.error)report.errors.push('Original startup error: '+report.originalStartupUnavailable.error);}catch(error){report.errors.push(error.stack);}}
+  const residue=readdirSync(options.output).filter(name=>!['trace-unavailable-start.json','trace-unavailable-finish.json','trace-diagnostics.json'].includes(name));
+  report.noCaptureStarted=validIdentity&&!hasStart&&residue.length===0;
+  report.traceAnalysisStatus=report.noCaptureStarted?'unavailable: capture never started; emulator was not launched':'unavailable: emulator PID missing; capture state unconfirmed';
+  report.errors.push(report.noCaptureStarted?'No emulator PID or capture evidence; no guest tracer/host observer cleanup attempted':'Missing explicit emulator PID; refuse receipt PID adoption, guest calls or observer waits');
+  report.finalizedAtUtc=now();writeFileSync(join(options.output,'trace-diagnostics.json'),JSON.stringify(report,null,2));return report;
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
+  const mode=process.argv[2];
+  if(mode==='host')await watchOwnedHost(resolve(process.argv[3]));
+  else{
+    try{
+      const options={adbPath:process.env.ADB_PATH,device:process.env.ANDROID_QA_DEVICE,avd:process.env.ANDROID_QA_AVD,source:process.env.ANDROID_QA_SOURCE,output:'artifacts/android-native-isolated/trace-diagnostics'},pidFile='artifacts/android-native-isolated/emulator.pid';
+      const noEmulatorPid=mode==='finish'&&!existsSync(pidFile);
+      if(!noEmulatorPid)options.emulatorPid=Number(readFileSync(pidFile,'utf8').trim());
+      const report=noEmulatorPid?finishWithoutEmulatorPid(options):mode==='start'?await startOwnedTrace(options):mode==='finish'?await finishOwnedTrace(options):(()=>{throw new Error('Require trace start/finish mode');})();
+      console.log(JSON.stringify({source:report.source,diagnosticsVersion:report.diagnosticsVersion,guestTransportComplete:report.guestTransportComplete,hostObservationIntegrity:report.hostObservationIntegrity,hostCaptureWindowComplete:report.hostCaptureWindowComplete,captureStarted:report.captureStarted,captureComplete:report.captureComplete,noCaptureStarted:report.noCaptureStarted,traceAnalysisStatus:report.traceAnalysisStatus,errors:report.errors,nativeAcceptance:false}));if(!(report.captureStarted||report.captureComplete))process.exitCode=1;
+    }catch(error){
+      const output='artifacts/android-native-isolated/trace-diagnostics';mkdirSync(output,{recursive:true});const report={...diagnosticMetadata(mode==='start'?DIAGNOSTIC_CONTRACT.start:DIAGNOSTIC_CONTRACT.finish),guestTransportComplete:false,hostObservationIntegrity:false,hostCaptureWindowComplete:false,source:process.env.ANDROID_QA_SOURCE,mode,captureStarted:false,captureComplete:false,nativeAcceptance:false,error:error.stack,recordedAtUtc:now()};writeFileSync(join(output,'trace-unavailable-'+mode+'.json'),JSON.stringify(report,null,2));console.error(JSON.stringify(report));process.exitCode=1;
+    }
+  }
+}

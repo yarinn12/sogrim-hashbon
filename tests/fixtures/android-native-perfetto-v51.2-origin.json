@@ -1,0 +1,39 @@
+{
+  "source": "f9b0844a1f7f167d89c9f37fb1c7f1638a5a7965",
+  "tree": "a436806c1e6b874cb287187ac9b074679910a721",
+  "run": "38109842847",
+  "job": "114383118130",
+  "artifact": "11690682984",
+  "artifactBytes": 30148048,
+  "artifactSha256": "ccf72d5ae461fcff010a43453e0d4deeda62091ceaea2ac5e7a41f4c87d27918",
+  "device": "emulator-5582",
+  "avd": "sogrim_ci_38109842847_1",
+  "help": {
+    "entry": "artifacts/android-native-isolated/trace-diagnostics/start-3-perfetto-help.txt",
+    "bytes": 3752,
+    "sha256": "f05dc4cefeebbc8ba8c7ab49380ce62e4c42329f2a9f5f469d9380e2c55420bf",
+    "stdout": "",
+    "stderrEncoding": "UTF-8",
+    "stderrSha256": "c9baa85b9af0d72e9e1e532ea56842ac30ee3b9e4c5f2891e80cc024f18e2d4a",
+    "exitCode": 1,
+    "startedAtUtc": "2026-10-11T04:01:02.657Z",
+    "completedAtUtc": "2026-10-11T04:01:02.681Z",
+    "format": "Original observer file: stdout then LF STDERR: LF then exact stderr; no rewriting"
+  },
+  "version": {
+    "entry": "artifacts/android-native-isolated/trace-diagnostics/start-2-perfetto-version.txt",
+    "bytes": 21,
+    "sha256": "3436076794f0d928bbda4b8f6dc6c28a6b0c51688c53f55dae883e20475bbb5d",
+    "exitCode": 0,
+    "value": "Perfetto v51.2 (N/A)"
+  },
+  "startReceiptEntry": "artifacts/android-native-isolated/trace-diagnostics/trace-start.json",
+  "captureStarted": false,
+  "nativeAcceptance": false,
+  "primaryVersionTag": "v51.2",
+  "primarySources": [
+    "https://github.com/google/perfetto/blob/v51.2/src/perfetto_cmd/perfetto_cmd.cc",
+    "https://github.com/google/perfetto/blob/v51.2/src/tracing/service/tracing_service_impl.cc",
+    "https://github.com/google/perfetto/blob/v51.2/protos/perfetto/config/trace_config.proto"
+  ]
+}

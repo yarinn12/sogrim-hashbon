@@ -1,0 +1,9 @@
+INFO         | Graphics backend: gfxstream
+INFO         | emuglConfig_init: vulkan_mode_selected:lavapipe gles_mode_selected:swangle
+DEBUG   | setCurrentRenderer: swangle lavapipe gles:Angle Indirect vulkan:Lavapipe
+DEBUG   | gfxstreamFeature:Vulkan = 0
+DEBUG   | gfxstreamFeature:HasSharedSlotsHostMemoryAllocator = 1
+DEBUG   | gfxstreamFeature:GlDirectMem = 1
+DEBUG   | Performing composition using CompositorGl.
+INFO         | Graphics Adapter Android Emulator OpenGL ES Translator (Google SwiftShader)
+INFO         | Graphics API Version OpenGL ES 3.0 (OpenGL ES 3.0 SwiftShader 4.0.0.1)

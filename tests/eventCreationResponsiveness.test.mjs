@@ -1,8 +1,11 @@
+import { eventSettlementOptionsView } from "../src/ui/eventSettlementOptions.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
+import { normalizeEventType, eventTypeOptions } from "../src/domain/eventTypes.mjs";
+import { canEditEvent, canManageEventSettings } from "../src/domain/permissions.mjs";
 import { saveFailureMessage } from "../src/domain/userNoticePolicy.mjs";
 
 const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
@@ -14,6 +17,7 @@ test("the restored creation form renders its save failure notice", () => {
   const from = source.indexOf("function renderNewEventSettlement()");
   const to = source.indexOf("function renderNewEventInlinePicker", from);
   const ctx = vm.createContext({
+    eventSettlementOptionsView,
     ensureNewEventDraft() {}, newEventDraft: {}, renderAppBackButton: () => "",
     renderNotice: () => '<div role="status">creation rejected</div>',
     renderEventCreationProgress: () => "", renderNewEventInlinePicker: () => ""
@@ -31,17 +35,19 @@ function harness({ save, invite, share } = {}) {
     state: { currentParticipantId: "account-a", participants: [
       { id: "account-a", displayName: "Owner" }, { id: "account-b", displayName: "Peer" }
     ], events: [{ id: "existing-event", name: "Existing" }], groups: [] },
-    newEventDraft: { name: "New event", participantIds: ["account-a", "account-b"], eventType: "standard", currency: "ILS", managementMode: "all" },
+    newEventDraft: { name: "New event", participantIds: ["account-a", "account-b"], eventType: "standard", currency: "ILS", managementMode: "collaborative" },
     screen: { name: "new-event-participants" }, createEventBusy: false, createEventRequest: null,
+    pendingCreatedEventDrafts: new Map(),
     joinEventDraft: null, expenseDraft: null, eventDialog: null, notice: "", appHistoryDepth: 1, lastNavigationViewKey: "old", generation: 0,
-    ensureCurrentParticipantInNewEventDraft() {}, normalizeEventType: value => value,
-    normalizeCurrency: value => value, managementModeRequiresAdmin: () => false,
+    ensureCurrentParticipantInNewEventDraft() {}, normalizeEventType,
+    EVENT_MANAGEMENT_COLLABORATIVE: "collaborative", EVENT_MANAGEMENT_CENTRALIZED: "centralized",
+    normalizeCurrency: value => value,
     initializeParticipantMembership: ids => Object.fromEntries(ids.map(id => [id, "now"])),
     accountUserIdFromParticipantId: id => id.startsWith("account-") ? id.slice(8) : "",
     ensureEventShareCredentials: event => { event.sharedSpaceId = "shared-event"; event.sharedSpaceKey = "synthetic-key"; },
     makeId: prefix => `${prefix}-${++nextId}`,
     persistState: options => { saves.push({ options, state: structuredClone(ctx.state) }); return save ? save(ctx, options) : Promise.resolve({ ok: true, mode: "cloud" }); },
-    saveState: () => {}, render: () => renders.push(ctx.screen.name), emitProductMetric() {}, emitOperationDeferred() {},
+    saveState: () => {}, render: () => renders.push(ctx.screen.name), emitProductMetric() {}, emitOperationDeferred() {}, emitOperationFailure() {},
     app: { querySelector: () => null }, requestAnimationFrame: callback => callback(),
     rememberPendingEventMembershipInvitation: (eventId, participantId) => pending.push({ eventId, participantId }),
     forgetPendingEventMembershipInvitation: (eventId, participantId) => { const index = pending.findIndex(item => item.eventId === eventId && item.participantId === participantId); if (index >= 0) pending.splice(index, 1); },
@@ -58,6 +64,12 @@ function harness({ save, invite, share } = {}) {
       return { isCurrent: () => ctx.state.currentParticipantId === participantId && ctx.generation === generation };
     }
   });
+  for (const name of ["ensureNewEventDraft", "managementModeRequiresAdmin"]) {
+    const from = source.indexOf(`function ${name}(`);
+    const next = /\n(?:async )?function /.exec(source.slice(from + 1));
+    assert.ok(from >= 0 && next, `${name} is extracted from the actual app`);
+    vm.runInContext(source.slice(from, from + 1 + next.index), ctx);
+  }
   vm.runInContext(source.slice(start, end), ctx);
   return { ctx, saves, invitations, pending, renders, shares };
 }
@@ -93,11 +105,12 @@ test("invite from creation opens the existing event link route after cloud save"
   assert.equal(h.shares[0][2], "link");
 });
 
-test("invite from a queued creation waits for cloud confirmation", async () => {
+test("invite from a queued creation opens the route with a cloud confirmation gate", async () => {
   const gate = deferred();
   const h = harness({ save: async () => ({ ok: true, mode: "queued", pending: true, completion: gate.promise }) });
   await h.ctx.createEventFromDraft({ openInvite: true });
-  assert.equal(h.shares.length, 0);
+  assert.equal(h.shares.length, 1);
+  assert.ok(h.shares[0][3].waitForSave instanceof Promise);
   gate.resolve({ ok: true, mode: "cloud" });
   await tick();
   assert.equal(h.shares.length, 1);
@@ -185,3 +198,90 @@ test("the old account save cannot unlock a new account creation", async () => {
   newSave.resolve({ ok: true, mode: "cloud" }); await newRequest;
   assert.equal(h.ctx.createEventBusy, false); assert.equal(h.saves.length, 2);
 });
+
+
+test("creation link action opens the existing share route while an older event remains pending", async () => {
+  const h = harness({ save: async () => ({ ok: true, mode: "queued", pending: true,
+    personalWorkspacePersisted: true, error: { partialSharedState: {
+      succeededEventIds: [], failedEventIds: ["existing-event"] } } }) });
+  await h.ctx.createEventFromDraft({ openInvite: true }); await tick();
+  assert.equal(h.shares.length, 1, "the requested share screen cannot be lost to an unrelated pending event");
+  assert.equal(h.shares[0][0], h.ctx.state.events[0].id);
+  assert.equal(h.shares[0][2], "link");
+});
+
+test("creation opens sharing before slow cloud confirmation and passes the confirmation gate", async () => {
+  const gate = deferred();
+  const h = harness({ save: async () => ({ ok: true, mode: "queued", pending: true, completion: gate.promise }) });
+  await h.ctx.createEventFromDraft({ openInvite: true }); await tick();
+  assert.equal(h.shares.length, 1, "show the existing loading share screen as soon as creation is durable locally");
+  assert.ok(h.shares[0][3].waitForSave instanceof Promise);
+  gate.resolve({ ok: true, mode: "cloud" });
+  assert.equal((await h.shares[0][3].waitForSave).mode, "cloud");
+});
+
+
+test("a late creation denial restores its own draft before the missing event redirects home", () => {
+  const from = source.indexOf("function handleSharedSaveReverted(event)");
+  const to = source.indexOf('document.addEventListener("settle-friends:notice"', from);
+  const draft = { name: "Keep creation", participantIds: ["account-a", "account-b"], currency: "EUR" };
+  const pendingCreatedEventDrafts = new Map([["created-event", { request: { isCurrent: () => true }, draft }]]);
+  const ctx = vm.createContext({ structuredClone, Date, pendingCreatedEventDrafts, saveFailureMessage,
+    state: { events: [] }, loadState: () => ({ events: [] }), getEvent: () => null,
+    screen: { name: "event", eventId: "created-event" }, newEventDraft: null,
+    expenseDraft: null, eventDialog: { kind: "share", eventId: "created-event" }, notice: "",
+    SHARED_REVERT_NOTICE_MAX_AGE_MS: 30000, document: { visibilityState: "visible" },
+    render: () => { if (ctx.screen.name === "event" && !ctx.state.events.length) ctx.screen = { name: "home" }; }
+  });
+  vm.runInContext(source.slice(from, to), ctx);
+  ctx.handleSharedSaveReverted({ detail: { eventIds: ["created-event"], failureKind: "permission" } });
+  assert.equal(ctx.screen.name, "new-event-settlement");
+  assert.equal(JSON.stringify(ctx.newEventDraft), JSON.stringify(draft));
+  assert.equal(ctx.eventDialog, null);
+  assert.match(ctx.notice, /האירוע לא נשמר/); assert.match(ctx.notice, /הטיוטה נשארה כאן/);
+});
+
+
+test("new draft defaults to collaborative and re-rendering preserves an explicit choice", () => {
+  const h = harness();
+  h.ctx.newEventDraft = null;
+  h.ctx.ensureNewEventDraft();
+  assert.equal(h.ctx.newEventDraft.managementMode, "collaborative");
+  h.ctx.newEventDraft.managementMode = "centralized";
+  h.ctx.ensureNewEventDraft();
+  assert.equal(h.ctx.newEventDraft.managementMode, "centralized");
+});
+
+for (const { id: eventType } of eventTypeOptions()) {
+  test(`${eventType} creation persists the collaborative default without promoting members`, async () => {
+    const h = harness();
+    h.ctx.state.events[0].adminsCanEditOnly = true;
+    h.ctx.newEventDraft = null;
+    h.ctx.ensureNewEventDraft();
+    // Execute the actual type-selection branch, including its reset of a stale draft mode.
+    h.ctx.newEventDraft.managementMode = "centralized";
+    h.ctx.action = "new-event-type";
+    h.ctx.target = { dataset: { eventType } };
+    const from = source.indexOf('  if (action === "new-event-type")');
+    const to = source.indexOf('  if (action === "go-new-event-step")', from);
+    assert.ok(from >= 0 && to > from);
+    const schedule = h.ctx.requestAnimationFrame;
+    h.ctx.requestAnimationFrame = () => {}; // DOM focus is covered by browser journeys.
+    vm.runInContext(source.slice(from, to), h.ctx);
+    h.ctx.requestAnimationFrame = schedule;
+    assert.equal(h.ctx.newEventDraft.managementMode, "collaborative");
+    h.ctx.newEventDraft.name = "Collaborative default check";
+    h.ctx.newEventDraft.participantIds.push("account-b");
+    await h.ctx.createEventFromDraft();
+    const event = h.saves[0].state.events[0];
+    assert.equal(event.eventType, eventType);
+    assert.equal(event.adminsCanEditOnly, false);
+    assert.equal(h.ctx.state.events[0].adminsCanEditOnly, false);
+    assert.equal(h.ctx.state.events.find(e => e.id === "existing-event").adminsCanEditOnly, true);
+    assert.equal(canEditEvent(h.ctx.state, event, "account-b"), true);
+    assert.equal(canManageEventSettings(h.ctx.state, event, "account-b"), false);
+    assert.equal(canEditEvent(h.ctx.state, event, "outsider"), false);
+    assert.equal(canEditEvent(h.ctx.state, { ...event, locked: true }, "account-b"), false);
+    assert.equal(canEditEvent(h.ctx.state, { ...event, inactiveParticipantIds: ["account-b"] }, "account-b"), false);
+  });
+}

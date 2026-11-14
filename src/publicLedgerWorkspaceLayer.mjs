@@ -1,6 +1,71 @@
 const STYLE_ID = "public-ledger-workspace-layer-style";
 
 const CSS = `
+/* Contextual image failures use the existing image picker surface. */
+.image-selection-feedback{margin:0 0 12px!important;padding:0!important;font-size:1rem!important;line-height:1.55!important;font-weight:500!important;color:#8b342d!important;white-space:normal!important;overflow-wrap:anywhere!important;background:transparent!important;border:0!important;box-shadow:none!important}
+.profile-avatar-picker-body .image-selection-feedback{margin-bottom:16px!important}
+/* Approved crop/invitation/blocked-list follow-up. */
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-card{border:0!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:24px 4px!important;max-width:none!important}
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-state-title{font-size:1.25rem!important;line-height:1.45!important;margin:0 0 10px!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-message{font-size:1rem!important;line-height:1.6!important;margin:0!important;color:#52645d!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-actions{margin-top:24px!important;gap:12px!important}
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-actions button{font-size:1rem!important;line-height:1.4!important;padding:12px 16px!important;min-height:48px!important;height:auto!important;white-space:normal!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.friend-invitation-screen:is([data-invite-state="loading"],[data-invite-state="error"],[data-invite-state="unavailable"]) .friend-invite-secondary{color:#174e40!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel{color:#183c30!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel>summary{font-size:1rem!important;line-height:1.5!important;min-height:48px!important;gap:12px!important;align-items:center!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel>summary .friend-privacy-summary-label{min-width:0!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-users-list{display:grid!important;gap:0!important;padding:0 14px!important;background:white!important;border:1px solid #dce5df!important;border-radius:14px!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-help{font-size:.9375rem!important;line-height:1.6!important;color:#52645d!important;padding:14px 0!important;margin:0!important;border-bottom:1px solid #e1e8e3!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;gap:8px 14px!important;padding:16px 0!important;border:0!important;border-bottom:1px solid #e1e8e3!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row:last-child{border-bottom:0!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row>span{display:grid!important;gap:4px!important;min-width:0!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row strong{font-size:1rem!important;line-height:1.45!important;color:#19372f!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row small{font-size:.875rem!important;line-height:1.5!important;color:#52645d!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row bdi{overflow-wrap:anywhere!important;white-space:normal!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row button{border:0!important;background:transparent!important;box-shadow:none!important;color:#174e40!important;font-size:1rem!important;line-height:1.4!important;min-height:44px!important;padding:8px 0!important;white-space:normal!important;text-align:start!important;border-radius:6px!important}
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-error{grid-column:1/-1!important;font-size:1rem!important;line-height:1.5!important;color:#8c3329!important;margin:0!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1.dynamic-type-extra-large body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row{grid-template-columns:minmax(0,1fr)!important}
+@media(max-width:360px){
+ html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row{grid-template-columns:minmax(0,1fr)!important}
+}
+
+html.ledger-workspace-v1 body #app .screen.font-hebrew .blocked-users-panel .blocked-user-row :is(strong,small,bdi){overflow:visible!important;white-space:normal!important;text-overflow:clip!important}
+
+  /* Approved requests panel: one surface and scalable text. */
+html.ledger-workspace-v1 body #app #friends-panel-requests .friends-roster{display:grid!important;gap:20px!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-section{min-width:0!important;overflow:visible!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-identity-heading{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;min-height:0!important;padding:0 2px 9px!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-identity-heading>span{display:block!important;min-width:0!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-identity-heading strong{font-size:.9375rem!important;font-weight:750!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-identity-heading>bdi{min-width:0!important;height:auto!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-muted)!important;font-size:.8125rem!important;font-weight:500!important;line-height:1.4!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-list{display:grid!important;gap:0!important;overflow:hidden!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;background:var(--ledger-surface)!important;box-shadow:none!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-row{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:12px!important;min-width:0!important;padding:14px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-row~.friend-request-row{border-top:1px solid var(--ledger-line)!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-row-person{display:grid!important;grid-template-columns:44px minmax(0,1fr)!important;align-items:center!important;gap:10px!important;min-width:0!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-row-person>.avatar{width:44px!important;height:44px!important;min-width:44px!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-row-name>strong{font-size:.9375rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-username{max-width:100%!important;font-size:.8125rem!important;line-height:1.4!important;font-weight:500!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;white-space:normal!important;text-overflow:clip!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr))!important;gap:8px!important;width:100%!important;padding:0!important;min-width:0!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-actions button{min-width:0!important;min-height:44px!important;margin:0!important;padding:10px 12px!important;border-radius:10px!important;box-shadow:none!important;font-size:.875rem!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-actions button:only-child{grid-column:1/-1!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-actions .secondary-button{border-color:var(--ledger-line)!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friends-requests-empty{min-height:0!important;gap:8px!important;padding:24px!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;background:var(--ledger-surface)!important;box-shadow:none!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friends-requests-empty strong{font-size:.9375rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app #friends-panel-requests .friends-requests-empty>span{font-size:.875rem!important;line-height:1.5!important;overflow-wrap:anywhere!important;}
+@media(min-width:661px){html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-row{grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))!important;align-items:center!important;}html.ledger-workspace-v1 body #app #friends-panel-requests .friend-request-actions{width:auto!important;min-width:0!important;}}
+
+  /* Approved invitation-link confirmation surface. */
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-card{display:grid!important;gap:18px!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-person{display:grid!important;grid-template-columns:64px minmax(0,1fr)!important;align-items:center!important;gap:14px!important;min-width:0!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-person .avatar{width:64px!important;height:64px!important;min-width:64px!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-person>span{display:grid!important;gap:5px!important;min-width:0!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen :is(.friend-invite-person h2,.friend-invite-state-title){margin:0!important;font-size:1.25rem!important;line-height:1.3!important;font-weight:820!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-username{font-size:.875rem!important;font-weight:540!important;line-height:1.4!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-overflow:clip!important;background:transparent!important;border:0!important;padding:0!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-message{margin:0!important;font-size:.875rem!important;line-height:1.5!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-actions{display:grid!important;gap:8px!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-actions button{width:100%!important;min-height:48px!important;font-size:.9375rem!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-actions .friend-invite-secondary{min-height:44px!important;border:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;font-size:.875rem!important;}
+
   html.ledger-workspace-v1 {
     --font-hebrew: "Rubik", "Heebo", "Assistant", sans-serif;
     --font-num: "Inter", "Rubik", sans-serif;
@@ -175,6 +240,14 @@ const CSS = `
     box-shadow: 0 4px 8px rgba(10, 79, 73, 0.16) !important;
     transform: translateY(-1px) !important;
   }
+
+  /* Touch browsers can retain :hover after a tap. Keep the tappable edge fixed. */
+  @media (hover: none) {
+    html.ledger-workspace-v1 .primary-button:hover:not(:active):not(:disabled) {
+      transform: none !important;
+    }
+  }
+
 
   html.ledger-workspace-v1 button:disabled,
   html.ledger-workspace-v1 .primary-button:disabled,
@@ -454,12 +527,16 @@ const CSS = `
     font-size: 12.5px !important;
   }
 
-  html.ledger-workspace-v1 .product-nav-badge {
+  /* Keep the unread overlay outside label resets and the navigation grid. */
+  html.ledger-workspace-v1 .product-nav-button > .product-nav-badge {
     position: absolute !important;
     inset-block-start: 4px !important;
     inset-inline-start: calc(50% + 5px) !important;
     min-width: 17px !important;
+    width: max-content !important;
     height: 17px !important;
+    overflow: visible !important;
+    clip: auto !important;
     display: grid !important;
     place-items: center !important;
     padding-inline: 4px !important;
@@ -473,7 +550,7 @@ const CSS = `
     line-height: 1 !important;
   }
 
-  html.ledger-workspace-v1 .product-nav-badge[hidden] {
+  html.ledger-workspace-v1 .product-nav-button > .product-nav-badge[hidden] {
     display: none !important;
   }
 
@@ -1744,22 +1821,6 @@ const CSS = `
       0 0 0 3px rgba(33, 170, 166, 0.2),
       0 12px 22px -15px rgba(6, 75, 67, 0.62) !important;
     transform: translateY(-2px) !important;
-  }
-
-  html.ledger-workspace-v1
-    .profile-avatar-option
-    input:checked
-    + .profile-avatar-preview::after {
-    content: "" !important;
-    position: absolute !important;
-    inset-inline-start: -2px !important;
-    inset-block-end: -2px !important;
-    width: 13px !important;
-    height: 13px !important;
-    border: 2px solid #ffffff !important;
-    border-radius: 50% !important;
-    background: var(--ledger-brand) !important;
-    box-shadow: 0 3px 8px rgba(6, 75, 67, 0.28) !important;
   }
 
   html.ledger-workspace-v1
@@ -3192,7 +3253,7 @@ const CSS = `
     }
 
     html.ledger-workspace-v1 .product-brand-copy strong {
-      font-size: 17px !important;
+      font-size: var(--dynamic-text-17, 17px) !important;
     }
 
     html.ledger-workspace-v1.circle-design-v1
@@ -3429,6 +3490,11 @@ const CSS = `
       box-shadow: var(--ledger-shadow-border-hover) !important;
       transform: translateY(-1px) !important;
     }
+  }
+
+  /* Dialog panels stay anchored while the pointer moves across their content. */
+  html.ledger-workspace-v1 .panel:is(.expense-modal, .event-modal) {
+    transform: none !important;
   }
 
   html.ledger-workspace-v1 .status-chip,
@@ -5938,6 +6004,8 @@ const CSS = `
 
   html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-primary-filter {
     min-height: 48px !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 4px !important;
     padding: 4px !important;
     border: 1px solid var(--ledger-line) !important;
@@ -5946,7 +6014,11 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-primary-filter button {
+    min-width: 0 !important;
+    width: 100% !important;
     min-height: 44px !important;
+    justify-content: center !important;
+    text-align: center !important;
     padding-inline: 18px !important;
     border-radius: 8px !important;
     font-size: 13.5px !important;
@@ -6009,6 +6081,50 @@ const CSS = `
     font-size: 9.5px !important;
     font-weight: 800 !important;
     line-height: 1 !important;
+  }
+
+  /* Keep lifecycle labels whole when an enlarged font outgrows four columns. */
+  @media (max-width: 480px) {
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      grid-auto-flow: row !important;
+      grid-auto-columns: auto !important;
+    }
+
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter button {
+      min-height: 68px !important;
+    }
+
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-option-content {
+      height: 100% !important;
+      grid-template-rows: minmax(0, 1fr) auto !important;
+      row-gap: 2px !important;
+    }
+
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"]
+      .event-lifecycle-option-content > span:first-child {
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: keep-all !important;
+    }
+
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter button .font-num {
+      height: auto !important;
+      min-height: 1em !important;
+    }
+  }
+
+  @media (max-width: 339px) {
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
   }
 
   html.ledger-workspace-v1 .event-list {
@@ -8095,7 +8211,7 @@ const CSS = `
       min-height: 164px !important;
       display: block !important;
       gap: 0 !important;
-      margin: 12px 0 44px !important;
+      margin: 10px 0 36px !important;
       padding: 24px 22px 32px !important;
       border-radius: 24px !important;
     }
@@ -8345,7 +8461,7 @@ const CSS = `
     overflow: visible !important;
     clip: auto !important;
     color: inherit !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 750 !important;
     white-space: nowrap !important;
   }
@@ -9475,7 +9591,7 @@ const CSS = `
     width: 100% !important;
   }
 
-  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  @media (max-width: 1366px) {
     html.ledger-workspace-v1 .expense-modal-backdrop,
     html.ledger-workspace-v1 .event-modal-backdrop {
       align-items: stretch !important;
@@ -9746,7 +9862,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .transfer-participant-copy strong {
-    font-size: 14px !important;
+    font-size: var(--dynamic-text-14, 14px) !important;
     line-height: 1.25 !important;
   }
 
@@ -9756,7 +9872,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .transfer-amount > .amount {
-    font-size: 20px !important;
+    font-size: var(--dynamic-text-20, 20px) !important;
   }
 
   html.ledger-workspace-v1 .transfer-actions > button {
@@ -10590,7 +10706,7 @@ const CSS = `
   html.ledger-workspace-v1 .event-participant-primary-actions {
     min-width: 0 !important;
     display: grid !important;
-    grid-template-columns: minmax(0, 3fr) minmax(136px, 2fr) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 8px !important;
     margin: 13px 0 4px !important;
   }
@@ -11615,10 +11731,10 @@ const CSS = `
 
   html.ledger-workspace-v1 .friend-username.is-own {
     margin-top: 1px !important;
-    padding: 4px 8px !important;
-    border: 1px solid rgba(6, 125, 111, 0.13) !important;
-    border-radius: 8px !important;
-    background: var(--ledger-accent-soft) !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
   }
 
   html.ledger-workspace-v1 .profile-username-section {
@@ -13856,7 +13972,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .event-workspace-tab strong {
-    font-size: 13.5px !important;
+    font-size: 0.84375rem !important;
   }
 
   html.ledger-workspace-v1 .event-personal-balance {
@@ -13892,9 +14008,7 @@ const CSS = `
     box-shadow: var(--ledger-task-shadow) !important;
   }
 
-  html.ledger-workspace-v1 .event-action-total > span:first-child {
-    display: none !important;
-  }
+
 
   html.ledger-workspace-v1 .event-action-total .amount {
     font-size: 18px !important;
@@ -14111,7 +14225,7 @@ const CSS = `
     font-size: 18px !important;
   }
 
-  html.ledger-workspace-v1 .referral-reward-card.is-home {
+  html.ledger-workspace-v1 .referral-reward-card.is-friends {
     grid-template-columns: 40px minmax(0, 1fr) auto !important;
     gap: 10px !important;
     margin: 0 0 14px !important;
@@ -14119,27 +14233,27 @@ const CSS = `
     border-radius: 15px !important;
   }
 
-  html.ledger-workspace-v1 .referral-reward-card.is-home::before {
+  html.ledger-workspace-v1 .referral-reward-card.is-friends::before {
     display: none !important;
   }
 
-  html.ledger-workspace-v1 .referral-reward-card.is-home .referral-reward-icon {
+  html.ledger-workspace-v1 .referral-reward-card.is-friends .referral-reward-icon {
     width: 40px !important;
     height: 40px !important;
     border-radius: 11px !important;
   }
 
   html.ledger-workspace-v1
-    .referral-reward-card.is-home
+    .referral-reward-card.is-friends
     :is(.referral-reward-eyebrow, .referral-reward-detail) {
     display: none !important;
   }
 
-  html.ledger-workspace-v1 .referral-reward-card.is-home .referral-reward-copy strong {
+  html.ledger-workspace-v1 .referral-reward-card.is-friends .referral-reward-copy strong {
     font-size: 14px !important;
   }
 
-  html.ledger-workspace-v1 .referral-reward-card.is-home > button {
+  html.ledger-workspace-v1 .referral-reward-card.is-friends > button {
     grid-column: auto !important;
     width: auto !important;
     min-width: 0 !important;
@@ -14287,12 +14401,12 @@ const CSS = `
   }
 
   html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
-    .referral-reward-card.is-home {
+    .referral-reward-card.is-friends {
     grid-template-columns: 40px minmax(0, 1fr) !important;
   }
 
   html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
-    .referral-reward-card.is-home
+    .referral-reward-card.is-friends
     > button {
     grid-column: 1 / -1 !important;
     width: 100% !important;
@@ -15718,7 +15832,7 @@ const CSS = `
     border: 0 !important;
     border-radius: 0 !important;
     background: transparent !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 700 !important;
     line-height: 1.25 !important;
   }
@@ -15754,7 +15868,7 @@ const CSS = `
     border-radius: 0 !important;
     color: var(--ledger-muted) !important;
     background: transparent !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 650 !important;
     white-space: normal !important;
   }
@@ -15781,7 +15895,7 @@ const CSS = `
   html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-current-user {
     flex: 0 0 auto !important;
     color: var(--ledger-muted) !important;
-    font-size: 10px !important;
+    font-size: var(--dynamic-text-10, 10px) !important;
     font-weight: 650 !important;
     line-height: 1 !important;
   }
@@ -16588,6 +16702,20 @@ const CSS = `
     box-shadow: 0 12px 28px rgba(16, 35, 33, 0.12) !important;
   }
 
+  html.ledger-workspace-v1 .new-event-inline-picker-menu .new-event-currency-search {
+    display: block !important;
+    padding: 4px 6px 8px !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-inline-picker-menu .new-event-currency-search input {
+    width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-inline-picker-menu button[hidden] {
+    display: none !important;
+  }
+
   html.ledger-workspace-v1 .new-event-inline-picker-menu button {
     min-height: 44px !important;
     display: flex !important;
@@ -16869,15 +16997,15 @@ const CSS = `
   html.ledger-workspace-v1 .new-event-participant-actions {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
-    gap: 10px !important;
-    margin-top: 10px !important;
+    gap: 8px !important;
+    margin-top: 8px !important;
   }
 
   html.ledger-workspace-v1 .new-event-participant-additions {
     display: grid !important;
     gap: 0 !important;
-    margin-top: 24px !important;
-    padding-top: 22px !important;
+    margin-top: 16px !important;
+    padding-top: 16px !important;
     border-top: 1px solid var(--ledger-line-strong) !important;
   }
 
@@ -16890,7 +17018,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .new-event-participant-route-action {
     min-width: 0 !important;
-    min-height: 62px !important;
+    min-height: 58px !important;
     display: grid !important;
     grid-template-columns: 28px minmax(0, 1fr) auto !important;
     align-items: center !important;
@@ -16907,7 +17035,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .new-event-participant-route-action.is-primary {
     grid-column: auto !important;
-    min-height: 68px !important;
+    min-height: 64px !important;
     border-color: var(--ledger-brand) !important;
     color: #ffffff !important;
     background: var(--ledger-brand) !important;
@@ -17062,8 +17190,8 @@ const CSS = `
   html.ledger-workspace-v1 .new-event-selected-participants {
     display: grid !important;
     gap: 12px !important;
-    margin-top: 18px !important;
-    padding: 16px !important;
+    margin-top: 12px !important;
+    padding: 14px !important;
     border: 1px solid var(--ledger-line) !important;
     border-radius: 14px !important;
     background: #ffffff !important;
@@ -17076,7 +17204,7 @@ const CSS = `
     align-items: baseline !important;
     justify-content: space-between !important;
     gap: 12px !important;
-    padding-bottom: 10px !important;
+    padding-bottom: 8px !important;
     border-bottom: 1px solid var(--ledger-line) !important;
   }
 
@@ -17101,12 +17229,12 @@ const CSS = `
   html.ledger-workspace-v1 .new-event-selected-participant {
     position: relative !important;
     min-width: 0 !important;
-    min-height: 76px !important;
+    min-height: 68px !important;
     display: grid !important;
     grid-template-columns: 48px minmax(0, 1fr) auto 34px !important;
     align-items: center !important;
     gap: 11px !important;
-    padding: 12px 14px !important;
+    padding: 10px 14px !important;
     border: 1px solid var(--ledger-line) !important;
     border-radius: 12px !important;
     color: var(--ledger-ink) !important;
@@ -17116,6 +17244,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .new-event-selected-participant.is-current-participant {
+    grid-template-columns: 48px minmax(0, 1fr) auto !important;
     cursor: default !important;
   }
 
@@ -17410,8 +17539,7 @@ const CSS = `
     background: #004d47 !important;
   }
 
-  @media (min-width: 721px) and (max-width: 1024px),
-    (min-width: 721px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+  @media (min-width: 721px) and (max-width: 1366px) {
     html.circle-design-v1.ledger-workspace-v1 body #app
       .screen[data-screen-kind="home"] {
       width: 100% !important;
@@ -17419,14 +17547,6 @@ const CSS = `
       padding-inline: 28px !important;
     }
 
-  }
-
-  html.ledger-workspace-v1 .product-home-screen .home-benefit-actions {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1.48fr) minmax(126px, 0.92fr) !important;
-    align-items: stretch !important;
-    gap: 8px !important;
-    margin: 0 0 6px !important;
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-quick-action {
@@ -17500,6 +17620,11 @@ const CSS = `
       0 3px 9px rgba(18, 58, 46, 0.06) !important;
   }
 
+  html.ledger-workspace-v1 .product-home-screen .home-create-event-action.is-primary {
+    gap: 8px !important;
+    padding-inline: 20px !important;
+  }
+
   html.ledger-workspace-v1 .product-home-screen .home-quick-action.is-primary > span:nth-child(2) {
     flex: 0 1 auto !important;
     text-align: center !important;
@@ -17530,6 +17655,16 @@ const CSS = `
     transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
   }
 
+  /* The whole button is the touch target; its decorative icon must not reserve
+     another touch-sized box that pushes the visible plus away from the label. */
+  html.ledger-workspace-v1 .product-home-screen .home-create-event-action.is-primary .home-quick-action-icon {
+    width: 22px !important;
+    min-width: 22px !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    flex: 0 0 22px !important;
+  }
+
   html.ledger-workspace-v1 .product-home-screen .home-quick-action.is-primary .home-quick-action-icon svg {
     width: 22px !important;
     height: 22px !important;
@@ -17544,51 +17679,24 @@ const CSS = `
     outline-offset: 3px !important;
   }
 
-  html.ledger-workspace-v1 .product-home-screen .home-friends-action {
-    grid-template-columns: 34px auto !important;
-    justify-content: center !important;
-    gap: 8px !important;
-    padding: 12px !important;
-    text-align: center !important;
-  }
-
-  html.ledger-workspace-v1 .product-home-screen .home-friends-action .home-quick-action-icon {
-    width: 34px !important;
-    height: 34px !important;
-  }
-
-  html.ledger-workspace-v1 .product-home-screen .home-benefit-actions .home-friends-action {
-    min-height: 76px !important;
-  }
-
-  html.ledger-workspace-v1 .product-home-screen .home-benefit-actions .referral-reward-card.is-home {
+  html.ledger-workspace-v1 .groups-overview-screen .referral-reward-card.is-friends {
     width: 100% !important;
     min-width: 0 !important;
-    min-height: 76px !important;
+    min-height: 64px !important;
     grid-template-columns: 40px minmax(0, 1fr) !important;
-    align-items: center !important;
     gap: 10px !important;
-    margin: 0 !important;
+    margin: 16px 0 0 !important;
     padding: 12px 14px !important;
-    border: 1px solid rgba(10, 82, 63, 0.14) !important;
-    border-radius: 16px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 12px !important;
     color: var(--ledger-ink) !important;
-    background: #ffffff !important;
-    box-shadow: 0 8px 22px rgba(18, 58, 46, 0.07) !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: none !important;
     text-align: start !important;
-    scale: 1 !important;
-    transition-property: scale, box-shadow !important;
-    transition-duration: 160ms !important;
-    transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
   }
 
-  html.ledger-workspace-v1 .product-home-screen .home-benefit-actions .referral-reward-card.is-home:active:not(:disabled) {
+  html.ledger-workspace-v1 .groups-overview-screen .referral-reward-card.is-friends:active:not(:disabled) {
     scale: 0.96 !important;
-  }
-
-  html.ledger-workspace-v1 .product-home-screen .home-benefit-actions .referral-reward-card.is-home .referral-reward-copy strong {
-    font-size: 14px !important;
-    line-height: 1.3 !important;
   }
 
   @media (max-width: 390px) {
@@ -17823,6 +17931,18 @@ const CSS = `
   html.ledger-workspace-v1:has(#public-account-auth-gate) #app {
     visibility: hidden !important;
     pointer-events: none !important;
+  }
+
+  /* Keep enabled auth text readable when touch leaves the legacy hover state active. */
+  html.ledger-workspace-v1 #public-account-auth-gate .account-auth-submit:not(:disabled) {
+    color: #ffffff !important;
+  }
+  /* Keep the legal links and their bottom padding inside the mobile scroll range. */
+  @media (max-width: 1366px) {
+    html.ledger-workspace-v1 #public-account-auth-gate .account-auth-shell {
+      overflow: visible !important;
+      grid-template-rows: auto auto !important;
+    }
   }
 
   /* Final mobile touch-target guardrails for shared route controls. */
@@ -18370,7 +18490,7 @@ const CSS = `
     html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1
       .screen[data-event-creation-step="participants"]
       .new-event-participant-footer {
-      bottom: calc(max(14px, env(safe-area-inset-bottom)) + 148px) !important;
+      bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--dynamic-type-bottom-nav-block, 148px)) !important;
     }
   }
 
@@ -18592,7 +18712,7 @@ const CSS = `
     padding: 0 0 9px !important;
     border-bottom: 1px solid var(--ledger-line) !important;
     color: var(--ledger-ink) !important;
-    font-size: 14px !important;
+    font-size: var(--dynamic-text-14, 14px) !important;
     line-height: 1.45 !important;
   }
 
@@ -18911,8 +19031,23 @@ const CSS = `
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-heading {
     margin: 0 !important;
     padding: 12px 16px !important;
+    flex-wrap: wrap !important;
     border-bottom: 1px solid var(--ledger-line) !important;
     background: var(--ledger-surface-soft) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-summary {
+    min-width: min-content !important;
+    max-width: 100% !important;
+    flex: 0 1 auto !important;
+    flex-wrap: wrap !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-summary .amount,
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-summary .font-num {
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: keep-all !important;
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row,
@@ -19110,6 +19245,9 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row:has(.expense-row-actions-menu[open]) {
+    /* Arrival animations retain a transformed containing block even when the
+       final computed transform is none. Fixed menu coordinates need the viewport. */
+    animation: none !important;
     /* content-visibility:auto contains paint even for a visible row. Release
        that containment while its menu extends outside the card. */
     content-visibility: visible !important;
@@ -19572,13 +19710,6 @@ const CSS = `
     max-height: calc(100dvh - 112px - env(safe-area-inset-bottom)) !important;
   }
 
-  html.ledger-workspace-v1 .product-home-screen .home-friends-action strong {
-    font-family: inherit !important;
-    font-size: 15.5px !important;
-    font-weight: 800 !important;
-    line-height: 1.25 !important;
-  }
-
   /* Share is a focused route: one status, one primary action, no nested cards. */
   html.ledger-workspace-v1 .event-share-route-backdrop .event-modal-body {
     padding-inline: 16px !important;
@@ -19829,7 +19960,7 @@ const CSS = `
   html.ledger-workspace-v1 .profile-identity-copy > strong {
     overflow-wrap: anywhere !important;
     color: var(--ledger-ink) !important;
-    font-size: 17px !important;
+    font-size: var(--dynamic-text-17, 17px) !important;
     line-height: 1.35 !important;
   }
 
@@ -19975,6 +20106,25 @@ const CSS = `
     height: 100% !important;
   }
 
+  /* Event metadata must fit the text column at normal phone sizes too.
+     Keep complete status and participant text by allowing natural line breaks. */
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-row-meta {
+    max-width: 100% !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-row-state {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-row-details {
+    max-width: 100% !important;
+    flex-wrap: wrap !important;
+    white-space: normal !important;
+  }
+
   /* Home event pictures belong to the event-card action. Keep the stack compact;
      the surrounding event button provides the full accessible touch target. */
   html.ledger-workspace-v1 .event-row-open {
@@ -20118,7 +20268,7 @@ const CSS = `
     }
   }
 
-  @media (min-width: 721px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+  @media (min-width: 721px) and (max-width: 1366px) {
     html.ledger-workspace-v1 body #app .screen,
     html.ledger-workspace-v1 body #app .friends-hub-screen {
       box-sizing: border-box !important;
@@ -20402,7 +20552,7 @@ const CSS = `
     min-width: 0 !important;
     overflow: hidden !important;
     color: var(--ledger-ink) !important;
-    font-size: 19px !important;
+    font-size: var(--dynamic-text-19, 19px) !important;
     font-weight: 820 !important;
     line-height: 1.3 !important;
     text-overflow: ellipsis !important;
@@ -20426,7 +20576,7 @@ const CSS = `
     min-width: 0 !important;
     overflow: hidden !important;
     color: var(--ledger-muted) !important;
-    font-size: 14px !important;
+    font-size: var(--dynamic-text-14, 14px) !important;
     line-height: 1.45 !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
@@ -20616,6 +20766,28 @@ const CSS = `
     padding-bottom: calc(112px + env(safe-area-inset-bottom)) !important;
   }
 
+  html.ledger-workspace-v1 body #app .screen.event-notes-screen > .event-notes-entry-action {
+    width: 100% !important;
+    min-height: 56px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin: 0 0 12px !important;
+    padding: 8px 16px !important;
+    line-height: 1.2 !important;
+  }
+
+  html.ledger-workspace-v1 body #app .screen > .event-header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    margin: 0 0 12px !important;
+    padding: 12px !important;
+    border-radius: 16px !important;
+    background: var(--ledger-hero-surface) !important;
+  }
+
   html.ledger-workspace-v1 .event-notes-screen .event-workspace-nav {
     margin-top: 0 !important;
   }
@@ -20668,7 +20840,7 @@ const CSS = `
     overflow: visible !important;
     clip: auto !important;
     color: inherit !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 750 !important;
     white-space: nowrap !important;
   }
@@ -20732,6 +20904,3550 @@ const CSS = `
     box-shadow: var(--ledger-task-shadow) !important;
   }
 
+/* Approved event creation tabs: reuse Home events/archive tokens. */
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+  min-height: 48px !important;
+  margin: 2px 0 14px !important;
+  padding: 4px !important;
+  list-style: none !important;
+  border: 1px solid var(--ledger-line) !important;
+  border-radius: 12px !important;
+  background: var(--ledger-surface) !important;
+  box-shadow: none !important;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li {
+  display: block !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li > button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 44px !important;
+  padding: 6px 2px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  color: var(--ledger-muted) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-family: inherit !important;
+  font-size: var(--dynamic-text-13, .84375rem) !important;
+  font-weight: 800 !important;
+  line-height: 1.3 !important;
+  white-space: normal !important;
+  text-align: center !important;
+  opacity: 1 !important;
+  cursor: pointer;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li > button:disabled {
+  color: #65766e !important;
+  cursor: default;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li > button > strong {
+  display: block !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+  white-space: normal !important;
+  overflow-wrap: normal !important;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li.is-complete > button {
+  color: var(--ledger-brand) !important;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li.is-active > button {
+  color: var(--ledger-brand) !important;
+  background: var(--ledger-accent-soft) !important;
+  box-shadow: inset 0 0 0 1px rgba(33, 170, 166, .08) !important;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li > button:focus-visible {
+  outline: 2px solid var(--ledger-brand) !important;
+  outline-offset: -2px !important;
+}
+@media (max-width: 720px) {
+  html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+/* Approved event-type choices: one surface, readable rows, scalable leaf text. */
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-event-creation-step="type"] .event-type-step-panel {
+  padding: 0 !important;
+  border: 1px solid var(--ledger-line) !important;
+  border-radius: 12px !important;
+  background: var(--ledger-surface) !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-event-creation-step="type"] .event-type-options {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-event-creation-step="type"] .event-type-option {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: 24px minmax(0, 1fr) 20px !important;
+  grid-template-rows: auto auto !important;
+  column-gap: 12px !important;
+  row-gap: 6px !important;
+  align-content: center !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  min-height: 104px !important;
+  height: auto !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 18px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+  text-align: start !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-event-creation-step="type"] .event-type-option:not(:last-child)::after {
+  content: "" !important;
+  position: absolute !important;
+  inset-inline: 18px !important;
+  inset-block-end: 0 !important;
+  height: 1px !important;
+  background: var(--ledger-line) !important;
+  pointer-events: none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-event-creation-step="type"] .event-type-option > .studio-event-type-icon {
+  grid-column: 1 !important;
+  grid-row: 1 / 3 !important;
+  position: static !important;
+  align-self: center !important;
+  justify-self: center !important;
+  margin: 0 !important;
+  width: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-event-creation-step="type"] .event-type-option > strong {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  font-size: 1.125rem !important;
+  line-height: 1.4 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-event-creation-step="type"] .event-type-option > span:not(.studio-event-type-icon):not(.event-choice-forward) {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  font-size: .8125rem !important;
+  line-height: 1.55 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-event-creation-step="type"] .event-type-option > .event-choice-forward {
+  grid-column: 3 !important;
+  grid-row: 1 / 3 !important;
+  position: static !important;
+  align-self: center !important;
+  justify-self: center !important;
+  width: 20px !important;
+  height: 24px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  inset: auto !important;
+  transform: none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-event-creation-step="type"] .event-type-option:is(:hover, .is-active, [aria-checked="true"]) {
+  background: var(--ledger-accent-soft) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-event-creation-step="type"] .event-type-option:focus-visible {
+  outline: 2px solid var(--ledger-brand) !important;
+  outline-offset: -3px !important;
+}
+/* Approved event details: name and currency remain one clear task. */
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .create-event-panel {
+ display: grid !important;
+ grid-template-columns: minmax(0, 1fr) !important;
+ gap: 24px !important;
+ padding: 18px !important;
+ border: 1px solid var(--ledger-line) !important;
+ border-radius: 12px !important;
+ background: var(--ledger-surface) !important;
+ box-shadow: none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .create-event-panel > .field {
+ display: grid !important;
+ gap: 8px !important;
+ min-width: 0 !important;
+ margin: 0 !important;
+ padding: 0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .field > span {
+ font-size: .875rem !important;
+ font-weight: 700 !important;
+ line-height: 1.5 !important;
+ white-space: normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .field > input,
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .field summary {
+ min-width: 0 !important;
+ min-height: 52px !important;
+ height: auto !important;
+ margin: 0 !important;
+ padding: 12px 13px !important;
+ border-radius: 12px !important;
+ font-size: 1rem !important;
+ line-height: 1.5 !important;
+ font-weight: 650 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .field summary > span:first-child {
+ min-width: 0 !important;
+ font-size: inherit !important;
+ font-weight: inherit !important;
+ white-space: normal !important;
+ overflow-wrap: anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .field > small {
+ display: block !important;
+ min-width: 0 !important;
+ margin: 0 !important;
+ padding: 0 !important;
+ color: var(--ledger-muted) !important;
+ font-size: .8125rem !important;
+ font-weight: 400 !important;
+ line-height: 1.55 !important;
+ white-space: normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .actions {
+ display: grid !important;
+ grid-template-columns: minmax(0, 1fr) !important;
+ gap: 6px !important;
+ margin: 0 !important;
+ padding: 0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .actions > .primary-button {
+ width: 100% !important;
+ min-height: 52px !important;
+ height: auto !important;
+ padding: 12px 16px !important;
+ border-radius: 12px !important;
+ font-size: 1rem !important;
+ font-weight: 700 !important;
+ line-height: 1.5 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .actions > .secondary-button {
+ justify-self: center !important;
+ width: auto !important;
+ min-width: 64px !important;
+ min-height: 44px !important;
+ height: auto !important;
+ margin: 0 !important;
+ padding: 8px 12px !important;
+ border: 0 !important;
+ color: var(--ledger-muted) !important;
+ background: transparent !important;
+ box-shadow: none !important;
+ font-size: .875rem !important;
+ font-weight: 600 !important;
+ line-height: 1.5 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .new-event-inline-picker-menu {
+ max-height: min(18rem, 45dvh) !important;
+ overflow-y: auto !important;
+ overscroll-behavior: contain;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .new-event-inline-picker-menu > button,
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .new-event-inline-picker-menu input {
+ min-height: 44px !important;
+ height: auto !important;
+ font-size: 1rem !important;
+ line-height: 1.5 !important;
+}
+
+/* Approved settlement settings: the existing choices with matching explanations. */
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .new-event-settlement-panel {
+ display: grid !important;
+ grid-template-columns: minmax(0, 1fr) !important;
+ gap: 24px !important;
+ padding: 18px !important;
+ border: 1px solid var(--ledger-line) !important;
+ border-radius: 12px !important;
+ background: var(--ledger-surface) !important;
+ box-shadow: none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .field {
+ display: grid !important;
+ gap: 8px !important;
+ min-width: 0 !important;
+ margin: 0 !important;
+ padding: 0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .field > span {
+ font-size: .875rem !important;
+ font-weight: 700 !important;
+ line-height: 1.5 !important;
+ white-space: normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .field summary {
+ min-width: 0 !important;
+ min-height: 52px !important;
+ height: auto !important;
+ margin: 0 !important;
+ padding: 12px 13px !important;
+ border-radius: 12px !important;
+ font-size: 1rem !important;
+ line-height: 1.5 !important;
+ font-weight: 650 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .field summary > span:first-child {
+ min-width: 0 !important;
+ font-size: inherit !important;
+ font-weight: inherit !important;
+ white-space: normal !important;
+ overflow-wrap: anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .field > small {
+ display: block !important;
+ min-width: 0 !important;
+ margin: 0 !important;
+ padding: 0 !important;
+ color: var(--ledger-muted) !important;
+ font-size: .8125rem !important;
+ font-weight: 400 !important;
+ line-height: 1.55 !important;
+ white-space: normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .new-event-inline-picker-menu > button {
+ min-height: 44px !important;
+ height: auto !important;
+ font-size: 1rem !important;
+ line-height: 1.5 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .actions {
+ display: grid !important;
+ grid-template-columns: minmax(0, 1fr) !important;
+ gap: 8px !important;
+ margin: 0 !important;
+ padding: 0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .actions > .primary-button {
+ width: 100% !important;
+ min-height: 52px !important;
+ height: auto !important;
+ padding: 12px 16px !important;
+ border-radius: 12px !important;
+ font-size: 1rem !important;
+ font-weight: 700 !important;
+ line-height: 1.5 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .settlement-change-hint {
+ display: block !important;
+ margin: 0 !important;
+ padding: 0 !important;
+ color: var(--ledger-muted) !important;
+ font-size: .8125rem !important;
+ font-weight: 400 !important;
+ line-height: 1.55 !important;
+ text-align: center !important;
+ white-space: normal !important;
+}
+
+
+/* Approved participants overview: scalable identities and grouped existing actions. */
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participants {
+ display:grid !important;
+ grid-template-columns:minmax(0,1fr) !important;
+ gap:12px !important;
+ margin:0 !important;
+ padding:18px !important;
+ border:1px solid var(--ledger-line) !important;
+ border-radius:12px !important;
+ background:var(--ledger-surface) !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participants-heading {
+ display:flex !important;
+ align-items:baseline !important;
+ justify-content:space-between !important;
+ flex-wrap:wrap !important;
+ gap:6px 12px !important;
+ padding:0 !important;
+ border:0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participants-heading h2 {
+ margin:0 !important;
+ font-size:.875rem !important;
+ font-weight:700 !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participants-heading>span {
+ font-size:.8125rem !important;
+ font-weight:400 !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-list {
+ gap:0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant {
+ display:grid !important;
+ grid-template-columns:44px minmax(0,1fr) 24px !important;
+ grid-template-areas:"avatar copy check" "avatar status check" !important;
+ min-height:56px !important;
+ gap:2px 12px !important;
+ align-items:center !important;
+ margin:0 !important;
+ padding:8px 0 !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant+.new-event-selected-participant {
+ border-top:1px solid var(--ledger-line) !important;
+ margin-top:8px !important;
+ padding-top:16px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant.is-current-participant {
+ grid-template-columns:44px minmax(0,1fr) !important;
+ grid-template-areas:"avatar copy" "avatar status" !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant .avatar {
+ grid-area:avatar !important;
+ width:44px !important;
+ min-width:44px !important;
+ height:44px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-copy {
+ grid-area:copy !important;
+ min-width:0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-copy strong {
+ font-size:1rem !important;
+ line-height:1.5 !important;
+ font-weight:650 !important;
+ overflow:visible !important;
+ text-overflow:clip !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-copy .participant-username {
+ font-size:.8125rem !important;
+ line-height:1.5 !important;
+ overflow:visible !important;
+ text-overflow:clip !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-self,
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .participant-connection-badge {
+ grid-area:status !important;
+ grid-column:auto !important;
+ min-width:0 !important;
+ justify-self:start !important;
+ margin:0 !important;
+ padding:0 !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ color:var(--ledger-muted) !important;
+ font-size:.8125rem !important;
+ line-height:1.5 !important;
+ font-weight:400 !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-check {
+ grid-area:check !important;
+ width:24px !important;
+ height:24px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-additions {
+ display:grid !important;
+ grid-template-columns:minmax(0,1fr) !important;
+ gap:12px !important;
+ margin:0 !important;
+ padding:0 !important;
+ border:0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-additions>h2 {
+ margin:0 !important;
+ font-size:.875rem !important;
+ font-weight:700 !important;
+ line-height:1.5 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-actions {
+ display:grid !important;
+ grid-template-columns:minmax(0,1fr) !important;
+ gap:0 !important;
+ margin:0 !important;
+ padding:0 !important;
+ border:1px solid var(--ledger-line) !important;
+ border-radius:12px !important;
+ background:var(--ledger-surface) !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action {
+ position:relative !important;
+ display:grid !important;
+ grid-template-columns:24px minmax(0,1fr) 16px !important;
+ align-items:center !important;
+ gap:12px !important;
+ width:100% !important;
+ min-width:0 !important;
+ min-height:78px !important;
+ height:auto !important;
+ margin:0 !important;
+ padding:14px 16px !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ color:var(--ledger-ink) !important;
+ text-align:start !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action:first-child {
+ border-radius:12px 12px 0 0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action:last-child {
+ border-radius:0 0 12px 12px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action+.new-event-participant-route-action::before {
+ content:"" !important;
+ position:absolute !important;
+ top:0 !important;
+ inset-inline:16px !important;
+ height:1px !important;
+ background:var(--ledger-line) !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-icon {
+ display:grid !important;
+ place-items:center !important;
+ width:24px !important;
+ height:24px !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ color:var(--ledger-brand) !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-icon svg {
+ width:22px !important;
+ height:22px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .participant-route-copy {
+ display:grid !important;
+ min-width:0 !important;
+ gap:3px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action strong {
+ min-width:0 !important;
+ margin:0 !important;
+ font-size:1rem !important;
+ line-height:1.5 !important;
+ font-weight:650 !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action small {
+ display:block !important;
+ min-width:0 !important;
+ margin:0 !important;
+ color:var(--ledger-muted) !important;
+ font-size:.8125rem !important;
+ line-height:1.5 !important;
+ font-weight:400 !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .participant-route-chevron {
+ display:grid !important;
+ place-items:center !important;
+ width:16px !important;
+ height:20px !important;
+ color:var(--ledger-muted) !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .participant-route-chevron svg {
+ width:16px !important;
+ height:16px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-footer {
+ position:static !important;
+ display:grid !important;
+ grid-template-columns:minmax(0,1fr) !important;
+ gap:4px !important;
+ margin:20px 0 0 !important;
+ padding:0 !important;
+ border:0 !important;
+ background:transparent !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-footer>.primary-button {
+ width:100% !important;
+ min-width:0 !important;
+ min-height:52px !important;
+ height:auto !important;
+ padding:12px 16px !important;
+ border-radius:12px !important;
+ font-size:1rem !important;
+ font-weight:700 !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-footer>.secondary-button {
+ width:100% !important;
+ min-width:0 !important;
+ min-height:44px !important;
+ height:auto !important;
+ margin:0 !important;
+ padding:10px 8px !important;
+ border:0 !important;
+ border-radius:8px !important;
+ background:transparent !important;
+ color:var(--ledger-muted) !important;
+ font-size:.8125rem !important;
+ font-weight:400 !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+ box-shadow:none !important;
+}
+
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-additions { margin-block-start:20px !important; }
+
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant .avatar {display:grid !important;visibility:visible !important;}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant-self {display:block !important;visibility:visible !important;}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen .new-event-selected-participant .participant-connection-badge {display:inline-flex !important;visibility:visible !important;}
+
+
+/* Approved friends picker: preserve normal14px text while respecting enlargement. */
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="friends"] .participant-pill-name {
+ font-size: .875rem !important;
+ white-space: normal !important;
+ overflow-wrap: anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="friends"] .participant-identity-group-copy > strong {
+ font-size: .875rem !important;
+}
+
+
+/* Shared identity language: roles, account connection and friendship metadata. */
+html.ledger-workspace-v1.circle-design-v1 body #app .participant-identity-label {
+ width:auto !important;
+ min-width:0 !important;
+ max-width:100% !important;
+ min-height:0 !important;
+ margin:0 !important;
+ padding:0 !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ box-shadow:none !important;
+ color:var(--ledger-muted) !important;
+ font-size:.8125rem !important;
+ font-weight:400 !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+ letter-spacing:normal !important;
+ text-transform:none !important;
+}
+
+
+/* Approved manual participant editor: one explanation, clear labeled action. */
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-offline-add {
+ display:grid !important;
+ gap:12px !important;
+ margin:0 !important;
+ padding:0 !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-offline-add .inline-actions {
+ display:grid !important;
+ grid-template-columns:minmax(0,1fr) !important;
+ gap:10px !important;
+ align-items:stretch !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .manual-name-label {
+ display:block !important;
+ font-size:.875rem !important;
+ line-height:1.5 !important;
+ color:var(--ledger-ink) !important;
+ font-weight:700 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-offline-add input {
+ min-width:0 !important;
+ width:100% !important;
+ min-height:52px !important;
+ height:auto !important;
+ padding:12px 14px !important;
+ font-size:1rem !important;
+ line-height:1.5 !important;
+ border:1px solid var(--ledger-line) !important;
+ border-radius:12px !important;
+ background:var(--ledger-surface) !important;
+ color:var(--ledger-ink) !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-offline-add [data-action="new-event-add-guest"] {
+ display:block !important;
+ min-height:48px !important;
+ width:100% !important;
+ height:auto !important;
+ padding:12px 16px !important;
+ font-size:1rem !important;
+ line-height:1.5 !important;
+ font-weight:650 !important;
+ border:1px solid var(--ledger-line) !important;
+ border-radius:12px !important;
+ background:var(--ledger-surface) !important;
+ color:var(--ledger-brand) !important;
+ box-shadow:none !important;
+ white-space:normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-participant-subview-footer {
+ margin-top:20px !important;
+ padding-top:20px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-participant-subview-footer button {
+ min-height:52px !important;
+ height:auto !important;
+ font-size:1rem !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+ padding:14px 16px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-selected-participants {margin-top:20px !important;}
+
+/* Approved event-main presentation, 2026-10-18. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] {
+container: event-main / inline-size;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header {
+min-height: 0 !important;
+  padding: 18px 18px 12px !important;
+  margin-bottom: 10px !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-meta {
+margin: 6px 0 0 !important;
+  font-size: .875rem !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+  color: #d9e9e2 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions.event-header-actions {
+width: 100% !important;
+  display: grid !important;
+  grid-template-columns: repeat(3,minmax(0,1fr)) !important;
+  gap: 8px !important;
+  margin: 12px 0 0 !important;
+  padding: 10px 0 0 !important;
+  border-top: 1px solid rgba(255,255,255,.16) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+width: 100% !important;
+  min-width: 0 !important;
+  min-height: 48px !important;
+  height: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+  padding: 4px 0 !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  color: #f5faf7 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-utility-button .event-header-action-label {
+width: auto !important;
+  height: auto !important;
+  position: static !important;
+  overflow: visible !important;
+  clip: auto !important;
+  font-size: .8125rem !important;
+  line-height: 1.4 !important;
+  font-weight: 500 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-actions .button-action-icon,
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-actions svg {
+width: 19px !important;
+  height: 19px !important;
+  min-width: 19px !important;
+}
+
+@container event-main (max-width: 14rem) {
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions.event-header-actions {
+grid-template-columns: minmax(0,1fr) !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+flex-direction: row !important;
+    gap: 8px !important;
+    padding: 8px !important;
+}
+}
+
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header .hero-actions.event-header-actions {
+grid-template-columns: repeat(3,minmax(0,1fr)) !important;
+}
+
+@container event-main (max-width: 14rem) {
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header .hero-actions.event-header-actions {
+grid-template-columns: minmax(0,1fr) !important;
+}
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header {
+padding: 16px 18px 8px !important;
+  margin-bottom: 6px !important;
+  box-shadow: 0 9px 24px -16px rgba(7,65,47,.28), inset 0 1px 0 rgba(255,255,255,.12) !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header::after {
+display: none !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-overview-header .brand {
+margin: 0 !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-overview-header h1 {
+margin: 0 !important;
+  font-size: 1.5rem !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+  text-wrap: balance !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-meta {
+margin: 4px 0 0 !important;
+  font-size: .8125rem !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions.event-header-actions {
+gap: 4px !important;
+  margin: 8px 0 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+flex-direction: row !important;
+  /* Preserve the44px rendered minimum at fractional compositor positions. */
+  min-height: 45px !important;
+  padding: 4px 0 !important;
+  gap: 6px !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-utility-button .event-header-action-label {
+font-size: .875rem !important;
+  line-height: 1.4 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-actions .button-action-icon,
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-header-actions svg {
+width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+}
+
+@container event-main (max-width: 20rem) {
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+flex-direction: column !important;
+    gap: 4px !important;
+}
+}
+
+@container event-main (max-width: 14rem) {
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+flex-direction: row !important;
+    gap: 8px !important;
+    padding: 8px !important;
+}
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header {
+gap: 0 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions.event-header-actions {
+box-sizing: border-box !important;
+  gap: 0 !important;
+  margin-top: 12px !important;
+  padding: 4px !important;
+  border-radius: 12px !important;
+  background: rgba(255,255,255,.075) !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .hero-actions .secondary-button.event-header-utility-button {
+border-radius: 8px !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value > span {
+display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+  line-height: 1.4 !important;
+  white-space: nowrap !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value > span > .inline-chevron {
+display: block !important;
+  width: 14px !important;
+  height: 14px !important;
+  flex: 0 0 14px !important;
+  line-height: 0 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value > span > .inline-chevron > svg {
+display: block !important;
+}
+
+/* Retain the original DOM order and the original twelve-pixel separation.
+   Native source CSS supplies the complete original event-navigation row. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] > .top.event-overview-header {
+  margin-bottom: 12px !important;
+}
+/* Give the existing total its missing explanation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .event-action-total {
+  grid-template-columns: minmax(0,1fr) !important;
+  gap: 2px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .event-action-total > span:first-child {
+  display: block !important;
+  font-size: .8125rem !important;
+  line-height: 1.4 !important;
+  font-weight: 400 !important;
+  color: var(--ledger-muted) !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .event-action-total .amount {
+  font-size: 1.125rem !important;
+  line-height: 1.3 !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .event-action-total .font-num {
+  font-size: inherit !important;
+}
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock {
+  grid-template-columns: minmax(0,1fr) !important;
+}
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock > :is(.event-action-total,.primary-button) {
+  grid-column: 1 / -1 !important;
+}
+
+
+/* Financial glyphs honor the requested root size; normal design is unchanged. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-copy > strong {
+  font-size: .875rem !important;
+  overflow-wrap: anywhere !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] :is(.event-personal-balance-copy,.event-personal-balance-value) > span {
+  font-size: .6875rem !important;
+  line-height: 1.4 !important;
+  overflow-wrap: anywhere !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value .amount {
+  font-size: 1.25rem !important;
+  line-height: 1.3 !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value .font-num {
+  font-size: inherit !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value > .event-personal-balance-summary > .inline-chevron {
+  width: .875rem !important;
+  height: .875rem !important;
+  flex: 0 0 .875rem !important;
+}
+@container event-main (max-width: 15rem) {
+  html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance {
+    display: grid !important;
+    grid-template-columns: minmax(0,1fr) !important;
+    gap: 8px !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value {
+    justify-items: start !important;
+    text-align: start !important;
+  }
+}
+
+/* Android text zoom enlarges glyphs without enlarging rem layout thresholds.
+   Let each complete utility control choose a new row from its intrinsic text
+   width instead of squeezing a word into a fraction of the old three columns. */
+@media (max-width: 720px) {
+  html.dynamic-type-android.dynamic-type-extra-large.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"] > .top.event-overview-header .hero-actions.event-header-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  html.dynamic-type-android.dynamic-type-extra-large.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"] > .top.event-overview-header .hero-actions .event-header-utility-button {
+    flex: 1 1 8.5rem !important;
+    width: auto !important;
+    min-width: min-content !important;
+    height: auto !important;
+  }
+  html.dynamic-type-android.dynamic-type-extra-large.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"] > .top.event-overview-header .hero-actions > [data-action="open-event-participants"] {
+    flex-basis: 100% !important;
+  }
+  html.dynamic-type-android.dynamic-type-extra-large.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"] > .top.event-overview-header .event-header-action-label {
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+}
+
+/* A currency amount is one readable unit. Wrap the copy/value groups before
+   shrinking their content, including when Android leaves rem queries at 16px. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance {
+  flex-wrap: wrap !important;
+  /* Exceptionally long tokens retain their font and can pan inside the focused
+     card with touch or arrow keys, without widening the document. */
+  overflow-x: auto !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-copy {
+  flex: 1 1 12rem !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value {
+  flex: 0 0 auto !important;
+  width: max-content !important;
+  min-width: max-content !important;
+  max-width: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-personal-balance-value .font-num {
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+
+/* Approved expense disclosure: clear shared-participant role and adaptive menu. */
+html.ledger-workspace-v1.design-coherence-v1 body #app .screen[data-screen-kind="event"] .expense-row-main > strong {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: .375rem !important;
+  max-width: 100% !important;
+}
+html.ledger-workspace-v1.design-coherence-v1 body #app .screen[data-screen-kind="event"] .expense-row-title-text {
+  min-width: 0 !important;
+  overflow-wrap: anywhere !important;
+}
+html.ledger-workspace-v1.design-coherence-v1 body #app .screen[data-screen-kind="event"] .expense-row-expand-icon {
+  flex: 0 0 16px !important;
+  width: 16px !important;
+  height: 16px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 0 !important;
+  color: var(--ledger-muted) !important;
+  transform: rotate(-90deg);
+  transition: transform 160ms ease;
+}
+html.ledger-workspace-v1.design-coherence-v1 body #app .screen[data-screen-kind="event"] .expense-row-expand-icon > svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+html.ledger-workspace-v1.design-coherence-v1 body #app .screen[data-screen-kind="event"] .expense-row-main[aria-expanded="true"] .expense-row-expand-icon {
+  transform: rotate(90deg);
+}
+html.ledger-workspace-v1.design-coherence-v1 body #app .screen[data-screen-kind="event"] .expense-row-actions-menu[open] > div {
+  width: clamp(166px, 10.375rem, calc(100vw - 32px)) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.ledger-workspace-v1.design-coherence-v1 body #app .screen[data-screen-kind="event"] .expense-row-expand-icon { transition: none !important; }
+}
+
+/* Approved action dock: intrinsic groups wrap without clipping long totals. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .event-action-total {
+  justify-items: end !important;
+  text-align: left !important;
+  width: auto !important;
+  min-width: min-content !important;
+  max-width: 100% !important;
+  flex: 0 1 auto !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: space-between !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock > .primary-button[data-action="show-expense-form"] {
+  width: auto !important;
+  min-width: 138px !important;
+  justify-self: end !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 6px !important;
+  margin-left: auto !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock > .primary-button[data-action="show-expense-form"] > span:last-child {
+  white-space: nowrap !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .primary-button .command-card-icon {
+  flex: 0 0 14px !important;
+  width: 14px !important;
+  height: 20px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 0 !important;
+  transform: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock .primary-button .command-card-icon > svg {
+  flex: none !important;
+  width: 20px !important;
+  height: 20px !important;
+  display: block !important;
+}
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock > .primary-button[data-action="show-expense-form"] {
+  width: 100% !important;
+  min-width: 0 !important;
+  justify-self: stretch !important;
+}
+
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock {
+  display: grid !important;
+}
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-action-dock > .event-action-total {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+
+
+  /* Approved amount entry: one quiet step caption and a single amount/currency group.
+     Scope the leaf fonts above the generic enlarged-input rules; otherwise the
+     normal38px numeric field shrinks to1rem when system text is enlarged. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-step-header .eyebrow {
+    display: block !important;
+    margin: 0 0 4px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: var(--ledger-muted) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: .8125rem !important;
+    font-weight: 400 !important;
+    line-height: 1.4 !important;
+    white-space: normal !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body {
+    gap: 16px !important;
+    padding-block-start: 24px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px !important;
+    padding: 16px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field > span {
+    font-size: .8125rem !important;
+    line-height: 1.5 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field .currency-input-badge {
+    font-size: inherit !important;
+    line-height: inherit !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field input[data-action="expense-total"] {
+    min-width: 0 !important;
+    width: 100% !important;
+    min-height: max(72px, 3.25rem) !important;
+    font-size: 2.375rem !important;
+    line-height: 1.15 !important;
+    padding-block: 4px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field input[data-action="expense-total"]::placeholder {
+    font-size: inherit !important;
+    line-height: inherit !important;
+  }
+
+  html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body {
+    scrollbar-gutter: stable both-edges !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-source-currency-field {
+    width: min(100%, 400px) !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px 12px !important;
+    margin: 0 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-source-currency-field > span {
+    font-size: .8125rem !important;
+    line-height: 1.5 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-source-currency-field .app-choice-trigger {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    min-height: 48px !important;
+    font-size: .875rem !important;
+    line-height: 1.4 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-source-currency-field .app-choice-trigger-copy {
+    min-width: 0 !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  @media (max-width: 1366px) {
+    /* Percent follows the available scrollport;100vw includes a classic scrollbar. */
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-route-backdrop:has(> .expense-step-modal[data-expense-step]) {
+      width: auto !important;
+      max-width: 100% !important;
+    }
+    /* The tablet layer already owns its centered, bounded canvas. */
+    html.design-coherence-v1.ledger-workspace-v1:not(.responsive-tablet-shell) body #app .expense-step-modal[data-expense-step] {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+    }
+  }
+
+
+  @media (orientation: landscape) and (max-height: 450px) and (max-width: 1024px) {
+    /* Preserve the existing short-landscape header rather than restoring its caption. */
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-step-header .eyebrow {
+      display: none !important;
+    }
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body {
+      padding-block-start: 8px !important;
+    }
+  }
+
+
+  /* The quiet caption is shorter than the old badge. Keep its title below
+     the fixed keyboard controls, including the font range's ascent. */
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-step-header {
+    padding-top: 36px !important;
+  }
+
+  /* Every step must grow its actual caption/name glyphs, not just its input boxes. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .field > span {
+    font-size: .8125rem !important;
+    line-height: 1.5 !important;
+    white-space: normal !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-participant-row-copy strong {
+    font-size: .875rem !important;
+    line-height: 1.5 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-participant-row-copy small {
+    font-size: .8125rem !important;
+    line-height: 1.5 !important;
+  }
+
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-review-row small {
+    font-size: .8125rem !important;
+    line-height: 1.5 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-review-row strong {
+    font-size: .9375rem !important;
+    line-height: 1.5 !important;
+  }
+
+
+  @media (max-width: 360px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-review-date {
+      grid-template-columns: minmax(0, 1fr) !important;
+      gap: 8px !important;
+    }
+  }
+
+
+  /* Approved expense-name body: one naming task, scalable hints and whole words. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="name"] .expense-source-currency-field {
+    display: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="name"] .expense-flow-body {
+    padding-block-start: 24px !important;
+    gap: 16px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="name"] .expense-name-field input::placeholder {
+    font-size: inherit !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="name"] .expense-template-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr)) !important;
+  }
+
+  /* Shared approved hero. Keep the established compact scrollport/control band
+     when software keyboard space or short landscape height is constrained. */
+  @media (min-height: 451px) {
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header {
+      grid-template-columns: 48px minmax(0, 1fr) 48px !important;
+      gap: 10px !important;
+      padding: 12px 16px 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header > div:first-child {
+      display: contents !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header .eyebrow {
+      display: block !important;
+      grid-column: 2 !important;
+      grid-row: 1 !important;
+      align-self: center !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      color: var(--ledger-muted) !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      font-size: .8125rem !important;
+      font-weight: 400 !important;
+      line-height: 1.4 !important;
+      white-space: normal !important;
+      direction: rtl !important;
+      text-align: center !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header h2 {
+      grid-column: 1 / -1 !important;
+      grid-row: 2 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      min-height: 64px !important;
+      margin: 0 !important;
+      padding: 16px 18px !important;
+      border: 0 !important;
+      border-radius: 24px !important;
+      color: #fff !important;
+      background: linear-gradient(136deg, #071f18 0%, #0b4a38 58%, #0f6b50 100%) !important;
+      box-shadow:
+        0 30px 58px -27px rgba(5, 54, 40, .82),
+        0 20px 38px -16px rgba(18, 184, 139, .48),
+        0 0 28px -13px rgba(61, 223, 185, .58),
+        inset 0 1px 0 rgba(255, 255, 255, .14) !important;
+      font-size: 1.5rem !important;
+      font-weight: 600 !important;
+      line-height: 1.15 !important;
+      direction: rtl !important;
+      text-align: right !important;
+      overflow-wrap: normal !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header .modal-section-back-button {
+      grid-column: 1 !important;
+      grid-row: 1 !important;
+      justify-self: start !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-modal-step-header .expense-accessibility-button {
+      grid-column: 3 !important;
+      grid-row: 1 !important;
+      justify-self: end !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .expense-flow-progress {
+      padding: 17px 16px 0 !important;
+    }
+  }
+
+  /* Approved payer-step presentation. Shared header and money rules stay intact.*/
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-source-currency-field {
+    display: none !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-row {
+    display: grid !important;
+    grid-template-columns: minmax(0,1fr) !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-row:has(>[data-action="remove-payer"]) {
+    grid-template-columns: minmax(0,1fr) auto !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-row+.payer-row {
+    margin-top: 20px !important;
+    padding-top: 20px !important;
+    border-top: 1px solid var(--ledger-line) !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-row>.app-choice-trigger {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-row>[data-action="remove-payer"] {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    width: auto !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    padding: 8px !important;
+    font-size: .8125rem !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-amount-field {
+    grid-column: 1/-1 !important;
+    grid-row: 2 !important;
+    display: grid !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-amount-field>span {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 6px !important;
+    color: var(--ledger-muted) !important;
+    font-size: .8125rem !important;
+    font-weight: 400 !important;
+    line-height: 1.5 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-amount-field>span>span {
+    font-size: inherit !important;
+    line-height: inherit !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-amount-field input {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 56px !important;
+    font-family: var(--font-num) !important;
+    font-size: 1.25rem !important;
+    font-weight: 600 !important;
+    line-height: 1.4 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .payer-inline-add {
+    grid-column: 1/-1 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-payer-summary {
+    display: block !important;
+    width: fit-content !important;
+    max-width: 100% !important;
+    white-space: normal !important;
+    font-size: .875rem !important;
+    line-height: 1.5 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-payer-summary.is-balanced {
+    display: block !important;
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 12px 0 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--ledger-muted) !important;
+    font-size: .8125rem !important;
+    font-weight: 400 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-add-payer-button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: auto !important;
+    min-height: 44px !important;
+    margin: 12px 0 0 !important;
+    padding: 8px 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--ledger-brand) !important;
+    font-size: .875rem !important;
+    line-height: 1.5 !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-add-payer-button>span {
+    display: none !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-add-payer-button>strong {
+    font-size: inherit !important;
+    line-height: inherit !important;
+  }
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-add-payer-button::before,html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="payer"] .expense-add-payer-button::after {
+    display: none !important;
+  }
+
+/* Approved expense participant presentation and accessible progress targets. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-source-currency-field {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-add-launch strong {font-size:.875rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-add-launch small {font-size:.8125rem!important;line-height:1.5!important;font-weight:400!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact {font-size:.875rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact>span {font-size:inherit!important;line-height:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-choice strong {font-size:.875rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-choice small {font-size:.8125rem!important;line-height:1.5!important;font-weight:400!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-add-empty {font-size:.8125rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-row-check {width:24px!important;min-width:24px!important;height:24px!important;min-height:24px!important;border:1.5px solid #aab6b2!important;border-radius:6px!important;background:transparent!important;box-shadow:none!important;color:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-row:has(.expense-participant-checkbox:checked) .expense-participant-row-check {border-color:var(--ledger-brand)!important;background:transparent!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-participant-row-check svg {width:15px!important;height:15px!important;stroke-width:2!important;}
+
+/* Same selection mark for the bulk-selection action. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact>span[aria-hidden="true"] {display:grid!important;place-items:center!important;flex:0 0 24px!important;width:24px!important;min-width:24px!important;height:24px!important;border:1.5px solid var(--ledger-brand)!important;border-radius:6px!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact>span[aria-hidden="true"] svg {width:15px!important;height:15px!important;stroke-width:2!important;}
+
+/* Bulk action copy uses the existing primary ink; its selection mark stays green. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact>span:not([aria-hidden="true"]) {color:var(--ledger-ink)!important;}
+
+/* Original six-pixel bars, with full-size accessible navigation targets. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress li {overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress .expense-progress-step-button {position:absolute!important;inset-inline:0!important;top:-19px!important;display:block!important;width:100%!important;min-width:44px!important;height:44px!important;min-height:44px!important;padding:0!important;margin:0!important;border:0!important;border-radius:6px!important;background:transparent!important;box-shadow:none!important;opacity:1!important;transform:none!important;cursor:pointer!important;touch-action:manipulation;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress .expense-progress-step-button:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;}
+/* Keep visually hidden step captions from extending the scrollable area. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-progress .expense-progress-step-button > span {overflow:hidden!important;}
+
+/* The bulk toggle reflects the same selected/empty state as participant marks. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"] .expense-select-all-compact:not([aria-pressed="true"])>span[aria-hidden="true"] {border-color:#aab6b2!important;color:transparent!important;}
+
+
+/* Approved progressive expense conversion. */
+/* Calculation and persistence remain in the existing adapters. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal:not([data-expense-step="amount"]) .expense-fx-fields,
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal:not([data-expense-step="amount"]) .expense-source-currency-field {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body:has(.expense-fx-fields) {padding-block-start:16px!important;gap:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body:has(.expense-fx-fields) .expense-total-field {padding:12px!important;gap:4px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body:has(.expense-fx-fields) .expense-total-field input[data-action="expense-total"] {min-height:max(56px,3.25rem)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-fields {display:grid!important;gap:12px!important;width:min(100%,400px)!important;min-width:0!important;padding:0!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-fields p {margin:0!important;font-size:.8125rem!important;line-height:1.5!important;font-weight:400!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-mode {display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-mode button {display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;min-height:44px!important;padding:8px 12px!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;font-size:.875rem!important;line-height:1.5!important;font-weight:600!important;white-space:normal!important;color:var(--ledger-ink)!important;background:#fff!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-mode button[aria-pressed="true"] {border-color:var(--ledger-brand)!important;color:var(--ledger-brand)!important;background:#edf6f2!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-rate-field {gap:6px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-rate-field>span {font-size:.8125rem!important;line-height:1.5!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-rate-field input {width:100%!important;min-width:0!important;min-height:48px!important;padding:10px 12px!important;font-family:var(--font-num)!important;font-size:1.25rem!important;line-height:1.4!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;background:#fff!important;color:var(--ledger-ink)!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-rate-field input[readonly] {background:#f7faf9!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-rate-field input:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview {display:flex!important;align-items:center!important;justify-content:space-between!important;flex-wrap:wrap!important;gap:6px 12px!important;padding:12px 0!important;margin:0!important;border:0!important;border-block-start:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview-label {font-size:.875rem!important;line-height:1.5!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview-value {font-size:1.375rem!important;line-height:1.4!important;font-weight:700!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview-message {font-size:.8125rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview.is-error {color:var(--danger,#a12828)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-source-row {display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:start!important;gap:0 12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details {min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details summary {min-width:44px!important;min-height:44px!important;padding:12px 0!important;box-sizing:border-box!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;cursor:pointer!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details summary:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;border-radius:4px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details-content {display:grid!important;gap:8px!important;padding-block:0 12px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal [data-expense-fx-source] {display:grid!important;gap:0!important;min-width:0!important;overflow-wrap:anywhere!important;font-size:.8125rem!important;line-height:1.5!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal [data-expense-fx-source]>span {font-size:inherit!important;line-height:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal [data-action="expense-fx-refresh"] {min-width:44px!important;min-height:44px!important;padding:12px 0!important;border:0!important;border-radius:8px!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-brand)!important;font-size:.8125rem!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-credit {display:none!important;align-items:center!important;flex-wrap:wrap!important;gap:0 4px!important;margin-block-start:-12px!important;font-size:.8125rem!important;line-height:1.5!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-credit a {display:inline-flex!important;align-items:center!important;min-width:44px!important;min-height:44px!important;font-size:inherit!important;line-height:inherit!important;font-weight:400!important;color:inherit!important;text-decoration:underline!important;text-decoration-thickness:1px!important;text-underline-offset:3px!important;overflow-wrap:anywhere!important;max-width:100%!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-credit a:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;border-radius:4px!important;}
+@media(max-width:380px) {html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-source-row {column-gap:8px!important;}}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-source-row:has([data-fx-provider="open-access"])+.expense-fx-credit {display:flex!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-fields .expense-fx-explanation {font-size:.875rem!important;line-height:1.6!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-fields .expense-fx-explanation strong {font-size:inherit!important;line-height:inherit!important;font-weight:600!important;color:inherit!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-fields:has([data-fx-provider="open-access"])>.expense-fx-credit {display:flex!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details summary {font-size:.875rem!important;font-weight:600!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-details-content {gap:12px!important;padding-block:4px 12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-fx-preview-label {font-weight:400!important;}
+/* Approved final review keeps the existing rows, with compact attachments and readable FX copy. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-attachment-control {grid-template-columns:repeat(auto-fit,minmax(min(100%,8.5rem),1fr))!important;align-items:stretch!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-attachment-upload {min-width:0!important;min-height:44px!important;white-space:normal!important;font-size:.875rem!important;line-height:1.5!important;padding:10px 12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-attachment-control>:is(img,[data-action="remove-expense-attachment"]) {grid-column:1/-1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-amount {display:grid!important;gap:4px!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-amount bdi {unicode-bidi:isolate!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-info {display:grid!important;gap:4px!important;padding:8px 15px 12px!important;border-bottom:1px solid var(--ledger-line)!important;color:var(--ledger-muted)!important;font-size:.8125rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-info p {margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details {min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details summary {display:flex!important;align-items:center!important;gap:8px!important;min-height:44px!important;cursor:pointer!important;color:var(--ledger-brand)!important;list-style:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details summary::-webkit-details-marker {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details summary::before {content:"";width:0;height:0;border-block:4px solid transparent;border-inline-end:6px solid currentColor;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details[open] summary::before {transform:rotate(-90deg);}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details p,html.design-coherence-v1.ledger-workspace-v1 body #app [data-expense-fx-review-source] {margin-block-end:8px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app [data-expense-fx-review-source]>span {display:block!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-credit {display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:4px!important;font-size:.8125rem!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-credit a {display:inline-flex!important;align-items:center!important;min-height:44px!important;min-width:44px!important;color:inherit!important;text-underline-offset:3px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-review-fx-details summary:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:2px!important;}
+
+/* The review has its own unobscured scrollport; keyboard scrolling keeps the existing insets. */
+html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] {scroll-padding-block:0!important;}
+html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] :is(input,select,textarea,button,summary,details) {scroll-margin-block:8px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-confirmation-summary>span {font-size:.8125rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="review"] .expense-confirmation-summary>strong {font-size:.8125rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
+/* Approved saved-expense participant breakdown: same source for web and Native. */
+html.ledger-workspace-v1 .expense-participants-details .expense-participant-item {
+  display: grid !important;
+  grid-template-columns: 44px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  column-gap: 10px !important;
+}
+html.ledger-workspace-v1 .expense-participants-details .expense-participant-copy > strong {
+  font-size: .9375rem !important;
+  line-height: 1.4 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+html.ledger-workspace-v1 .expense-participants-details .expense-participant-you {
+  font-size: .75rem !important;
+  line-height: 1.4 !important;
+}
+html.ledger-workspace-v1 .expense-participants-details .expense-participants-list-title {
+  font-size: .875rem !important;
+}
+html.ledger-workspace-v1 .expense-participants-details .expense-participant-share {
+  min-width: 0 !important;
+  font-size: .9375rem !important;
+  font-weight: 700 !important;
+  line-height: 1.4 !important;
+  color: var(--ledger-ink) !important;
+  white-space: nowrap !important;
+  text-align: end !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+/* Let enlarged text keep usable name width, instead of squeezing it beside the amount. */
+html.ledger-workspace-v1 .expense-participants-details .expense-participants-list {
+  container-type: inline-size !important;
+}
+@container (max-width: 16rem) {
+  html.ledger-workspace-v1 .expense-participants-details .expense-participant-item {
+    grid-template-columns: 44px minmax(0, 1fr) !important;
+    row-gap: 4px !important;
+  }
+  html.ledger-workspace-v1 .expense-participants-details .expense-participant-share {
+    grid-column: 2 !important;
+    justify-self: start !important;
+    text-align: start !important;
+  }
+  html.ledger-workspace-v1 .expense-participants-details .expense-participant-avatar-action {
+    grid-row: 1 / span 2 !important;
+    align-self: start !important;
+  }
+}
+
+/* Shared approved date caption; ISO storage and the native picker stay in place. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-field > .expense-date-control {
+  position: relative !important;
+  display: block !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  color: var(--ledger-ink) !important;
+  font-size: 1rem !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-picker-button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  max-width: 100% !important;
+  padding: 8px 10px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  color: var(--ledger-ink) !important;
+  font-family: var(--font-num) !important;
+  font-size: .9375rem !important;
+  font-weight: 650 !important;
+  line-height: 1.4 !important;
+  direction: ltr !important;
+  box-shadow: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-picker-button:focus-visible {
+  outline: 3px solid var(--focus) !important;
+  outline-offset: 2px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-icon {
+  display: inline-flex !important;
+  flex: 0 0 20px !important;
+  width: 20px !important;
+  height: 20px !important;
+  color: var(--ledger-muted) !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-icon svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-control > input.expense-date-picker-input {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  transition: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-control.is-native-date-fallback > input.expense-date-picker-input {
+  position: relative !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: auto !important;
+  min-height: 44px !important;
+  font-size: .9375rem !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-date-control.is-native-date-fallback > button {
+  display: none !important;
+}
+
+
+/* Notes and image reuse the approved expense header, navigation and controls. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-flow-fields {
+ display:flex!important;flex-direction:column!important;gap:0!important;min-height:0!important;overflow:hidden!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-body {
+ padding:24px 16px!important;gap:22px!important;min-width:0!important;min-height:0!important;overflow-y:auto!important;scroll-padding-block:8px!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .eyebrow {overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .field {min-width:0!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .field>span,
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-image-label {font-size:.8125rem!important;line-height:1.5!important;font-weight:600!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] :is(.field>span,.expense-notes-image-label)>small {font:inherit!important;color:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] textarea {width:100%!important;max-width:100%!important;min-width:0!important;font-size:1rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-attachment-control {display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;align-items:stretch!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-image-label {grid-column:1/-1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-attachment-upload {min-width:0!important;min-height:44px!important;white-space:normal!important;font-size:.875rem!important;line-height:1.5!important;padding:10px 12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-attachment-control>:is(img,[data-action="remove-expense-attachment"]) {grid-column:1/-1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-actions {display:grid!important;grid-template-columns:minmax(0,1fr)!important;padding-inline:16px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] [data-action="save-expense"] {width:100%!important;min-width:0!important;min-height:52px!important;font-size:.8125rem!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] :is(button,textarea,img) {scroll-margin-block:8px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .error {margin:0!important;overflow-wrap:anywhere!important;font-size:.875rem!important;line-height:1.5!important;}
+
+/* Match the approved header grid and reserve a compact context line for long names. */
+@media (min-height:451px) {
+html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-notes-modal[data-expense-step="notes"] .expense-modal-step-header p.eyebrow {display:-webkit-box!important;inline-size:100%!important;width:100%!important;justify-self:stretch!important;text-align:center!important;-webkit-box-orient:vertical!important;-webkit-line-clamp:2!important;overflow:hidden!important;}
+}
+
+/* The content owns scrolling; disable browser anchoring so pointer activation cannot shift Remove beneath the image. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] {scroll-padding-block:0!important;overflow:hidden!important;overflow-anchor:none!important;scroll-behavior:auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-body {overflow-anchor:none!important;scroll-behavior:auto!important;}
+
+/* Two balanced actions on wider app panes; stack when the scaled labels need more width. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-notes-body {container-type:inline-size!important;}
+@container (max-width:calc(17rem + 10px)) {
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-notes-modal[data-expense-step="notes"] .expense-attachment-control {grid-template-columns:minmax(0,1fr)!important;}
+}
+
+
+/* Notes discard reuses the confirmation surface with safe focus and scalable text. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] {
+  width:min(480px,calc(100vw - 32px))!important;max-height:calc(100dvh - 32px)!important;
+  padding:24px!important;box-sizing:border-box!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] h2 {
+  font-size:1.25rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] p {
+  font-size:.9375rem!important;line-height:1.5!important;overflow-wrap:anywhere!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] .important-action-dialog-actions {
+  display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))!important;gap:12px!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] button {
+  min-width:0!important;min-height:48px!important;font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="discard-expense-notes"] .important-action-confirm-button {
+  color:var(--ledger-danger,#b42318)!important;background:transparent!important;border:1px solid var(--ledger-line)!important;box-shadow:none!important;
+}
+
+
+/* Expense deletion confirmation: approved context and scalable safe actions. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"]{
+ width:min(480px,calc(100vw - 32px))!important;max-height:calc(100dvh - 32px)!important;
+ padding:24px!important;box-sizing:border-box!important;overflow-y:auto!important;overflow-x:hidden!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .important-action-copy{
+ padding:0!important;gap:16px!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] h2{
+ font-size:1.25rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] p{
+ font-size:.9375rem!important;line-height:1.5!important;overflow-wrap:anywhere!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .expense-delete-context{
+ display:flex!important;justify-content:space-between!important;align-items:baseline!important;gap:12px!important;
+ flex-wrap:wrap!important;padding-bottom:16px!important;border-bottom:1px solid var(--ledger-line,#e1e8e5)!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .expense-delete-context strong{
+ font-size:1rem!important;line-height:1.5!important;font-weight:700!important;overflow-wrap:anywhere!important;min-width:0!important;
+ flex:1 1 8rem!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .expense-delete-context bdi{
+ font-size:1rem!important;line-height:1.5!important;font-weight:700!important;white-space:nowrap!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .important-action-dialog-actions{
+ display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr))!important;
+ gap:12px!important;margin:0!important;padding:24px 0 0!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] button{
+ min-width:0!important;min-height:48px!important;font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog[data-important-action-kind="delete-expense"] .important-action-confirm-button{
+ color:var(--ledger-danger,#b42318)!important;background:transparent!important;border:1px solid var(--ledger-line,#e1e8e5)!important;box-shadow:none!important;
+}
+
+/* Approved interim summary: provisional labels, readable copy and responsive heading. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"]:not(.is-explained){
+ width:100%!important;max-width:none!important;box-sizing:border-box!important;margin:12px 0!important;padding:20px!important;
+ background:#fff!important;border:1px solid var(--ledger-line)!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"]:not(.is-explained) .status-chip{display:none!important}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-hero-main,
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-hero-title-row,
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-hero-title-row>div{
+ width:100%!important;max-width:none!important;padding:0!important;margin:0!important;box-sizing:border-box!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-hero-title-row h2{
+ font-size:1.25rem!important;line-height:1.4!important;margin:0!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-hero-title-row p{
+ font-size:.875rem!important;line-height:1.5!important;max-width:none!important;margin:8px 0 0!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"]:not(.is-explained) .settlement-hero-actions{
+ display:block!important;margin:16px 0 0!important;padding:0!important;background:transparent!important;border:0!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"] .settlement-close-primary{
+ width:100%!important;min-height:48px!important;font-size:.9375rem!important;line-height:1.5!important;white-space:normal!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-hero[data-settlement-phase="interim"].is-explained .status-chip{
+ font-size:.875rem!important;line-height:1.5!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-stage{
+ container-type:inline-size!important;container-name:summary-transfer-section!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-stage-heading h2{
+ font-size:1.375rem!important;line-height:1.3!important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-stage-heading > div > small{
+ font-size:.75rem!important;line-height:1.5!important;
+}
+@container summary-transfer-section (max-width:20rem){
+ html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-stage-heading{
+  flex-direction:column!important;align-items:flex-start!important;gap:12px!important;
+ }
+ html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-stage-heading>div{
+  width:100%!important;
+ }
+ html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-repayment-shortcut{
+  align-self:flex-start!important;width:100%!important;max-width:100%!important;justify-content:flex-start!important;flex:0 0 auto!important;height:auto!important;min-height:44px!important;padding:10px 14px!important;line-height:1.5!important;
+ }
+}
+
+
+/* Settlement disclosure alignment: shared chevron and optical status center. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-event-view="summary"] .transfer-status-cluster {
+  align-items: center !important;
+  gap: .375rem !important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-event-view="summary"] .transfer-status-cluster .transfer-status {
+  margin: 0 !important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-event-view="summary"] .transfer-expand-indicator {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: .875rem !important;
+  height: .875rem !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  flex: 0 0 auto !important;
+}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-event-view="summary"] .transfer-expand-indicator svg {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  flex: 0 0 auto !important;
+  transform: rotate(-90deg) !important;
+}
+
+/* Approved closed summary: shared web/native presentation; no financial rules. */
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .status-chip {font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-title-row h2,
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-route {font-size:1.3125rem!important;font-weight:650!important;line-height:1.35!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-title-row p {font-size:.875rem!important;line-height:1.5!important;font-weight:400!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-total > span {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-amount,
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-amount {font-size:1.75rem!important;line-height:1.25!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-amount .font-num,
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-amount .font-num {font-size:inherit!important;line-height:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-actions {display:flex!important;flex-wrap:wrap!important;gap:8px!important;justify-content:flex-start!important;min-height:0!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-actions > button {width:auto!important;max-width:100%!important;min-width:0!important;min-height:44px!important;height:auto!important;padding:10px 14px!important;font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;flex:0 1 auto!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-action {background:transparent!important;border:0!important;box-shadow:none!important;min-height:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-counterparty {display:block!important;margin-block-start:6px!important;font-size:.875rem!important;line-height:1.5!important;font-weight:400!important;color:var(--app-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-complete {font-size:.875rem!important;line-height:1.5!important;min-height:48px!important;height:auto!important;white-space:normal!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] {width:100%!important;max-width:100%!important;margin-inline:0!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-amount, html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-amount {max-width:100%!important;white-space:nowrap!important;overflow-x:auto!important;text-align:right!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-amount .font-num, html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-featured-amount .font-num {display:inline-block!important;white-space:nowrap!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] :is(.settlement-hero-amount,.settlement-featured-amount) {text-align:right!important;}
+
+/* Closed summary: keep payment words and numeric values intact as text grows. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-actions {display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-amount {flex:1 1 auto!important;min-width:max-content!important;max-width:100%!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-action-buttons {flex:0 1 auto!important;max-width:100%!important;flex-wrap:wrap!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-action-buttons > button {width:auto!important;min-width:max-content!important;max-width:100%!important;white-space:nowrap!important;word-break:normal!important;overflow-wrap:normal!important;min-height:44px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-row .font-num {display:inline-block!important;white-space:nowrap!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-equation-item {flex-wrap:wrap!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-equation-item > .amount {flex:0 0 auto!important;max-width:100%!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen:has(.settlement-hero[data-settlement-closed="true"]) .transfer-amount > .amount {text-align:right!important;}
+
+/* Single visible debt-sharing entry in closed summaries. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share {width:100%!important;min-width:0!important;max-width:100%!important;margin:0!important;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share > summary {display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;min-height:48px!important;padding:12px 16px!important;list-style:none!important;cursor:pointer!important;color:white!important;background:var(--ledger-brand)!important;border:1px solid var(--ledger-brand)!important;border-radius:10px!important;font-size:.875rem!important;line-height:1.5!important;font-weight:650!important;white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share > summary::-webkit-details-marker {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share > summary:focus-visible {outline:3px solid var(--ledger-brand)!important;outline-offset:3px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share-icon {display:inline-flex!important;align-items:center!important;justify-content:center!important;width:20px!important;height:20px!important;flex:0 0 20px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share-icon svg {display:block!important;width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share-options {display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;padding-block:8px 0!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share-options > button {transform:none!important;display:block!important;min-width:0!important;max-width:100%!important;width:100%!important;min-height:48px!important;height:auto!important;margin:0!important;padding:12px 8px!important;font-size:.875rem!important;line-height:1.5!important;text-align:start!important;color:var(--ledger-brand)!important;background:transparent!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;box-shadow:none!important;white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-share-options > button:last-child {border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero.is-personal-pending .settlement-debt-share > summary {background:white!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-reopen-action {border-color:transparent!important;background:transparent!important;box-shadow:none!important;color:var(--app-muted)!important;}
+
+/* Read only canonical debt lines in the independent preview. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-share-message {min-width:0!important;padding:8px 8px 14px!important;border-bottom:1px solid var(--ledger-line)!important;color:var(--ledger-ink)!important;background:transparent!important;font-family:inherit!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-share-message-line {margin:0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;white-space:pre-wrap!important;word-break:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-share-message-line + .settlement-share-message-line {margin-block-start:8px!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-share-currency {display:inline-block!important;white-space:nowrap!important;word-break:normal!important;overflow-wrap:normal!important;}
+
+/* Inspect debts independently on demand; share options never reveal them automatically. */
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview {display:block!important;flex:0 1 auto!important;width:auto!important;max-width:100%!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview[open] {flex-basis:100%!important;width:100%!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview > summary {display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;max-width:100%!important;min-height:44px!important;padding:8px 10px!important;list-style:none!important;font-size:.875rem!important;line-height:1.5!important;font-weight:650!important;white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;cursor:pointer!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview > summary::-webkit-details-marker {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview > summary:focus-visible {outline:2px solid var(--ledger-brand)!important;outline-offset:-2px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview-chevron {display:inline-flex!important;align-items:center!important;justify-content:center!important;flex:0 0 16px!important;width:16px!important;height:16px!important;transform:rotate(-90deg)!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview-chevron svg {display:block!important;width:16px!important;height:16px!important;}
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-debt-preview[open] .settlement-debt-preview-chevron {transform:rotate(90deg)!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-total.is-group-total > span {display:block!important;font-size:.8125rem!important;line-height:1.5!important;}
+
+html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .settlement-screen .settlement-hero[data-settlement-closed="true"] .settlement-hero-total.is-group-total {flex-direction:column!important;align-items:stretch!important;gap:6px!important;}
+
+/* Relationship comparison: constrain the nested track before aligning numeric values. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .relationship-comparison-values > span {grid-template-columns:minmax(0,1fr)!important;}
+
+/* Approved all-paid completion: quiet shared mark, bounded viewport and scalable copy. */
+html body #app .settlement-celebration-backdrop {
+  padding:max(14px,env(safe-area-inset-top)) 14px max(14px,env(safe-area-inset-bottom))!important;
+}
+html body #app .settlement-celebration-dialog {
+  box-sizing:border-box!important;
+  width:min(100%,410px)!important;
+  max-height:calc(100dvh - max(14px,env(safe-area-inset-top)) - max(14px,env(safe-area-inset-bottom)))!important;
+  min-height:0!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain;
+  padding:24px 20px 20px!important;
+  gap:12px!important;
+  box-shadow:0 12px 40px rgba(3,24,21,.18)!important;
+}
+html body #app .settlement-celebration-mark {
+  width:clamp(28px,1.75rem,40px)!important;
+  height:clamp(28px,1.75rem,40px)!important;
+  margin:0!important;
+  color:var(--accent-ink,#174f43)!important;
+  background:transparent!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+  animation:none!important;
+}
+html body #app .settlement-celebration-mark svg {width:100%!important;height:100%!important;}
+html body #app .settlement-celebration-dialog h2 {font-size:1.5rem!important;line-height:1.25!important;font-weight:800!important;margin:0!important;}
+html body #app .settlement-celebration-dialog p {font-size:.875rem!important;line-height:1.6!important;font-weight:500!important;margin:0!important;}
+html body #app .settlement-celebration-actions {margin-top:8px!important;gap:8px!important;}
+html body #app .settlement-celebration-actions button {font-size:.9375rem!important;line-height:1.4!important;min-height:48px!important;height:auto!important;padding:.75em 1em!important;}
+
+/* Friends: scale the visible text leaves with the requested root size. */
+html body #app .friends-hub-screen .friend-row-name > strong {font-size:.9375rem!important;}
+html body #app .friends-hub-screen .friend-identity-heading strong {font-size:.9375rem!important;}
+html body #app .friends-hub-screen .friend-privacy-summary-label {font-size:.75rem!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html body #app .friends-hub-screen .referral-reward-card.is-friends .referral-reward-copy > strong {font-size:.875rem!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
+/* Approved friends roster: one list surface; separators follow visible rows. */
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-identity-section {
+  overflow:visible!important;border:0!important;border-radius:0!important;
+  background:transparent!important;box-shadow:none!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-identity-heading {
+  grid-template-columns:minmax(0,1fr) auto!important;
+  padding:4px 2px 12px!important;border:0!important;border-radius:0!important;
+  background:transparent!important;box-shadow:none!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-identity-marker {display:none!important;}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-list {
+  overflow:hidden!important;border:1px solid var(--ledger-line)!important;
+  border-radius:16px!important;background:#fff!important;box-shadow:none!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-row {
+  margin:0!important;border:0!important;border-radius:0!important;
+  background:transparent!important;box-shadow:none!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friend-row:not([hidden]) ~ .friend-row:not([hidden]) {
+  border-top:1px solid var(--ledger-line)!important;
+}
+
+
+
+/* Approved privacy help: attached roster footer with compact label and chevron. */
+html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .friend-privacy-note:not(.blocked-users-panel) {
+  margin-block-start:-10px!important;padding:0 14px!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .friend-privacy-note:not(.blocked-users-panel) > summary {
+  display:inline-flex!important;align-items:center!important;justify-content:flex-start!important;
+  gap:6px!important;width:fit-content!important;max-width:100%!important;
+  min-width:44px!important;min-height:44px!important;list-style:none!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .friend-privacy-note:not(.blocked-users-panel) > summary .friend-privacy-summary-label {
+  min-width:0!important;flex:0 1 auto!important;
+}
+html.ledger-workspace-v1 body #app .friends-hub-screen .friends-people-panel > .friend-privacy-note:not(.blocked-users-panel) > summary .friend-privacy-chevron {
+  margin:0!important;flex:0 0 auto!important;
+}
+
+/* Approved online caption: retain the text without a filled background. */
+html.ledger-workspace-v1 body #app .friend-add-screen .friend-add-kind.is-online {
+  background:transparent!important;
+}
+
+/* Approved add-friend typography: scale the actual leaves, input and placeholder. */
+html.ledger-workspace-v1 body #app .friend-add-screen .friend-add-mode-button strong {font-size:.8125rem!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-add-screen .friend-network-heading strong {font-size:.9375rem!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-add-screen :is(.friend-request-form,.friends-add-offline-form) .field > span {font-size:.78125rem!important;overflow-wrap:anywhere!important;}
+html.ledger-workspace-v1 body #app .friend-add-screen .friend-add-kind {font-size:.625rem!important;}
+html.ledger-workspace-v1 body #app .friend-add-screen :is(.friend-request-form,.friends-add-offline-form) input {font-size:1rem!important;}
+
+html.ledger-workspace-v1 body #app .friend-add-screen :is(.friend-request-form,.friends-add-offline-form) input::placeholder {font-size:inherit!important;}
+
+  /* Approved Profile identity overview; scoped, scalable and statically extracted for Native. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry{grid-template-columns:24px minmax(0,1fr) 22px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry .profile-identity-copy{width:100%!important;min-width:0!important;gap:4px!important;text-align:right!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry .profile-identity-copy>span{color:var(--app-muted)!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry .profile-identity-copy>strong{max-width:100%!important;min-width:0!important;overflow:visible!important;color:var(--app-ink)!important;font-size:1rem!important;font-weight:650!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;text-overflow:clip!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry[data-profile-identity="username"] .profile-identity-copy>strong{direction:ltr!important;text-align:right!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-identity-grid.profile-shortcuts>.profile-identity-entry .profile-identity-copy>strong>bdi{display:block!important;width:100%!important;max-width:100%!important;overflow:visible!important;font-size:inherit!important;font-weight:inherit!important;line-height:inherit!important;white-space:normal!important;overflow-wrap:anywhere!important;text-overflow:clip!important;text-align:right!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .profile-shortcut-label{font-size:.875rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-avatar-summary-copy>strong{font-size:.875rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-avatar-summary-copy>small{font-size:.8125rem!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .is-editing .field>span{font-size:.875rem!important;line-height:1.4!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .is-editing input{font-size:1rem!important;line-height:1.4!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .is-editing input::placeholder{font-size:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .profile-shortcuts .profile-field-actions button{font-size:.875rem!important;line-height:1.4!important;min-height:44px!important;white-space:normal!important;}
+
+
+  /* Approved Profile rewards card: scalable actual text and full-width explanation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen #referral-reward-card-profile .referral-reward-copy{gap:6px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen #referral-reward-card-profile .referral-reward-copy>strong{font-size:1rem!important;font-weight:650!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen #referral-reward-card-profile .referral-reward-detail{grid-column:1/-1!important;margin:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen #referral-reward-card-profile .referral-reward-action{font-size:.875rem!important;line-height:1.4!important;min-height:48px!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen #referral-reward-card-profile .referral-reward-action>span{font-size:inherit!important;line-height:inherit!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
+  /* Approved invitation dialog: shared scalable presentation and progressive details. */
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-dialog-header{display:grid!important;grid-template-columns:minmax(0,1fr) 44px!important;gap:12px!important;min-height:72px!important;padding:calc(12px + env(safe-area-inset-top)) 14px 12px!important;align-items:center!important;background:var(--app-surface)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-dialog-header-copy{grid-column:1!important;grid-row:1!important;display:block!important;min-width:0!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-dialog-header h2{margin:0!important;max-width:none!important;color:var(--app-accent)!important;font-size:1.25rem!important;font-weight:650!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-close-button{position:static!important;inset:auto!important;grid-column:2!important;grid-row:1!important;align-self:center!important;justify-self:center!important;width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-dialog-content{gap:20px!important;padding:18px 14px calc(22px + env(safe-area-inset-bottom))!important;background:var(--app-surface)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-gift-card{display:grid!important;gap:20px!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-benefit-card{display:grid!important;gap:8px!important;min-height:0!important;overflow:visible!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--app-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-benefit-card::after{display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-benefit-card>strong{display:block!important;margin:0!important;color:var(--app-ink)!important;font-size:1rem!important;font-weight:650!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-benefit-card p{max-width:none!important;margin:0!important;color:var(--app-muted)!important;font-size:.875rem!important;font-weight:400!important;line-height:1.5!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-active-until{display:block!important;width:auto!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;color:var(--app-muted)!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-share-section{display:grid!important;gap:12px!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-share-workspace{display:flex!important;flex-direction:column!important;gap:16px!important;align-items:stretch!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-share-controls{display:grid!important;order:0!important;min-width:0!important;width:100%!important;gap:8px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-share-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr))!important;gap:10px!important;width:100%!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-share-actions button{min-width:0!important;min-height:48px!important;padding:12px!important;gap:6px!important;font-size:.875rem!important;line-height:1.4!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-share-actions button>span{min-width:0!important;font-size:inherit!important;line-height:inherit!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-link-details summary{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:6px!important;min-height:44px!important;margin:0!important;color:var(--app-muted)!important;font-size:.8125rem!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-link-field>span{font-size:.8125rem!important;line-height:1.5!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-link-field input{min-width:0!important;width:100%!important;max-width:100%!important;font-size:.8125rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-qr-card{display:grid!important;order:1!important;align-self:center!important;justify-items:center!important;gap:8px!important;width:auto!important;max-width:100%!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-qr-code{background:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-qr-code svg{width:156px!important;height:156px!important;outline:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-qr-card figcaption{display:block!important;margin:0!important;text-align:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-qr-card figcaption small{color:var(--app-muted)!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-more-details{margin:0!important;padding:0!important;border:0!important;border-top:1px solid var(--app-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-more-details>summary{min-height:60px!important;padding:12px 0!important;gap:12px!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-more-details>summary>span{min-width:0!important;gap:4px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-more-details>summary strong{color:var(--app-ink)!important;font-size:.875rem!important;font-weight:650!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-more-details>summary small{color:var(--app-muted)!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-more-details>summary::after{flex-shrink:0!important;background:transparent!important;color:var(--app-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-more-details-content{padding:16px 0!important;gap:16px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-progress-heading{display:flex!important;flex-wrap:wrap!important;gap:12px!important;align-items:flex-start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-progress-heading>span{min-width:0!important;flex:1 1 12rem!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-steps{grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr))!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog :is(.referral-progress-heading h3,.referral-progress-heading>strong,.referral-rules-section h3,.referral-step strong,.referral-state-message strong){color:var(--app-ink)!important;font-size:1rem!important;font-weight:650!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog :is(.referral-progress-heading p,.referral-step p,.referral-rules-list li,.referral-state-message>span,.referral-state-message p,.referral-notice){font-size:.875rem!important;line-height:1.5!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog :is(.referral-progress-section>small,.referral-rules-section>small){font-size:.8125rem!important;line-height:1.5!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-state-message button{font-size:.875rem!important;line-height:1.4!important;min-height:48px!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .font-num{font-size:inherit!important;font-weight:inherit!important;line-height:inherit!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog{display:flex!important;align-items:center!important;justify-content:center!important;padding:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-dialog-shell{display:flex!important;flex-direction:column!important;width:min(100%,580px)!important;height:auto!important;min-height:0!important;max-height:calc(100dvh - 24px)!important;overflow:hidden!important;border-radius:var(--app-radius-panel)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-dialog-header{flex:0 0 auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-dialog-content{min-height:0!important;flex:1 1 auto!important;overflow-y:auto!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-qr-code{width:174px!important;max-width:100%!important;justify-self:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-steps{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-steps li{display:grid!important;grid-template-columns:1.5rem minmax(0,1fr)!important;gap:4px 10px!important;justify-items:start!important;text-align:start!important;padding:12px 0!important;border:0!important;border-bottom:1px solid var(--app-line)!important;border-radius:0!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-steps li:last-child{border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-steps li>span{grid-column:1!important;grid-row:1/3!important;align-self:start!important;width:auto!important;height:auto!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;color:var(--app-muted)!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-steps li>strong{grid-column:2!important;grid-row:1!important;color:var(--app-ink)!important;font-size:.875rem!important;font-weight:650!important;line-height:1.4!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-steps li>small{grid-column:2!important;grid-row:2!important;color:var(--app-muted)!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-progress-heading>strong{padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-state-message{width:100%!important;min-width:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-state-message button{max-width:100%!important;min-width:0!important;width:100%!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-state-message.is-stale{grid-template-columns:minmax(0,1fr)!important;justify-items:stretch!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-dialog-shell.is-signin-state{height:auto!important;min-height:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog .referral-dialog-shell.is-signin-state .referral-dialog-content{min-height:0!important;justify-content:flex-start!important;align-content:start!important;}
+
+  /* Approved Profile account/support: plain shared rows and scalable actual leaves. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls]{overflow:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-profile-controls-summary{display:grid!important;grid-template-columns:minmax(0,1fr) 22px!important;gap:12px!important;align-items:center!important;min-height:56px!important;padding:14px!important;background:var(--app-surface)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-profile-controls-summary-copy{display:block!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-profile-controls-summary-copy>strong{font-size:1rem!important;font-weight:650!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-profile-controls-summary-chevron{display:flex!important;align-items:center!important;justify-content:center!important;width:22px!important;height:22px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-profile-controls-body{display:grid!important;gap:0!important;padding:4px 14px 16px!important;background:var(--app-surface)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-profile-email{display:flex!important;flex-wrap:wrap!important;align-items:baseline!important;justify-content:flex-start!important;gap:4px 6px!important;margin:0 0 8px!important;padding:12px 0!important;min-width:0!important;color:var(--app-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-profile-email>span{font-size:.75rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-profile-email>bdi{font-size:.8125rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:normal!important;min-width:0!important;max-width:100%!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-feedback-entry{display:grid!important;grid-template-columns:24px minmax(0,1fr) 22px!important;align-items:center!important;gap:10px!important;width:100%!important;min-height:64px!important;margin:0!important;padding:12px 0!important;border:0!important;border-bottom:1px solid var(--app-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-feedback-entry-icon{display:flex!important;align-items:center!important;justify-content:center!important;width:24px!important;height:24px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--app-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-feedback-entry-icon svg{width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-feedback-entry-copy{display:grid!important;gap:3px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-feedback-entry-copy>strong{font-size:.875rem!important;font-weight:600!important;line-height:1.4!important;color:var(--app-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-feedback-entry-copy>small{font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--app-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-feedback-entry-chevron{display:flex!important;align-items:center!important;justify-content:center!important;width:22px!important;height:22px!important;color:var(--app-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-data-links{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;margin:0!important;padding:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] :is(.account-data-link,.account-profile-actions>button){display:grid!important;grid-template-columns:24px minmax(0,1fr) 22px!important;align-items:center!important;justify-items:stretch!important;gap:10px!important;min-width:0!important;width:100%!important;min-height:56px!important;height:auto!important;margin:0!important;padding:12px 0!important;border:0!important;border-bottom:1px solid var(--app-line)!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;text-align:start!important;text-decoration:none!important;color:var(--app-ink)!important;font-size:.875rem!important;font-weight:500!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] :is(.account-data-link,.account-profile-actions>button)>svg{grid-column:1!important;justify-self:center!important;width:20px!important;height:20px!important;color:var(--app-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] :is(.account-row-label,.account-install-button>span){grid-column:2!important;min-width:0!important;max-width:100%!important;font-size:inherit!important;font-weight:inherit!important;line-height:inherit!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-row-chevron{grid-column:3!important;display:flex!important;align-items:center!important;justify-content:center!important;width:22px!important;height:22px!important;color:var(--app-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-row-chevron svg{width:18px!important;height:18px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-profile-actions{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-profile-actions>button:last-child{border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-danger-zone{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:4px!important;margin:12px 0 0!important;padding:12px 0 0!important;border:0!important;border-top:1px solid var(--app-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-delete-button{display:grid!important;grid-template-columns:24px minmax(0,1fr) 22px!important;gap:10px!important;align-items:center!important;width:100%!important;min-width:0!important;min-height:48px!important;margin:0!important;padding:8px 0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;text-align:start!important;color:var(--app-danger)!important;font-size:.875rem!important;font-weight:500!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-delete-button>svg{grid-column:1!important;justify-self:center!important;width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-danger-note{display:block!important;min-width:0!important;margin:0!important;padding-inline-start:34px!important;color:var(--app-muted)!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-delete-button>.button-action-icon{grid-column:1!important;display:flex!important;align-items:center!important;justify-content:center!important;width:24px!important;height:24px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen [data-account-controls] .account-delete-button>.button-action-icon svg{width:20px!important;height:20px!important;}
+
+  /* Approved feedback page: shared chrome, scalable form and a single send action. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-form{display:grid!important;align-content:start!important;grid-auto-rows:max-content!important;gap:18px!important;height:auto!important;min-height:0!important;margin:0!important;padding:18px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-categories{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;grid-auto-rows:max-content!important;gap:6px!important;min-height:0!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-categories legend{margin:0 0 8px!important;padding:0!important;font-size:.875rem!important;font-weight:500!important;line-height:1.5!important;color:var(--app-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-categories label{min-width:0!important;height:auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-categories span{display:grid!important;place-items:center!important;min-height:48px!important;height:auto!important;padding:10px 6px!important;border:1px solid var(--app-line)!important;border-radius:8px!important;color:var(--app-muted)!important;background:var(--app-surface)!important;box-shadow:none!important;font-size:.875rem!important;font-weight:500!important;line-height:1.5!important;text-align:center!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-categories input:checked+span{border-color:var(--app-accent)!important;color:var(--app-accent)!important;background:var(--app-accent-soft)!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-message{display:grid!important;align-content:start!important;gap:8px!important;min-width:0!important;font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;color:var(--app-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-message>span{font-size:inherit!important;font-weight:inherit!important;line-height:inherit!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-message textarea{box-sizing:border-box!important;min-width:0!important;width:100%!important;height:auto!important;min-height:9rem!important;max-height:28rem!important;padding:12px!important;border:1px solid var(--app-line-strong)!important;border-radius:10px!important;background:var(--app-surface)!important;color:var(--app-ink)!important;font-family:var(--font-hebrew)!important;font-size:1rem!important;font-weight:400!important;line-height:1.55!important;resize:vertical!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-message textarea::placeholder{color:var(--app-muted)!important;font-size:inherit!important;font-weight:400!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-message textarea:focus{border-color:var(--app-accent)!important;outline:2px solid var(--app-accent-soft)!important;outline-offset:1px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-message small{font-size:.8125rem!important;font-weight:400!important;line-height:1.6!important;color:var(--app-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-error{min-width:0!important;margin:0!important;padding:10px 12px!important;font-size:.875rem!important;font-weight:500!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-actions{display:grid!important;grid-template-columns:minmax(0,1fr)!important;align-content:start!important;gap:8px!important;min-height:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-actions button{min-width:0!important;width:100%!important;height:auto!important;min-height:48px!important;grid-row:auto!important;align-self:start!important;margin:0!important;padding:12px!important;border-radius:10px!important;box-shadow:none!important;font-size:.875rem!important;font-weight:500!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-actions .primary-button{grid-row:1!important;color:#fff!important;background:var(--ledger-brand)!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-actions button span{font-size:inherit!important;font-weight:inherit!important;line-height:inherit!important;}
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-categories{grid-template-columns:minmax(0,1fr)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-actions .primary-button::before,html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-actions .primary-button::after{display:none!important;background:none!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen[data-screen-kind]>.top h1{font-size:1.5rem!important;font-weight:650!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .feedback-page-panel{min-width:0!important;width:100%!important;margin:0!important;padding:0!important;border:1px solid var(--app-line)!important;border-radius:var(--app-radius-card,16px)!important;background:var(--app-surface)!important;box-shadow:none!important;overflow:visible!important;}
+
+/* Approved feedback success confirmation; presentation only. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-success{display:grid!important;align-content:start!important;justify-items:stretch!important;gap:16px!important;min-height:0!important;min-width:0!important;padding:24px 20px!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-success-heading{display:flex!important;align-items:center!important;gap:10px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-success-mark{display:block!important;flex:0 0 1.5rem!important;width:1.5rem!important;height:1.5rem!important;color:var(--app-accent)!important;background:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-success-mark svg{display:block!important;width:100%!important;height:100%!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-success h2{margin:0!important;min-width:0!important;font-size:1.25rem!important;font-weight:650!important;line-height:1.4!important;color:var(--app-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-success p{margin:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;color:var(--app-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen.feedback-page-screen .account-feedback-success .primary-button{width:100%!important;min-width:0!important;min-height:48px!important;height:auto!important;margin:4px 0 0!important;padding:12px 16px!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;}
+/* Account deletion confirmation: approved scalable presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-backdrop{display:grid!important;place-items:center!important;align-items:center!important;justify-items:center!important;box-sizing:border-box!important;padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))!important;overflow:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-dialog{display:grid!important;align-content:start!important;gap:16px!important;box-sizing:border-box!important;width:min(480px,100%)!important;max-width:480px!important;min-width:0!important;min-height:0!important;max-height:calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;margin:0!important;padding:22px 20px!important;overflow:auto!important;overscroll-behavior:contain!important;border:1px solid var(--app-line)!important;border-radius:var(--app-radius-card,16px)!important;background:var(--app-surface)!important;color:var(--app-ink)!important;box-shadow:0 12px 32px rgba(0,0,0,.12)!important;text-align:start!important;grid-auto-rows:max-content!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-dialog h2{margin:0!important;font-size:1.5rem!important;font-weight:650!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-description{display:grid!important;gap:12px!important;margin:0!important;font-size:.875rem!important;line-height:1.6!important;color:var(--app-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-description p{margin:0!important;font-size:inherit!important;line-height:inherit!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-confirmation{display:flex!important;align-items:flex-start!important;gap:10px!important;min-width:0!important;min-height:48px!important;margin:0!important;padding:8px 0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-confirmation input{flex:0 0 auto!important;width:1.25rem!important;height:1.25rem!important;min-width:20px!important;min-height:20px!important;margin:.125rem 0 0!important;accent-color:var(--app-accent)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-confirmation span{min-width:0!important;font-size:.875rem!important;font-weight:500!important;line-height:1.6!important;color:var(--app-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important;min-width:0!important;margin:0!important;position:static!important;bottom:auto!important;padding:0!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-actions button{width:100%!important;min-width:0!important;min-height:48px!important;height:auto!important;margin:0!important;padding:12px!important;font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;box-shadow:none!important;border-radius:var(--app-radius-control,10px)!important;background-image:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-actions [data-account-action="delete-account-cancel"]{color:#fff!important;border:1px solid var(--app-brand)!important;background:var(--app-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-actions .account-delete-confirm{color:#a33d32!important;border:1px solid var(--app-line)!important;background:var(--app-surface)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-actions .account-delete-confirm:disabled{opacity:.45!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-error{margin:0!important;font-size:.875rem!important;line-height:1.6!important;color:#a33d32!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-error[hidden]{display:none!important;}
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body .account-delete-actions{grid-template-columns:minmax(0,1fr)!important;}
+@media(max-width:360px){html.design-coherence-v1.ledger-workspace-v1 body .account-delete-actions{grid-template-columns:minmax(0,1fr)!important;}}
+
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-dialog:focus{outline:none!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body .account-delete-actions button::before,html.design-coherence-v1.ledger-workspace-v1 body .account-delete-actions button::after{display:none!important;background:none!important;box-shadow:none!important;}
+
+/* Accessibility center: approved shared scroll and preference presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-center-backdrop{display:grid!important;place-items:center!important;box-sizing:border-box!important;padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))!important;background:rgba(18,29,27,.52)!important;overflow:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-center{display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-rows:none!important;grid-auto-rows:max-content!important;align-content:start!important;box-sizing:border-box!important;width:min(480px,100%)!important;height:auto!important;max-width:480px!important;min-width:0!important;min-height:0!important;max-height:calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom))!important;overflow:auto!important;overscroll-behavior:contain!important;border:1px solid var(--app-line)!important;border-radius:var(--app-radius-card,16px)!important;background:var(--app-surface)!important;color:var(--app-ink)!important;box-shadow:0 12px 32px rgba(0,0,0,.12)!important;outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-center-header{display:grid!important;grid-template-columns:minmax(0,1fr) 44px!important;align-items:start!important;gap:12px!important;padding:20px 20px 14px!important;border-bottom:1px solid var(--app-line)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-center-header>div{display:grid!important;gap:6px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-center-header h2{margin:0!important;font-size:1.5rem!important;font-weight:650!important;line-height:1.35!important;color:var(--app-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-wrap:wrap!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-center-header #accessibility-center-description{margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--app-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-wrap:wrap!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-close-button{width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;display:grid!important;place-items:center!important;margin:0!important;padding:0!important;border:1px solid var(--app-line)!important;border-radius:12px!important;background:var(--app-surface)!important;box-shadow:none!important;color:var(--app-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-close-button svg{width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-center-content{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;padding:0 20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-text-size-control{min-width:0!important;margin:0!important;padding:12px 0 16px!important;border:0!important;border-bottom:1px solid var(--app-line)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-text-size-control legend{margin:0!important;padding:0!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;color:var(--app-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-text-size-control>p{margin:4px 0 12px!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--app-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-segmented-control{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-segmented-control label{min-width:0!important;min-height:48px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-segmented-control span{display:grid!important;place-items:center!important;box-sizing:border-box!important;width:100%!important;min-height:48px!important;padding:10px 6px!important;border:1px solid var(--app-line)!important;border-radius:8px!important;font-size:.875rem!important;font-weight:500!important;line-height:1.5!important;color:var(--app-muted)!important;background:var(--app-surface)!important;box-shadow:none!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-segmented-control input:checked+span{border-color:var(--app-accent)!important;background:var(--app-accent-soft)!important;color:var(--app-accent)!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-setting-row{display:grid!important;grid-template-columns:minmax(0,1fr) 50px!important;align-items:center!important;gap:12px!important;min-width:0!important;min-height:78px!important;padding:16px 0!important;border-bottom:1px solid var(--app-line)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-setting-row strong{font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;color:var(--app-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-setting-row small{font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--app-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-switch{border-color:var(--app-line)!important;background:var(--app-surface-soft,#e5ece9)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-setting-row input:checked+.accessibility-switch{border-color:var(--app-brand)!important;background:var(--app-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-statement-link{display:grid!important;grid-template-columns:minmax(0,1fr) 20px!important;gap:10px!important;min-width:0!important;min-height:48px!important;padding:14px 0!important;color:var(--app-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-statement-link strong{font-size:.875rem!important;font-weight:500!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-statement-link svg{width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-center-footer{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:6px!important;padding:14px 20px 18px!important;border-top:1px solid var(--app-line)!important;background:var(--app-surface)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-center-footer button{width:100%!important;min-width:0!important;min-height:48px!important;height:auto!important;margin:0!important;padding:12px!important;border-radius:var(--app-radius-control,10px)!important;font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;box-shadow:none!important;background-image:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-done-button{border:1px solid var(--app-brand)!important;background:var(--app-brand)!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body .accessibility-center-footer .accessibility-reset-button{min-height:44px!important;border:0!important;background:transparent!important;color:var(--app-muted)!important;font-size:.8125rem!important;font-weight:500!important;text-decoration:underline!important;text-underline-offset:3px!important;}
+html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body .accessibility-segmented-control{grid-template-columns:minmax(0,1fr)!important;}
+@media(max-width:390px){html.design-coherence-v1.ledger-workspace-v1 body .accessibility-segmented-control{grid-template-columns:minmax(0,1fr)!important;}}
+html.accessibility-high-contrast.design-coherence-v1.ledger-workspace-v1 body .accessibility-center{--app-ink:#07110f!important;--app-muted:#243631!important;--app-line:#61736e!important;--app-accent:#073f32!important;--app-accent-soft:#eff8f5!important;}
+
+/* Installation guide: approved shared scroll and scalable instructions. */
+html.ledger-workspace-v1.install-app-open .install-app-backdrop{padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))!important;place-items:center!important;align-items:center!important;background:rgba(9,24,21,.42)!important;backdrop-filter:none!important}
+html.ledger-workspace-v1.install-app-open .install-app-dialog{--install-ink:var(--ledger-ink,#172420);--install-muted:var(--ledger-muted,#53645d);--install-line:var(--ledger-line,#dce5e2);--install-brand:var(--ledger-brand,#164e43);width:min(100%,460px)!important;max-width:460px!important;height:auto!important;min-height:0!important;max-height:calc(100dvh - max(14px,env(safe-area-inset-top)) - max(14px,env(safe-area-inset-bottom)))!important;display:block!important;overflow:hidden auto!important;overscroll-behavior:contain;grid-template-rows:none!important;gap:0!important;padding:0!important;border:1px solid var(--install-line)!important;border-radius:10px!important;color:var(--install-ink)!important;background:#fff!important;box-shadow:0 20px 56px rgba(9,24,21,.18)!important}
+html.ledger-workspace-v1.install-app-open .install-app-dialog > header{display:grid!important;grid-template-columns:minmax(0,1fr) 44px!important;align-items:start!important;gap:16px!important;position:static!important;min-height:0!important;padding:20px 20px 16px!important;border:0!important;border-bottom:1px solid var(--install-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--install-ink)!important;text-align:start!important}
+html.ledger-workspace-v1.install-app-open .install-app-dialog header > div{min-width:0!important}
+html.ledger-workspace-v1.install-app-open .install-app-dialog header h2{margin:0!important;font-size:1.5rem!important;line-height:1.3!important;font-weight:800!important;letter-spacing:normal!important;color:var(--install-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1.install-app-open .install-app-dialog header .install-app-description{margin:8px 0 0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;color:var(--install-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1.install-app-open .install-app-dialog [data-public-close-install].icon-button{position:static!important;display:grid!important;place-items:center!important;align-self:start!important;width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;margin:0!important;padding:0!important;border:1px solid var(--install-line)!important;border-radius:8px!important;background:#fff!important;color:var(--install-ink)!important;box-shadow:none!important;transform:none!important}
+html.ledger-workspace-v1.install-app-open .install-app-dialog [data-public-close-install].icon-button .modal-control-icon,html.ledger-workspace-v1.install-app-open .install-app-dialog [data-public-close-install].icon-button svg{display:block!important;width:18px!important;height:18px!important;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;position:static!important;transform:none!important}
+html.ledger-workspace-v1.install-app-open .install-app-steps{display:block!important;min-height:0!important;max-height:none!important;margin:0!important;padding:0 20px!important;overflow:visible!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;list-style:none!important}
+html.ledger-workspace-v1.install-app-open .install-app-steps li{display:grid!important;grid-template-columns:1.25rem minmax(0,1fr)!important;grid-template-rows:auto!important;align-items:start!important;gap:12px!important;min-height:0!important;margin:0!important;padding:20px 0!important;border:0!important;border-bottom:1px solid var(--install-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+html.ledger-workspace-v1.install-app-open .install-app-steps li:last-child{border-bottom:0!important}
+html.ledger-workspace-v1.install-app-open .install-app-steps li > span{display:block!important;align-self:start!important;width:auto!important;height:auto!important;min-width:0!important;min-height:0!important;padding:0!important;border:0!important;border-radius:0!important;color:var(--install-brand)!important;background:transparent!important;font-size:.875rem!important;font-weight:700!important;line-height:1.6!important;text-align:center!important;box-shadow:none!important}
+html.ledger-workspace-v1.install-app-open .install-app-steps strong{display:block!important;margin:0!important;font-size:.9375rem!important;font-weight:700!important;line-height:1.5!important;color:var(--install-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1.install-app-open .install-app-steps p{margin:6px 0 0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--install-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important}
+html.ledger-workspace-v1.install-app-open .install-app-steps p bdi{font-size:inherit!important;font-weight:inherit!important;line-height:inherit!important}
+html.ledger-workspace-v1.install-app-open .install-app-done{display:flex!important;align-items:center!important;justify-content:center!important;width:calc(100% - 40px)!important;min-height:48px!important;height:auto!important;margin:0 20px 20px!important;padding:13px 16px!important;border:1px solid var(--install-brand)!important;border-radius:8px!important;background:var(--install-brand)!important;background-image:none!important;box-shadow:none!important;color:#fff!important;font-size:.875rem!important;font-weight:700!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important}
+html.accessibility-high-contrast.ledger-workspace-v1.install-app-open .install-app-dialog{--install-ink:#111827;--install-muted:#283b34;--install-line:#75857d;--install-brand:#064e3b}
+
+html.ledger-workspace-v1.install-app-open .install-app-dialog{outline:none!important}
+html.ledger-workspace-v1.install-app-open .install-app-done::before,html.ledger-workspace-v1.install-app-open .install-app-done::after{content:none!important;display:none!important;background:none!important;box-shadow:none!important}
+html.ledger-workspace-v1.install-app-open .install-app-dialog button:focus-visible{outline:2px solid var(--install-brand)!important;outline-offset:3px!important}
+
+/* Keep installation entry clear of the fixed profile header and navigation when scrolled into view. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .profile-edit-screen .account-profile-actions .account-install-button{scroll-margin-block:120px 52px!important;}
+
+/* Approved shared notification inbox presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"]{padding-block-end:calc(var(--dynamic-type-bottom-nav-block,82px) + 34px + env(safe-area-inset-bottom))!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-header{grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"brand"!important;gap:0!important;padding:16px 20px!important;min-height:0!important;height:auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-header .brand{min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-header h1{font-size:1.5rem!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-header .muted{font-size:.8125rem!important;line-height:1.55!important;margin:6px 0 0!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-toolbar{display:flex!important;justify-content:flex-end!important;padding:6px 0 0!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-toolbar .notification-mark-all{display:block!important;width:max-content!important;max-width:100%!important;min-height:44px!important;margin:0!important;padding:8px 4px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-brand)!important;font-size:.8125rem!important;font-weight:600!important;line-height:1.5!important;text-decoration:underline!important;text-underline-offset:3px!important;white-space:normal!important;overflow-wrap:anywhere!important;transform:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-toolbar .notification-mark-all:disabled{color:var(--ledger-muted)!important;opacity:.7!important;text-decoration:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-panel{margin:8px 0 0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-list{display:block!important;margin:0!important;padding:0!important;border-block:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-list-entry{margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item{display:grid!important;grid-template-columns:24px minmax(0,1fr) 6px!important;align-items:start!important;gap:12px!important;width:100%!important;min-width:0!important;min-height:88px!important;margin:0!important;padding:18px 14px!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;color:var(--ledger-ink)!important;text-align:start!important;transform:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-list-entry:last-child .notification-inbox-item{border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item.is-unread{background:#f5faf7!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item.is-read{background:#fff!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item-icon{display:grid!important;place-items:center!important;align-self:start!important;width:24px!important;height:24px!important;min-width:0!important;margin:0!important;margin-block-start:max(0px,calc(.703125rem - 12px))!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item-icon svg{width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item-copy{display:grid!important;min-width:0!important;gap:6px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item-heading{display:block!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item-heading strong{display:block!important;font-size:.9375rem!important;font-weight:700!important;line-height:1.5!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item.is-read strong{font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item-copy small{display:block!important;font-size:.875rem!important;font-weight:400!important;line-height:1.55!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item-copy time{display:block!important;font-size:.75rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-unread-dot{position:static!important;inset:auto!important;transform:none!important;align-self:start!important;width:6px!important;height:6px!important;margin-block-start:calc(.703125rem - 3px)!important;border:0!important;border-radius:50%!important;background:var(--ledger-brand)!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-empty{display:grid!important;justify-items:center!important;align-content:center!important;min-height:200px!important;gap:10px!important;padding:32px 12px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;text-align:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-empty-icon{display:grid!important;place-items:center!important;width:32px!important;height:32px!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;color:var(--ledger-muted)!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-empty-icon svg{width:24px!important;height:24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-empty h2{margin:0!important;font-size:1.0625rem!important;line-height:1.5!important;font-weight:700!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-empty p{margin:0!important;font-size:.875rem!important;line-height:1.6!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-empty button{min-height:48px!important;font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item::before,html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-inbox-item::after,html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-mark-all::before,html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] .notification-mark-all::after{content:none!important;display:none!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.notification-inbox-screen[data-screen-kind="notifications"] > .notification-inbox-header.top .muted{font-size:.8125rem!important;line-height:1.55!important;}
+
+/* Approved shared friend-profile presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen{padding-block-end:calc(var(--dynamic-type-bottom-nav-block,82px) + 34px + env(safe-area-inset-bottom))!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen > .top{min-height:88px!important;height:auto!important;padding:20px!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"brand"!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen > .top .brand{min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen > .top h1{font-size:1.5rem!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-relationship-content{display:block!important;min-width:0!important;margin-top:24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .event-participant-profile-card{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:24px!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-identity-card{display:grid!important;grid-template-columns:56px minmax(0,1fr)!important;gap:14px!important;align-items:center!important;padding:0 0 20px!important;margin:0!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-identity-card .avatar{grid-column:1!important;grid-row:1!important;width:56px!important;height:56px!important;min-width:56px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-identity-copy{display:grid!important;grid-column:2!important;gap:3px!important;min-width:0!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-identity-copy > strong{font-size:1.125rem!important;font-weight:700!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-identity-copy > :is(small,bdi,.participant-username){font-size:.8125rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-identity-copy .participant-identity-label{font-size:.8125rem!important;line-height:1.5!important;margin:0!important;text-align:start!important;justify-self:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-overview{display:grid!important;gap:0!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-overview h2{font-size:1.0625rem!important;line-height:1.5!important;margin:0!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-scorecard-note{font-size:.8125rem!important;line-height:1.6!important;text-align:start!important;margin:6px 0 8px!important;padding:0!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-metric{display:grid!important;gap:12px!important;min-width:0!important;padding:20px 0!important;border-bottom:1px solid var(--ledger-line)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-metric h3{font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;margin:0!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-values{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))!important;gap:16px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-values > div{display:grid!important;gap:4px!important;min-width:0!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-values small{font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-values strong{display:block!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;text-align:start!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-more{min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-more > summary{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;min-height:48px!important;padding:8px 0!important;list-style:none!important;cursor:pointer!important;font-size:.875rem!important;line-height:1.5!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-more > summary::-webkit-details-marker{display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-more > summary::marker{content:""!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-more > summary svg{display:block!important;width:18px!important;height:18px!important;flex-shrink:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-more[open] > summary svg{transform:rotate(-90deg)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-more-content{display:grid!important;gap:20px!important;padding-block:4px 20px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-habit{display:block!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-habit-icon{display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-habit h3{font-size:.875rem!important;line-height:1.5!important;margin:0 0 6px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-habit p{font-size:.8125rem!important;line-height:1.6!important;margin:0!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-facts{display:grid!important;gap:12px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-facts > h3{font-size:.875rem!important;line-height:1.5!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-facts-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;border:0!important;box-shadow:none!important;border-radius:0!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-fact{min-width:0!important;padding:14px 0!important;border:0!important;border-top:1px solid var(--ledger-line)!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;grid-template-columns:20px minmax(0,1fr)!important;column-gap:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-fact > span[aria-hidden]{width:20px!important;height:20px!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-fact svg{width:18px!important;height:18px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-fact small{font-size:.75rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-fact strong{font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-fact .font-num{font-size:.8125rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-safety-management{margin:0!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-safety-management > summary{font-size:.8125rem!important;line-height:1.5!important;min-height:48px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-safety-copy p{font-size:.8125rem!important;line-height:1.6!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-safety-actions button{font-size:.875rem!important;line-height:1.5!important;min-height:48px!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-empty{display:grid!important;gap:8px!important;padding-block:8px 24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-empty h2{font-size:1.0625rem!important;line-height:1.5!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-empty p{font-size:.875rem!important;line-height:1.6!important;margin:0!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-identity-card{justify-items:stretch!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-identity-copy{width:100%!important;justify-self:stretch!important;justify-items:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .relationship-identity-copy > strong{text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .screen.font-hebrew.friend-relationship-screen .friend-activity-values strong{text-align:right!important;}
+
+/* Approved shared invitation-choice presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .event-participant-add-screen{display:block!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .event-participant-add-routes{padding:0!important;margin:0!important;border:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .new-event-participant-actions{display:block!important;margin:0!important;padding:0!important;min-width:0!important;border:0!important;border-block:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .new-event-participant-route-action{display:grid!important;grid-template-columns:24px minmax(0,1fr) 18px!important;align-items:center!important;gap:12px!important;width:100%!important;min-width:0!important;min-height:88px!important;margin:0!important;padding:18px 12px!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;color:var(--ledger-ink)!important;box-shadow:none!important;text-align:start!important;transform:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .new-event-participant-route-action:last-child{border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .new-event-participant-route-icon{display:grid!important;place-items:center!important;width:24px!important;height:24px!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .new-event-participant-route-icon svg{width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .event-invitation-choice-copy{display:grid!important;gap:5px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .event-invitation-choice-copy strong{display:block!important;margin:0!important;font-size:.9375rem!important;font-weight:700!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .event-invitation-choice-hint{display:block!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.55!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .event-invitation-choice-chevron{display:grid!important;place-items:center!important;width:18px!important;height:18px!important;min-width:0!important;margin:0!important;padding:0!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .event-invitation-choice-chevron svg{width:18px!important;height:18px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .new-event-participant-route-action::before{content:none!important;display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-invitation-choice-screen .new-event-participant-route-action::after{content:none!important;display:none!important;}
+
+/* Approved shared saved-friends picker presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-add-screen{display:block!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .new-event-participant-editor{display:block!important;padding:0!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-friend-picker-hint{margin:0 0 18px!important;padding:0!important;color:var(--ledger-muted)!important;font-size:.875rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-candidate-list{display:block!important;min-width:0!important;margin:0!important;padding:0!important;gap:0!important;border:0!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-friend-choice-group{display:block!important;min-width:0!important;margin:0 0 20px!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-friend-choice-group > header{display:grid!important;gap:4px!important;min-width:0!important;margin:0!important;padding:0 8px 10px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-friend-choice-group > header > strong{font-size:.8125rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-friend-choice-group > header > p{font-size:.8125rem!important;line-height:1.5!important;color:var(--ledger-muted)!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-friend-choice-row{display:grid!important;grid-template-columns:minmax(0,1fr) 24px!important;align-items:center!important;gap:12px!important;min-height:76px!important;width:100%!important;min-width:0!important;margin:0!important;padding:14px 12px!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;text-align:start!important;color:var(--ledger-ink)!important;transform:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-friend-choice-row:first-of-type{border-top:1px solid var(--ledger-line)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-friend-choice-row:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-person{display:grid!important;grid-template-columns:44px minmax(0,1fr)!important;align-items:center!important;gap:12px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-person > .avatar{width:44px!important;height:44px!important;min-width:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-person-copy{display:grid!important;gap:4px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-person-copy > strong{display:block!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .participant-username{display:block!important;min-width:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-selection-check{display:grid!important;place-items:center!important;opacity:1!important;width:24px!important;height:24px!important;min-width:24px!important;margin:0!important;padding:0!important;border:1.5px solid var(--ledger-line-strong)!important;border-radius:5px!important;background:#fff!important;box-shadow:none!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-selection-check svg{width:17px!important;height:17px!important;opacity:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-friend-choice-row.is-selected .event-participant-selection-check{border-color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-friend-choice-row.is-selected .event-participant-selection-check svg{opacity:1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-add-confirmation{display:grid!important;gap:12px!important;margin:24px 0 0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-add-confirmation p{min-height:0!important;display:flex!important;flex-wrap:wrap!important;gap:4px 8px!important;font-size:.875rem!important;line-height:1.5!important;color:var(--ledger-muted)!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-add-confirmation p[hidden]{display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-add-confirmation p strong{font-size:inherit!important;line-height:inherit!important;color:var(--ledger-ink)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-add-confirmation .primary-button{width:100%!important;min-height:48px!important;height:auto!important;padding:12px 16px!important;border-radius:12px!important;font-size:.9375rem!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-empty-friends-panel header{display:grid!important;gap:10px!important;margin:0 0 24px!important;padding:0!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-empty-friends-panel h2{font-size:1.125rem!important;line-height:1.5!important;margin:0!important;color:var(--ledger-ink)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-empty-friends-panel p{font-size:.875rem!important;line-height:1.6!important;margin:0!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-participant-empty-friends-panel .primary-button{min-height:48px!important;height:auto!important;padding:12px 16px!important;font-size:.9375rem!important;line-height:1.5!important;width:100%!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-friends-picker-screen .event-friend-choice-row:focus-visible .event-participant-selection-check{outline:2px solid var(--ledger-brand)!important;outline-offset:3px!important;}
+
+
+/* Approved shared existing-event manual-name presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;scroll-padding-block:12px!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .event-participant-add-screen{display:block!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .new-event-participant-editor{display:block!important;padding:0!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen  .event-participant-offline-form > input::placeholder{font-size:inherit!important;line-height:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .event-manual-explanation{margin:0!important;padding:0!important;font-size:.875rem!important;line-height:1.6!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .event-participant-offline-form{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:8px!important;min-width:0!important;margin:24px 0 0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .event-participant-offline-form > label{display:block!important;min-width:0!important;margin:0!important;font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .event-participant-offline-form > input{display:block!important;box-sizing:border-box!important;min-width:0!important;width:100%!important;min-height:52px!important;height:auto!important;padding:12px 14px!important;border:1px solid var(--ledger-line-strong)!important;border-radius:12px!important;background:#fff!important;color:var(--ledger-ink)!important;font-size:1rem!important;scroll-margin-block:12px!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .new-event-offline-add > .primary-button{display:block!important;box-sizing:border-box!important;width:100%!important;min-width:0!important;min-height:48px!important;height:auto!important;margin:20px 0 0!important;padding:12px 16px!important;border-radius:12px!important;font-size:.9375rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-manual-name-screen .new-event-offline-add > .field-error{margin:12px 0 0!important;padding:0!important;min-width:0!important;font-size:.8125rem!important;line-height:1.5!important;color:var(--ledger-danger,#a1242b)!important;overflow-wrap:anywhere!important;}
+
+
+/* Approved shared event-link and QR presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;scroll-padding-block:12px!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-route{display:block!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-open{display:block!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-open{display:block!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-link-status{display:grid!important;grid-template-columns:24px minmax(0,1fr)!important;align-items:start!important;gap:12px!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-link-status > span:first-child{display:block!important;width:24px!important;height:24px!important;min-width:0!important;padding:0!important;margin:0!important;border:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-link-status > span:first-child svg{width:24px!important;height:24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-link-status > span:last-child{display:grid!important;gap:6px!important;min-width:0!important;width:auto!important;height:auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-link-status strong{display:block!important;margin:0!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-link-status small{display:block!important;margin:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-link-status.is-ready{grid-template-columns:minmax(0,1fr)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-link-status.is-ready > span{display:block!important;width:auto!important;height:auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-link-status.is-ready strong{font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-link-status.is-error strong{color:var(--ledger-danger,#a1242b)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .invite-link-row{display:block!important;min-width:0!important;margin:24px 0 0!important;padding:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-invite-link-field{display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-invite-link-actions{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:12px!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-invite-link-actions button{box-sizing:border-box!important;width:100%!important;min-width:0!important;min-height:48px!important;height:auto!important;padding:12px 16px!important;border-radius:12px!important;font-size:.9375rem!important;line-height:1.5!important;white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-invite-retry-button{width:100%!important;min-width:0!important;min-height:48px!important;height:auto!important;margin:16px 0 0!important;padding:12px 16px!important;border-radius:12px!important;font-size:.9375rem!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr{display:block!important;min-width:0!important;margin:24px 0 0!important;padding:0!important;border:0!important;border-top:1px solid var(--ledger-line)!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr-summary{display:grid!important;grid-template-columns:minmax(0,1fr) 24px!important;gap:12px!important;align-items:center!important;min-width:0!important;min-height:60px!important;padding:16px 0!important;margin:0!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr-summary > strong{display:block!important;min-width:0!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr-chevron{display:grid!important;place-items:center!important;width:24px!important;height:24px!important;transform:rotate(-90deg)!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr-chevron svg{width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr[open] .public-invite-qr-chevron{transform:rotate(90deg)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr-body{display:grid!important;grid-template-columns:minmax(0,1fr)!important;justify-items:center!important;gap:16px!important;margin:0!important;padding:0 0 20px!important;border:0!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr-code{box-sizing:border-box!important;display:grid!important;place-items:center!important;width:min(100%,clamp(160px,50dvh,240px))!important;height:auto!important;min-width:0!important;aspect-ratio:1!important;margin:0!important;padding:12px!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr-code svg{display:block!important;width:100%!important;height:100%!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr-instruction{display:block!important;max-width:100%!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.6!important;color:var(--ledger-muted)!important;text-align:center!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr-fallback{display:grid!important;gap:8px!important;margin:0!important;padding:0 0 20px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr-fallback strong{font-size:.875rem!important;line-height:1.6!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .public-invite-qr-fallback small{font-size:.875rem!important;line-height:1.6!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-share-link-status{min-height:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-link-share-screen .event-modal-header-actions .modal-section-back-button{border:1px solid var(--ledger-line-strong)!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important;}
+
+
+/* Approved shared in-flow notice presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.app-inline-notice {
+  position: static !important; inset: auto !important; inset-block: auto !important; inset-inline: auto !important;
+  z-index: auto !important; box-sizing: border-box !important; display: grid !important;
+  grid-template-columns: minmax(0,1fr) 44px !important; align-items: start !important; gap: 12px !important;
+  width: 100% !important; max-width: none !important; min-width: 0 !important; min-height: 0 !important;
+  margin: 0 0 24px !important; padding: 12px 12px 12px 0 !important;
+  border: 0 !important; border-inline-start: 2px solid var(--ledger-line) !important; border-radius: 0 !important;
+  background: transparent !important; color: var(--ledger-ink) !important; box-shadow: none !important;
+  font-family: inherit !important; font-size: .875rem !important; font-weight: 400 !important; line-height: 1.65 !important;
+  direction: rtl !important; pointer-events: auto !important; animation: none !important; transform: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .app-inline-notice .app-toast-copy {
+  display: block !important; min-width: 0 !important; margin: 0 !important; padding: 0 !important;
+  font-size: inherit !important; font-weight: 400 !important; line-height: inherit !important;
+  overflow-wrap: anywhere !important; word-break: normal !important; text-align: start !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .app-inline-notice .app-toast-close {
+  align-self: start !important; justify-self: end !important; box-sizing: border-box !important;
+  width: 44px !important; min-width: 44px !important; height: 44px !important; min-height: 44px !important;
+  padding: 0 !important; margin: 0 !important; border: 1px solid var(--ledger-line) !important; border-radius: 10px !important;
+  background: #fff !important; color: var(--ledger-muted) !important; box-shadow: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .app-inline-notice .app-toast-close .ui-icon-svg {
+  width: 18px !important; height: 18px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .app-inline-notice .app-toast-close:focus-visible {
+  outline: 2px solid var(--app-brand) !important; outline-offset: 3px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .app-inline-notice .app-toast-close:active {
+  transform: scale(.96) !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-link-share-screen .event-modal-body:has(>.app-inline-notice) .invite-link-row {
+  margin-top: 0 !important;
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.app-inline-notice[data-notice-kind="error"] { border-inline-start-color:var(--ledger-danger,#a1242b)!important; }
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .product-home-screen > .top + .app-inline-notice + .home-quick-actions { margin-top:0!important; }
+
+
+
+/* Approved independent connection and pending-save presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.sync-inline-notice {
+  position: static !important; inset: auto !important; inset-block: auto !important; inset-inline: auto !important;
+  z-index: auto !important; box-sizing: border-box !important; display: grid !important;
+  grid-template-columns: minmax(0,1fr) 44px !important; align-items: start !important; gap: 12px !important;
+  width: 100% !important; max-width: none !important; min-width: 0 !important; min-height: 0 !important;
+  margin: 0 0 24px !important; padding: 12px 12px 12px 0 !important;
+  border: 0 !important; border-inline-start: 2px solid var(--ledger-line) !important; border-radius: 0 !important;
+  background: transparent !important; color: var(--ledger-ink) !important; box-shadow: none !important;
+  font-family: inherit !important; font-size: .875rem !important; font-weight: 400 !important; line-height: 1.65 !important;
+  direction: rtl !important; pointer-events: auto !important; animation: none !important; transform: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-notice .app-toast-copy {
+  display: block !important; min-width: 0 !important; margin: 0 !important; padding: 0 !important;
+  font-size: inherit !important; font-weight: 400 !important; line-height: inherit !important;
+  overflow-wrap: anywhere !important; word-break: normal !important; text-align: start !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-notice .app-toast-close {
+  align-self: start !important; justify-self: end !important; box-sizing: border-box !important;
+  width: 44px !important; min-width: 44px !important; height: 44px !important; min-height: 44px !important;
+  padding: 0 !important; margin: 0 !important; border: 1px solid var(--ledger-line) !important; border-radius: 10px !important;
+  background: #fff !important; color: var(--ledger-muted) !important; box-shadow: none !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-notice .app-toast-close .ui-icon-svg {
+  width: 18px !important; height: 18px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-notice .app-toast-close:focus-visible {
+  outline: 2px solid var(--app-brand) !important; outline-offset: 3px !important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-notice .app-toast-close:active {
+  transform: scale(.96) !important;
+}
+
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.sync-inline-notice {border-inline-start-color:var(--ledger-danger,#a1242b)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.sync-inline-notice[hidden],
+html.design-coherence-v1.ledger-workspace-v1 body #app [data-route-sync-status].sync-inline-route[hidden] {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .notice.app-toast.sync-inline-notice.is-conflict {border-inline-start-color:var(--ledger-line-strong)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal [data-route-sync-status].sync-inline-route {
+ display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:16px!important;box-sizing:border-box!important;
+ width:100%!important;max-width:none!important;min-width:0!important;margin:0 0 24px!important;padding:12px 12px 12px 0!important;
+ border:0!important;border-inline-start:2px solid var(--ledger-danger,#a1242b)!important;border-radius:0!important;
+ background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-route [data-inline-sync-status] {
+ display:block!important;min-width:0!important;max-width:100%!important;white-space:normal!important;word-break:normal!important;overflow-wrap:anywhere!important;
+ font-size:inherit!important;font-weight:400!important;line-height:inherit!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-route [data-inline-sync-status][hidden] {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-route [data-sync-retry],
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context .sync-pending-retry {
+ box-sizing:border-box!important;display:block!important;width:100%!important;min-width:0!important;max-width:100%!important;min-height:48px!important;height:auto!important;
+ margin:0!important;padding:12px 16px!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important;color:var(--ledger-ink)!important;
+ font-family:inherit!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;text-align:center!important;text-decoration:none!important;
+ white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-route [data-sync-retry][hidden] {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app [data-sync-account-summary].sync-pending-context {
+ box-sizing:border-box!important;display:block!important;width:100%!important;min-width:0!important;
+ margin:12px 0!important;padding:0!important;border:0!important;border-radius:0!important;
+ background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;font-size:.875rem!important;line-height:1.65!important;text-align:start!important;word-break:normal!important;overflow-wrap:anywhere!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app [data-sync-account-summary].sync-pending-context[hidden] {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context [data-sync-pending-notice] {min-width:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context .sync-pending-toggle {
+ box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;width:100%!important;min-width:0!important;min-height:48px!important;
+ margin:0!important;padding:8px 0!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;
+ color:var(--ledger-ink)!important;font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;text-align:start!important;list-style:none!important;cursor:pointer!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context [data-sync-pending-notice]:not([open])>.sync-pending-body {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context [data-sync-pending-notice][open]>.sync-pending-body {display:grid!important;gap:12px!important;min-width:0!important;padding:12px 0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context .sync-pending-heading {
+ display:block!important;min-width:0!important;margin:0!important;font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context .sync-pending-explanation {
+ display:block!important;min-width:0!important;margin:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-muted)!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context [data-sync-event-details] {min-width:0!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context [data-sync-event-details]>summary {
+ box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;width:100%!important;min-width:0!important;min-height:48px!important;
+ margin:0!important;padding:8px 0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;
+ color:var(--ledger-ink)!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;text-decoration:none!important;list-style:none!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context summary::-webkit-details-marker {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-chevron {display:grid!important;place-items:center!important;flex:0 0 24px!important;width:24px!important;height:24px!important;transform:rotate(-90deg)!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-chevron svg {width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context [data-sync-pending-notice][open]>.sync-pending-toggle .sync-pending-chevron,
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context [data-sync-event-details][open]>summary .sync-pending-chevron {transform:rotate(90deg)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context ul {display:grid!important;gap:12px!important;min-width:0!important;margin:8px 0 0!important;padding:0!important;list-style:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context li {display:block!important;min-width:0!important;padding:12px 0!important;border-top:1px solid var(--ledger-line)!important;font-size:.8125rem!important;line-height:1.6!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context [data-action="open-event"] {box-sizing:border-box!important;display:block!important;min-width:0!important;width:100%!important;min-height:44px!important;height:auto!important;margin:0!important;padding:8px 0!important;color:var(--ledger-ink)!important;font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;text-align:start!important;text-decoration:none!important;white-space:normal!important;word-break:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-pending-context :is(button,summary):focus-visible,
+html.design-coherence-v1.ledger-workspace-v1 body #app .sync-inline-route button:focus-visible {outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+
+  /* Approved settings overview: shared hero, flat rows, scalable type, one scroll owner. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;scroll-padding-block:12px!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-cover-settings{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:12px!important;min-width:0!important;margin:0 0 24px!important;padding:0 0 20px!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-cover-settings-copy{display:grid!important;gap:4px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-cover-settings-copy strong{font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-cover-settings-copy small{font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-cover-source-grid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr))!important;gap:10px!important;min-width:0!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-cover-source-grid :is(label,button){box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;width:100%!important;min-height:48px!important;height:auto!important;padding:12px 16px!important;margin:0!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important;color:var(--ledger-ink)!important;font-family:inherit!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;text-align:center!important;cursor:pointer!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-cover-source-grid label[aria-disabled="true"]{opacity:.55!important;cursor:default!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-cover-source-grid [data-action="remove-event-cover"]{grid-column:1/-1!important;min-height:44px!important;border:0!important;background:transparent!important;color:var(--app-danger)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-cover-settings > img{width:100%!important;max-width:100%!important;height:128px!important;object-fit:cover!important;border-radius:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-settings-menu{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-block:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-settings-menu-item{box-sizing:border-box!important;display:grid!important;grid-template-columns:24px minmax(0,1fr) 18px!important;align-items:center!important;gap:12px!important;min-width:0!important;min-height:76px!important;width:100%!important;height:auto!important;margin:0!important;padding:14px 12px!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;color:var(--ledger-ink)!important;text-align:start!important;transform:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-settings-menu-item:last-child{border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-settings-menu-icon{display:grid!important;place-items:center!important;min-width:0!important;width:24px!important;height:24px!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-settings-menu-icon svg{width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-settings-menu-copy{display:grid!important;gap:4px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-settings-menu-copy strong{display:block!important;min-width:0!important;margin:0!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;white-space:normal!important;word-break:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-settings-menu-copy small{display:block!important;min-width:0!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;white-space:normal!important;word-break:normal!important;overflow-wrap:anywhere!important;overflow:visible!important;-webkit-line-clamp:unset!important;text-overflow:clip!important;max-height:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-settings-menu-chevron{display:grid!important;place-items:center!important;min-width:0!important;width:18px!important;height:24px!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-settings-menu-chevron svg{width:18px!important;height:18px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen .event-settings-menu-item.is-danger .event-settings-menu-icon{color:var(--app-danger)!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-settings-modal.settings-overview-screen :is(.event-settings-menu-item,.event-cover-source-grid label,.event-cover-source-grid button):focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+
+html:has(.event-settings-modal.settings-overview-screen){overflow:hidden!important;}
+
+  /* Approved management route: shared header, scaled radio copy and one scroll owner. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;scroll-padding-block:12px!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-field{display:block!important;min-width:0!important;width:100%!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-field > legend{display:block!important;float:none!important;max-width:100%!important;margin:0 0 16px!important;padding:0!important;font-size:1rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-options{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-block:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-option{box-sizing:border-box!important;display:grid!important;grid-template-columns:minmax(0,1fr) 24px!important;align-items:center!important;gap:16px!important;min-width:0!important;min-height:112px!important;width:100%!important;height:auto!important;margin:0!important;padding:18px 12px!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;text-align:start!important;color:var(--ledger-ink)!important;transform:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-option:last-child{border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-copy{display:grid!important;gap:6px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-copy strong{display:block!important;min-width:0!important;margin:0!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-copy small{display:block!important;min-width:0!important;margin:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-muted)!important;white-space:normal!important;word-break:normal!important;overflow-wrap:anywhere!important;overflow:visible!important;-webkit-line-clamp:unset!important;max-height:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-check{position:static!important;display:grid!important;place-items:center!important;align-self:center!important;width:24px!important;height:24px!important;min-width:24px!important;margin:0!important;padding:0!important;border:2px solid var(--ledger-line-strong)!important;border-radius:50%!important;background:#fff!important;box-shadow:none!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-check svg{width:16px!important;height:16px!important;opacity:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-option.is-active .event-management-check{border-color:var(--app-brand)!important;background:var(--app-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-option.is-active .event-management-check svg{opacity:1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-option:focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;position:relative!important;z-index:1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-option:disabled{opacity:1!important;cursor:default!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-admins{display:block!important;min-width:0!important;margin:20px 0 0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-management-admins > span{font-size:inherit!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-management-screen .event-setting-note{border-radius:0!important;display:block!important;min-width:0!important;margin:12px 0 0!important;padding:12px 0 0!important;border:0!important;border-top:1px solid var(--ledger-line)!important;background:transparent!important;box-shadow:none!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html:has(.event-management-screen){overflow:hidden!important;}
+
+
+/* Approved event currency route and scoped picker: shared header and scalable leaves. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;scroll-padding-block:12px!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen .event-currency-field{display:grid!important;gap:14px!important;min-width:0!important;width:100%!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen .event-currency-field > span{display:block!important;margin:0!important;padding:0!important;font-size:1rem!important;line-height:1.5!important;font-weight:600!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen .event-currency-field .app-choice-trigger{min-width:0!important;min-height:56px!important;height:auto!important;margin:0!important;padding:14px!important;border:1px solid var(--ledger-line)!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important;color:var(--ledger-ink)!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;grid-template-columns:minmax(0,1fr) 18px!important;align-items:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen .event-currency-field .app-choice-trigger-copy{display:block!important;min-width:0!important;max-width:100%!important;font:inherit!important;line-height:inherit!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen .event-currency-field .app-choice-trigger:disabled{opacity:1!important;cursor:default!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen .event-currency-field > small{display:block!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;}
+html:has(.event-currency-screen){overflow:hidden!important;}
+
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop{padding:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-picker{max-height:calc(100dvh - 24px)!important;}
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-picker-header{gap:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-picker-header h2{min-width:0!important;font-size:1.25rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-picker-close{min-width:44px!important;min-height:44px!important;flex-shrink:0!important;}
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-search-input{min-height:48px!important;font-size:.9375rem!important;line-height:1.5!important;font-weight:400!important;}
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-options{gap:0!important;}
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-option{min-width:0!important;grid-template-columns:minmax(0,1fr) 24px!important;gap:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-option-copy{min-width:0!important;max-width:100%!important;}
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-option-copy strong{font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-option-copy small{font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-search-empty{font-size:.9375rem!important;line-height:1.5!important;}
+
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-search-input::placeholder{font-size:inherit!important;line-height:inherit!important;}
+
+html.design-coherence-v1.ledger-workspace-v1:has(.event-currency-screen) body .app-choice-picker-backdrop .app-choice-search-input{padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-currency-screen .event-currency-field .app-choice-trigger-arrow{transform:rotate(45deg)!important;}
+
+/* Approved repayment route: shared header, original radio semantics and scalable leaves. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;scroll-padding-block:12px!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-field{display:block!important;min-width:0!important;width:100%!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-field > legend{display:block!important;float:none!important;max-width:100%!important;margin:0 0 16px!important;padding:0!important;font-size:1rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-options{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-block:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-option{box-sizing:border-box!important;display:grid!important;grid-template-columns:minmax(0,1fr) 24px!important;align-items:center!important;gap:16px!important;min-width:0!important;min-height:112px!important;width:100%!important;height:auto!important;margin:0!important;padding:18px 12px!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;text-align:start!important;color:var(--ledger-ink)!important;transform:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-option:last-child{border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-copy{display:grid!important;gap:6px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-copy strong{display:block!important;min-width:0!important;margin:0!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-copy small{display:block!important;min-width:0!important;margin:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-muted)!important;white-space:normal!important;word-break:normal!important;overflow-wrap:anywhere!important;overflow:visible!important;-webkit-line-clamp:unset!important;max-height:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-check{position:static!important;display:grid!important;place-items:center!important;align-self:center!important;width:24px!important;height:24px!important;min-width:24px!important;margin:0!important;padding:0!important;border:2px solid var(--ledger-line-strong)!important;border-radius:50%!important;background:#fff!important;box-shadow:none!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-check svg{width:16px!important;height:16px!important;opacity:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-option.is-active .event-management-check{border-color:var(--app-brand)!important;background:var(--app-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-option.is-active .event-management-check svg{opacity:1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-option:focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;position:relative!important;z-index:1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-management-option:disabled{opacity:1!important;cursor:default!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-repayment-screen .event-setting-note{border-radius:0!important;display:block!important;min-width:0!important;margin:12px 0 0!important;padding:12px 0 0!important;border:0!important;border-top:1px solid var(--ledger-line)!important;background:transparent!important;box-shadow:none!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html:has(.event-repayment-screen){overflow:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-repayment-screen .event-setting-more{margin:20px 0 0!important;font-size:.875rem!important;line-height:1.65!important;color:var(--ledger-muted)!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-repayment-screen .event-setting-more > summary{box-sizing:border-box!important;width:100%!important;min-height:44px!important;padding:10px 0!important;font-size:inherit!important;line-height:1.5!important;font-weight:600!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;list-style-position:inside!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-repayment-screen .event-setting-more > p{margin:0!important;padding:2px 0 12px!important;border:0!important;border-radius:0!important;background:transparent!important;font-size:inherit!important;line-height:1.65!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
+
+/* Approved rounding route: shared header, original radios and scalable expense fact. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;scroll-padding-block:12px!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-field{display:block!important;min-width:0!important;width:100%!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-field > legend{display:block!important;float:none!important;max-width:100%!important;margin:0 0 16px!important;padding:0!important;font-size:1rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-options{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-block:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-option{box-sizing:border-box!important;display:grid!important;grid-template-columns:minmax(0,1fr) 24px!important;align-items:center!important;gap:16px!important;min-width:0!important;min-height:112px!important;width:100%!important;height:auto!important;margin:0!important;padding:18px 12px!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;text-align:start!important;color:var(--ledger-ink)!important;transform:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-option:last-child{border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-copy{display:grid!important;gap:6px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-copy strong{display:block!important;min-width:0!important;margin:0!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-copy small{display:block!important;min-width:0!important;margin:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-muted)!important;white-space:normal!important;word-break:normal!important;overflow-wrap:anywhere!important;overflow:visible!important;-webkit-line-clamp:unset!important;max-height:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-check{position:static!important;display:grid!important;place-items:center!important;align-self:center!important;width:24px!important;height:24px!important;min-width:24px!important;margin:0!important;padding:0!important;border:2px solid var(--ledger-line-strong)!important;border-radius:50%!important;background:#fff!important;box-shadow:none!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-check svg{width:16px!important;height:16px!important;opacity:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-option.is-active .event-management-check{border-color:var(--app-brand)!important;background:var(--app-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-option.is-active .event-management-check svg{opacity:1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-option:focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;position:relative!important;z-index:1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-management-option:disabled{opacity:1!important;cursor:default!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-rounding-screen .event-setting-note{border-radius:0!important;display:block!important;min-width:0!important;margin:12px 0 0!important;padding:12px 0 0!important;border:0!important;border-top:1px solid var(--ledger-line)!important;background:transparent!important;box-shadow:none!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html:has(.event-rounding-screen){overflow:hidden!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-rounding-screen .event-rounding-note{display:block!important;min-width:0!important;margin:20px 0 0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
+
+  /* Approved event activity presentation: scalable leaves, one foreground scroller. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;scroll-padding-block:12px!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-panel{display:block!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-list{display:block!important;min-width:0!important;margin:0!important;padding:0!important;list-style:none!important;border:0!important;border-block:1px solid var(--ledger-line)!important;border-radius:0!important;background:#fff!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-item{display:block!important;min-width:0!important;margin:0!important;padding:18px 12px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-item + .event-activity-item{border-block-start:1px solid var(--ledger-line)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-marker{display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-copy{display:grid!important;min-width:0!important;gap:6px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-copy strong{display:block!important;min-width:0!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-copy > span{display:block!important;min-width:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-copy small{display:flex!important;min-width:0!important;flex-wrap:wrap!important;align-items:baseline!important;gap:4px 12px!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-copy small > .event-activity-actor{display:block!important;min-width:0!important;max-width:100%!important;font-size:inherit!important;font-weight:inherit!important;line-height:inherit!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-copy time{display:inline-flex!important;max-width:100%!important;flex-wrap:wrap!important;align-items:baseline!important;gap:4px!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:inherit!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-copy time span{font-size:inherit!important;font-weight:inherit!important;line-height:inherit!important;color:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-activity-screen .event-activity-empty{display:block!important;min-width:0!important;margin:0!important;padding:20px 0!important;border:0!important;background:transparent!important;box-shadow:none!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-muted)!important;text-align:start!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html:has(.event-activity-screen){overflow:hidden!important;}
+
+
+  /* Approved editing state, scalable action and one foreground scroller. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;scroll-padding-block:12px!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-lock-status{display:block!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-lock-status h3{display:block!important;min-width:0!important;margin:0!important;font-size:1.125rem!important;font-weight:600!important;line-height:1.45!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-lock-status > p{display:block!important;min-width:0!important;margin:10px 0 0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-setting-primary-action{display:block!important;min-width:0!important;margin:24px 0 0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-setting-primary-action > button{box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important;min-width:0!important;min-height:52px!important;height:auto!important;margin:0!important;padding:14px 16px!important;border:1px solid var(--app-brand)!important;border-radius:14px!important;box-shadow:none!important;font-size:.9375rem!important;line-height:1.4!important;text-align:center!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-setting-primary-action > .secondary-button{background:#fff!important;color:var(--app-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-setting-primary-action > .primary-button{background:var(--app-brand)!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-setting-primary-action > button:focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-setting-primary-action > button:disabled{opacity:.6!important;cursor:default!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-lock-screen .event-lock-permission{display:block!important;min-width:0!important;margin:20px 0 0!important;padding:14px 0 0!important;border:0!important;border-top:1px solid var(--ledger-line)!important;background:transparent!important;box-shadow:none!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html:has(.event-lock-screen){overflow:hidden!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;scroll-padding-block:12px!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-departure-section{display:block!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-departure-section + .event-departure-section{margin-top:28px!important;padding-top:28px!important;border-top:1px solid var(--ledger-line)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-departure-section h3{display:block!important;min-width:0!important;margin:0!important;font-size:1.125rem!important;font-weight:600!important;line-height:1.45!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-departure-section > p{display:block!important;min-width:0!important;margin:10px 0 0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-departure-section > .event-departure-permission{margin-top:12px!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-departure-action{box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;width:100%!important;min-width:0!important;min-height:52px!important;height:auto!important;margin:20px 0 0!important;padding:14px 16px!important;border:1px solid var(--app-brand)!important;border-radius:14px!important;background:#fff!important;color:var(--app-brand)!important;box-shadow:none!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.4!important;text-align:center!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-departure-delete .event-departure-action{border-color:#c38181!important;color:#9e3030!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-departure-action:focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-departure-screen .event-departure-action:disabled{opacity:.6!important;cursor:default!important;}
+html:has(.event-departure-screen){overflow:hidden!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog-backdrop:has(.event-leave-confirmation){box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:16px!important;overflow:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-leave-confirmation{box-sizing:border-box!important;display:block!important;width:100%!important;max-width:440px!important;min-width:0!important;min-height:0!important;max-height:calc(100dvh - 32px)!important;overflow:hidden auto!important;scroll-padding-block:20px!important;margin:0!important;padding:24px!important;border:1px solid var(--ledger-line)!important;border-radius:24px!important;background:#fff!important;box-shadow:none!important;outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-leave-confirmation .important-action-copy{display:block!important;min-width:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-leave-confirmation #important-action-title{display:block!important;min-width:0!important;margin:0!important;font-size:1.25rem!important;font-weight:700!important;line-height:1.4!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-leave-confirmation #event-leave-name{display:block!important;min-width:0!important;margin:8px 0 0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-leave-confirmation #important-action-description{display:block!important;min-width:0!important;margin:20px 0 0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-leave-confirmation .important-action-dialog-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))!important;gap:10px!important;margin:24px 0 0!important;padding:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-leave-confirmation .important-action-dialog-actions button{box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important;min-width:0!important;min-height:52px!important;height:auto!important;margin:0!important;padding:14px!important;border:1px solid var(--app-brand)!important;border-radius:14px!important;box-shadow:none!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-leave-confirmation [data-action="cancel-important-action"]{background:var(--app-brand)!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-leave-confirmation .important-action-dialog-actions [data-action="confirm-important-action"]{background:#fff!important;border-color:#c38181!important;color:#9e3030!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-leave-confirmation .important-action-dialog-actions button:focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog-backdrop:has(.event-delete-confirmation){box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:16px!important;overflow:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-delete-confirmation{box-sizing:border-box!important;display:block!important;width:100%!important;max-width:440px!important;min-width:0!important;min-height:0!important;max-height:calc(100dvh - 32px)!important;overflow:hidden auto!important;scroll-padding-block:20px!important;margin:0!important;padding:24px!important;border:1px solid var(--ledger-line)!important;border-radius:24px!important;background:#fff!important;box-shadow:none!important;outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-delete-confirmation .important-action-copy{display:block!important;min-width:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-delete-confirmation #important-action-title{display:block!important;min-width:0!important;margin:0!important;font-size:1.25rem!important;font-weight:700!important;line-height:1.4!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-delete-confirmation #event-delete-name{display:block!important;min-width:0!important;margin:8px 0 0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-delete-confirmation #important-action-description{display:block!important;min-width:0!important;margin:20px 0 0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-delete-confirmation .important-action-dialog-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))!important;gap:10px!important;margin:24px 0 0!important;padding:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-delete-confirmation .important-action-dialog-actions button{box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important;min-width:0!important;min-height:52px!important;height:auto!important;margin:0!important;padding:14px!important;border:1px solid var(--app-brand)!important;border-radius:14px!important;box-shadow:none!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-delete-confirmation [data-action="cancel-important-action"]{background:var(--app-brand)!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-delete-confirmation .important-action-dialog-actions [data-action="confirm-important-action"]{background:#fff!important;border-color:#c38181!important;color:#9e3030!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-delete-confirmation .important-action-dialog-actions button:focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog-backdrop:has(.event-currency-confirmation){box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:16px!important;overflow:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-currency-confirmation{box-sizing:border-box!important;display:block!important;width:100%!important;max-width:440px!important;min-width:0!important;min-height:0!important;max-height:calc(100dvh - 32px)!important;overflow:hidden auto!important;scroll-padding-block:20px!important;margin:0!important;padding:24px!important;border:1px solid var(--ledger-line)!important;border-radius:24px!important;background:#fff!important;box-shadow:none!important;outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-currency-confirmation .important-action-copy{display:block!important;min-width:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-currency-confirmation #important-action-title{display:block!important;min-width:0!important;margin:0!important;font-size:1.25rem!important;font-weight:700!important;line-height:1.4!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-currency-confirmation #event-currency-confirmation-name{display:block!important;min-width:0!important;margin:8px 0 0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-currency-confirmation #important-action-description{display:block!important;min-width:0!important;margin:20px 0 0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-currency-confirmation .important-action-dialog-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))!important;gap:10px!important;margin:24px 0 0!important;padding:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-currency-confirmation .important-action-dialog-actions button{box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important;min-width:0!important;min-height:52px!important;height:auto!important;margin:0!important;padding:14px!important;border:1px solid var(--app-brand)!important;border-radius:14px!important;box-shadow:none!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-currency-confirmation [data-action="cancel-important-action"]{background:var(--app-brand)!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-currency-confirmation .important-action-dialog-actions [data-action="confirm-important-action"]{background:#fff!important;border-color:var(--app-brand)!important;color:var(--app-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-currency-confirmation .important-action-dialog-actions button:focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog-backdrop:has(.event-reopen-confirmation){box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:16px!important;overflow:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation{box-sizing:border-box!important;display:block!important;width:100%!important;max-width:440px!important;min-width:0!important;min-height:0!important;max-height:calc(100dvh - 32px)!important;overflow:hidden auto!important;scroll-padding-block:20px!important;margin:0!important;padding:24px!important;border:1px solid var(--ledger-line)!important;border-radius:24px!important;background:#fff!important;box-shadow:none!important;outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .important-action-copy{display:block!important;min-width:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation #important-action-title{display:block!important;min-width:0!important;margin:0!important;font-size:1.25rem!important;font-weight:700!important;line-height:1.4!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation #event-reopen-confirmation-name{display:block!important;min-width:0!important;margin:8px 0 0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation #important-action-description{display:block!important;min-width:0!important;margin:20px 0 0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .important-action-dialog-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))!important;gap:10px!important;margin:24px 0 0!important;padding:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .important-action-dialog-actions button{box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important;min-width:0!important;min-height:52px!important;height:auto!important;margin:0!important;padding:14px!important;border:1px solid var(--app-brand)!important;border-radius:14px!important;box-shadow:none!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation [data-action="cancel-important-action"]{background:var(--app-brand)!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .important-action-dialog-actions [data-action="confirm-important-action"]{background:#fff!important;border-color:var(--app-brand)!important;color:var(--app-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .important-action-dialog-actions button:focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-options{display:grid!important;gap:0!important;min-width:0!important;margin:24px 0 0!important;padding:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-options legend{display:block!important;float:none!important;width:100%!important;min-width:0!important;margin:0 0 4px!important;padding:0!important;color:var(--ledger-ink)!important;font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-option{box-sizing:border-box!important;display:grid!important;grid-template-columns:minmax(0,1fr) 24px!important;align-items:center!important;gap:14px!important;min-width:0!important;width:100%!important;min-height:52px!important;height:auto!important;margin:0!important;padding:16px 0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;text-align:start!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-option + .reopen-payment-option{border-top:1px solid var(--ledger-line)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-copy{display:block!important;min-width:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-copy strong{display:block!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-copy small{display:block!important;margin:4px 0 0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-check{position:static!important;display:grid!important;place-items:center!important;align-self:center!important;box-sizing:border-box!important;width:24px!important;height:24px!important;min-width:24px!important;margin:0!important;padding:0!important;border:2px solid var(--ledger-line-strong)!important;border-radius:50%!important;background:#fff!important;box-shadow:none!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-check svg{width:16px!important;height:16px!important;opacity:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-option.is-selected .reopen-payment-check{border-color:var(--app-brand)!important;background:var(--app-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-option.is-selected .reopen-payment-check svg{opacity:1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation .reopen-payment-option:focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-reopen-confirmation:has([data-payment-mode="reset"][aria-pressed="true"]) .important-action-dialog-actions [data-action="confirm-important-action"]{border-color:#a83535!important;color:#a83535!important;}
+
+
+  /* Approved event notes batch: shared header, selection, flat list and confirmation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;scroll-padding-block:12px!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+html:has(.event-note-screen){overflow:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-heading{display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:14px!important;margin:24px 0 16px!important;padding:0!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-heading-copy{flex:1 1 10rem!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-heading h2{margin:0!important;font-size:1.125rem!important;font-weight:700!important;line-height:1.5!important;color:var(--ledger-ink)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-heading p{margin:4px 0 0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-heading .event-notes-entry-action{display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;min-width:0!important;max-width:100%!important;width:max-content!important;min-height:48px!important;margin:0!important;padding:12px 16px!important;border-radius:12px!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.4!important;white-space:normal!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-entry-action svg{display:block!important;width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-content{display:grid!important;gap:24px!important;min-width:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-section{display:grid!important;gap:0!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-section-label{display:flex!important;align-items:center!important;gap:8px!important;min-height:0!important;margin:0!important;padding:8px 0!important;border:0!important;background:transparent!important;color:var(--ledger-muted)!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-section-label strong{font:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-note-row{display:block!important;min-width:0!important;min-height:0!important;padding:0!important;margin:0!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-note-open{box-sizing:border-box!important;display:grid!important;grid-template-columns:minmax(0,1fr) 20px!important;align-items:center!important;gap:16px!important;width:100%!important;min-width:0!important;min-height:84px!important;padding:16px 0!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-note-copy{display:grid!important;min-width:0!important;gap:6px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-note-title-line{display:block!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-note-title-line strong{display:block!important;font-size:1rem!important;font-weight:600!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-note-preview{display:block!important;min-width:0!important;max-width:none!important;max-height:none!important;font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;-webkit-line-clamp:unset!important;overflow-wrap:anywhere!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-note-meta{display:block!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-note-chevron{display:grid!important;place-items:center!important;min-width:0!important;min-height:0!important;width:20px!important;height:20px!important;padding:0!important;margin:0!important;align-self:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-note-chevron svg{width:18px!important;height:18px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-empty{display:block!important;min-width:0!important;margin:0!important;padding:24px 0!important;border:0!important;background:transparent!important;box-shadow:none!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-empty h3{margin:0!important;font-size:1rem!important;font-weight:600!important;line-height:1.5!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-empty p{max-width:none!important;margin:8px 0 0!important;font-size:.875rem!important;line-height:1.6!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-sharing-help{margin:0 0 24px!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-editor{display:grid!important;min-width:0!important;gap:24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .field{display:grid!important;min-width:0!important;gap:8px!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .field > span{font-size:.875rem!important;font-weight:600!important;line-height:1.5!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .field :is(input,textarea){box-sizing:border-box!important;min-width:0!important;width:100%!important;max-width:100%!important;min-height:52px!important;margin:0!important;padding:14px!important;border:1px solid var(--ledger-line-strong)!important;border-radius:12px!important;background:#fff!important;box-shadow:none!important;color:var(--ledger-ink)!important;font-size:1rem!important;font-weight:400!important;line-height:1.6!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .field textarea{min-height:12rem!important;height:12rem!important;resize:vertical!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .field :is(input,textarea)::placeholder{font:inherit!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-pin-toggle{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:12px!important;min-width:0!important;width:100%!important;min-height:48px!important;margin:0!important;padding:8px 0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;font-size:.9375rem!important;font-weight:400!important;line-height:1.5!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-pin-check{box-sizing:border-box!important;display:grid!important;place-items:center!important;flex:0 0 24px!important;width:24px!important;height:24px!important;min-width:24px!important;margin:0!important;padding:0!important;border:1px solid var(--ledger-line-strong)!important;border-radius:6px!important;background:transparent!important;color:var(--app-brand)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-pin-check svg{width:16px!important;height:16px!important;opacity:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-pin-toggle.is-active .event-note-pin-check svg{opacity:1!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-editor-actions{display:flex!important;flex-direction:column!important;gap:12px!important;min-width:0!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-editor-actions .primary-button{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;width:100%!important;min-height:52px!important;margin:0!important;padding:14px!important;border-radius:14px!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.4!important;white-space:normal!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-delete{display:flex!important;align-items:center!important;justify-content:center!important;align-self:center!important;gap:8px!important;width:max-content!important;max-width:100%!important;min-height:44px!important;margin:0!important;padding:10px 12px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:#9e3030!important;font-size:.875rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-delete svg{width:18px!important;height:18px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-readonly-content{display:grid!important;gap:20px!important;min-width:0!important;user-select:text!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-readonly-content h3{margin:0!important;font-size:1.125rem!important;font-weight:600!important;line-height:1.5!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-readonly-content p{margin:0!important;font-size:1rem!important;font-weight:400!important;line-height:1.7!important;white-space:pre-wrap!important;overflow-wrap:anywhere!important;user-select:text!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .event-note-readonly-content small{font-size:.8125rem!important;line-height:1.5!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .field-error{font-size:.875rem!important;line-height:1.6!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog-backdrop:has(.event-note-delete-confirmation){box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:16px!important;overflow:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-note-delete-confirmation{box-sizing:border-box!important;display:block!important;width:100%!important;max-width:440px!important;min-width:0!important;min-height:0!important;max-height:calc(100dvh - 32px)!important;overflow:hidden auto!important;scroll-padding-block:20px!important;margin:0!important;padding:24px!important;border:1px solid var(--ledger-line)!important;border-radius:24px!important;background:#fff!important;box-shadow:none!important;outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-note-delete-confirmation .important-action-copy{display:block!important;min-width:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-note-delete-confirmation #important-action-title{display:block!important;min-width:0!important;margin:0!important;font-size:1.25rem!important;font-weight:700!important;line-height:1.4!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-note-delete-confirmation #event-note-delete-name{display:block!important;min-width:0!important;margin:8px 0 0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-note-delete-confirmation #important-action-description{display:block!important;min-width:0!important;margin:20px 0 0!important;padding:0!important;font-size:.875rem!important;font-weight:400!important;line-height:1.65!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-note-delete-confirmation .important-action-dialog-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))!important;gap:10px!important;margin:24px 0 0!important;padding:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-note-delete-confirmation .important-action-dialog-actions button{box-sizing:border-box!important;display:flex!important;align-items:center!important;justify-content:center!important;width:100%!important;min-width:0!important;min-height:52px!important;height:auto!important;margin:0!important;padding:14px!important;border:1px solid var(--app-brand)!important;border-radius:14px!important;box-shadow:none!important;font-size:.9375rem!important;font-weight:600!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere!important;text-align:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-note-delete-confirmation [data-action="cancel-important-action"]{background:var(--app-brand)!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-note-delete-confirmation .important-action-dialog-actions [data-action="confirm-important-action"]{background:#fff!important;border-color:#c38181!important;color:#9e3030!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-note-delete-confirmation .important-action-dialog-actions button:focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-screen .event-notes-content{border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-task-modal.event-note-screen .field textarea{resize:none!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-note-screen .field :is(input,textarea):focus-visible{outline:2px solid var(--app-brand)!important;outline-offset:3px!important;}
+
+/* Approved event participant roster and detail presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen{display:block!important;min-width:0!important;padding:0 16px 28px!important;overflow:hidden auto!important;outline:none!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen:focus-visible{outline:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen > .event-modal-header{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;grid-template-areas:"controls" "title"!important;gap:14px!important;min-height:0!important;height:auto!important;margin:0!important;padding:14px 0 0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen > .event-modal-header > div:first-child{grid-area:title!important;display:grid!important;min-width:0!important;width:100%!important;gap:6px!important;margin:0!important;padding:18px 20px!important;border:1px solid var(--ledger-hero-border)!important;border-radius:24px!important;background:var(--ledger-hero-surface)!important;box-shadow:var(--ledger-hero-shadow)!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-modal-header h2{margin:0!important;font-size:1.5rem!important;font-weight:700!important;line-height:1.35!important;white-space:normal!important;overflow-wrap:anywhere!important;color:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-modal-header #event-modal-description{display:block!important;max-width:none!important;margin:0!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;white-space:normal!important;overflow:visible!important;overflow-wrap:anywhere!important;text-overflow:clip!important;color:rgba(255,255,255,.8)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-modal-header-actions{grid-area:controls!important;display:flex!important;align-items:center!important;justify-self:end!important;width:max-content!important;gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-modal-header-actions button{min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen > .event-modal-body{display:block!important;min-width:0!important;min-height:0!important;height:auto!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:24px 0 32px!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-modal-body :is(strong,small,p,span){min-width:0!important;white-space:normal!important;overflow-wrap:anywhere!important;text-overflow:clip!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-section-header{margin:0!important;padding:0 0 12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-count{font-size:.875rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-roster-list{border-top:1px solid var(--ledger-line)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-roster-row{display:grid!important;grid-template-columns:minmax(0,1fr) 20px!important;gap:12px!important;align-items:center!important;min-width:0!important;width:100%!important;min-height:80px!important;height:auto!important;padding:16px 0!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-person{display:grid!important;grid-template-columns:44px minmax(0,1fr)!important;gap:12px!important;align-items:center!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-person-copy{display:grid!important;gap:4px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-person-copy>strong{font-size:1rem!important;font-weight:600!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-meta{display:flex!important;flex-wrap:wrap!important;gap:2px 8px!important;align-items:baseline!important;font-size:.8125rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .participant-username{font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;direction:ltr!important;unicode-bidi:isolate!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .participant-identity-label{font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-primary-actions{margin:24px 0 0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-add-launch{display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;width:100%!important;min-height:52px!important;height:auto!important;padding:14px 16px!important;border-radius:14px!important;font-size:1rem!important;font-weight:600!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-add-launch>span{font:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen :is(.event-participant-roster-chevron,.event-participant-link-arrow){display:grid!important;place-items:center!important;align-self:center!important;width:20px!important;height:24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-identity{display:grid!important;grid-template-columns:64px minmax(0,1fr)!important;gap:14px!important;align-items:center!important;margin:0!important;padding:0 0 24px!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-identity>div{display:grid!important;gap:4px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-identity strong{font-size:1.25rem!important;line-height:1.45!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .participant-detail-explanation{margin:0 0 24px!important;padding:0!important;border:0!important;background:transparent!important;font-size:.875rem!important;line-height:1.65!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-list{display:block!important;margin:0!important;padding:0!important;border:0!important;border-top:1px solid var(--ledger-line)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-row{display:grid!important;grid-template-columns:24px minmax(0,1fr) auto!important;gap:12px!important;align-items:center!important;width:100%!important;min-width:0!important;min-height:76px!important;height:auto!important;margin:0!important;padding:18px 0!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-icon{display:grid!important;place-items:center!important;align-self:center!important;width:24px!important;height:24px!important;margin:0!important;padding:0!important;background:transparent!important;box-shadow:none!important;border:0!important;border-radius:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-copy{display:grid!important;gap:4px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-copy strong{font-size:1rem!important;line-height:1.5!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-copy small{font-size:.8125rem!important;font-weight:400!important;line-height:1.6!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management{display:block!important;gap:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-identity{min-height:0!important;height:auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-identity>.avatar{width:64px!important;height:64px!important;min-width:64px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-management-row.is-danger{color:#a83535!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-link-intro{display:grid!important;gap:8px!important;margin:0 0 24px!important;padding:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-link-intro strong{font-size:1rem!important;line-height:1.5!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-link-intro p{font-size:.875rem!important;line-height:1.65!important;margin:0!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-link-invite{margin:0 0 24px!important;padding:0!important;border:0!important;border-block:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-share-route-choice{display:grid!important;grid-template-columns:24px minmax(0,1fr) 20px!important;gap:12px!important;align-items:center!important;min-width:0!important;width:100%!important;height:auto!important;min-height:76px!important;padding:18px 0!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-share-route-choice>span:not([aria-hidden]){min-width:0!important;display:grid!important;gap:4px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-share-route-choice strong{font-size:1rem!important;line-height:1.5!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-share-route-choice small{font-size:.8125rem!important;line-height:1.6!important;font-weight:400!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-share-route-choice .command-card-icon{display:grid!important;place-items:center!important;width:24px!important;height:24px!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .participant-account-list-label{font-size:.875rem!important;line-height:1.5!important;color:var(--ledger-muted)!important;margin:0 0 8px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-link-candidate{display:grid!important;grid-template-columns:44px minmax(0,1fr) 20px!important;gap:12px!important;align-items:center!important;min-width:0!important;min-height:76px!important;height:auto!important;margin:0!important;padding:16px 0!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-link-candidate>span:not([aria-hidden]){display:grid!important;gap:4px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-modal.event-participant-route-modal.event-participant-presentation-screen .event-participant-link-candidate strong{font-size:1rem!important;line-height:1.5!important;font-weight:600!important;}
+
+/* Approved participant editor and action confirmations. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-edit-screen .event-participant-rename-card{display:grid!important;gap:24px!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-edit-screen .event-participant-rename-field{display:grid!important;gap:10px!important;padding:0!important;margin:0!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-edit-screen .event-participant-rename-field>span{font-size:.875rem!important;line-height:1.5!important;font-weight:600!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-edit-screen input{width:100%!important;min-width:0!important;min-height:56px!important;height:auto!important;font-size:1rem!important;line-height:1.5!important;padding:14px!important;border:1px solid var(--ledger-line)!important;border-radius:14px!important;background:#fff!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-edit-screen #event-participant-rename-note{margin:0!important;font-size:.875rem!important;line-height:1.6!important;font-weight:400!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-edit-screen .event-participant-rename-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))!important;gap:10px!important;margin:8px 0 0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;position:static!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-edit-screen .event-participant-rename-actions>button{width:100%!important;min-height:52px!important;height:auto!important;padding:12px 16px!important;font-size:.9375rem!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-participant-action-confirmation{display:block!important;width:min(440px,100%)!important;max-width:440px!important;max-height:calc(100dvh - 32px)!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;padding:24px!important;border-radius:20px!important;text-align:start!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation .important-action-copy{display:block!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation h2{font-size:1.25rem!important;line-height:1.4!important;font-weight:600!important;margin:0!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation .participant-confirm-event{margin:8px 0 0!important;font-size:.875rem!important;line-height:1.5!important;font-weight:400!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation .participant-confirm-person{display:grid!important;grid-template-columns:44px minmax(0,1fr)!important;gap:12px!important;align-items:center!important;margin:0!important;padding:16px 0!important;min-width:0!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation .participant-confirm-person>.avatar{width:44px!important;height:44px!important;min-width:44px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation .participant-confirm-person>div{display:grid!important;gap:4px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation .participant-confirm-person strong{font-size:1rem!important;line-height:1.5!important;font-weight:600!important;min-width:0!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation :is(.participant-confirm-caption,.participant-confirm-username){font-size:.8125rem!important;line-height:1.5!important;font-weight:400!important;color:var(--ledger-muted)!important;overflow-wrap:anywhere!important;white-space:normal!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation #important-action-description{margin:20px 0 0!important;font-size:.875rem!important;line-height:1.6!important;font-weight:400!important;color:var(--ledger-muted)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation .important-action-dialog-actions{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))!important;gap:10px!important;margin:24px 0 0!important;padding:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation .important-action-dialog-actions>button{width:100%!important;min-width:0!important;min-height:52px!important;height:auto!important;padding:12px 16px!important;font-size:.9375rem!important;line-height:1.5!important;white-space:normal!important;border-radius:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation .important-action-confirm-button{background:transparent!important;border:1px solid var(--ledger-brand)!important;color:var(--ledger-brand)!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation.is-removal .important-action-confirm-button{border-color:#b23b36!important;color:#b23b36!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation .participant-confirm-alternate{display:block!important;width:100%!important;min-height:44px!important;margin:12px 0 0!important;padding:8px 0!important;border:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;font-size:.875rem!important;line-height:1.5!important;text-decoration:underline!important;text-underline-offset:4px!important;white-space:normal!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-action-confirmation .participant-confirm-username{text-align:right!important;}
+@media(max-width:360px){html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-participant-action-confirmation{padding:20px!important;}}
+
+/* Approved participant privacy, report and block presentation. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .participant-report-person{display:grid!important;grid-template-columns:52px minmax(0,1fr)!important;align-items:center!important;gap:12px!important;margin:0!important;padding:0!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .participant-report-person>.avatar{width:52px!important;min-width:52px!important;height:52px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .participant-report-person>div{display:grid!important;gap:4px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .participant-report-person strong{font-size:1rem!important;line-height:1.5!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .participant-report-privacy{font-size:.875rem!important;line-height:1.6!important;font-weight:400!important;color:var(--ledger-muted)!important;margin:14px 0 24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .participant-report-form{display:grid!important;gap:24px!important;min-width:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .field{display:grid!important;gap:10px!important;margin:0!important;min-width:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .field>span{font-size:.875rem!important;line-height:1.5!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .field>span small{font-size:.8125rem!important;line-height:1.5!important;font-weight:400!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .app-choice-trigger{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;width:100%!important;min-width:0!important;min-height:54px!important;height:auto!important;padding:14px!important;font-size:1rem!important;line-height:1.5!important;border:1px solid var(--ledger-line)!important;border-radius:14px!important;background:#fff!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .app-choice-trigger-copy{min-width:0!important;font:inherit!important;white-space:normal!important;overflow-wrap:anywhere!important;overflow:visible!important;text-overflow:clip!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review textarea{display:block!important;width:100%!important;min-width:0!important;min-height:8rem!important;height:auto!important;padding:14px!important;font-size:1rem!important;line-height:1.6!important;border:1px solid var(--ledger-line)!important;border-radius:14px!important;background:#fff!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review textarea::placeholder{font:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review [data-action="submit-participant-report"]{position:static!important;min-width:0!important;min-height:52px!important;height:auto!important;width:100%!important;padding:14px 16px!important;margin:0!important;border-radius:14px!important;font-size:.9375rem!important;line-height:1.5!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review .field-error{font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;color:#a83535!important;margin:0!important;padding:0!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel{display:block!important;min-width:0!important;margin:24px 0 0!important;padding:0!important;border:0!important;border-block:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel>summary{display:grid!important;grid-template-columns:minmax(0,1fr) 20px!important;align-items:center!important;gap:12px!important;min-height:60px!important;height:auto!important;margin:0!important;padding:16px 0!important;list-style:none!important;font-size:1rem!important;font-weight:500!important;line-height:1.5!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel>summary::-webkit-details-marker{display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel>summary:before,html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel>summary:after{display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel .safety-disclosure-icon{display:grid!important;place-items:center!important;width:20px!important;height:24px!important;transform:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel[open] .safety-disclosure-icon{transform:rotate(-90deg)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel svg{display:block!important;width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel .relationship-safety-copy{display:block!important;margin:0!important;padding:0!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel .relationship-safety-copy p{font-size:.875rem!important;font-weight:400!important;line-height:1.6!important;color:var(--ledger-muted)!important;margin:0 0 16px!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel .relationship-safety-actions{display:block!important;margin:0!important;padding:0!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel button.safety-option{display:grid!important;grid-template-columns:minmax(0,1fr) 20px!important;align-items:center!important;gap:12px!important;width:100%!important;min-width:0!important;min-height:56px!important;height:auto!important;margin:0!important;padding:14px 0!important;text-align:start!important;font-size:.9375rem!important;font-weight:500!important;line-height:1.5!important;border:0!important;border-top:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:var(--ledger-ink)!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel button.safety-option.is-danger{color:#a83535!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel>summary>span,html.design-coherence-v1.ledger-workspace-v1 body #app :is(.screen.font-hebrew.friend-relationship-screen,.event-participant-management-modal) .relationship-safety-management.participant-safety-panel button.safety-option>span{font:inherit!important;color:inherit!important;min-width:0!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-safety-confirmation .participant-username{display:block!important;font-size:.8125rem!important;font-weight:400!important;line-height:1.5!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .important-action-dialog.event-participant-action-confirmation.participant-safety-confirmation .important-action-dialog-actions>.important-action-confirm-button{border-color:#a83535!important;color:#a83535!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-safety-confirmation .safety-preserved{font-size:.875rem!important;line-height:1.6!important;color:var(--ledger-muted)!important;margin:0!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+@media(max-height:500px){html.design-coherence-v1.ledger-workspace-v1 body #app .participant-report-review textarea{min-height:3.5rem!important;height:3.5rem!important;}}
+html.design-coherence-v1.ledger-workspace-v1:has(#app .friend-relationship-screen .participant-safety-panel),html.design-coherence-v1.ledger-workspace-v1 body #app:has(.friend-relationship-screen .participant-safety-panel){scroll-padding-block-end:calc(var(--dynamic-type-bottom-nav-block,82px) + 20px)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .participant-safety-panel .safety-option{scroll-margin-block-end:calc(var(--dynamic-type-bottom-nav-block,82px) + 20px)!important;}
+
+/* Approved participant identity review and event aliases. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-review{display:block!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-pairs{display:grid!important;gap:32px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-pair{display:block!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-question h3{font-size:1.125rem!important;line-height:1.5!important;margin:0 0 8px!important;font-weight:600!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-question p{font-size:.875rem!important;line-height:1.65!important;margin:0 0 20px!important;font-weight:400!important;color:var(--ledger-muted)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-people{display:block!important;margin:0!important;border-top:1px solid var(--ledger-line)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-person{display:grid!important;grid-template-columns:44px minmax(0,1fr)!important;gap:12px!important;align-items:center!important;min-width:0!important;margin:0!important;padding:16px 0!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-person>.avatar{width:44px!important;height:44px!important;min-width:44px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-person-copy{display:grid!important;gap:3px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-person strong{font-size:1rem!important;line-height:1.5!important;font-weight:600!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-actions{position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px!important;margin:24px 0 0!important;padding:0!important;background:transparent!important;border:0!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen :is(button.primary-button,button.secondary-button,button.participant-identity-defer){min-width:0!important;min-height:52px!important;height:auto!important;width:100%!important;margin:0!important;padding:12px 16px!important;border-radius:14px!important;font-size:.9375rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen button.participant-identity-defer{border:0!important;background:transparent!important;color:var(--ledger-muted)!important;font-weight:400!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-identity-result{font-size:1rem!important;line-height:1.6!important;font-weight:500!important;color:var(--ledger-ink)!important;padding:0!important;margin:0 0 24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-aliases{min-width:0!important;display:block!important;margin:0!important;padding:0!important;border:0!important;border-block:1px solid var(--ledger-line)!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-aliases>summary{display:grid!important;grid-template-columns:minmax(0,1fr) 20px!important;align-items:center!important;gap:12px!important;min-height:60px!important;height:auto!important;padding:16px 0!important;list-style:none!important;font-size:1rem!important;line-height:1.5!important;font-weight:600!important;color:var(--ledger-ink)!important;cursor:pointer!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-aliases>summary::-webkit-details-marker{display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .identity-disclosure-icon{display:grid!important;place-items:center!important;width:20px!important;height:24px!important;transform:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .identity-disclosure-icon svg{display:block!important;width:20px!important;height:20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-aliases[open] .identity-disclosure-icon{transform:rotate(-90deg)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-alias-explanation{font-size:.875rem!important;line-height:1.65!important;color:var(--ledger-muted)!important;margin:0 0 12px!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-alias-list{display:block!important;min-width:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-alias-row{display:grid!important;gap:10px!important;min-width:0!important;padding:12px 0 24px!important;margin:0!important;border:0!important;border-bottom:1px solid var(--ledger-line)!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-alias-row:last-child{border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-alias-row .participant-identity-person{border:0!important;padding:0 0 6px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-alias-label{font-size:.875rem!important;line-height:1.5!important;font-weight:500!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-alias-control{display:flex!important;flex-wrap:wrap!important;align-items:stretch!important;gap:10px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-alias-control input{flex:1 1 10rem!important;width:0!important;min-width:min(100%,10rem)!important;min-height:52px!important;height:auto!important;padding:12px 14px!important;border:1px solid var(--ledger-line)!important;border-radius:14px!important;background:#fff!important;font-size:1rem!important;line-height:1.5!important;color:var(--ledger-ink)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-alias-control input::placeholder{font:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen .participant-alias-control button{flex:0 1 auto!important;width:auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-identity-screen button.identity-review-return{margin:24px 0 0!important;}
+
+/* Approved expense participant-add screens: scalable leaves and one scroll owner. */
+@media(max-height:480px){
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"]:not(.expense-participant-add-route){display:block!important;overflow-y:auto!important;scroll-padding-block:16px!important;overscroll-behavior-y:contain!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"]:not(.expense-participant-add-route) .expense-flow-fields,html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"]:not(.expense-participant-add-route) .expense-flow-body{display:block!important;overflow:visible!important;min-height:0!important;height:auto!important;max-height:none!important;flex:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="participants"]:not(.expense-participant-add-route) .expense-modal-actions{position:static!important;}
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-context{font-size:.875rem!important;line-height:1.55!important;color:#5d6e68!important;margin:0 0 16px!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice strong{font-size:1rem!important;line-height:1.45!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice small{font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice:disabled{opacity:1!important;color:#5d6e68!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice:disabled strong,html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice:disabled small{color:#5d6e68!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-choice:disabled .expense-participant-choice-chevron{visibility:hidden!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-friend-option{min-height:64px!important;gap:12px!important;padding-block:16px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-friend-option > span:not(.avatar){min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-friend-option strong{font-size:1rem!important;line-height:1.45!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-friend-option .participant-username{font-size:.875rem!important;line-height:1.45!important;font-weight:400!important;color:#5d6e68!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-friend-option > b{font-size:.875rem!important;line-height:1.45!important;font-weight:500!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-offline-form .field{gap:8px!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-offline-form .primary-button{margin-top:16px!important;min-height:52px!important;white-space:normal!important;line-height:1.45!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] #expense-participant-add-title{font-size:1.5rem!important;line-height:1.2!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] input[name="expenseGuestName"]::placeholder{font-size:1rem!important;line-height:inherit!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"]{overflow-y:auto!important;scroll-padding-block:16px!important;overscroll-behavior-y:contain!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"]{display:block!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-flow-fields,html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal.expense-participant-add-route[data-expense-step="participants"] .expense-participant-add-route-body{display:block!important;overflow:visible!important;height:auto!important;max-height:none!important;min-height:0!important;flex:none!important;}
+
+/* Approved restaurant bill presentation. Reuse the existing brand and icons. */
+@media (min-height: 451px) {
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header {
+      grid-template-columns: 48px minmax(0, 1fr) 48px !important;
+      gap: 10px !important;
+      padding: 12px 16px 0 !important;
+      border: 0 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header > div:first-child {
+      display: contents !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header .eyebrow {
+      display: block !important;
+      grid-column: 2 !important;
+      grid-row: 1 !important;
+      align-self: center !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      color: var(--ledger-muted) !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      font-size: .8125rem !important;
+      font-weight: 400 !important;
+      line-height: 1.4 !important;
+      white-space: normal !important;
+      direction: rtl !important;
+      text-align: center !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header h2 {
+      grid-column: 1 / -1 !important;
+      grid-row: 2 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      min-height: 64px !important;
+      margin: 0 !important;
+      padding: 16px 18px !important;
+      border: 0 !important;
+      border-radius: 24px !important;
+      color: #fff !important;
+      background: linear-gradient(136deg, #071f18 0%, #0b4a38 58%, #0f6b50 100%) !important;
+      box-shadow:
+        0 30px 58px -27px rgba(5, 54, 40, .82),
+        0 20px 38px -16px rgba(18, 184, 139, .48),
+        0 0 28px -13px rgba(61, 223, 185, .58),
+        inset 0 1px 0 rgba(255, 255, 255, .14) !important;
+      font-size: 1.5rem !important;
+      font-weight: 600 !important;
+      line-height: 1.15 !important;
+      direction: rtl !important;
+      text-align: right !important;
+      overflow-wrap: normal !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header .modal-section-back-button {
+      grid-column: 1 !important;
+      grid-row: 1 !important;
+      justify-self: start !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-modal-step-header .expense-accessibility-button {
+      grid-column: 3 !important;
+      grid-row: 1 !important;
+      justify-self: end !important;
+    }
+
+    html:not(.app-software-keyboard-open).design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design .expense-flow-progress {
+      padding: 17px 16px 0 !important;
+    }
+  }
+
+  
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design {
+ display:block!important; width:100%!important; max-width:640px!important;
+ height:calc(100dvh - var(--event-route-nav-safe-height,96px) - env(safe-area-inset-bottom))!important;
+ max-height:calc(100dvh - var(--event-route-nav-safe-height,96px) - env(safe-area-inset-bottom))!important;
+ min-height:0!important; min-width:0!important; overflow:hidden auto!important;
+ padding:0!important; margin:0 auto!important; border:0!important; border-radius:0!important;
+ background:#fff!important; box-shadow:none!important; scroll-padding-block:16px!important;
+}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design *, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design *::before, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design *::after {box-sizing:border-box!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header {display:grid!important;direction:ltr!important;flex:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-header-actions {display:contents!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header > div:first-child {display:contents!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header .draft-restored-note {grid-column:1/-1!important;direction:rtl!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress {height:auto!important;min-height:44px!important;margin:0!important;display:flex!important;gap:8px!important;align-items:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress li {position:relative!important;flex:1!important;height:5px!important;min-width:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress button {position:absolute!important;inset:-19px 0!important;width:100%!important;min-width:0!important;min-height:44px!important;height:44px!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress button span {position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress button:focus-visible {outline:2px solid #195345!important;outline-offset:2px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-quick-fields {display:block!important;flex:none!important;overflow:visible!important;max-height:none!important;height:auto!important;min-height:0!important;min-width:0!important;padding:16px!important;margin:0!important;border:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-step-intro {font-size:1rem!important;line-height:1.6!important;color:#55675f!important;margin:0 0 20px!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-step {display:grid!important;gap:0!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-option {display:grid!important;grid-template-columns:28px minmax(0,1fr) 20px!important;gap:12px!important;align-items:center!important;min-height:96px!important;padding:18px 0!important;margin:0!important;border:0!important;border-bottom:1px solid #e1e7e3!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;text-align:right!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-option > span:nth-child(2) {min-width:0!important;display:grid!important;gap:6px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-option strong {font-size:1.125rem!important;line-height:1.4!important;font-weight:600!important;color:#172d24!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-option small {font-size:.9375rem!important;line-height:1.5!important;color:#637169!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-icon {width:28px!important;height:28px!important;min-width:28px!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;color:#195345!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-icon svg {width:24px!important;height:24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-arrow {display:flex!important;align-items:center!important;color:#718078!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-arrow svg {width:18px!important;height:18px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-quick-fields > [data-action="expense-mode"] {width:100%!important;min-height:48px!important;margin:18px 0 0!important;padding:8px 0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;color:#195345!important;font-size:.9375rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-list {display:block!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-row {display:block!important;position:relative!important;padding:0 0 20px!important;margin:0 0 20px!important;border:0!important;border-bottom:1px solid #dfe6e1!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-number {display:flex!important;align-items:center!important;min-height:44px!important;width:auto!important;height:auto!important;margin:0 0 10px!important;padding:0 0 0 52px!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;color:#172d24!important;font-size:1rem!important;font-weight:500!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .field {display:grid!important;gap:8px!important;margin:0 0 16px!important;min-width:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .field > span {font-size:.875rem!important;line-height:1.5!important;color:#53675e!important;font-weight:400!important;white-space:normal!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design input:not([type="checkbox"]):not([type="date"]),html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design select {width:100%!important;min-width:0!important;min-height:56px!important;height:auto!important;font-size:1rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design input::placeholder {font-size:inherit!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-amount-field input, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-equal-amount input {font-size:1.25rem!important;text-align:right!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .app-choice-trigger {width:100%!important;min-width:0!important;min-height:56px!important;height:auto!important;padding-block:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .app-choice-trigger-copy, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .app-choice-trigger-label,html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .app-choice-trigger-copy * {font-size:1rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details {margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details > summary {min-height:44px!important;display:flex!important;align-items:center!important;font-size:.9375rem!important;line-height:1.5!important;font-weight:400!important;color:#52655b!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details[open] > summary {margin-bottom:12px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-remove {position:absolute!important;left:0!important;right:auto!important;top:0!important;min-width:44px!important;width:44px!important;min-height:44px!important;height:44px!important;padding:10px!important;border:0!important;border-radius:10px!important;background:transparent!important;box-shadow:none!important;color:#66756d!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-remove svg {width:22px!important;height:22px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-add-item {width:100%!important;min-height:48px!important;font-size:1rem!important;line-height:1.5!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box {margin:16px 0!important;padding:8px 0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary {min-height:44px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary strong {font-size:.9375rem!important;font-weight:500!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary small {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-guest-actions, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-inline-guest {display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:12px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-custom-share {grid-template-columns:minmax(0,1fr)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-custom-share label {min-width:0!important;min-height:52px!important;height:auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-person-option-copy > span:first-child {font-size:1rem!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary {display:block!important;margin:20px 0 0!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;color:#172d24!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary > .section-title-row {display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:12px!important;align-items:center!important;margin:0!important;padding:16px 0!important;border:0!important;border-bottom:1px solid #dfe6e1!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary .eyebrow, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list-title {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary h3 {font-size:1rem!important;line-height:1.5!important;font-weight:400!important;color:#53675e!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary > .section-title-row > .amount, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary > .section-title-row > .amount .font-num {font-size:1.5rem!important;line-height:1.3!important;color:#195345!important;font-weight:600!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list {display:block!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list > div {display:flex!important;justify-content:space-between!important;align-items:center!important;gap:16px!important;min-width:0!important;margin:0!important;padding:16px 0!important;border:0!important;border-bottom:1px solid #e8ece9!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list > div > span {font-size:1rem!important;line-height:1.5!important;min-width:0!important;overflow-wrap:anywhere!important;color:#172d24!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list > div > .amount, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-list > div > .amount .font-num {font-size:1.125rem!important;line-height:1.4!important;font-weight:500!important;color:#172d24!important;white-space:nowrap!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-review-count {font-size:.875rem!important;line-height:1.5!important;font-weight:400!important;color:#637169!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;margin:12px 0 0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-review-step .quick-split-summary,html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-payer-step .quick-split-summary {margin-top:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-payer-step .quick-split-summary {margin-bottom:24px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-payer-step .quick-split-list {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-date-field {display:block!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-actions {position:static!important;display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px!important;margin:0!important;padding:8px 16px 20px!important;border:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-actions > button {width:100%!important;min-width:0!important;min-height:52px!important;height:auto!important;padding:12px 16px!important;font-size:1rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-actions > .restaurant-dismiss-action {min-height:44px!important;background:transparent!important;border:0!important;color:#637169!important;font-size:.875rem!important;}
+@media(max-height:450px) {
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header {grid-template-columns:44px minmax(0,1fr) 44px!important;padding:8px 16px!important;gap:8px!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header h2 {grid-column:2!important;grid-row:1!important;font-size:1.5rem!important;line-height:1.3!important;white-space:normal!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header .eyebrow {display:none!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .modal-section-back-button {grid-column:1!important;grid-row:1!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-accessibility-button {grid-column:3!important;grid-row:1!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress {padding:8px 16px!important;}
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header .eyebrow {justify-self:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-items-step, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-list, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-equal-step, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-equal-participants {padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details > summary::after {content:'⌄';font-size:1rem!important;line-height:1!important;margin-inline-start:8px!important;}
+
+@media(max-width:360px) {
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary > .section-title-row {grid-template-columns:minmax(0,1fr)!important;gap:8px!important;}
+ html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-split-summary > .section-title-row > .amount {justify-self:start!important;}
+}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress li {overflow:visible!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress button {transform:none!important;z-index:1!important;}
+
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details summary {display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;list-style:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary::marker, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details summary::marker {content:''!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design summary::-webkit-details-marker {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-item-description-details > summary::after, html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .quick-expense-guest-box summary::after {content:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-inline-chevron {display:flex!important;align-items:center!important;justify-content:center!important;flex:0 0 20px!important;width:20px!important;height:20px!important;color:#718078!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-inline-chevron svg {width:18px!important;height:18px!important;transform:rotate(-90deg)!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design details[open]>summary .restaurant-inline-chevron {transform:rotate(180deg)!important;}
+@media(max-height:450px) {html.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .restaurant-method-option {padding-block:12px!important;}}
+
+  /* The software keyboard can shrink visualViewport without changing 100dvh.
+     Keep this one scrollport inside the same visible bounds as its backdrop. */
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app
+    .restaurant-review-design.restaurant-review-design.restaurant-review-design {
+    height: var(--app-keyboard-viewport-height) !important;
+    max-height: var(--app-keyboard-viewport-height) !important;
+  }
+
+  /* Match the approved short-height header when keyboard space is constrained. */
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header {grid-template-columns:44px minmax(0,1fr) 44px!important;padding:8px 16px!important;gap:8px!important;align-items:center!important;position:static!important;}
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header h2 {grid-column:2!important;grid-row:1!important;min-width:0!important;margin:0!important;font-size:1.5rem!important;line-height:1.3!important;white-space:normal!important;overflow-wrap:anywhere!important;direction:rtl!important;text-align:right!important;}
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-modal-step-header .eyebrow {display:none!important;}
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .modal-section-back-button {grid-column:1!important;grid-row:1!important;}
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-accessibility-button {grid-column:3!important;grid-row:1!important;}
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .restaurant-review-design.restaurant-review-design.restaurant-review-design .expense-flow-progress {padding:8px 16px!important;}
+
+/* Approved home and archive presentation. */
+/* Isolated sketches for verified active home/archive routes. */
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review {width:100%!important;max-width:440px!important;max-height:calc(100dvh - max(24px,env(safe-area-inset-top)))!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain!important;padding:12px max(20px,env(safe-area-inset-right)) max(20px,calc(12px + env(safe-area-inset-bottom))) max(20px,env(safe-area-inset-left))!important;scroll-padding-block-end:max(20px,calc(12px + env(safe-area-inset-bottom)))!important;border-radius:22px 22px 0 0!important;background:#fff!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .event-status-menu-handle {width:36px!important;height:4px!important;border-radius:3px!important;background:#cfd9d3!important;margin:4px auto 20px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .event-status-menu-copy {display:grid!important;gap:6px!important;text-align:right!important;margin:0!important;padding:0 0 16px!important;min-width:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .event-status-menu-label {font-size:.875rem!important;line-height:1.5!important;color:#637169!important;font-weight:400!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review h2 {font-size:1.375rem!important;line-height:1.4!important;margin:0!important;font-weight:600!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .event-home-menu-actions {display:grid!important;gap:0!important;margin:0!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .home-options-row {display:grid!important;grid-template-columns:24px minmax(0,1fr) 20px!important;gap:12px!important;align-items:center!important;width:100%!important;min-width:0!important;min-height:76px!important;height:auto!important;margin:0!important;padding:16px 0!important;border:0!important;border-bottom:1px solid #e1e7e3!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;text-align:right!important;color:#172d24!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .home-options-row > span:not(.event-share-route-chevron):not(.home-options-pin-state) {display:grid!important;min-width:0!important;gap:4px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .home-options-row strong {font-size:1rem!important;line-height:1.5!important;font-weight:500!important;color:#172d24!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .home-options-row small {font-size:.875rem!important;line-height:1.6!important;font-weight:400!important;color:#637169!important;white-space:normal!important;overflow-wrap:anywhere!important;margin:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .home-options-row > svg {width:22px!important;height:22px!important;margin:0!important;padding:0!important;align-self:center!important;background:transparent!important;box-shadow:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .event-share-route-chevron {display:grid!important;place-items:center!important;width:20px!important;height:20px!important;min-width:20px!important;color:#637169!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .event-share-route-chevron svg {width:18px!important;height:18px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .home-options-pin-state {display:grid!important;place-items:center!important;width:20px!important;height:20px!important;color:#195345!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .home-options-pin-state svg {width:18px!important;height:18px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .event-status-danger-zone {margin:0!important;padding:8px 0!important;border:0!important;background:transparent!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .event-removal-option {border-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .event-removal-option strong {color:#a63c33!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .event-removal-option > svg {color:#a63c33!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-options-review.home-options-review.home-options-review .event-status-menu-cancel {width:100%!important;min-height:52px!important;height:auto!important;padding:12px 16px!important;font-size:1rem!important;line-height:1.5!important;white-space:normal!important;margin:8px 0 0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .home-list-empty {display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:12px!important;min-height:230px!important;padding:32px 20px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;text-align:center!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .home-list-empty-icon {display:grid!important;place-items:center!important;width:32px!important;height:32px!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important;color:#637169!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .home-list-empty-icon svg {width:28px!important;height:28px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .home-list-empty strong {font-size:1.125rem!important;line-height:1.5!important;font-weight:500!important;color:#172d24!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .home-list-empty p {font-size:.9375rem!important;line-height:1.65!important;font-weight:400!important;color:#637169!important;max-width:22rem!important;margin:0!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .home-list-empty button {min-height:48px!important;height:auto!important;padding:10px 18px!important;font-size:1rem!important;line-height:1.5!important;white-space:normal!important;margin:4px 0 0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .home-empty-events .section-title-row {margin-bottom:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .home-first-event-empty .product-empty-icon {display:none!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .event-list:has(.home-list-empty) {background:transparent!important;border:0!important;box-shadow:none!important;padding:0!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .event-primary-filter {display:grid!important;grid-auto-flow:row!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr))!important;width:100%!important;min-width:0!important;gap:4px!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .event-primary-filter button {min-width:0!important;width:100%!important;height:auto!important;}
+html.design-coherence-v1.ledger-workspace-v1 body #app .home-list-review.home-list-review.home-list-review .event-primary-filter button > span {white-space:normal!important;word-break:normal!important;overflow-wrap:normal!important;}
+
+
+/* Approved profile image, friends search and full-name event cards. */
+html.ledger-workspace-v1 #app#app .avatar-selection-review.avatar-selection-review {
+ padding:0!important;overflow:visible!important;box-shadow:none!important;border-radius:12px!important;background:#fff!important;
+}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-picker-summary {
+ padding:14px!important;min-height:72px!important;gap:12px!important;align-items:center!important;
+}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-summary-preview {width:48px!important;height:48px!important;flex:none!important;box-shadow:none!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-summary-copy {min-width:0!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-summary-copy strong {font-size:1rem!important;line-height:1.45!important;white-space:normal!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review[open] .profile-avatar-summary-copy small {display:none!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-picker-body {padding:0 14px 18px!important;display:grid!important;gap:18px!important;overflow:visible!important;max-height:none!important;background:transparent!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-grid {display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:0!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-upload {
+ display:grid!important;grid-template-columns:1.5rem minmax(0,1fr) 1.25rem!important;align-items:center!important;gap:12px!important;min-height:56px!important;width:100%!important;padding:12px 0!important;
+ border:0!important;border-bottom:1px solid #dce6e2!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;text-align:start!important;
+}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-copy {display:block!important;min-width:0!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-copy strong {font-size:1rem!important;line-height:1.5!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-icon {width:1.5rem!important;height:1.5rem!important;background:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;color:#174e40!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-icon svg {width:100%!important;height:100%!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-chevron {display:grid!important;place-items:center!important;width:1.25rem!important;height:1.25rem!important;color:#65756e!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-source-chevron svg {width:1rem!important;height:1rem!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-picker {padding:0!important;margin:0!important;border:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-picker legend {padding:0!important;margin:0 0 12px!important;font-size:.9375rem!important;line-height:1.5!important;color:#52685d!important;font-weight:600!important;max-width:100%!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-options {display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:12px!important;margin:0!important;padding:0!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-option {display:grid!important;place-items:center!important;padding:4px!important;min-width:44px!important;min-height:44px!important;width:auto!important;border:0!important;background:transparent!important;box-shadow:none!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-preview {width:64px!important;height:64px!important;max-width:100%!important;box-shadow:none!important;border:2px solid transparent!important;outline:0!important;background:transparent!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-option input:checked+.profile-avatar-preview {border-color:#174e40!important;box-shadow:none!important;background:transparent!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review .profile-avatar-option input:focus-visible+.profile-avatar-preview {outline:2px solid #174e40!important;outline-offset:3px!important}
+html.ledger-workspace-v1 #app#app .avatar-selection-review [data-action="remove-profile-avatar-image"] {font-size:.9375rem!important;line-height:1.5!important;min-height:44px!important;padding:12px 0!important;background:none!important;border:0!important;box-shadow:none!important;text-align:start!important;color:#a73328!important;white-space:normal!important}
+
+html.ledger-workspace-v1 #app#app .friends-search-review.friends-search-review {
+ display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:12px!important;padding:28px 12px!important;min-height:180px!important;
+ border:0!important;border-radius:0!important;box-shadow:none!important;background:transparent!important;text-align:center!important;max-width:100%!important;
+}
+html.ledger-workspace-v1 #app#app .friends-search-review[hidden] {display:none!important}
+html.ledger-workspace-v1 #app#app .friends-search-review strong {font-size:1.0625rem!important;line-height:1.5!important;color:#13292b!important;font-weight:700!important}
+html.ledger-workspace-v1 #app#app .friends-search-review>span {font-size:.9375rem!important;line-height:1.65!important;color:#65756e!important;max-width:24ch!important}
+html.ledger-workspace-v1 #app#app .friends-search-review button {width:auto!important;max-width:100%!important;min-height:44px!important;padding:10px 18px!important;margin:4px 0 0!important;font-size:1rem!important;line-height:1.5!important;border:1px solid #cddbd5!important;border-radius:10px!important;background:#fff!important;box-shadow:none!important;color:#174e40!important;white-space:normal!important}
+html.ledger-workspace-v1 #app#app .friends-people-panel .friends-search-field input {font-size:1rem!important;line-height:1.5!important;min-width:0!important;width:100%!important}
+html.ledger-workspace-v1 #app#app .friends-people-panel .friends-toolbar.has-search {display:flex!important;flex-wrap:wrap!important;align-items:flex-end!important;gap:10px!important}
+html.ledger-workspace-v1 #app#app .friends-people-panel .friends-search-field {flex:1 1 12rem!important;min-width:min(100%,12rem)!important;max-width:100%!important}
+html.ledger-workspace-v1 #app#app .friends-people-panel .friends-search-field>span {font-size:.875rem!important;line-height:1.5!important}
+html.ledger-workspace-v1 #app#app .friends-people-panel .friends-add-trigger {flex:0 1 auto!important;max-width:100%!important;min-height:44px!important;font-size:1rem!important;line-height:1.5!important;white-space:normal!important}
+
+html.ledger-workspace-v1 #app#app .long-event-card-review.long-event-card-review {display:grid!important;grid-template-columns:minmax(0,1fr) 44px!important;gap:0!important;min-width:0!important;container:home-event-card / inline-size!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-open {display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:12px!important;min-width:0!important;width:100%!important;padding:16px 10px 16px 16px!important;text-align:start!important;overflow:visible!important;max-height:none!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-main {display:flex!important;flex-direction:column!important;align-items:stretch!important;justify-content:flex-start!important;gap:12px!important;min-width:0!important;width:100%!important;max-width:none!important;height:auto!important;min-height:0!important;padding:0!important;margin:0!important;overflow:visible!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-title {display:flex!important;align-items:flex-start!important;justify-content:flex-start!important;gap:8px!important;width:100%!important;min-width:0!important;overflow:visible!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-title strong {display:block!important;flex:1!important;min-width:0!important;width:auto!important;max-width:none!important;font-size:1.0625rem!important;line-height:1.45!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;word-break:normal!important;overflow-wrap:anywhere!important;-webkit-line-clamp:unset!important;line-clamp:unset!important;max-height:none!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-context {display:flex!important;flex-wrap:wrap!important;align-items:center!important;gap:12px!important;width:100%!important;min-width:0!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .avatar-stack {flex:0 0 auto!important;align-self:center!important;margin:0!important;max-width:100%!important}
+/* Share the available line with the pictures until a complete word no longer
+   fits. A 9.5rem minimum stacked even short names on ordinary phone widths. */
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-meta {display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:6px!important;flex:1 1 min-content!important;min-width:0!important;max-width:100%!important;white-space:normal!important;overflow:visible!important;font-size:.875rem!important;line-height:1.5!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-state {font-size:.875rem!important;line-height:1.5!important;white-space:normal!important;max-width:100%!important;word-break:normal!important;overflow-wrap:normal!important;text-align:start!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details {display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:3px .5em!important;align-items:flex-start!important;max-width:100%!important;white-space:normal!important;font-size:.875rem!important;line-height:1.5!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details span,html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details time {font-size:inherit!important;line-height:inherit!important;white-space:normal!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details time {white-space:nowrap!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-details .event-row-date-time {display:inline-flex!important;flex-wrap:wrap!important;gap:0 6px!important;align-items:center!important;max-width:100%!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-note-pin {flex:none!important;margin:3px 0 0!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-status-toggle {width:44px!important;min-width:44px!important;min-height:44px!important;padding:0!important;align-self:stretch!important;display:grid!important;place-items:center!important}
+html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-options-chevron {display:grid!important;place-items:center!important;width:24px!important;height:24px!important;margin:0!important}
+/* Keep a short title and the pictures on one line, then give all metadata the
+   full content width. With large type on a narrow card, retain the full-width
+   title and natural reflow above instead of squeezing or shrinking its words. */
+@container home-event-card (min-width:calc(12rem + 70px)) {
+ html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-main {display:grid!important;grid-template-columns:minmax(0,1fr) 104px!important;gap:8px 12px!important;align-items:center!important}
+ html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-title {grid-column:1!important;grid-row:1!important;align-self:center!important}
+ html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-context {display:contents!important}
+ html.ledger-workspace-v1 #app#app .long-event-card-review .avatar-stack {grid-column:2!important;grid-row:1!important}
+ html.ledger-workspace-v1 #app#app .long-event-card-review .event-row-meta {grid-column:1 / -1!important;grid-row:2!important;width:100%!important}
+}
+@media (max-height:450px) and (orientation:landscape) {
+ /* Remain in document flow while keeping the header z-index effective.
+    A static isolated header traps fixed navigation below later profile rows. */
+ html.ledger-workspace-v1 #app#app .screen:is([data-screen-kind="home"],.profile-edit-screen,.friends-hub-screen)>.product-app-identity {position:relative!important}
+}
+
+/* Match the authored 44px route icons when enlarged-text rules supply a 48px flex basis. */
+html.design-coherence-v1.ledger-workspace-v1 body #app
+ .event-modal:is(.event-participant-route-modal,.event-settings-modal,.event-task-modal)
+ > .event-modal-header .event-modal-header-actions > button {
+ flex: 0 0 44px !important;
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
@@ -20771,9 +24487,9 @@ if (!document.getElementById(STYLE_ID)) {
 
 const appRoot = document.querySelector("#app");
 let workspaceOcclusionFrame = 0;
+let workspaceOcclusionFramesRemaining = 0;
 
 function syncWorkspaceNavigationOcclusion() {
-  workspaceOcclusionFrame = 0;
   const workspaceNavigation = appRoot?.querySelector(
     '.screen[data-screen-kind="event"] .event-workspace-nav'
   );
@@ -20798,16 +24514,29 @@ function syncWorkspaceNavigationOcclusion() {
     workspaceNavigation.style.removeProperty("--event-nav-route-occlusion");
   }
 
-  if (roundedOcclusion >= Math.floor(navigationRect.height)) {
+  if (navigationRect.height > 0 && occlusion >= navigationRect.height) {
     workspaceNavigation.dataset.routeFullyOccluded = "true";
   } else {
     workspaceNavigation.removeAttribute("data-route-fully-occluded");
   }
 }
 
+function flushWorkspaceNavigationOcclusion() {
+  workspaceOcclusionFrame = 0;
+  syncWorkspaceNavigationOcclusion();
+  workspaceOcclusionFramesRemaining -= 1;
+  if (workspaceOcclusionFramesRemaining > 0) {
+    workspaceOcclusionFrame = requestAnimationFrame(flushWorkspaceNavigationOcclusion);
+  }
+}
+
 function scheduleWorkspaceNavigationOcclusion() {
+  // WebKit can deliver a scroll event before the final layout position is
+  // painted. Read once in that frame and once in the following frame, then
+  // stop. New scrolls restart this bounded pair rather than polling forever.
+  workspaceOcclusionFramesRemaining = 2;
   if (workspaceOcclusionFrame) return;
-  workspaceOcclusionFrame = requestAnimationFrame(syncWorkspaceNavigationOcclusion);
+  workspaceOcclusionFrame = requestAnimationFrame(flushWorkspaceNavigationOcclusion);
 }
 
 if (appRoot) {
@@ -20821,7 +24550,17 @@ if (appRoot) {
   window.addEventListener("scroll", scheduleWorkspaceNavigationOcclusion, {
     passive: true
   });
+  document.addEventListener("scroll", scheduleWorkspaceNavigationOcclusion, {
+    capture: true,
+    passive: true
+  });
   window.addEventListener("resize", scheduleWorkspaceNavigationOcclusion, {
+    passive: true
+  });
+  window.visualViewport?.addEventListener("scroll", scheduleWorkspaceNavigationOcclusion, {
+    passive: true
+  });
+  window.visualViewport?.addEventListener("resize", scheduleWorkspaceNavigationOcclusion, {
     passive: true
   });
   scheduleWorkspaceNavigationOcclusion();

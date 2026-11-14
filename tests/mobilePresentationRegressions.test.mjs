@@ -81,11 +81,13 @@ test("large text keeps short event tabs together while longer participant action
 
 test("expenses and summary keep the exact same mobile event header", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const eventHeader = app.slice(
+  const adapter = app.slice(
     app.indexOf("function renderEventHeader("),
     app.indexOf("function renderEventIdentityNotice(")
   );
 
+  const eventHeader = await readFile("src/ui/eventHeader.mjs", "utf8");
+  assert.match(adapter, /return renderEventHeaderView\(eventHeaderViewModel\(event, participants\), options\)/);
   assert.match(eventHeader, /<header class="top event-overview-header">/);
   assert.match(
     coherenceLayer,
@@ -197,10 +199,7 @@ test("event workspace controls stay in the document flow above mobile chrome", a
 
 test("close-event confirmation uses the branded floating card with an explicit dismiss control", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const confirmation = app.slice(
-    app.indexOf("function renderSettlementCloseConfirmation"),
-    app.indexOf("function renderTransferRow")
-  );
+  const confirmation = await readFile("src/ui/settlementClosePresentation.mjs", "utf8");
 
   assert.match(confirmation, /class="settlement-close-confirmation-backdrop"/);
   assert.match(confirmation, /role="alertdialog"/);
@@ -209,8 +208,8 @@ test("close-event confirmation uses the branded floating card with an explicit d
   assert.match(confirmation, /data-action="cancel-close-event-confirmation"/);
   assert.doesNotMatch(confirmation, /פעולה חשובה/);
   assert.doesNotMatch(confirmation, /settlement-close-confirmation-icon/);
-  assert.match(confirmation, /בואו נסגור חשבון\?/);
-  assert.match(confirmation, /סוגרים חשבון/);
+  assert.match(confirmation, /לסגור את האירוע\?/);
+  assert.match(confirmation, /סגור אירוע/);
   assert.doesNotMatch(confirmation, /role="region"/);
   assert.match(
     coherenceLayer,

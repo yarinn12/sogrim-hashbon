@@ -18,6 +18,7 @@
 | Personal info > Name | שם מלא | כן | כן | Account management, App functionality |
 | Personal info > Email address | אימייל בהרשמה או Google | כן | כן | Account management, App functionality |
 | Personal info > User IDs | מזהה חשבון ומזהה משתתף | כן | כן | Account management, App functionality, Security |
+| Contacts > Contacts | קשרי חברות, בקשות חברות וקשרי השתתפות באירועים שנשמרים בענן; ללא ספר הטלפונים של המכשיר | כן | לפי שימוש בחברים או באירוע משותף | App functionality |
 | Financial info > Other financial info | סכומי הוצאות, יתרות וחובות בין משתתפים | כן | לפי שימוש | App functionality |
 | App activity > Other user-generated content | שמות אירועים, הוצאות, משתתפים, הערות, תמונות אירוע ותמונות קבלה או הוצאה שהמשתמש מעלה | כן | לפי שימוש | App functionality |
 | App activity > App interactions | אירועים טכניים מצומצמים כמו פתיחת האפליקציה, יצירת אירוע או הוצאה, פתיחת סיכום ושיתוף הזמנה; ללא שמות או סכומים | כן, הבקשה מאומתת לחשבון | כן | Analytics, App functionality |
@@ -30,7 +31,9 @@
 
 אין לסמן Payment info: האפליקציה אינה מקבלת מספרי כרטיס, חשבון בנק או אמצעי תשלום ואינה מבצעת העברת כסף.
 
-במסך השאלות של Contacts יש לסמן שהאפליקציה אינה אוספת אנשי קשר. אין הרשאת `READ_CONTACTS`, אין בוחר אנשי קשר ואין קריאה של פנקס הכתובות.
+במסך השאלות של Contacts יש להצהיר על קשרי החברות וגרף המשתתפים שנשמרים בענן ומקושרים לחשבון. אין הרשאת `READ_CONTACTS`, אין בוחר אנשי קשר ואין קריאה של פנקס הכתובות; ההצהרה נדרשת עבור הגרף החברתי בתוך האפליקציה. זו התאמה לנתונים שכבר נשמרים, בלי הוספת הרשאה או איסוף חדש.
+
+ההתאמה נבדקה ב־08.10.2026 מול הגדרת Contacts הכוללת social graph ב־[הנחיות Google Play](https://support.google.com/googleplay/android-developer/answer/10787469?hl=en), מול קשרי `friendships` וחברי האירועים במסד, ומול הרשאות Android. שינוי המסמך אינו מאשר שטופס Play Console כבר עודכן; יש לאמת וליישם שם את ההצהרה לפני הגשת המועמד הבא.
 
 ## שיתוף מידע
 

@@ -51,6 +51,20 @@ test("expense draft memory restores a valid recent draft", () => {
   assert.equal(restored.quickInlineGuestName, "");
 });
 
+test("foreign-currency draft restores source precision and locked rate without restarting a fetch", () => {
+  const fxDraft = { ...draft, mode: "single", total: "1.234", sourceCurrency: "JOD",
+    fxMode: "manual", fxRate: "5.123456", fxLoading: true,
+    payers: [{ participantId: "dani", amount: "1.234", amountTouched: true }] };
+  const restored = parseExpenseDraftMemory(serializeExpenseDraftMemory(fxDraft), {
+    eventId: "event-1", event: { id: "event-1", currency: "ILS" }, participantIds: ["dani"]
+  });
+  assert.equal(restored.sourceCurrency, "JOD");
+  assert.equal(restored.total, "1.234");
+  assert.equal(restored.payers[0].amount, "1.234");
+  assert.equal(restored.fxRate, "5.123456");
+  assert.equal(restored.fxLoading, false);
+});
+
 test("expense draft memory ignores expired or mismatched drafts", () => {
   const now = Date.now();
   assert.equal(

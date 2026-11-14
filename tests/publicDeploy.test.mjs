@@ -235,6 +235,19 @@ test("Vercel serves static assets from the CDN and reserves Node for dynamic rou
   assert.match(config.routes[0].headers?.["Content-Security-Policy"] ?? "", /default-src 'self'/);
 });
 
+test("Vercel CSP permits the exact FX rate provider origin", async () => {
+  const config = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
+  const policy = config.routes[0].headers?.["Content-Security-Policy"] ?? "";
+  const connectDirective = policy.split(";").map(part => part.trim())
+    .find(part => part.startsWith("connect-src "));
+  assert.ok(connectDirective, "the deployed app must define connect-src");
+  const sources = connectDirective.split(/\s+/).slice(1);
+  assert.ok(sources.includes("https://open.er-api.com"),
+    "the deployed app must allow its configured FX rate provider");
+  assert.ok(!sources.includes("https://*.er-api.com"),
+    "the rate provider exception must stay limited to its exact host");
+});
+
 test("deployed app shell uses the CDN without caching private invite pages", async () => {
   const server = createServer(createAppHandler({
     root: process.cwd(),

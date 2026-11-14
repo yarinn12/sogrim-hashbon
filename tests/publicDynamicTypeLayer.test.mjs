@@ -6,7 +6,9 @@ import {
   classifyAndroidFontScale,
   classifyDynamicTypeSize,
   localPreviewSize,
-  refreshAndroidDynamicType
+  refreshAndroidDynamicType,
+  refreshDynamicType,
+  watchAppleDynamicType
 } from "../src/publicDynamicTypeLayer.mjs";
 
 const [layer, index, serviceWorker] = await Promise.all([
@@ -15,11 +17,126 @@ const [layer, index, serviceWorker] = await Promise.all([
   readFile("sw.js", "utf8")
 ]);
 
-test("dynamic type size classification reserves reflow for enlarged iOS text", () => {
+test("dynamic type layout thresholds use normalized UI pixels", () => {
   assert.equal(classifyDynamicTypeSize("17px"), "normal");
   assert.equal(classifyDynamicTypeSize("19px"), "large");
   assert.equal(classifyDynamicTypeSize("23px"), "extra-large");
   assert.equal(classifyDynamicTypeSize("invalid"), "normal");
+});
+
+for (const [systemBodySize, level] of [[23, 'large'], [40, 'extra-large']]) {
+  test(`unchanged Apple ${level} sizing retains reflow while the real probe is measured`, () => {
+    const reflow = `dynamic-type-${level}`;
+    const classes = new Set(['dynamic-type-active', 'dynamic-type-apple', reflow]);
+    const styles = new Map([['--apple-font-scale', String(systemBodySize / 17)]]);
+    const probe = {};
+    const root = {
+      dataset: { dynamicType: level },
+      classList: {
+        toggle(name, enabled) { enabled ? classes.add(name) : classes.delete(name); },
+        remove(...names) { names.forEach(name => classes.delete(name)); }
+      },
+      style: {
+        setProperty(name, value) { styles.set(name, value); },
+        removeProperty(name) { styles.delete(name); }
+      },
+      ownerDocument: {
+        getElementById: () => probe,
+        defaultView: {
+          CSS: { supports: () => true }, matchMedia: () => ({ matches: true }),
+          getComputedStyle(element) {
+            assert.equal(element, probe);
+            assert.equal(classes.has(reflow), true, 'a layout read must retain the current bottom-space rules');
+            return { fontSize: `${systemBodySize}px` };
+          }
+        },
+        body: {}
+      }
+    };
+    assert.equal(refreshDynamicType(root), level);
+    assert.equal(classes.has(reflow), true);
+  });
+}
+
+test("iOS measures its independent system body size and normalizes the UI before classifying reflow", () => {
+  let systemBodySize = 17;
+  let probe;
+  const classes = new Set();
+  const styles = new Map();
+  const labels = [42, 72, 94, 75].map(width => ({ width }));
+  const navigation = {
+    clientWidth: 320,
+    getBoundingClientRect: () => ({ width: 320, height: classes.has('dynamic-type-nav-stacked') ? 160 : 82 }),
+    querySelectorAll: () => labels
+  };
+  const view = {
+    CSS: { supports: () => true },
+    matchMedia: () => ({ matches: true }),
+    getComputedStyle: element => ({ fontSize: element === probe ? `${systemBodySize}px` : '16px',
+      paddingLeft: '8px', paddingRight: '8px', columnGap: '2px' }),
+    ResizeObserver: class {
+      constructor(callback) { this.callback = callback; }
+      observe(element) { assert.equal(element, probe); }
+      notify() { this.callback(); }
+    }
+  };
+  const document = {
+    defaultView: view,
+    getElementById: () => probe,
+    querySelectorAll: () => [navigation],
+    querySelector: () => null,
+    createRange() {
+      let element;
+      return { selectNodeContents: value => { element = value; }, getBoundingClientRect: () => ({ width: element.width }) };
+    },
+    createElement: () => ({ style: {}, setAttribute() {} }),
+    body: { append(element) { probe = element; } }
+  };
+  const root = {
+    ownerDocument: document,
+    classList: {
+      contains: name => classes.has(name),
+      toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); },
+      remove(...names) { names.forEach(name => classes.delete(name)); }
+    },
+    dataset: {},
+    style: {
+      setProperty(name, value) { styles.set(name, value); },
+      removeProperty(name) { styles.delete(name); },
+      getPropertyValue(name) { return styles.get(name) || ''; }
+    }
+  };
+
+  for (const [bodySize, rootSize, level] of [
+    [17, 16, 'normal'], [19, 16 * 19 / 17, 'normal'],
+    [23, 16 * 23 / 17, 'large'], [32, 16 * 32 / 17, 'extra-large'],
+    [17, 16, 'normal']
+  ]) {
+    systemBodySize = bodySize;
+    assert.equal(refreshDynamicType(root), level);
+    assert.ok(probe, 'the system size must be read from a separate probe');
+    assert.match(probe.style.cssText, /font:-apple-system-body/);
+    assert.ok(Math.abs(16 * Number(root.style.getPropertyValue('--apple-font-scale')) - rootSize) < 0.01);
+    assert.equal(root.dataset.dynamicType, level);
+    assert.equal(classifyAndroidFontScale(bodySize / 17), level);
+    assert.equal(classes.has('dynamic-type-active'), bodySize > 17);
+    assert.equal(classes.has('dynamic-type-large'), level === 'large');
+    assert.equal(classes.has('dynamic-type-extra-large'), level === 'extra-large');
+  }
+
+  const frames = [];
+  view.requestAnimationFrame = callback => frames.push(callback);
+  const observer = watchAppleDynamicType(root);
+  systemBodySize = 23;
+  observer.notify();
+  observer.notify();
+  assert.equal(root.dataset.dynamicType, 'normal', 'observer delivery must not mutate root typography inline');
+  assert.equal(frames.length, 1, 'repeated notifications share one pending frame');
+  frames.shift()();
+  assert.equal(root.dataset.dynamicType, 'large');
+  assert.ok(Math.abs(16 * Number(root.style.getPropertyValue('--apple-font-scale')) - 16 * 23 / 17) < 0.01);
+  assert.equal(classes.has('dynamic-type-nav-stacked'), true, 'the system font and actual navigation layout update in the same frame');
+  assert.equal(styles.get('--dynamic-type-measured-nav-block'), '160px');
 });
 
 test("Android font scale maps system accessibility sizes to the same reflow levels", () => {
@@ -31,6 +148,7 @@ test("Android font scale maps system accessibility sizes to the same reflow leve
 
 test("Android reads the native font scale and enables accessible reflow", async () => {
   const classes = new Set();
+  let nativeFontScale = 1.5;
   const root = {
     classList: {
       toggle(name, enabled) {
@@ -45,6 +163,9 @@ test("Android reads the native font scale and enables accessible reflow", async 
     style: {
       setProperty(name, value) {
         this[name] = value;
+      },
+      removeProperty(name) {
+        delete this[name];
       }
     }
   };
@@ -52,7 +173,7 @@ test("Android reads the native font scale and enables accessible reflow", async 
     getPlatform: () => "android",
     Plugins: {
       SogrimCapabilities: {
-        getCapabilities: async () => ({ fontScale: 1.5 })
+        getCapabilities: async () => ({ fontScale: nativeFontScale })
       }
     }
   };
@@ -63,6 +184,13 @@ test("Android reads the native font scale and enables accessible reflow", async 
   assert.equal(classes.has("dynamic-type-active"), true);
   assert.equal(classes.has("dynamic-type-android"), true);
   assert.equal(classes.has("dynamic-type-extra-large"), true);
+  nativeFontScale = 2;
+  assert.equal(await refreshAndroidDynamicType(root, capacitor), "extra-large");
+  assert.equal(root.style["--android-font-scale"], "2");
+  nativeFontScale = 1;
+  assert.equal(await refreshAndroidDynamicType(root, capacitor), "normal");
+  assert.equal(root.style["--android-font-scale"], "1");
+  assert.equal(classes.has("dynamic-type-active"), false);
 });
 
 test("large text preview is constrained to local QA URLs", () => {
@@ -91,6 +219,11 @@ test("dynamic type layer reads Android system font scale from the native capabil
   assert.match(layer, /SogrimCapabilities\?\.getCapabilities/);
   assert.match(layer, /--android-font-scale/);
   assert.match(layer, /dynamic-type-android/);
+  // Native WebView text zoom owns the OS font scale; the CSS root must not
+  // multiply the same native value a second time.
+  const androidRootRule = layer.match(/html\.\$\{ACTIVE_CLASS\}\.\$\{ANDROID_CLASS\}\s*\{([^}]*)\}/)?.[1];
+  assert.ok(androidRootRule);
+  assert.match(androidRootRule, /font-size:\s*16px !important;/);
 });
 
 test("large text mode releases rigid controls and protects fixed bottom navigation", () => {
@@ -187,7 +320,8 @@ test("large text lets event titles and account copy wrap without clipping", () =
 });
 
 test("large text combines content-sized navigation with a rem-based safe gap", () => {
-  assert.match(layer, /--dynamic-type-bottom-nav-block: 82px/);
+  assert.match(layer, /--dynamic-type-bottom-nav-block: var\(--dynamic-type-measured-nav-block, 82px\)/);
+  assert.doesNotMatch(layer, /min-height: calc\(\s*var\(--dynamic-type-bottom-nav-block/);
   assert.match(layer, /--dynamic-type-bottom-gap: max\(28px, 2rem\)/);
   assert.match(
     layer,

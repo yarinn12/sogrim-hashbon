@@ -1,8 +1,13 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test, { resource: 'defer' });
 
 const OWNER_ID = "person-legacy-platform-owner";
 
-test("the app boots when iOS 15.0-era built-ins are unavailable", async ({ page, request }) => {
+test("the app boots when iOS 15.0-era built-ins are unavailable", async ({ page, request , baseURL: fixtureBaseURL}) => {
   const accountState = {
     currentParticipantId: OWNER_ID,
     participants: [{
@@ -17,8 +22,8 @@ test("the app boots when iOS 15.0-era built-ins are unavailable", async ({ page,
     deletedEvents: [],
     deletedParticipants: []
   };
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: accountState });
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, accountState);
   await page.addInitScript(({ participantId, state }) => {
     delete Object.hasOwn;
     delete Array.prototype.at;
@@ -44,7 +49,7 @@ test("the app boots when iOS 15.0-era built-ins are unavailable", async ({ page,
 
   const runtimeIssues = [];
   page.on("pageerror", (error) => runtimeIssues.push(error.message));
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openHeldRenderedHome(page);
 
   await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
   await expect(page.locator("#app-splash")).toHaveCount(0, { timeout: 8_000 });

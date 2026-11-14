@@ -11,7 +11,7 @@ test("important actions use one accessible in-app confirmation dialog", async ()
   assert.match(app, /function renderImportantActionDialog\(\)/);
   assert.match(app, /role="alertdialog"/);
   assert.match(app, /aria-modal="true"/);
-  assert.match(app, /aria-describedby="important-action-description"/);
+  assert.match(app, /aria-describedby="\$\{importantActionDialog\.kind === "delete-expense" \? "expense-delete-context important-action-description" : "important-action-description"\}"/);
   assert.match(app, /data-action="cancel-important-action"/);
   assert.match(app, /data-action="confirm-important-action"/);
   assert.ok(

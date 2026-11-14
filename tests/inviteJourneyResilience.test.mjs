@@ -67,6 +67,8 @@ function smartInviteUrl(runtimeConfig, state, eventId) {
   );
 }
 
+const shareViewSource = readFileSync("src/ui/eventSharePresentation.mjs", "utf8");
+
 test("a resolved cloud config produces a revocable token invite", () => {
   const url = smartInviteUrl({ storage: { mode: "supabase" } }, shareState(), "e1");
 
@@ -162,8 +164,8 @@ test("the WhatsApp invite message and destination are unchanged", () => {
     /const message = `מצטרפים לאירוע "\$\{event\.name\}" בסוגרים חשבון:\\n\$\{inviteUrl\}`/
   );
   assert.match(app, /https:\/\/wa\.me\/\?text=\$\{encodeURIComponent\(message\)\}/);
-  assert.match(app, /data-action="share-invite-whatsapp"/);
-  assert.match(app, /data-action="copy-invite"/);
+  assert.match(shareViewSource, /data-action="share-invite-whatsapp"/);
+  assert.match(shareViewSource, /data-action="copy-invite"/);
 });
 
 test("WhatsApp sharing awaits the same prepared share link", () => {
@@ -227,11 +229,11 @@ test("native sharing publishes new events without rewriting established shared e
   const app = readFileSync("src/app.mjs", "utf8");
   const nativeBridge = readFileSync("src/publicNativeBridgeLayer.mjs", "utf8");
 
-  assert.match(app, /data-share-ready="\$\{shareReady\}"/);
-  assert.match(app, /value="\$\{shareReady \? escapeAttribute\(inviteUrl\) : ""\}"/);
-  assert.match(app, /type="hidden"\s+name="eventInviteUrl"/);
+  assert.match(shareViewSource, /data-share-ready="\$\{shareReady\}"/);
+  assert.match(shareViewSource, /value="\$\{shareReady \? escapeAttribute\(inviteUrl\) : ""\}"/);
+  assert.match(shareViewSource, /type="hidden"\s+name="eventInviteUrl"/);
   assert.match(
-    app,
+    shareViewSource,
     /shareFailed \? 'disabled aria-disabled="true"' : 'disabled aria-disabled="true" aria-busy="true"'/
   );
   assert.match(app, /eventSharePreparationStates/);
@@ -271,7 +273,7 @@ test("a failed invite preparation explains the problem without looking busy", ()
   const dialog = app.slice(
     app.indexOf("function renderEventShareDialog"),
     app.indexOf("function renderEventSettingsDialog")
-  );
+  ) + "\n" + shareViewSource;
   const retry = app.slice(
     app.indexOf("async function retryEventShare"),
     app.indexOf("async function prepareEventShareNow")
@@ -380,7 +382,7 @@ test("cached invite candidates cannot enable copy, WhatsApp or QR before verific
   const dialog = app.slice(
     app.indexOf("function renderEventShareDialog"),
     app.indexOf("function renderEventSettingsDialog")
-  );
+  ) + "\n" + shareViewSource;
   const preparation = app.slice(
     app.indexOf("function prepareEventShare(eventId)"),
     app.indexOf("function settleEventSharePreparation")

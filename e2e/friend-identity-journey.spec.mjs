@@ -1,4 +1,7 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
+import { resetLocalQaState } from "./helpers/resetLocalQaState.mjs";
 
 const EVENT_ID = "event-identity-journey";
 const OWNER_ID = "account-11111111-1111-4111-8111-111111111111";
@@ -67,7 +70,7 @@ const seededState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }, testInfo) => {
+test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
   runtimeIssues = [];
   page.on("pageerror", (error) => runtimeIssues.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
@@ -126,8 +129,8 @@ test.beforeEach(async ({ page, request }, testInfo) => {
         }
       : seededState;
 
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: stateForTest });
+  await resetLocalQaState(request, baseURL);
+  await writeLocalQaStateFresh(baseURL, stateForTest);
   await page.addInitScript(({ participantId, state }) => {
     localStorage.clear();
     sessionStorage.clear();
@@ -168,9 +171,10 @@ test("an offline name links to its connected account without losing money", asyn
   await page
     .locator(`[data-action="review-duplicate-participants"][data-event-id="${EVENT_ID}"]`)
     .click();
-  const identityDialog = page.locator('.event-modal[role="dialog"]');
-  await expect(identityDialog).toContainText("אותו אדם?");
-  await expect(identityDialog).toContainText("שם אופליין");
+  const identityDialog = page.locator('.event-participant-identity-screen');
+  await expect(identityDialog.getByRole('heading', {name:'שמות דומים',exact:true})).toBeVisible();
+  await expect(identityDialog.getByRole('heading', {name:'זה אותו אדם?',exact:true})).toBeVisible();
+  await expect(identityDialog).toContainText("שם ללא חשבון");
   await expect(identityDialog).toContainText("חבר באפליקציה");
 
   await page
@@ -178,8 +182,11 @@ test("an offline name links to its connected account without losing money", asyn
     .click();
   const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
   await expect(confirmation).toBeVisible();
-  await expect(confirmation).toContainText("אישור קישור");
-  await expect(confirmation).toContainText("1");
+  await expect(confirmation.getByRole('heading', {name:'לקשר לחשבון?',exact:true})).toBeVisible();
+  await expect(confirmation.locator('.important-action-label')).toHaveCount(0);
+  await expect(confirmation.locator('.participant-confirm-identities .participant-confirm-person')).toHaveCount(2);
+  await expect(confirmation.locator('#important-action-description')).toContainText('למשתתף אחד');
+  await expect(confirmation.locator('#important-action-description')).toContainText('באירוע הזה בלבד');
   await confirmation.locator('[data-action="confirm-important-action"]').click();
 
   // The local fixture has no cloud acknowledgement. Its recovery remains
@@ -254,7 +261,9 @@ test("the explicit account-link confirmation works on the first tap", async ({ p
   const confirmButton = confirmation.locator(
     '[data-action="confirm-important-action"]'
   );
-  await expect(confirmation).toContainText("לקשר את אריאל ניזרי לחשבון של אריאל ניזרי?");
+  await expect(confirmation.getByRole('heading', {name:'לקשר לחשבון?',exact:true})).toBeVisible();
+  await expect(confirmation.locator('.participant-confirm-person').nth(0).locator('strong')).toHaveText('אריאל ניזרי');
+  await expect(confirmation.locator('.participant-confirm-person').nth(1).locator('strong')).toHaveText('אריאל ניזרי');
   await expect(confirmButton).toBeEnabled();
   await expect
     .poll(() =>
@@ -315,7 +324,9 @@ test("HGG can link only to Yarin when Nizri is not in the event", async ({ page 
   await candidates.click();
 
   const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
-  await expect(confirmation).toContainText("לקשר את HGG לחשבון של ירין יצחק?");
+  await expect(confirmation.getByRole('heading', {name:'לקשר לחשבון?',exact:true})).toBeVisible();
+  await expect(confirmation.locator('.participant-confirm-person').nth(0).locator('strong')).toHaveText('HGG');
+  await expect(confirmation.locator('.participant-confirm-person').nth(1).locator('strong')).toHaveText('ירין יצחק');
   await expect(confirmation).not.toContainText("ניזרי");
   await confirmation.locator('[data-action="confirm-important-action"]').click();
 
@@ -380,7 +391,13 @@ test("an offline name can invite an account outside the friends list with the st
   await expect(shareDialog).toBeVisible();
   await expect(shareDialog.locator('[data-action="share-invite-whatsapp"]')).toBeVisible();
   await expect(shareDialog.locator('[data-action="copy-invite"]')).toBeVisible();
-  await expect(page.locator('.event-share-modal')).toContainText("קישור קבוע, WhatsApp או QR");
+  const shareScreen = page.locator('.event-share-modal');
+  await expect(shareScreen.getByRole('heading', { name: 'שיתוף האירוע', exact: true })).toBeVisible();
+  await expect(shareScreen.locator('#event-modal-description')).toHaveText(seededState.events[0].name);
+  // Local transport exposes the standard tools but cannot prepare a verified cloud link.
+  await expect(shareDialog.locator('[data-action="share-invite-whatsapp"]')).toBeDisabled();
+  await expect(shareDialog.locator('[data-action="copy-invite"]')).toBeDisabled();
+  await expect(shareDialog.locator('[data-action="retry-event-share"]')).toBeEnabled();
 
   await page.locator('[data-action="event-share-back"]').click();
   await expect(page.locator('.event-participant-link-screen')).toBeVisible();

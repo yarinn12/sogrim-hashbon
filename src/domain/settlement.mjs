@@ -873,6 +873,16 @@ export function pendingBalanceForParticipant(transfers, participantId) {
     }));
 }
 
+// Expose the accepted ledger shares once for a saved expense. The display must
+// use the same normalization and remainder order as settlement, not divide anew.
+export function buildExpenseParticipantShares(participants, expense) {
+  const ledger = buildSettlementLedger(participants, [expense]);
+  return {
+    shares: ledger.acceptedExpenses[0]?.shares ?? {},
+    issues: ledger.issues
+  };
+}
+
 export function buildParticipantSettlementBreakdown(participants, expenses, participantId) {
   const ledger = buildSettlementLedger(participants, expenses);
   const expenseShares = [];

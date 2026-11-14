@@ -1,5 +1,5 @@
 import {calculateSettlement, reconcileSettlementTransfers, settlementOptionsForEvent} from './settlement.mjs';
-import {jsonValuesEqual} from '../data/localIdentity.mjs';
+import {jsonValuesEqual} from './stateIdentity.mjs';
 
 const MODES = ['smart', 'direct'];
 const modeOf = event => event.directSettlementTransfers === true ? 'direct' : 'smart';

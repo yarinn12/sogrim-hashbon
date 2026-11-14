@@ -29,8 +29,10 @@ function harness() {
     session: { user: { id: "a" } }, sessionGeneration: 0,
     profileNameDraft: "Saved Name", profileUsernameDraft: "original", profileAvatarDraft: "avatar-1", profileAvatarImageDraft: "image-a",
     profileAvatarPendingPreview: "", profileAvatarRequest: null, profileAvatarRevision: 0,
+    profileAvatarFeedback: null, imageFeedbackSurface: () => ({scope:"image-surface",screen:ctx.screen,dialog:null,eventId:""}),
+    IMAGE_OPEN_ERROR_MESSAGE: "התמונה לא נפתחה. אפשר לבחור תמונה אחרת או לצלם מחדש.",
     profileError: "", profileUsernameError: "", profileNameEditing: true, profileUsernameEditing: true,
-    friendNetwork: { status: "ready" }, friendCodeDraft: "", screen: { name: "profile" }, notice: "", appHistoryDepth: 2, lastNavigationViewKey: "before",
+    friendNetwork: { status: "ready" }, friendCodeDraft: "", friendInvitationIntent:false, screen: { name: "profile" }, notice: "", appHistoryDepth: 2, lastNavigationViewKey: "before",
     runtimeConfig: { storage: { account: { userId: "a" } } },
     loadRuntimeConfig: async () => ctx.runtimeConfig,
     loadStoredAccountSession: () => ctx.session, versionedReadCacheSessionGeneration: () => ctx.sessionGeneration,
@@ -416,3 +418,5 @@ for (const situation of ["normal", "already-focused", "replaced", "different-acc
     assert.equal(focused, situation === "normal" ? 1 : 0);
   });
 }
+
+test("profile completion returns to a pending friend invitation without sending a friendship",async()=>{const h=harness();h.ctx.friendInvitationIntent=true;h.ctx.friendCodeDraft="abcdefabcdefabcdefab";const request=h.ctx.saveProfileFromDraft();await tick();h.writes[0].resolve({ok:true});await request;assert.equal(h.ctx.screen.name,"friend-invite");assert.equal(h.ctx.screen.code,"abcdefabcdefabcdefab");assert.equal(h.ctx.localProfile.authSubject,"a");});

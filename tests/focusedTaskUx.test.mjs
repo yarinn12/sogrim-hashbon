@@ -13,10 +13,7 @@ test("primary navigation remains available throughout every signed-in flow", asy
   assert.match(brand, /!screen\.classList\.contains\("profile-first-run-screen"\)/);
   assert.match(brand, /function syncIdentityRouteControls\(screen, identity\)/);
   assert.match(brand, /controls\.prepend\(backButton\)/);
-  assert.match(
-    brand,
-    /kind === "notifications"[\s\S]*?\? "notifications"[\s\S]*?kind === "profile"[\s\S]*?\? "profile"/
-  );
+  assert.match(brand, /primaryNavigationDestinationForScreen\(kind\)/);
   assert.match(styles, /\.product-app-nav \{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\) !important/);
   assert.match(brand, /function syncNotificationNavBadge\(nav\)/);
   assert.doesNotMatch(
@@ -25,7 +22,7 @@ test("primary navigation remains available throughout every signed-in flow", asy
   );
   assert.match(
     brand,
-    /\["home", "event", "settlement", "join-event", "new-event", "groups", "notifications"\]\.includes\(explicitKind\)/
+    /\["home", "event", "settlement", "join-event", "new-event", "groups", "friend-invite", "notifications"\]\.includes\(explicitKind\)/
   );
   assert.match(brand, /shouldShowPrimaryNav\(screen\) \? renderHeaderNav\(\) : ""/);
   assert.doesNotMatch(brand, /PRIMARY_NAV_SCREENS/);

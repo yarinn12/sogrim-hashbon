@@ -27,7 +27,14 @@ Avoid student-project screens, old web-app styling, crowded dashboards, repeated
 - Personal memory is core: the product should remember the user and only show relevant history.
 - Prefer fewer high-confidence actions over repeated buttons in several places.
 - Make money flows calm and inspectable, with clear names, totals, participants, and transfer status.
+- Reuse the approved Home control colors, typography, corner radii and selected states across screens; avoid adding generic wizard decoration.
+- Event creation stages remain direct navigation shortcuts. Visual simplification must preserve stage access and draft contents.
 
 ## Accessibility & Inclusion
 
 The interface is RTL-first, Hebrew-first, mobile-first, and should maintain readable contrast, large touch targets, reduced-motion support, and clear focus states. Google sign-in can later strengthen identity without blocking guest usage.
+
+
+## Shared Design Language
+
+Follow [the permanent design-language guidance](docs/design-language-he.md). Identity, role and friendship captions share one neutral scalable style across the app. Reuse the existing component class rather than inventing a new badge for each screen.

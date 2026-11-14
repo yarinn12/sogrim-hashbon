@@ -1,4 +1,5 @@
-import { parseMoneyInput, formatMoney, sumMoneyAmounts } from "./money.mjs";
+import { parseSourceAmount, formatSourceAmount } from "./expenseFx.mjs";
+import { normalizeCurrency } from "./currencies.mjs";
 
 export const EXPENSE_DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const EXPENSE_DRAFT_STORAGE_PREFIX = "settle-friends-expense-draft";
@@ -37,8 +38,10 @@ export function remapExpenseDraftAccountLinks(draft, event, { pendingAccountLink
     draft.payers = [...groups.values()].flatMap(payers => {
       if (payers.length === 1 || ![...redirects.values()].includes(payers[0].participantId)) return payers;
       try {
-        const amount = sumMoneyAmounts(payers.map(payer => parseMoneyInput(payer.amount)));
-        return [{...payers[0],amount:formatMoney(amount).replace(/\.00$/, ""),amountTouched:true,autoAmount:false}];
+        const currency = normalizeCurrency(draft.sourceCurrency ?? event.currency);
+        const amount = payers.reduce((sum, payer) => sum + parseSourceAmount(payer.amount, currency), 0n);
+        if (amount > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError("Payer total is too large");
+        return [{...payers[0],amount:formatSourceAmount(amount, currency).replace(/\.0+$/, ""),amountTouched:true,autoAmount:false}];
       } catch {
         // Never discard unfinished/invalid input or silently round an amount.
         return payers;
@@ -117,7 +120,8 @@ function expenseContentKey(expense) {
   return JSON.stringify([expense.name, expense.total,
     expense.payers.map(payer => [payer.participantId, payer.amount]).sort(),
     [...expense.sharedByParticipantIds].sort(), expense.createdByParticipantId ?? "",
-    expense.occurredOn ?? "", expense.notes ?? "", expense.attachmentImage ?? ""]);
+    expense.occurredOn ?? "", expense.notes ?? "", expense.attachmentImage ?? "", expense.fxConversion ?? null,
+    expense.fxConversionRemovedAt ?? null, expense.fxConversionRestoredAt ?? null]);
 }
 
 function sameExpenseRevision(left, right) {
@@ -209,7 +213,18 @@ export function parseExpenseDraftMemory(
 
     return {
       ...draft,
-      mode: draft.mode === "items" ? "items" : "single",
+      mode: draft.sourceCurrency && normalizeCurrency(draft.sourceCurrency) !== normalizeCurrency(event?.currency)
+        ? "single" : draft.mode === "items" ? "items" : "single",
+      sourceCurrency: normalizeCurrency(draft.sourceCurrency ?? event?.currency),
+      fxMode: ["automatic", "manual"].includes(draft.fxMode) ? draft.fxMode : "",
+      fxRateSource: typeof draft.fxRateSource === "string" && draft.fxRateSource
+        ? draft.fxRateSource : draft.existingFxConversion?.source ?? "",
+      fxRate: String(draft.fxRate ?? ""),
+      fxSourceDate: typeof draft.fxSourceDate === "string" ? draft.fxSourceDate : null,
+      fxFetchedAt: typeof draft.fxFetchedAt === "string" ? draft.fxFetchedAt : null,
+      fxSourceUpdatedAt: typeof draft.fxSourceUpdatedAt === "string" ? draft.fxSourceUpdatedAt : null,
+      fxNextUpdateAt: typeof draft.fxNextUpdateAt === "string" ? draft.fxNextUpdateAt : null,
+      fxLoading: false,
       name: String(draft.name ?? ""),
       total: String(draft.total ?? ""),
       occurredOn: String(draft.occurredOn ?? ""),

@@ -119,7 +119,7 @@ export function normalizeAdminAnalyticsOverview(value) {
       enabledDevices: nonNegativeInteger(push.enabledDevices),
       androidDevices: nonNegativeInteger(push.androidDevices),
       iosDevices: nonNegativeInteger(push.iosDevices),
-      disabledDevices: nonNegativeInteger(push.disabledDevices)
+      disabledDevices: nullableNonNegativeInteger(push.disabledDevices)
     },
     notifications: {
       inboxItems: nonNegativeInteger(notifications.inboxItems),
@@ -135,7 +135,7 @@ export function normalizeAdminAnalyticsOverview(value) {
     feedback: {
       new: nonNegativeInteger(feedback.new),
       reviewing: nonNegativeInteger(feedback.reviewing),
-      resolved: nonNegativeInteger(feedback.resolved)
+      resolved: nullableNonNegativeInteger(feedback.resolved)
     },
     metrics: Object.fromEntries(
       Object.entries(metrics)
@@ -152,7 +152,7 @@ export function normalizeAdminAnalyticsOverview(value) {
       eventsLast24Hours: nonNegativeInteger(telemetry.eventsLast24Hours),
       failuresLast24Hours: nonNegativeInteger(telemetry.failuresLast24Hours),
       deferredLast24Hours: nonNegativeInteger(telemetry.deferredLast24Hours),
-      clientErrorsDuringWindow: nonNegativeInteger(
+      clientErrorsDuringWindow: nullableNonNegativeInteger(
         telemetry.clientErrorsDuringWindow
       )
     },
@@ -220,6 +220,12 @@ function normalizeWindowDays(value) {
 function nonNegativeInteger(value) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.trunc(number)) : 0;
+}
+
+function nullableNonNegativeInteger(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.trunc(number)) : null;
 }
 
 function normalizedRate(value) {

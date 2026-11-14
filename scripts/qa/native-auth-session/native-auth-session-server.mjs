@@ -9,7 +9,10 @@ createServer((request,response)=>{
   if(url.pathname==='/start'){
     const callback=new URL(url.searchParams.get('redirect_to'));
     callback.searchParams.set('code','fixture-system-session-code');
-    if(process.env.PROBE_MODE==='legacy'){
+    // Both supported native-session probes must exercise this candidate's
+    // actual callback handler. The public website can serve an older build
+    // and is a separate deployment/compatibility acceptance boundary.
+    if(process.env.PROBE_MODE==='legacy'||process.env.PROBE_MODE==='custom'){
       callback.protocol='http:';callback.hostname='127.0.0.1';callback.port='8765';
     }
     console.log('PROBE_HTTP_REDIRECT:'+JSON.stringify({mode:process.env.PROBE_MODE,path:callback.pathname,flowBound:callback.searchParams.get('auth_flow')?.length>=20,compatibility:callback.searchParams.get('native_auth_session')==='1'}));

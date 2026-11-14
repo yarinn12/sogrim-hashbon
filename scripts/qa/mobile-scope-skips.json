@@ -1,0 +1,167 @@
+{
+  "source": "0250290da45813a17fb188518dfcb89b461a7562",
+  "reason": "Existing source-declared iOS/iPad/touch-only cases on unsupported browser profiles; includes the two original keyboard-scroll-intent touch guards. No test, scope condition, deadline or assertion changed.",
+  "projects": {
+    "android-mobile": [
+      {
+        "id": "a8206df1cbecf2fd7bd3-5128c66ea992713db5a6",
+        "file": "ios-apple-provider-discovery.spec.mjs",
+        "title": "slow provider discovery keeps email usable, then offers Apple beside Google and opens Apple OAuth"
+      },
+      {
+        "id": "a8206df1cbecf2fd7bd3-35a81c1d03284931cc54",
+        "file": "ios-apple-provider-discovery.spec.mjs",
+        "title": "transient provider failure retries and restores equivalent Apple and Google choices"
+      },
+      {
+        "id": "a8206df1cbecf2fd7bd3-4f914d960283ad2ef1ec",
+        "file": "ios-apple-provider-discovery.spec.mjs",
+        "title": "explicitly unavailable Apple never leaves Google as the only social option on iOS"
+      },
+      {
+        "id": "d2bcf4eb79ae557ae9c9-ba7bf55f21d0ef89e93c",
+        "file": "mobile-layout.spec.mjs",
+        "title": "iPad event screens use a responsive tablet canvas"
+      },
+      {
+        "id": "d2bcf4eb79ae557ae9c9-d16c79c754a7928964b6",
+        "file": "mobile-layout.spec.mjs",
+        "title": "iPad home, notifications and profile share a stable tablet canvas"
+      },
+      {
+        "id": "d2bcf4eb79ae557ae9c9-9bfb1ba5ae1460eb2dbc",
+        "file": "mobile-layout.spec.mjs",
+        "title": "iPad new-event steps always start inside the visible canvas"
+      },
+      {
+        "id": "d2bcf4eb79ae557ae9c9-a34a5fb23611b55a43a7",
+        "file": "mobile-layout.spec.mjs",
+        "title": "iPhone new-event primary actions stay above the bottom navigation on every step"
+      },
+      {
+        "id": "d2bcf4eb79ae557ae9c9-3d021194ac67179cfa23",
+        "file": "mobile-layout.spec.mjs",
+        "title": "iPad landscape keeps expense entry inside the responsive tablet canvas"
+      },
+      {
+        "id": "4a8b5078ec1964ab7a1f-54cb3096c761b887d5e6",
+        "file": "pwa-fresh-install.spec.mjs",
+        "title": "a fresh iPhone or iPad home-screen install receives the current app shell"
+      },
+      {
+        "id": "4a8b5078ec1964ab7a1f-4a9e358cfbe609dea896",
+        "file": "pwa-fresh-install.spec.mjs",
+        "title": "an iPhone home-screen launch receives native-feeling standalone chrome"
+      }
+    ],
+    "ipad-webkit": [
+      {
+        "id": "d2bcf4eb79ae557ae9c9-4381fbb36b27afa44866",
+        "file": "mobile-layout.spec.mjs",
+        "title": "iPhone new-event primary actions stay above the bottom navigation on every step"
+      }
+    ],
+    "reflow-200": [
+      {
+        "id": "a4115269a2429ba5d19e-ed8c2fa46fd0e3be322a",
+        "file": "account-auth-feedback.spec.mjs",
+        "title": "touching the login fields focuses them on iPad and opens the software-input path"
+      },
+      {
+        "id": "08b4c9e88175f2c24336-286d264ccbc7d2abd0c3",
+        "file": "design-bug-regressions.spec.mjs",
+        "title": "restaurant total updates and can be read while the visual keyboard is open"
+      },
+      {
+        "id": "a8206df1cbecf2fd7bd3-fd433a4a5bb54a1f2601",
+        "file": "ios-apple-provider-discovery.spec.mjs",
+        "title": "slow provider discovery keeps email usable, then offers Apple beside Google and opens Apple OAuth"
+      },
+      {
+        "id": "a8206df1cbecf2fd7bd3-c1b0221e71e1ec1b21fb",
+        "file": "ios-apple-provider-discovery.spec.mjs",
+        "title": "transient provider failure retries and restores equivalent Apple and Google choices"
+      },
+      {
+        "id": "a8206df1cbecf2fd7bd3-92fe9d398186e4cf8009",
+        "file": "ios-apple-provider-discovery.spec.mjs",
+        "title": "explicitly unavailable Apple never leaves Google as the only social option on iOS"
+      },
+      {
+        "id": "90af44bde9b047a596b4-0d82b60f54bf3916d9ec",
+        "file": "iphone-keyboard-viewport.spec.mjs",
+        "title": "expense remains editable above a keyboard that only shrinks the visual viewport (compact)"
+      },
+      {
+        "id": "90af44bde9b047a596b4-453226dc1d456fcbb02c",
+        "file": "iphone-keyboard-viewport.spec.mjs",
+        "title": "expense remains editable above a keyboard that only shrinks the visual viewport (regular)"
+      },
+      {
+        "id": "90af44bde9b047a596b4-37c57e61f69019a6e373",
+        "file": "iphone-keyboard-viewport.spec.mjs",
+        "title": "expense remains editable above a keyboard that only shrinks the visual viewport (large)"
+      },
+      {
+        "id": "90af44bde9b047a596b4-a982b8421b76f93536fb",
+        "file": "iphone-keyboard-viewport.spec.mjs",
+        "title": "expense remains editable above a keyboard that only shrinks the visual viewport (iPhone 16 accessibility XL equivalent)"
+      },
+      {
+        "id": "d2bcf4eb79ae557ae9c9-2f7c18f6d4d4f342700a",
+        "file": "mobile-layout.spec.mjs",
+        "title": "iPad event screens use a responsive tablet canvas"
+      },
+      {
+        "id": "d2bcf4eb79ae557ae9c9-9e71e8b8d268434026b5",
+        "file": "mobile-layout.spec.mjs",
+        "title": "iPad home, notifications and profile share a stable tablet canvas"
+      },
+      {
+        "id": "d2bcf4eb79ae557ae9c9-31fbee8cedda9ec1a3dd",
+        "file": "mobile-layout.spec.mjs",
+        "title": "iPad new-event steps always start inside the visible canvas"
+      },
+      {
+        "id": "d2bcf4eb79ae557ae9c9-82682bf9754dbbde31fd",
+        "file": "mobile-layout.spec.mjs",
+        "title": "iPhone new-event primary actions stay above the bottom navigation on every step"
+      },
+      {
+        "id": "d2bcf4eb79ae557ae9c9-0235993da26f2a65e216",
+        "file": "mobile-layout.spec.mjs",
+        "title": "iPad landscape keeps expense entry inside the responsive tablet canvas"
+      },
+      {
+        "id": "4a8b5078ec1964ab7a1f-e47b1be49f457331c441",
+        "file": "pwa-fresh-install.spec.mjs",
+        "title": "a fresh iPhone or iPad home-screen install receives the current app shell"
+      },
+      {
+        "id": "4a8b5078ec1964ab7a1f-48acda7c0cd465d83e1f",
+        "file": "pwa-fresh-install.spec.mjs",
+        "title": "an iPhone home-screen launch receives native-feeling standalone chrome"
+      },
+      {
+        "id": "d867c06bbc87b45fb343-0a937ecccdcae84dbbed",
+        "file": "restaurant-keyboard-presentation.spec.mjs",
+        "title": "restaurant keyboard preserves the visible viewport and Next at root 16"
+      },
+      {
+        "id": "d867c06bbc87b45fb343-0adf57d78b77655d0e8f",
+        "file": "restaurant-keyboard-presentation.spec.mjs",
+        "title": "restaurant keyboard preserves the visible viewport and Next at root 32"
+      },
+      {
+        "id": "0865b70856d5378c98db-07c9597a99a6e4c49215",
+        "file": "keyboard-scroll-intent.spec.mjs",
+        "title": "a newer scroll to Next survives an older layout correction at root 16"
+      },
+      {
+        "id": "0865b70856d5378c98db-6fa32820b975fe96ed3d",
+        "file": "keyboard-scroll-intent.spec.mjs",
+        "title": "a newer scroll to Next survives an older layout correction at root 32"
+      }
+    ]
+  }
+}

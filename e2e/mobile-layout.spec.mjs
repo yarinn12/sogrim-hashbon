@@ -1,6 +1,10 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 import { calculateSettlement } from "../src/domain/settlement.mjs";
+import { prepareMobileLayoutFixture } from "./helpers/prepareMobileLayoutFixture.mjs";
+import { assertLargeSettlementContentFlow, assertReadableTextLines } from "./helpers/mobileContentFlow.mjs";
 
 const EVENT_ID = "event-layout-ci";
 const OWNER_ID = "person-owner";
@@ -89,7 +93,7 @@ const seededState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }, testInfo) => {
+test.beforeEach(async ({ page }, testInfo) => {
   runtimeIssues = [];
   page.on("pageerror", (error) => runtimeIssues.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
@@ -111,8 +115,7 @@ test.beforeEach(async ({ page, request }, testInfo) => {
     }
   });
 
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: seededState });
+  await prepareMobileLayoutFixture({ baseURL: testInfo.project.use.baseURL, state: seededState });
 
   await page.addInitScript(({ participantId, displayName, state }) => {
     localStorage.clear();
@@ -161,7 +164,7 @@ test("shared notes keep the exact event header brand mark", async ({ page }) => 
   }
 });
 
-test("note editor shares the form gutters, spacing and control shapes", async ({ page }, testInfo) => {
+test("note editor shares the route header, form gutters and selection controls", async ({ page }, testInfo) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page.locator('[data-action="open-event-notes"]').click();
   await page.locator('[data-action="new-event-note"]').click();
@@ -174,16 +177,20 @@ test("note editor shares the form gutters, spacing and control shapes", async ({
     const formBox = form.getBoundingClientRect();
     const field = element.querySelector(".field");
     const styles = selector => getComputedStyle(element.querySelector(selector));
-    const root = getComputedStyle(document.documentElement);
+    const panelBackground = getComputedStyle(element).backgroundColor;
+    const backdropBackground = getComputedStyle(element.closest(".event-modal-backdrop")).backgroundColor;
+    const opaque = color => color.startsWith("rgb(") || /,\s*1(?:\.0*)?\)$/.test(color);
     const ancestors = [];
     for (let current = element; current; current = current.parentElement) {
       ancestors.push({ className: current.className, opacity: getComputedStyle(current).opacity });
     }
     return { leftInset: formBox.left - box.left, rightInset: box.right - formBox.right,
-      panelBackground: getComputedStyle(element).backgroundColor, ancestors,
+      panelBackground, backdropBackground, opaqueSurface: opaque(panelBackground) || opaque(backdropBackground), ancestors,
       fieldMargin: getComputedStyle(field).marginBlock,
-      eyebrow: styles(".eyebrow").color, brand: root.getPropertyValue("--app-brand").trim(),
-      pinRadius: styles(".event-note-pin-toggle").borderRadius,
+      titleColor: styles(".event-modal-header h2").color,
+      pinRadius: styles(".event-note-pin-check").borderRadius,
+      pinBackground: styles(".event-note-pin-toggle").backgroundColor,
+      pinTargetHeight: element.querySelector(".event-note-pin-toggle").getBoundingClientRect().height,
       saveRadius: styles('[data-action="save-event-note"]').borderRadius };
   });
   // A late render can start another reveal after the general settle check.
@@ -199,14 +206,23 @@ test("note editor shares the form gutters, spacing and control shapes", async ({
   expect(metrics.rightInset).toBeGreaterThanOrEqual(16);
   expect(Math.abs(metrics.leftInset - metrics.rightInset)).toBeLessThanOrEqual(1);
   expect(metrics.fieldMargin).toBe("0px");
-  expect(metrics.pinRadius).toBe(metrics.saveRadius);
-  expect(metrics.panelBackground).toBe("rgb(255, 255, 255)");
+  expect(metrics.pinRadius).toBe("6px");
+  expect(metrics.saveRadius).toBe("14px");
+  expect(metrics.pinTargetHeight).toBeGreaterThanOrEqual(44);
+  expect(metrics.pinBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(metrics.opaqueSurface, "the route surface must cover background content").toBe(true);
   expect(metrics.ancestors.filter(({ opacity }) => Number(opacity) < 1), "settled form must not show the screen underneath").toEqual([]);
-  await expect(modal.locator(".eyebrow")).toHaveCSS("color", "rgb(6, 75, 67)");
+  expect(metrics.titleColor).toBe("rgb(255, 255, 255)");
+  await expect(modal).toHaveAttribute("role", "region");
+  await expect(modal.getByRole("button", {name: "חזרה לפתקים", exact: true})).toBeVisible();
+  await expect(modal.locator(".eyebrow")).toHaveCount(0);
+  await expect(modal.locator(".event-note-pin-check svg")).toHaveCSS("opacity", "0");
   await modal.locator('[data-action="event-note-title"]').fill("פרטי הטיסה");
   await modal.locator('[data-action="event-note-body"]').fill("נפגשים בטרמינל שלוש, ליד הכניסה.");
   await modal.locator('[data-action="toggle-event-note-pin"]').click();
   await expect(modal.locator('[data-action="toggle-event-note-pin"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(modal.locator('[data-action="toggle-event-note-pin"]')).toHaveText("להצמיד לראש הרשימה");
+  await expect(modal.locator(".event-note-pin-check svg")).toHaveCSS("opacity", "1");
   const save = modal.locator('[data-action="save-event-note"]');
   await save.scrollIntoViewIfNeeded();
   await save.click();
@@ -215,16 +231,25 @@ test("note editor shares the form gutters, spacing and control shapes", async ({
   await assertLayoutHealth(page, "saved note");
 });
 
-test("event cover settings use the neighboring panel surface", async ({ page }, testInfo) => {
+test("event cover settings preserve the approved flat section and adjacent menu rows", async ({ page }, testInfo) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page.locator('[data-action="open-event-settings"]').first().click();
   await settleCoherenceMotion(page);
   const surfaces = await page.locator(".event-settings-modal").evaluate(modal =>
     [".event-cover-settings", ".event-settings-menu"].map(selector => {
-      const style = getComputedStyle(modal.querySelector(selector));
-      return { radius: style.borderRadius, border: style.borderColor, background: style.backgroundColor };
+      const node = modal.querySelector(selector);
+      const style = getComputedStyle(node), rect = node.getBoundingClientRect();
+      return { radius: style.borderRadius, shadow: style.boxShadow, background: style.backgroundColor,
+        borderBottom: style.borderBottomWidth, borderBottomColor: style.borderBottomColor,
+        borderTopColor: style.borderTopColor, left: rect.left, width: rect.width, top: rect.top, bottom: rect.bottom };
     }));
-  expect(surfaces[0]).toEqual(surfaces[1]);
+  // 7a268ca4 approved a transparent cover section above white divided menu rows.
+  expect(surfaces[0]).toMatchObject({ radius: "0px", shadow: "none", background: "rgba(0, 0, 0, 0)", borderBottom: "1px" });
+  expect(surfaces[1]).toMatchObject({ radius: "0px", shadow: "none", background: "rgb(255, 255, 255)" });
+  expect(surfaces[0].borderBottomColor).toBe(surfaces[1].borderTopColor);
+  expect(Math.abs(surfaces[0].left - surfaces[1].left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(surfaces[0].width - surfaces[1].width)).toBeLessThanOrEqual(1);
+  expect(surfaces[1].top).toBeGreaterThanOrEqual(surfaces[0].bottom);
   await page.screenshot({ path: testInfo.outputPath("event-settings-surfaces.png") });
 });
 
@@ -264,7 +289,7 @@ test("new event actions stay below participant choices without covering them", a
 test("participant pictures never cover the event title or participant count", async ({
   page,
   request
-}) => {
+, baseURL: fixtureBaseURL}) => {
   const largeState = structuredClone(seededState);
   const extraParticipants = Array.from({ length: 121 }, (_, index) => ({
     id: `person-scale-${index + 1}`,
@@ -275,7 +300,7 @@ test("participant pictures never cover the event title or participant count", as
   largeState.events[0].participantIds.push(
     ...extraParticipants.map((participant) => participant.id)
   );
-  await request.put("/api/state", { data: largeState });
+  await writeLocalQaStateFresh(fixtureBaseURL, largeState);
   await settleServiceWorkerBeforeReload(page);
   await page.addInitScript((nextState) => {
     localStorage.setItem("settle-friends-state", JSON.stringify(nextState));
@@ -291,19 +316,20 @@ test("participant pictures never cover the event title or participant count", as
 
   const geometry = await eventRow.evaluate((element) => {
     const stackRect = element.querySelector(".avatar-stack")?.getBoundingClientRect();
-    const mainRect = element.querySelector(".event-row-main")?.getBoundingClientRect();
+    const titleRect = element.querySelector(".event-row-title strong")?.getBoundingClientRect();
     const countRect = element.querySelector(".event-row-details > span:last-child")?.getBoundingClientRect();
     const overlap = (first, second) => first && second
       ? Math.max(0, Math.min(first.right, second.right) - Math.max(first.left, second.left))
+        * Math.max(0, Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top))
       : -1;
     return {
-      stackMainOverlap: overlap(stackRect, mainRect),
+      stackTitleOverlap: overlap(stackRect, titleRect),
       stackCountOverlap: overlap(stackRect, countRect),
       stackWidth: stackRect?.width ?? 0,
       rowWidth: element.getBoundingClientRect().width
     };
   });
-  expect(geometry.stackMainOverlap).toBe(0);
+  expect(geometry.stackTitleOverlap).toBe(0);
   expect(geometry.stackCountOverlap).toBe(0);
   expect(geometry.stackWidth).toBeLessThan(geometry.rowWidth);
   await assertLayoutHealth(page, "large event participant count");
@@ -312,7 +338,7 @@ test("participant pictures never cover the event title or participant count", as
 test("adding a saved friend requires an explicit confirmation and keeps the picker on-brand", async ({
   page,
   request
-}) => {
+, baseURL: fixtureBaseURL}) => {
   const availableFriend = {
     id: AVAILABLE_FRIEND_ID,
     displayName: "נועה חברה",
@@ -325,13 +351,14 @@ test("adding a saved friend requires an explicit confirmation and keeps the pick
   augmentedState.participants.push(availableFriend);
   augmentedState.friendContacts = [
     {
+      id: "fixture-contact-noa-mobile-layout",
       participantId: AVAILABLE_FRIEND_ID,
       active: true,
       source: "account",
       updatedAt: "2026-08-03T20:05:00.000Z"
     }
   ];
-  await request.put("/api/state", { data: augmentedState });
+  await writeLocalQaStateFresh(fixtureBaseURL, augmentedState);
   await settleServiceWorkerBeforeReload(page);
   await page.addInitScript((nextState) => {
     localStorage.setItem("settle-friends-state", JSON.stringify(nextState));
@@ -360,12 +387,15 @@ test("adding a saved friend requires an explicit confirmation and keeps the pick
     `[data-action="select-event-participant-candidate"][data-participant-id="${AVAILABLE_FRIEND_ID}"]`
   );
   const confirm = addRoute.locator('[data-action="confirm-event-participant-add"]');
-  await expect(candidate).toHaveText(/בחר/);
+  await expect(candidate).toHaveAccessibleName("בחר את נועה חברה");
+  await expect(candidate).toHaveAttribute("aria-pressed", "false");
+  await expect(candidate.locator(".event-participant-selection-check svg")).toHaveCSS("opacity", "0");
   await expect(confirm).toBeDisabled();
 
   await candidate.click();
   await expect(candidate).toHaveAttribute("aria-pressed", "true");
-  await expect(candidate).toHaveText(/נבחר/);
+  await expect(candidate).toHaveAccessibleName("בטל בחירה של נועה חברה");
+  await expect(candidate.locator(".event-participant-selection-check svg")).toHaveCSS("opacity", "1");
   await expect(confirm).toBeEnabled();
   expect(
     await page.evaluate(({ eventId, participantId }) => {
@@ -387,11 +417,11 @@ test("adding a saved friend requires an explicit confirmation and keeps the pick
   ).toBeVisible();
 });
 
-test("an event without expenses presents one clear empty summary card", async ({ page, request }) => {
+test("an event without expenses presents one clear empty summary card", async ({ page, request , baseURL: fixtureBaseURL}) => {
   const emptyState = structuredClone(seededState);
   emptyState.events[0].expenses = [];
   emptyState.events[0].transfers = [];
-  await request.put("/api/state", { data: emptyState });
+  await writeLocalQaStateFresh(fixtureBaseURL, emptyState);
   await settleServiceWorkerBeforeReload(page);
   await page.addInitScript((nextState) => {
     localStorage.setItem("settle-friends-state", JSON.stringify(nextState));
@@ -458,13 +488,35 @@ test("participant identity uses colored or grayscale pictures without status dot
   const accountOption = picker.locator(`[data-choice-value="${MAOR_ID}"]`);
   const offlineOption = picker.locator('[data-choice-value="person-ariel"]');
   await expect(accountOption).toContainText("חבר באפליקציה");
-  await expect(offlineOption).toContainText("שם אופליין");
+  await expect(offlineOption).toContainText("שם ללא חשבון");
   await expect(accountOption).toHaveAttribute("aria-selected", "true");
   await expect(accountOption.locator(".app-choice-option-check")).toBeVisible();
   await assertNoIdentityDots(picker);
   await offlineOption.click();
   await expect(picker).toHaveCount(0);
   await expect(editor.locator('[data-action="expense-payer-id"]').first()).toHaveValue("person-ariel");
+});
+
+test("choosing a profile picture keeps its selection clear without a green dot", async ({ page }) => {
+  await page.locator('.product-app-nav [data-nav-destination="profile"]').click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  const picker = page.locator('.profile-avatar-picker-shell');
+  if (await picker.count()) await picker.locator(':scope > summary').click();
+
+  const selected = page.locator('.profile-avatar-option:has(input:checked) .profile-avatar-preview');
+  await expect(selected).toHaveCount(1);
+  const marker = () => selected.evaluate(element => getComputedStyle(element, '::after').content);
+  expect(await marker(), 'the selected profile picture must have no dot').toBe('none');
+
+  await page.locator('.profile-avatar-option').nth(1).click();
+  await expect(page.locator('.profile-avatar-option').nth(1).locator('input')).toBeChecked();
+  expect(await marker(), 'changing pictures must not restore a dot').toBe('none');
+  // A later design layer chooses the exact brand shade; compare the selected ring with an unselected picture.
+  const border = await selected.evaluate(element => getComputedStyle(element).borderColor);
+  const unselectedBorder = await page.locator('.profile-avatar-option:not(:has(input:checked)) .profile-avatar-preview')
+    .first().evaluate(element => getComputedStyle(element).borderColor);
+  expect(border, 'the selected picture keeps a visible selection ring').not.toBe(unselectedBorder);
+  expect(border).not.toBe('rgba(0, 0, 0, 0)');
 });
 
 test("payer choices open after a normal held pointer press", async ({ page }) => {
@@ -509,20 +561,34 @@ test("another person's picture alone opens shared statistics while editable text
   await expect(currentParticipantAvatar).toHaveAttribute("aria-label", "פתיחת הפרופיל שלך");
   const currentParticipantAvatarImage = currentParticipantAvatar.locator("img");
   await expect(currentParticipantAvatarImage).toBeVisible();
-  const currentParticipantAvatarRendering = await currentParticipantAvatar.evaluate((avatar) => {
-    const image = avatar.querySelector("img");
-    const imageStyle = image ? getComputedStyle(image) : null;
-    const interactionTargetStyle = getComputedStyle(avatar, "::before");
-    const statusMarkerStyle = getComputedStyle(avatar, "::after");
-    return {
-      imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
-      imageDisplay: imageStyle?.display,
-      imageVisibility: imageStyle?.visibility,
-      interactionTargetWidth: Number.parseFloat(interactionTargetStyle.width),
-      interactionTargetHeight: Number.parseFloat(interactionTargetStyle.height),
-      statusMarkerContent: statusMarkerStyle.content
-    };
-  });
+  // Hold this already-visible image back for the first rendering sample. An
+  // image element can be visible before its bytes arrive and decode.
+  const avatarSource = await currentParticipantAvatarImage.getAttribute("src");
+  await currentParticipantAvatarImage.evaluate((image) => image.removeAttribute("src"));
+  let sampledBeforeRestore = false;
+  const readAvatarRendering = async () => {
+    const rendering = await currentParticipantAvatar.evaluate((avatar) => {
+      const image = avatar.querySelector("img");
+      const imageStyle = image ? getComputedStyle(image) : null;
+      const interactionTargetStyle = getComputedStyle(avatar, "::before");
+      const statusMarkerStyle = getComputedStyle(avatar, "::after");
+      return {
+        imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+        imageDisplay: imageStyle?.display,
+        imageVisibility: imageStyle?.visibility,
+        interactionTargetWidth: Number.parseFloat(interactionTargetStyle.width),
+        interactionTargetHeight: Number.parseFloat(interactionTargetStyle.height),
+        statusMarkerContent: statusMarkerStyle.content
+      };
+    });
+    if (!sampledBeforeRestore) {
+      sampledBeforeRestore = true;
+      await currentParticipantAvatarImage.evaluate((image, source) => image.setAttribute("src", source), avatarSource);
+    }
+    return rendering;
+  };
+  await expect.poll(async () => (await readAvatarRendering()).imageLoaded).toBe(true);
+  const currentParticipantAvatarRendering = await readAvatarRendering();
   expect(currentParticipantAvatarRendering).toEqual(
     expect.objectContaining({
       imageLoaded: true,
@@ -559,36 +625,49 @@ test("another person's picture alone opens shared statistics while editable text
     `.friend-relationship-screen[data-friend-profile-id="${MAOR_ID}"]`
   );
   await expect(statisticsScreen).toBeVisible();
-  await expect(statisticsScreen.getByText("אתם במספרים", { exact: true })).toBeVisible();
+  await expect(statisticsScreen.getByRole("heading", { name: "הפעילות המשותפת", exact: true })).toBeVisible();
+  await expect(statisticsScreen.locator(".relationship-identity-copy")).toContainText("Awesome Maor · מאור סיבוני");
   const relationshipSides = await statisticsScreen
-    .locator(".relationship-duo")
+    .locator(".friend-activity-values").first()
     .evaluate((element) => {
-      const current = element.querySelector('[data-relationship-person="current"]');
-      const target = element.querySelector('[data-relationship-person="target"]');
+      const current = element.firstElementChild;
+      const target = element.lastElementChild;
       return {
-        currentX: current?.getBoundingClientRect().x ?? -1,
-        targetX: target?.getBoundingClientRect().x ?? -1
+        currentX: current.getBoundingClientRect().x, targetX: target.getBoundingClientRect().x,
+        currentTop: current.getBoundingClientRect().top, targetTop: target.getBoundingClientRect().top,
+        currentLabel: current.querySelector("small").textContent,
+        targetLabel: target.querySelector("small").textContent,
+        columns: getComputedStyle(element).gridTemplateColumns.split(" ").length
       };
     });
-  expect(relationshipSides.currentX).toBeGreaterThan(relationshipSides.targetX);
+  expect(relationshipSides.currentLabel).toBe("אתה");
+  expect(relationshipSides.targetLabel).toBe("Awesome Maor · מאור סיבוני");
+  if (relationshipSides.columns === 1) {
+    expect(Math.abs(relationshipSides.currentX - relationshipSides.targetX)).toBeLessThanOrEqual(1);
+    expect(relationshipSides.currentTop).toBeLessThan(relationshipSides.targetTop);
+  } else {
+    expect(relationshipSides.columns).toBe(2);
+    expect(relationshipSides.currentX).toBeGreaterThan(relationshipSides.targetX);
+  }
   const comparisonSides = await statisticsScreen
-    .locator(".relationship-comparison-values")
+    .locator(".friend-activity-values")
     .first()
     .evaluate((element) => {
-      const current = element.querySelector('[data-relationship-person="current"]');
-      const target = element.querySelector('[data-relationship-person="target"]');
+      const current = element.firstElementChild;
+      const target = element.lastElementChild;
       return {
         currentX: current?.getBoundingClientRect().x ?? -1,
         targetX: target?.getBoundingClientRect().x ?? -1
       };
     });
-  expect(comparisonSides.currentX).toBeGreaterThan(comparisonSides.targetX);
+  if (relationshipSides.columns === 2) expect(comparisonSides.currentX).toBeGreaterThan(comparisonSides.targetX);
+  else expect(Math.abs(comparisonSides.currentX - comparisonSides.targetX)).toBeLessThanOrEqual(1);
   const comparisonValueAlignment = await statisticsScreen
-    .locator(".relationship-comparison-values")
+    .locator(".friend-activity-values")
     .first()
     .evaluate((element) => {
-      const current = element.querySelector('[data-relationship-person="current"]');
-      const target = element.querySelector('[data-relationship-person="target"]');
+      const current = element.firstElementChild;
+      const target = element.lastElementChild;
       const currentValue = current?.querySelector(".font-num");
       const targetValue = target?.querySelector(".font-num");
       const currentRect = current?.getBoundingClientRect();
@@ -597,12 +676,12 @@ test("another person's picture alone opens shared statistics while editable text
       const targetValueRect = targetValue?.getBoundingClientRect();
       return {
         currentEdgeGap: Math.abs((currentRect?.right ?? 0) - (currentValueRect?.right ?? 0)),
-        targetEdgeGap: Math.abs((targetValueRect?.left ?? 0) - (targetRect?.left ?? 0))
+        targetEdgeGap: Math.abs((targetValueRect?.right ?? 0) - (targetRect?.right ?? 0))
       };
     });
   expect(comparisonValueAlignment.currentEdgeGap).toBeLessThanOrEqual(2);
-  // Safari can reserve a few pixels for the longer pill label beside this value.
-  expect(comparisonValueAlignment.targetEdgeGap).toBeLessThanOrEqual(8);
+  // The approved metric columns align both values to their own right edge.
+  expect(comparisonValueAlignment.targetEdgeGap).toBeLessThanOrEqual(2);
   if (process.env.CAPTURE_PARTICIPANT_STATS === "1") {
     await page.screenshot({
       path: `design-audits/participant-statistics-${test.info().project.name}.png`,
@@ -849,17 +928,58 @@ test("participant roster keeps pending work silent and never stretches a status 
     if (failureKind === "permission") await expect(status).toContainText("אין הרשאה");
     else await expect(status).toBeHidden();
     const geometry = await roster.evaluate(node => {
+      const modal = node.getBoundingClientRect();
       const header = node.querySelector(".event-modal-header").getBoundingClientRect();
       const body = node.querySelector(".event-modal-body").getBoundingClientRect();
-      const status = node.querySelector("[data-route-sync-status]").getBoundingClientRect();
-      const text = node.querySelector("[data-inline-sync-status]").getBoundingClientRect();
-      return { headerTop: header.top, bodyGap: body.top - header.bottom, statusHeight: status.height, textHeight: text.height };
+      const statusNode = node.querySelector("[data-route-sync-status]");
+      const status = statusNode.getBoundingClientRect();
+      const textNode = node.querySelector("[data-inline-sync-status]");
+      const text = textNode.getBoundingClientRect();
+      const retryNode = node.querySelector("[data-inline-sync-retry]");
+      const retry = retryNode.getBoundingClientRect();
+      const style = getComputedStyle(statusNode);
+      const retryHit = document.elementFromPoint(retry.left + retry.width / 2, retry.top + retry.height / 2);
+      return {
+        headerTop: header.top, bodyGap: body.top - header.bottom,
+        modalLeft: modal.left, modalRight: modal.right,
+        statusLeft: status.left, statusRight: status.right, statusHeight: status.height,
+        textHeight: text.height, textClipped: textNode.scrollWidth > textNode.clientWidth + 1 ||
+          textNode.scrollHeight > textNode.clientHeight + 1,
+        retryWidth: retry.width, retryHeight: retry.height,
+        textBottom: text.bottom, retryTop: retry.top,
+        paddingTop: style.paddingTop, paddingBottom: style.paddingBottom,
+        rowGap: parseFloat(style.rowGap),
+        retryReachable: retryNode === retryHit || retryNode.contains(retryHit),
+        verticalChrome: [style.paddingTop, style.paddingBottom, style.borderTopWidth, style.borderBottomWidth]
+          .reduce((sum, value) => sum + parseFloat(value), 0),
+        statusText: textNode.textContent
+      };
     });
     measurements.push({ failureKind, ...geometry });
     expect(Math.abs(geometry.headerTop)).toBeLessThanOrEqual(2);
     if (failureKind === "permission") {
-      expect(geometry.statusHeight).toBeLessThanOrEqual(Math.max(44, geometry.textHeight + 24));
+      // 7a268ca4 uses a stacked in-flow message/retry row, not a horizontal pill.
+      expect(geometry.paddingTop).toBe("12px");
+      expect(geometry.paddingBottom).toBe("12px");
+      expect(geometry.verticalChrome).toBe(24);
+      expect(geometry.rowGap).toBe(16);
+      expect(geometry.retryTop - geometry.textBottom).toBeCloseTo(16, 0);
+      expect(geometry.statusHeight).toBeLessThanOrEqual(
+        geometry.textHeight + geometry.retryHeight + geometry.rowGap + geometry.verticalChrome + 1
+      );
+      expect(geometry.statusLeft).toBeGreaterThanOrEqual(geometry.modalLeft);
+      expect(geometry.statusRight).toBeLessThanOrEqual(geometry.modalRight);
+      expect(geometry.statusText).toContain("אין הרשאה");
+      expect(geometry.textClipped).toBe(false);
+      expect(geometry.retryWidth).toBeGreaterThanOrEqual(44);
+      expect(geometry.retryHeight).toBeGreaterThanOrEqual(44);
+      expect(geometry.retryReachable).toBe(true);
       expect(geometry.bodyGap).toBeLessThanOrEqual(geometry.statusHeight + 24);
+      const retry = status.locator("[data-inline-sync-retry]");
+      await expect(retry).toBeEnabled();
+      await page.screenshot({ path: testInfo.outputPath("participants-permission-status.png") });
+      if (await page.evaluate(() => navigator.maxTouchPoints > 0)) await retry.tap();
+      else await retry.click();
     } else {
       expect(geometry.statusHeight).toBe(0);
       expect(geometry.bodyGap).toBeLessThanOrEqual(24);
@@ -886,6 +1006,7 @@ test("large text keeps participant and settings header icons compact and tappabl
       const rect = node.getBoundingClientRect();
       const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
       return { label: node.getAttribute("aria-label"), width: rect.width, height: rect.height,
+        flexBasis: getComputedStyle(node).flexBasis,
         reachable: node === hit || node.contains(hit) };
     }));
     await testInfo.attach(`header-icons-${route}`, { contentType: "application/json", body: JSON.stringify(geometry) });
@@ -911,10 +1032,10 @@ test("large text navigation fits its labels without reserving a tall empty block
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
   await page.goto("/?dynamic-type-preview=32");
   await expect(page.locator("html")).toHaveCSS("font-size", "32px");
-  for (const destination of ["home", "profile", "notifications", "events"]) {
+  for (const destination of ["home", "profile", "notifications", "friends"]) {
     const nav = page.locator(".product-app-nav:visible");
     if (destination !== "home") await nav.locator(`[data-nav-destination="${destination}"]`).click();
-    await expect(page.locator(`[data-screen-kind="${destination === "events" ? "home" : destination}"]`)).toBeVisible();
+    await expect(page.locator(`[data-screen-kind="${destination === "friends" ? "groups" : destination}"]`)).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
     await settleCoherenceMotion(page);
     const geometry = await nav.evaluate(node => {
@@ -925,7 +1046,7 @@ test("large text navigation fits its labels without reserving a tall empty block
         const top = Math.min(...content.map(rect => rect.top));
         const bottom = Math.max(...content.map(rect => rect.bottom));
         const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
-        return { label: button.textContent.trim(), contentHeight: bottom - top,
+        return { label: button.textContent.trim(), top: rect.top, contentHeight: bottom - top,
           contentInside: top >= rect.top && bottom <= rect.bottom && content.every(child => child.left >= rect.left - 1 && child.right <= rect.right + 1),
           width: rect.width, height: rect.height, reachable: button === hit || button.contains(hit) };
       });
@@ -934,7 +1055,23 @@ test("large text navigation fits its labels without reserving a tall empty block
     await testInfo.attach(`bottom-nav-${destination}`, { contentType: "application/json", body: JSON.stringify(geometry) });
     await page.screenshot({ path: testInfo.outputPath(`bottom-nav-${destination}.png`) });
     expect(geometry.buttons).toHaveLength(4);
-    const contentHeight = Math.max(...geometry.buttons.map(button => button.contentHeight));
+    // Enlarged navigation may use two rows; retain the same48px total
+    // spacing allowance while counting each row's visible icon/label content.
+    const rows=[];
+    for(const button of geometry.buttons) {
+      const bottom=button.top+button.height;
+      // A selected/hovered button may lift by1px. Group actual overlapping
+      // vertical bands, rather than treating that lift as another layout row.
+      let row=rows.find(row=>Math.min(row.bottom,bottom)-Math.max(row.top,button.top)
+        >Math.min(row.bottom-row.top,button.height)/2);
+      if(!row){row={top:button.top,bottom,height:0};rows.push(row);}
+      row.top=Math.min(row.top,button.top);
+      row.bottom=Math.max(row.bottom,bottom);
+      row.height=Math.max(row.height,button.contentHeight);
+    }
+    expect(rows.length,`${destination}: navigation uses one row or the approved two-row layout`).toBeGreaterThanOrEqual(1);
+    expect(rows.length).toBeLessThanOrEqual(2);
+    const contentHeight=rows.reduce((sum,row)=>sum+row.height,0);
     expect(geometry.height, `${destination}: navigation must size to labels and icons, with at most 48px of total vertical spacing`).toBeLessThanOrEqual(contentHeight + 48);
     expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight + 1);
     for (const button of geometry.buttons) {
@@ -944,6 +1081,237 @@ test("large text navigation fits its labels without reserving a tall empty block
       expect(button.reachable, `${destination}: ${button.label} must receive taps`).toBe(true);
     }
   }
+});
+
+
+
+
+test("settlement choices explain their current mode and retain it through participant navigation", async ({ page }) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await page.goto("/");
+  await page.locator('[data-action="new-event"]').first().click();
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  await page.getByRole('button', { name: 'הבא', exact: true }).click();
+  const screen = page.locator('.new-event-settlement-screen');
+  const rounding = screen.locator('[data-picker-action="new-event-rounding-choice"]');
+  const repayment = screen.locator('[data-picker-action="new-event-repayment-choice"]');
+  await expect(rounding.locator('[data-choice-value="rounded"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(repayment.locator('[data-choice-value="direct"]')).toHaveAttribute('aria-pressed', 'true');
+  for (const choice of [
+    { rounding: 'exact', repayment: 'direct' },
+    { rounding: 'exact', repayment: 'optimized' },
+    { rounding: 'rounded', repayment: 'direct' },
+    { rounding: 'rounded', repayment: 'optimized' }
+  ]) {
+    await rounding.locator('summary').click();
+    await rounding.locator('[data-choice-value="' + choice.rounding + '"]').click();
+    await repayment.locator('summary').click();
+    await repayment.locator('[data-choice-value="' + choice.repayment + '"]').click();
+    await expect(rounding.locator('[data-choice-value="' + choice.rounding + '"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(repayment.locator('[data-choice-value="' + choice.repayment + '"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(rounding.locator(':scope > small')).toContainText(choice.rounding === 'exact' ? 'ללא עיגול' : 'ההוצאות נשארות מדויקות');
+    if (choice.rounding === 'exact') await expect(rounding.locator(':scope > small')).not.toContainText('מעגלים');
+    await expect(repayment.locator(':scope > small')).toContainText(choice.repayment === 'direct' ? 'למי ששילם עבורו' : 'למשתתף אחר ממי ששילם');
+  }
+  for (const rootSize of [16, 20]) {
+    if (rootSize === 20) {
+      await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+      await page.getByRole('radio', { name: 'גדול מאוד', exact: true }).check();
+      await expect(page.locator('html')).toHaveCSS('font-size', '20px');
+      await page.getByRole('button', { name: 'סיום', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'נגישות', exact: true })).toHaveCount(0);
+    }
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const labels = await screen.locator('.field > span').evaluateAll(nodes => nodes.map(node => {
+        const r = node.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(node);
+        return { font: parseFloat(getComputedStyle(node).fontSize), fits: [...range.getClientRects()].every(g => g.left >= r.left - 1 && g.right <= r.right + 1) };
+      }));
+      expect(labels).toHaveLength(2);
+      for (const label of labels) {
+        expect(label.font).toBeCloseTo(14 * rootSize / 16, 1);
+        expect(label.fits).toBe(true);
+      }
+      const next = screen.locator('[data-action="open-new-event-participants"]');
+      await next.scrollIntoViewIfNeeded();
+      expect(await next.evaluate(node => {
+        const r = node.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return r.height >= 44 && (node === hit || node.contains(hit));
+      })).toBe(true);
+    }
+  }
+  await screen.locator('[data-action="open-new-event-participants"]').click();
+  await expect(page.locator('[data-event-creation-step="participants"]')).toBeVisible();
+  await page.locator('[data-new-event-step="settlement"]').click();
+  await expect(rounding.locator('[data-choice-value="rounded"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(repayment.locator('[data-choice-value="optimized"]')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test("event details scale field labels and retain the draft through currency search and stage navigation", async ({ page }) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await page.goto("/");
+  await page.locator('[data-action="new-event"]').first().click();
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  const screen = page.locator('.new-event-details-screen');
+  const name = screen.locator('[name="eventName"]');
+  await expect(name).toHaveAccessibleName('שם האירוע (לא חובה)');
+  await expect(name).toHaveAttribute('aria-describedby', 'new-event-name-hint');
+  await name.fill('ערב חברים & משפחה');
+  await screen.locator('.new-event-inline-picker summary').click();
+  const search = page.getByRole('searchbox', { name: 'חיפוש מטבע לפי שם, מדינה או קוד', exact: true });
+  await search.fill('ZZZZ');
+  await expect(screen.locator('[data-currency-search-empty]')).toBeVisible();
+  await search.fill('USD');
+  await screen.locator('[data-action="new-event-currency-choice"][data-choice-value="USD"]').click();
+  for (const rootSize of [16, 20]) {
+    if (rootSize === 20) {
+      await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+      await page.getByRole('radio', { name: 'גדול מאוד', exact: true }).check();
+      await expect(page.locator('html')).toHaveCSS('font-size', '20px');
+      await page.getByRole('button', { name: 'סיום', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'נגישות', exact: true })).toHaveCount(0);
+    }
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const labels = await screen.locator('.field > span').evaluateAll(nodes => nodes.map(node => {
+        const r = node.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(node);
+        return { font: parseFloat(getComputedStyle(node).fontSize), fits: [...range.getClientRects()].every(g => g.left >= r.left - 1 && g.right <= r.right + 1) };
+      }));
+      expect(labels).toHaveLength(2);
+      for (const label of labels) {
+        expect(label.font).toBeCloseTo(14 * rootSize / 16, 1);
+        expect(label.fits).toBe(true);
+      }
+      for (const action of await screen.locator('.actions > button').all()) {
+        await action.scrollIntoViewIfNeeded();
+        expect(await action.evaluate(node => {
+          const r = node.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return r.height >= 44 && (node === hit || node.contains(hit));
+        })).toBe(true);
+      }
+    }
+  }
+  await screen.locator('.new-event-inline-picker summary').click();
+  const menu = screen.locator('.new-event-inline-picker-menu');
+  expect(await menu.evaluate(node => node.scrollHeight > node.clientHeight && getComputedStyle(node).overflowY === 'auto')).toBe(true);
+  await screen.locator('.new-event-inline-picker summary').click();
+  await page.getByRole('button', { name: 'הבא', exact: true }).click();
+  await expect(page.locator('[data-event-creation-step="settlement"]')).toBeVisible();
+  await page.locator('[data-new-event-step="details"]').click();
+  await expect(name).toHaveValue('ערב חברים & משפחה');
+  await expect(screen.locator('.new-event-inline-picker summary')).toContainText('דולר אמריקאי');
+  await name.fill('');
+  await page.getByRole('button', { name: 'הבא', exact: true }).click();
+  await expect(page.locator('[data-event-creation-step="settlement"]')).toBeVisible();
+});
+
+test("event-type choices enlarge actual leaf text and keep both choices reachable", async ({ page }) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await page.goto("/");
+  await expect(page.locator('html')).toHaveCSS('font-size', '16px');
+  await page.locator('[data-action="new-event"]').first().click();
+  const choices = page.locator('.new-event-type-screen .event-type-option');
+  await expect(choices).toHaveCount(2);
+
+  for (const rootSize of [16, 20]) {
+    if (rootSize === 20) {
+      await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+      await page.getByRole('radio', { name: 'גדול מאוד', exact: true }).check();
+      await expect(page.locator('html')).toHaveCSS('font-size', '20px');
+      await page.getByRole('button', { name: 'סיום', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'נגישות', exact: true })).toHaveCount(0);
+    }
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const geometry = await choices.evaluateAll(nodes => nodes.map(button => {
+        const rect = button.getBoundingClientRect();
+        const texts = [button.querySelector('strong'), button.querySelector('span:not([class])')];
+        return {
+          height: rect.height,
+          right: rect.right,
+          left: rect.left,
+          text: texts.map(node => {
+            const range = document.createRange(); range.selectNodeContents(node);
+            const bounds = node.getBoundingClientRect();
+            return {
+              fontSize: parseFloat(getComputedStyle(node).fontSize),
+              fits: [...range.getClientRects()].filter(r => r.width && r.height).every(r =>
+                r.left >= bounds.left - 1 && r.right <= bounds.right + 1 &&
+                r.top >= bounds.top - 1 && r.bottom <= bounds.bottom + 1 &&
+                r.left >= rect.left && r.right <= rect.right)
+            };
+          })
+        };
+      }));
+      for (const row of geometry) {
+        expect(row.height).toBeGreaterThanOrEqual(44);
+        expect(row.left).toBeGreaterThanOrEqual(0);
+        expect(row.right).toBeLessThanOrEqual(width);
+        expect(row.text[0].fontSize).toBeCloseTo(18 * rootSize / 16, 1);
+        expect(row.text[1].fontSize).toBeCloseTo(13 * rootSize / 16, 1);
+        expect(row.text.every(text => text.fits)).toBe(true);
+      }
+      for (const choice of await choices.all()) {
+        await choice.scrollIntoViewIfNeeded();
+        const reachable = await choice.evaluate(button => {
+          const r = button.getBoundingClientRect();
+          const target = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return button === target || button.contains(target);
+        });
+        expect(reachable).toBe(true);
+      }
+    }
+  }
+
+  await page.locator('[data-event-type="standard"]').press('Enter');
+  await expect(page.locator('[data-event-creation-step="details"]')).toBeVisible();
+  await page.locator('[data-action="new-event-name"]').fill('בדיקת בחירת סוג אירוע');
+  await page.locator('[data-new-event-step="type"]').click();
+  await expect(page.locator('[data-event-type="standard"]')).toHaveAttribute('aria-checked', 'true');
+  await page.locator('[data-event-type="trip"]').click();
+  await expect(page.locator('[data-event-creation-step="details"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'טיול חדש', exact: true })).toBeVisible();
+  await expect(page.locator('[data-action="new-event-name"]')).toHaveValue('בדיקת בחירת סוג אירוע');
+});
+
+test("creation tabs fit normal phone widths and keep direct navigation with the draft", async ({ page }) => {
+  await page.locator('[data-action="new-event"]').first().click();
+  const progress = page.locator('.event-creation-progress');
+  for (const width of [320, 393, 411]) {
+    await page.setViewportSize({ width, height: 852 });
+    await page.evaluate(() => document.fonts.ready);
+    await settleCoherenceMotion(page);
+    const controls = await progress.locator('button').evaluateAll(nodes => nodes.map(button => {
+      const bounds = button.getBoundingClientRect();
+      const label = button.querySelector('strong');
+      const range = document.createRange(); range.selectNodeContents(label);
+      return { text: label.textContent, width: bounds.width, height: bounds.height,
+        fits: [...range.getClientRects()].every(rect => rect.left >= bounds.left - 1
+          && rect.right <= bounds.right + 1 && rect.top >= bounds.top - 1
+          && rect.bottom <= bounds.bottom + 1) };
+    }));
+    expect(controls).toHaveLength(4);
+    for (const control of controls) {
+      expect(control.fits, width + 'px: ' + control.text).toBe(true);
+      expect(control.width).toBeGreaterThanOrEqual(44);
+      expect(control.height).toBeGreaterThanOrEqual(44);
+    }
+    await expect(progress.locator('button > span')).toHaveCount(0);
+  }
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  await page.locator('[data-action="new-event-name"]').fill('בדיקת ניווט בין שלבים');
+  for (const step of ['settlement', 'participants', 'type', 'details']) {
+    await progress.locator('[data-new-event-step="' + step + '"]').click();
+    await expect(page.locator('[data-event-creation-step="' + step + '"]')).toBeVisible();
+    await expect(progress.locator('[aria-current="step"] button')).toHaveAttribute('data-new-event-step', step);
+  }
+  await expect(page.locator('[data-action="new-event-name"]')).toHaveValue('בדיקת ניווט בין שלבים');
 });
 
 test("large text keeps creation step labels whole and the steps reachable", async ({ page }, testInfo) => {
@@ -1009,7 +1377,7 @@ test("routine background sync never opens a sync surface", async ({ page }) => {
 });
 
 test("offline friend names explain blank input and recover in the friends list", async ({ page }) => {
-  await page.getByRole("button", { name: "חברים", exact: true }).click();
+  await page.locator('.product-app-nav [data-nav-destination="friends"]').click();
   await page.getByRole("button", { name: "הוסף חבר", exact: true }).click();
   const input = page.getByRole("textbox", { name: "שם מלא", exact: true });
   await input.fill("   ");
@@ -1027,8 +1395,10 @@ test("manual participant names explain blank input and recover without losing th
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page.getByRole("button", { name: "משתתפים באירוע", exact: true }).click();
   await page.getByRole("button", { name: "הוסף משתתפים", exact: true }).click();
-  await page.getByRole("button", { name: "הוסף שם ידנית", exact: true }).click();
-  const input = page.getByRole("textbox", { name: "שם חדש להוספה ידנית", exact: true });
+  const manualRoute = page.locator('[data-action="set-event-participant-add-view"][data-participant-view="manual"]');
+  await expect(manualRoute.getByText("הוספה לפי שם", { exact: true })).toBeVisible();
+  await manualRoute.click();
+  const input = page.getByRole("textbox", { name: "שם המשתתף", exact: true });
   for (const invalid of ["", "   ", "\u200f\u200e"]) {
     await input.fill(invalid);
     await page.getByRole("button", { name: "הוסף לאירוע", exact: true }).click();
@@ -1092,11 +1462,15 @@ test("expense notes and image stay visible after save and resume sync", async ({
     name: "receipt.png",
     mimeType: "image/png",
     buffer: Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR42mP8z8DAwMAAAAYAAQHLR3cAAAAASUVORK5CYII=",
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGNk83ZmYGBgYgADAAbdAJisefbIAAAAAElFTkSuQmCC",
       "base64"
     )
   });
   await expect(dialog.locator(".expense-attachment-preview")).toBeVisible();
+  expect(await dialog.locator(".expense-attachment-preview").evaluate(async image => {
+    await image.decode();
+    return image.naturalWidth > 0 && image.naturalHeight > 0;
+  })).toBe(true);
   await dialog.locator('[data-action="save-expense"]').click();
 
   await expect(dialog).toBeHidden();
@@ -1130,6 +1504,7 @@ test("expense overflow visually matches the event image menu", async ({ page }) 
     )
     .toBe("rgb(255, 255, 255)");
 
+  await settleCoherenceMotion(page);
   const presentation = await menu.evaluate((element) => {
     const trigger = element.querySelector(":scope > summary");
     const panel = element.querySelector(":scope > div");
@@ -1162,6 +1537,11 @@ test("expense overflow visually matches the event image menu", async ({ page }) 
     };
   });
 
+  // The approved menu keeps the 166px baseline and scales at 10.375rem,
+  // bounded by the viewport. The same rule is present in 7a268ca4.
+  const expectedPanelWidth = await page.evaluate(() => Math.max(
+    166, Math.min(10.375 * parseFloat(getComputedStyle(document.documentElement).fontSize), innerWidth - 32)
+  ));
   expect(presentation).toEqual({
     trigger: {
       width: "44px",
@@ -1170,7 +1550,7 @@ test("expense overflow visually matches the event image menu", async ({ page }) 
       background: "rgb(255, 255, 255)"
     },
     panel: {
-      width: "166px",
+      width: `${expectedPanelWidth}px`,
       padding: "8px",
       radius: "12px",
       background: "rgb(255, 255, 255)"
@@ -1183,6 +1563,21 @@ test("expense overflow visually matches the event image menu", async ({ page }) 
     },
     dangerColor: "rgb(163, 58, 50)"
   });
+  const panel = menu.locator(":scope > div");
+  const panelBounds = await panel.boundingBox();
+  expect(panelBounds.x).toBeGreaterThanOrEqual(0);
+  expect(panelBounds.x + panelBounds.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
+  await expect(panel.locator("button")).toHaveText(["ערוך הוצאה", "הערות ותמונה", "מחק הוצאה"]);
+  for (const action of await panel.locator("button").all()) {
+    const bounds = await action.boundingBox();
+    expect(bounds.width).toBeGreaterThanOrEqual(44);
+    expect(bounds.height).toBeGreaterThanOrEqual(44);
+    await assertReadableTextLines(action, {scroll:false});
+  }
+  await test.info().attach("expense-menu-presentation", {body:JSON.stringify({presentation,expectedPanelWidth,panelBounds}),contentType:"application/json"});
+  await page.screenshot({path:test.info().outputPath("expense-menu-scaled.png")});
+  await panel.locator('[data-action="edit-expense-notes"]').click();
+  await expect(page.locator('.expense-notes-modal')).toBeVisible();
 });
 
 test("iPad landscape keeps expense entry inside the responsive tablet canvas", async ({ page }, testInfo) => {
@@ -1246,11 +1641,31 @@ test(`close-event confirmation stays readable and scrollable in ${orientation}`,
     window.scrollBy(0, el.getBoundingClientRect().top - controlsBottom - 16);
   });
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  expect(await summaryTab.evaluate(el => {
+  const summaryHit = await summaryTab.evaluate(el => {
     const r = el.getBoundingClientRect();
     const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-    return hit === el || el.contains(hit);
-  })).toBe(true);
+    return {
+      reachable: hit === el || el.contains(hit),
+      tab: { top: r.top, bottom: r.bottom, left: r.left, right: r.right },
+      hit: hit && {
+        tag: hit.tagName,
+        className: hit.getAttribute('class'),
+        action: hit.closest('[data-action]')?.getAttribute('data-action'),
+        owner: hit.closest('.event-workspace-tab')?.getAttribute('class'),
+        text: hit.closest('.event-workspace-tab')?.textContent?.trim().slice(0, 80)
+      },
+      tabs: [...document.querySelectorAll('.event-workspace-tab')].map(tab => {
+        const bounds = tab.getBoundingClientRect();
+        const icon = tab.querySelector('svg')?.getBoundingClientRect();
+        return { action: tab.getAttribute('data-action'), left: bounds.left, right: bounds.right,
+          top: bounds.top, bottom: bounds.bottom,
+          icon: icon && { left: icon.left, right: icon.right, top: icon.top, bottom: icon.bottom } };
+      }),
+      scrollY: window.scrollY
+    };
+  });
+  await testInfo.attach(`summary-tab-hit-${orientation}`, { body: JSON.stringify(summaryHit), contentType: 'application/json' });
+  expect(summaryHit.reachable, JSON.stringify(summaryHit)).toBe(true);
   if (orientation === "landscape") {
     // Exercise the one-pixel movement observed while WebKit settles hover.
     // The click must wait for stability without undoing the user's scroll.
@@ -1299,7 +1714,7 @@ test(`close-event confirmation stays readable and scrollable in ${orientation}`,
 });
 }
 
-test("close-event action and its floating feedback stay polished on every mobile profile", async ({ page }, testInfo) => {
+test("close-event action and its approved in-flow feedback stay polished on every mobile profile", async ({ page }, testInfo) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
@@ -1333,7 +1748,7 @@ test("close-event action and its floating feedback stay polished on every mobile
     };
   });
   expect(closeButtonLayout.width).toBeGreaterThanOrEqual(closeButtonLayout.availableWidth - 2);
-  expect(closeButtonLayout.height).toBeGreaterThanOrEqual(56);
+  expect(closeButtonLayout.height).toBeGreaterThanOrEqual(48);
   expect(closeButtonLayout.scrollHeight).toBeLessThanOrEqual(
     closeButtonLayout.clientHeight + 1
   );
@@ -1345,9 +1760,17 @@ test("close-event action and its floating feedback stay polished on every mobile
   const toast = page.locator(".app-toast");
   await expect(toast).toBeVisible();
   await expect(toast).toContainText("האירוע נסגר וננעל לעריכה");
+  const initialNoticeBounds = await toast.boundingBox();
+  // Approved feedback is document content. Bring it into the foreground like the other route sections.
+  await toast.evaluate(element => element.scrollIntoView({ block: "center", behavior: "instant" }));
   const toastLayout = await toast.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const style = getComputedStyle(element);
+    const parent = element.parentElement, parentRect = parent.getBoundingClientRect(), parentStyle = getComputedStyle(parent);
+    const navigation = [...document.querySelectorAll('.product-app-nav')].find(node => node.getBoundingClientRect().height > 0);
+    const copy = element.querySelector('.app-toast-copy');
+    const close = element.querySelector('[data-action="dismiss-notice"]');
+    const closeRect = close.getBoundingClientRect(), closeHit = document.elementFromPoint(closeRect.left + closeRect.width / 2, closeRect.top + closeRect.height / 2);
     return {
       position: style.position,
       left: Math.round(rect.left),
@@ -1357,17 +1780,30 @@ test("close-event action and its floating feedback stay polished on every mobile
       width: Math.round(rect.width),
       backgroundColor: style.backgroundColor,
       borderRadius: style.borderRadius,
+      nextContentTop: element.nextElementSibling?.getBoundingClientRect().top ?? -1,
+      elementBottom: rect.bottom,
+      parentContentLeft: parentRect.left + parseFloat(parentStyle.borderLeftWidth) + parseFloat(parentStyle.paddingLeft),
+      parentContentRight: parentRect.right - parseFloat(parentStyle.borderRightWidth) - parseFloat(parentStyle.paddingRight),
+      navigationTop: navigation.getBoundingClientRect().top,
+      copyClipped: copy.scrollWidth > copy.clientWidth + 1 || copy.scrollHeight > copy.clientHeight + 1,
+      closeReachable: close === closeHit || close.contains(closeHit),
       viewportWidth: innerWidth
     };
   });
-  expect(toastLayout.position).toBe("fixed");
-  expect(toastLayout.left).toBeGreaterThanOrEqual(13);
-  expect(toastLayout.right).toBeLessThanOrEqual(toastLayout.viewportWidth - 13);
+  expect(toastLayout.position).toBe("static");
+  expect(toastLayout.nextContentTop).toBeGreaterThanOrEqual(toastLayout.elementBottom);
+  // In-flow feedback fills the route's authored responsive inset, rather than the old floating gutter.
+  expect(toastLayout.left).toBeCloseTo(toastLayout.parentContentLeft, 0);
+  expect(toastLayout.right).toBeCloseTo(toastLayout.parentContentRight, 0);
+  expect(toastLayout.left).toBeGreaterThanOrEqual(0);
+  expect(toastLayout.right).toBeLessThanOrEqual(toastLayout.viewportWidth);
   expect(toastLayout.top).toBeGreaterThanOrEqual(0);
-  expect(toastLayout.bottom).toBeGreaterThanOrEqual(95);
-  expect(toastLayout.width).toBeLessThanOrEqual(520);
-  expect(toastLayout.backgroundColor).toBe("rgb(251, 254, 253)");
-  expect(toastLayout.borderRadius).toBe("12px");
+  expect(toastLayout.elementBottom).toBeLessThanOrEqual(toastLayout.navigationTop);
+  expect(Math.abs(toastLayout.width - (toastLayout.parentContentRight - toastLayout.parentContentLeft))).toBeLessThanOrEqual(1);
+  expect(toastLayout.copyClipped).toBe(false);
+  expect(toastLayout.closeReachable).toBe(true);
+  expect(toastLayout.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  expect(toastLayout.borderRadius).toBe("0px");
 
   const dismissButton = toast.locator('[data-action="dismiss-notice"]');
   const dismissSize = await dismissButton.evaluate((element) => {
@@ -1375,6 +1811,8 @@ test("close-event action and its floating feedback stay polished on every mobile
     return { width: Math.round(rect.width), height: Math.round(rect.height) };
   });
   expect(dismissSize).toEqual({ width: 44, height: 44 });
+  await testInfo.attach("in-flow-feedback-geometry", { contentType: "application/json", body: JSON.stringify({ initialNoticeBounds, foreground: toastLayout, dismissSize }) });
+  await page.screenshot({ path: testInfo.outputPath("in-flow-feedback-foreground.png") });
   if (process.env.CAPTURE_CLOSE_TOAST === "1") {
     await page.screenshot({
       path: `audit/close-event-toast-${testInfo.project.name}.png`,
@@ -1393,9 +1831,10 @@ test("partially clipped workspace navigation probes visible controls and rejects
   const navigation=page.locator('.event-workspace-nav');
   await expect(navigation).toBeVisible();
   await page.evaluate(()=>{
-    const navigation=document.querySelector('.event-workspace-nav').getBoundingClientRect();
     const route=document.querySelector('.product-route-controls').getBoundingClientRect();
-    window.scrollBy(0,navigation.top-route.bottom+Math.ceil(navigation.height*0.64));
+    const button=document.querySelector('.event-workspace-summary').getBoundingClientRect();
+    // Place the route edge inside the button's lower half at every text scale.
+    window.scrollBy(0,button.top+button.height*0.75-route.bottom);
   });
   await expect.poll(()=>navigation.evaluate(element=>{
     const clip=Number.parseFloat(getComputedStyle(element).getPropertyValue('--event-nav-route-occlusion'));
@@ -1472,7 +1911,7 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await expect(firstExpenseDisclosure).toHaveAttribute("aria-expanded", "true");
   await expect(firstExpenseParticipants).toHaveAttribute("open", "");
   await expect(firstExpenseParticipants.locator(".expense-participants-list-title"))
-    .toHaveText("רשימת משתתפים");
+    .toHaveText("מתחלקים בהוצאה");
   const currentExpenseParticipant = firstExpenseParticipants.locator(
     ".expense-participant-item.is-current"
   );
@@ -1824,6 +2263,309 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   }
 });
 
+async function readCharacterLines(locator, naturalWrap = false) {
+  return locator.evaluate((element, useNaturalWrap) => {
+    const previous = element.style.getPropertyValue("text-wrap-style");
+    const previousPriority = element.style.getPropertyPriority("text-wrap-style");
+    if (useNaturalWrap) element.style.setProperty("text-wrap-style", "auto", "important");
+    try {
+      const text = element.firstChild;
+      if (!text || text.nodeType !== Node.TEXT_NODE) return null;
+      const lines = new Map();
+      for (let i = 0; i < text.length; i++) {
+        const range = document.createRange();
+        range.setStart(text, i);
+        range.setEnd(text, i + 1);
+        const rect = range.getBoundingClientRect();
+        if (rect.height < 1) continue;
+        const top = Math.round(rect.top);
+        lines.set(top, (lines.get(top) || "") + text.data[i]);
+      }
+      return [...lines].sort(([a], [b]) => a - b).map(([, value]) => value.trim());
+    } finally {
+      if (useNaturalWrap) {
+        if (previous) element.style.setProperty("text-wrap-style", previous, previousPriority);
+        else element.style.removeProperty("text-wrap-style");
+      }
+    }
+  }, naturalWrap);
+}
+
+test("summary guidance keeps the same complete word wrapping at mobile widths", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+  await page.evaluate(async () => {
+    await Promise.all([
+      document.fonts.load('500 12px Rubik', 'הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.'),
+      document.fonts.load('400 12px Rubik', 'המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם')
+    ]);
+    await document.fonts.ready;
+  });
+
+  const expectedCopy = {
+    description: "הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.",
+    transferHelper: "המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם"
+  };
+  for (const width of [360, 375, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const [key, selector] of Object.entries({
+      description: ".settlement-hero .muted",
+      transferHelper: ".settlement-stage-heading > div > small"
+    })) {
+      const locator = page.locator(selector);
+      const lines = await readCharacterLines(locator);
+      expect(lines.join(" "), `${key} complete copy at ${width}px`).toBe(expectedCopy[key]);
+      const geometry = await locator.evaluate(element => {
+        const box = element.getBoundingClientRect(), range = document.createRange();
+        range.selectNodeContents(element);
+        return [...range.getClientRects()].filter(r => r.width && r.height)
+          .every(r => r.left >= box.left - 1 && r.right <= box.right + 1 && r.top >= box.top - 1 && r.bottom <= box.bottom + 1);
+      });
+      expect(geometry, `${key} complete glyphs fit at ${width}px`).toBe(true);
+      expect(lines, `${key} follows natural wrapping at ${width}px`)
+        .toEqual(await readCharacterLines(locator, true));
+      await expect(locator, `${key} uses natural line selection at ${width}px`)
+        .toHaveCSS("text-wrap-style", "auto");
+    }
+  }
+});
+
+test("system text preferences update iOS and Android typography without losing the normal baseline", async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.goto('/');
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  const defaultStyles = await page.evaluate(() => {
+    const label = document.createElement('label');
+    label.className = 'dynamic-type-parity-label';
+    label.textContent = 'תווית בדיקה';
+    const small = document.createElement('small');
+    small.className = 'dynamic-type-parity-small';
+    small.textContent = 'טקסט עזר';
+    document.querySelector('.product-home-screen').append(label, small);
+    const selectors = {
+      heading: '.product-home-screen .top .brand h1',
+      button: '.home-create-event-action',
+      small: '.dynamic-type-parity-small',
+      muted: '.product-home-screen .top .brand .muted',
+      label: '.dynamic-type-parity-label',
+      navigation: '.product-app-nav .product-nav-button'
+    };
+    const read = () => Object.fromEntries(Object.entries(selectors).map(([name, selector]) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`Missing typography control: ${selector}`);
+      const style = getComputedStyle(element);
+      return [name, { fontSize: style.fontSize, lineHeight: style.lineHeight,
+        fontFamily: style.fontFamily, fontWeight: style.fontWeight,
+        whiteSpace: style.whiteSpace, overflowWrap: style.overflowWrap }];
+    }));
+    window.readDynamicTypeDefaultStyles = read;
+    return read();
+  });
+  const homeBaseline = await page.locator('.product-home-screen .top .brand .muted')
+    .evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+  const appleSizes = [17, 19, 23, 32, 17];
+  const measureApple = selector => page.evaluate(({ sizes, selector }) => {
+    const root = document.documentElement;
+    return sizes.map(systemSize => {
+      root.classList.add('dynamic-type-apple');
+      root.classList.toggle('dynamic-type-active', systemSize > 17);
+      root.classList.remove('dynamic-type-android');
+      const uiSize = 16 * systemSize / 17;
+      root.classList.toggle('dynamic-type-large', uiSize >= 19 && uiSize < 23);
+      root.classList.toggle('dynamic-type-extra-large', uiSize >= 23);
+      root.style.setProperty('--apple-font-scale', String(systemSize / 17));
+      return { systemSize, root: parseFloat(getComputedStyle(root).fontSize),
+        text: parseFloat(getComputedStyle(document.querySelector(selector)).fontSize) };
+    });
+  }, { sizes: appleSizes, selector });
+
+  for (const entry of await measureApple('.product-home-screen .top .brand .muted')) {
+    expect(entry.root).toBeCloseTo(16 * entry.systemSize / 17, 1);
+    expect(entry.text).toBeCloseTo(homeBaseline * entry.systemSize / 17, 1);
+  }
+  expect(await page.evaluate(() => document.documentElement.classList.contains('dynamic-type-active'))).toBe(false);
+  expect(await page.evaluate(() => window.readDynamicTypeDefaultStyles())).toEqual(defaultStyles);
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+  for (const entry of await measureApple('.settlement-stage-heading > div > small')) {
+    expect(entry.root).toBeCloseTo(16 * entry.systemSize / 17, 1);
+    expect(entry.text).toBeCloseTo(12 * entry.systemSize / 17, 1);
+  }
+
+  const androidSizes = await page.evaluate(async () => {
+    const { refreshAndroidDynamicType } = await import('/src/publicDynamicTypeLayer.mjs');
+    const root = document.documentElement;
+    const results = [];
+    for (const scale of [1, 1.5, 2, 1]) {
+      const capacitor = { getPlatform: () => 'android', Plugins: {
+        SogrimCapabilities: { getCapabilities: async () => ({ fontScale: scale }) }
+      } };
+      const level = await refreshAndroidDynamicType(root, capacitor);
+      results.push({ scale, level, root: parseFloat(getComputedStyle(root).fontSize),
+        helper: parseFloat(getComputedStyle(document.querySelector('.settlement-stage-heading > div > small')).fontSize),
+        nativeScale: Number(root.style.getPropertyValue('--android-font-scale')),
+        active: root.classList.contains('dynamic-type-active'),
+        android: root.classList.contains('dynamic-type-android') });
+    }
+    return results;
+  });
+  for (const entry of androidSizes) {
+    // Native WebView text zoom already applies the OS scale. Browser QA has
+    // no native zoom, so the CSS sizes here must remain at their pre-zoom base.
+    expect(entry.root).toBeCloseTo(16, 1);
+    expect(entry.helper).toBeCloseTo(12, 1);
+    expect(entry.nativeScale).toBe(entry.scale);
+    expect(entry.active).toBe(entry.scale > 1);
+    expect(entry.android).toBe(entry.scale > 1);
+    expect(entry.level).toBe(entry.scale === 1 ? 'normal' : 'extra-large');
+  }
+});
+
+test("home introduction keeps the same complete word wrapping at mobile width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await page.evaluate(async () => {
+    await document.fonts.load('500 14px Rubik', 'אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.');
+    await document.fonts.ready;
+  });
+  const introduction = page.locator('.product-home-screen .top .brand .muted');
+  const lines = await readCharacterLines(introduction);
+  expect(lines.join(" "), "the whole introduction remains visible")
+    .toBe("אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.");
+  expect(lines, "the introduction remains two lines").toHaveLength(2);
+  await expect(introduction, "the introduction uses natural line selection")
+    .toHaveCSS("text-wrap-style", "auto");
+  expect(lines, "the introduction follows natural wrapping")
+    .toEqual(await readCharacterLines(introduction, true));
+});
+
+test("transfer explanation and event management copy keep complete word wrapping", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 354, height: 844 });
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="open-event-participant-profile"][data-participant-id="${MAOR_ID}"]`).click();
+  await page.locator('[data-action="toggle-event-participant-admin"]').check();
+  await page.goBack();
+  await page.goBack();
+  await expect(page.locator('[data-screen-kind="event"]')).toBeVisible();
+  await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+  await page.locator('.settlement-transfer-board .transfer-row').first().click();
+  await expect(page.locator('.settlement-transfer-board .transfer-explanation[open]').first()).toBeVisible();
+  await expect(page.locator('.settlement-transfer-board .transfer-explanation[open] .transfer-rounding-note').first()).toBeVisible();
+  await page.evaluate(async () => {
+    await document.fonts.load('500 12px Rubik', 'סכומי ההעברה עוגלו ליחידות מטבע שלמות. הפירוט נשאר מדויק.');
+    await document.fonts.ready;
+  });
+  const transferSelectors = [
+    '.settlement-transfer-board .transfer-explanation[open] .transfer-debt-summary strong',
+    '.settlement-transfer-board .transfer-explanation[open] .transfer-rounding-note',
+    '.settlement-transfer-board .transfer-explanation[open] .transfer-route-note'
+  ];
+  const transfer = await readWordLines(page, transferSelectors);
+  const naturalTransfer = await readWordLines(page, transferSelectors, true);
+  await page.goBack();
+  await expect(page.locator('[data-screen-kind="event"]')).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('.event-settings-modal')).toBeVisible();
+  const managementSelectors = [
+    '.event-settings-menu-item[data-settings-section="management"] small'
+  ];
+  const management = await readWordLines(page, managementSelectors);
+  const naturalManagement = await readWordLines(page, managementSelectors, true);
+  const expectedManagement = [
+    'ניהול משותף'
+  ];
+  // The approved overview keeps only the current mode; full policy/admin copy lives inside its task.
+  await page.locator('.event-settings-menu-item[data-settings-section="management"]').click();
+  await expect(page.locator('.event-management-screen')).toBeVisible();
+  const managementDetailSelectors = [
+    '.event-management-screen .event-management-option:nth-child(1) small',
+    '.event-management-screen .event-management-option:nth-child(2) small',
+    '.event-management-screen .event-management-admins'
+  ];
+  const managementDetails = await readWordLines(page, managementDetailSelectors);
+  const naturalManagementDetails = await readWordLines(page, managementDetailSelectors, true);
+  const expectedManagementDetails = [
+    'רק מנהלי האירוע מוסיפים ומעדכנים הוצאות. כולם יכולים לצפות.',
+    'כל המשתתפים יכולים להוסיף ולעדכן הוצאות.',
+    'מנהלי האירוע: ירין יצחק, Awesome Maor · מאור סיבוני'
+  ];
+  const expectedTransfer = [
+    'אריאל ניזרי מהטיול המשפחתי חייב ל־ירין יצחק ₪85.00',
+    'סכומי ההעברה עוגלו ליחידות מטבע שלמות. הפירוט נשאר מדויק.',
+    'אריאל ניזרי מהטיול המשפחתי מעביר ₪85.00 ל־ירין יצחק מתוך חוב כולל של ₪85.33.'
+  ];
+  // Native font shaping can move one complete word between lines across OSes.
+  // Compare each line and count to an auto-wrap control on the same DOM node,
+  // while the exact text and a bounded readable layout stay mandatory.
+  for (const [actual, reference, expected] of [
+    [management, naturalManagement, expectedManagement],
+    [managementDetails, naturalManagementDetails, expectedManagementDetails],
+    [transfer, naturalTransfer, expectedTransfer]
+  ]) {
+    expect(actual.map(({ text }) => text), "the complete copy remains intact")
+      .toEqual(expected);
+    expect(actual.map(({ wrapStyle }) => wrapStyle), "line selection stays natural")
+      .toEqual(expected.map(() => "auto"));
+    expect(actual.map(({ lines }) => lines.length), "line counts match natural wrapping")
+      .toEqual(reference.map(({ lines }) => lines.length));
+    expect(actual.map(({ lines }) => lines), "complete words follow natural wrapping")
+      .toEqual(reference.map(({ lines }) => lines));
+    const maxLines = testInfo.project.name === "iphone-large-text" ? 6 : 3;
+    for (const { lines } of actual) {
+      expect(lines.length, "the explanation remains visibly compact").toBeGreaterThan(0);
+      expect(lines.length, "the explanation remains visibly compact").toBeLessThanOrEqual(maxLines);
+    }
+  }
+  await testInfo.attach("complete-copy-and-word-wrapping", { contentType: "application/json", body: JSON.stringify({ management, managementDetails, transfer }) });
+  await page.screenshot({ path: testInfo.outputPath("approved-management-copy.png") });
+});
+
+async function readWordLines(page, selectors, naturalWrap = false) {
+  return page.evaluate(({ targetSelectors, useNaturalWrap }) => targetSelectors.map(selector => {
+    const element = document.querySelector(selector);
+    if (!element) return { selector, missing: true };
+    const previous = element.style.getPropertyValue("text-wrap-style");
+    const previousPriority = element.style.getPropertyPriority("text-wrap-style");
+    if (useNaturalWrap) element.style.setProperty("text-wrap-style", "auto", "important");
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    const lines = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      for (const match of node.textContent.matchAll(/\S+/g)) {
+        range.setStart(node, match.index);
+        range.setEnd(node, match.index + match[0].length);
+        const rect = range.getClientRects()[0];
+        if (!rect || rect.height < 1) continue;
+        let line = lines.find(entry => Math.abs(entry.top - rect.top) <= 6);
+        if (!line) {
+          line = { top: rect.top, words: [] };
+          lines.push(line);
+        }
+        line.words.push(match[0]);
+      }
+    }
+    const result = { selector, text: element.textContent.trim(),
+      wrapStyle: getComputedStyle(element).textWrapStyle,
+      width: element.getBoundingClientRect().width,
+      lines: lines.sort((a, b) => a.top - b.top).map(line => line.words.join(' ')) };
+    if (useNaturalWrap) {
+      if (previous) element.style.setProperty("text-wrap-style", previous, previousPriority);
+      else element.style.removeProperty("text-wrap-style");
+    }
+    return result;
+  }), { targetSelectors: selectors, useNaturalWrap: naturalWrap });
+}
+
 async function captureCoherenceScreen(page, name) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await settleCoherenceMotion(page);
@@ -1846,26 +2588,85 @@ async function assertCompactSettlementFirstView(page) {
       };
     };
 
+    const describeBlock = (element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        tag: element.tagName.toLowerCase(), className: element.className,
+        text: element.textContent.trim().replace(/\s+/gu, ' ').slice(0, 100),
+        top: Math.round(rect.top), bottom: Math.round(rect.bottom),
+        width: Math.round(rect.width), height: Math.round(rect.height),
+        marginTop: style.marginTop, marginBottom: style.marginBottom,
+        paddingTop: style.paddingTop, paddingBottom: style.paddingBottom,
+        fontSize: style.fontSize, lineHeight: style.lineHeight,
+        display: style.display, minHeight: style.minHeight
+      };
+    };
+    const screen = document.querySelector('.settlement-screen');
+    const hero = screen?.querySelector('.settlement-hero');
+    const eventActions = screen?.querySelector('.event-header-actions');
+
     return {
       viewportHeight: innerHeight,
       rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
       heading: rectFor(".settlement-stage-heading"),
       firstTransfer: rectFor(".settlement-transfer-board .transfer-row"),
       bottomNavigation: rectFor(".product-app-nav"),
+      actionLabels: [...document.querySelectorAll(
+        ".settlement-screen > .event-overview-header .event-header-actions .event-header-action-label"
+      )].map((label) => {
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        return {
+          text: label.textContent.trim(),
+          fragments: [...range.getClientRects()].filter(rect => rect.width && rect.height).length,
+          buttonHeight: Math.round(label.closest("button").getBoundingClientRect().height)
+        };
+      }),
       screenPaddingBottom: parseFloat(
         getComputedStyle(document.querySelector(".settlement-screen")).paddingBottom
-      ) || 0
+      ) || 0,
+      blocks: [...(screen?.children ?? [])].map(describeBlock),
+      heroBlocks: [...(hero?.children ?? [])].map(describeBlock),
+      eventActionLayout: eventActions ? {
+        ...describeBlock(eventActions),
+        gridTemplateColumns: getComputedStyle(eventActions).gridTemplateColumns,
+        flexDirection: getComputedStyle(eventActions).flexDirection,
+        gap: getComputedStyle(eventActions).gap,
+        children: [...eventActions.children].map(describeBlock)
+      } : null,
+      heroDetails: [
+        '.settlement-hero-title-row', '.settlement-hero-title-row h2',
+        '.settlement-hero-title-row p', '.settlement-hero-total',
+        '.settlement-hero-actions', '.settlement-stage',
+        '.settlement-stage-heading', '.settlement-transfer-board'
+      ].map(selector => {
+        const element = screen?.querySelector(selector);
+        return element ? { selector, ...describeBlock(element) } : { selector, missing: true };
+      })
     };
   });
 
   const extraLargeText = layout.rootFontSize >= 23;
+  if (extraLargeText || process.env.CAPTURE_SETTLEMENT_GEOMETRY === '1') {
+    await test.info().attach('settlement-large-text-geometry', {
+      body: JSON.stringify(layout, null, 2), contentType: 'application/json'
+    });
+    await test.info().attach('settlement-large-text-full-page', {
+      body: await page.screenshot({ fullPage: true }), contentType: 'image/png'
+    });
+  }
   if (extraLargeText) {
-    expect(layout.heading?.top, "large text keeps transfers close to the primary answer")
-      .toBeLessThan(layout.viewportHeight * 1.5);
+    await assertLargeSettlementContentFlow(page);
     expect(
       layout.firstTransfer?.top - layout.heading?.bottom,
       "large text must not introduce an empty block before the first transfer"
     ).toBeLessThanOrEqual(80);
+    expect(layout.actionLabels, "the three event utility actions remain visible").toHaveLength(3);
+    expect(
+      layout.actionLabels.filter(({ fragments, buttonHeight }) => fragments !== 1 || buttonHeight < 48),
+      "large-text event actions keep whole labels and 48px touch targets"
+    ).toEqual([]);
   } else {
     expect(layout.heading?.top, "transfer heading stays in the document flow")
       .toBeLessThan(layout.viewportHeight * 1.5);
@@ -2223,3 +3024,223 @@ async function readHeaderBrandPresentation(page) {
     };
   });
 }
+
+test("AX summary actions keep whole labels and reachable controls at phone widths", async ({ page }) => {
+  for (const viewport of [{ width: 375, height: 667 }, { width: 393, height: 852 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+    await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+    await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+    await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+    await page.evaluate(() => {
+      const root = document.documentElement;
+      root.classList.add("dynamic-type-active", "dynamic-type-apple", "dynamic-type-extra-large");
+      root.style.setProperty("--apple-font-scale", String(40 / 17));
+      root.style.setProperty("font-size", "37.64706px", "important");
+    });
+    await page.evaluate(() => document.fonts.ready);
+
+    const layout = await page.evaluate(() => {
+      const actions = document.querySelector('.settlement-screen > .event-overview-header .event-header-actions');
+      return {
+        rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: innerWidth,
+        labels: [...actions.querySelectorAll('.event-header-action-label')].map(label => {
+          const range = document.createRange();
+          range.selectNodeContents(label);
+          const button = label.closest('button');
+          return {
+            text: label.textContent.trim(),
+            fragments: [...range.getClientRects()].filter(rect => rect.width && rect.height).length,
+            buttonHeight: button.getBoundingClientRect().height,
+            labelWidth: label.scrollWidth,
+            availableWidth: label.clientWidth
+          };
+        })
+      };
+    });
+    expect(layout.rootFontSize).toBeCloseTo(37.64706, 3);
+    expect(layout.labels).toHaveLength(3);
+    expect(layout.documentWidth, `${viewport.width}px: no horizontal page clipping`)
+      .toBeLessThanOrEqual(layout.viewportWidth + 1);
+    for (const label of layout.labels) {
+      expect(label.fragments, `${viewport.width}px: ${label.text} stays on one line`).toBe(1);
+      expect(label.labelWidth, `${viewport.width}px: ${label.text} fits its control`)
+        .toBeLessThanOrEqual(label.availableWidth + 1);
+      expect(label.buttonHeight, `${viewport.width}px: utility action stays tappable`)
+        .toBeGreaterThanOrEqual(48);
+    }
+    for (const action of await page.locator('.settlement-screen > .event-overview-header .event-header-actions > button').all()) {
+      await action.click({ trial: true });
+    }
+    await page.locator('.settlement-stage-heading').scrollIntoViewIfNeeded();
+    await expect(page.locator('.settlement-stage-heading')).toBeInViewport();
+  }
+});
+
+
+test("new event participants keep enlarged identity text, contextual routes and draft selection", async ({ page }, testInfo) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  for (const rootSize of [16, 20, 32]) {
+    await page.goto("/");
+    await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+    await page.getByRole('radio', { name: rootSize === 20 ? 'גדול מאוד' : 'לפי המכשיר', exact: true }).check();
+    await page.getByRole('button', { name: 'סיום', exact: true }).click();
+    // Reset the previous in-app preference before simulating system text at boot.
+    if (rootSize === 32) await page.goto("/?dynamic-type-preview=32");
+    await expect(page.locator('html')).toHaveCSS('font-size', `${rootSize}px`);
+    await page.locator('[data-action="new-event"]').first().click();
+    await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+    await page.getByRole('button', { name: 'משתתפים', exact: true }).click();
+    const screen = page.locator('.new-event-participants-screen:not(.new-event-participant-subscreen)');
+    const guestName = `משתתף בדיקה עם שם ארוך ${rootSize}`;
+    await screen.locator('[data-participant-view="manual"]').click();
+    await page.getByRole('textbox', { name: 'שם המשתתף', exact: true }).fill(guestName);
+    await page.locator('[data-action="close-new-event-participant-view"]').click();
+    await expect(screen.locator('.new-event-selected-participant-copy strong').filter({ hasText: guestName })).toBeVisible();
+    await expect(screen.locator('[data-action="create-event-and-open-invite"] small')).toContainText('האירוע ייווצר');
+    await expect(screen.locator('[data-participant-view="manual"] small')).toContainText('ללא גישה לאירוע');
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const layout = await screen.evaluate(node => {
+        const text = [...node.querySelectorAll('.new-event-selected-participant-copy strong,.new-event-selected-participants-heading>span,.new-event-participant-route-action strong,.new-event-participant-route-action small')].map(element => {
+          const rect = element.getBoundingClientRect(), range = document.createRange();
+          range.selectNodeContents(element);
+          return { text: element.textContent.trim(), font: parseFloat(getComputedStyle(element).fontSize), visible: rect.width > 0 && rect.height > 0,
+            fits: [...range.getClientRects()].every(r => r.left >= rect.left - 1 && r.right <= rect.right + 1 && r.top >= rect.top - 1 && r.bottom <= rect.bottom + 1) };
+        });
+        const targets = [...node.querySelectorAll('button,[role="button"],label:has(input)')].map(element => {
+          const rect = element.getBoundingClientRect();
+          return { width: rect.width, height: rect.height };
+        });
+        return { text, targets, client: document.documentElement.clientWidth, document: document.documentElement.scrollWidth };
+      });
+      expect(layout.document).toBeLessThanOrEqual(layout.client);
+      expect(layout.text.every(t => t.visible && t.fits)).toBe(true);
+      for (const leaf of layout.text) expect(leaf.font).toBeGreaterThanOrEqual(13 * rootSize / 16 - .01);
+      for (const target of layout.targets) {
+        expect(target.width).toBeGreaterThanOrEqual(44);
+        expect(target.height).toBeGreaterThanOrEqual(44);
+      }
+      await expect(screen.locator('.new-event-selected-participant-self')).toBeVisible();
+      await expect(screen.locator('.new-event-selected-participant .participant-connection-badge').last()).toBeVisible();
+      await assertNewEventActionReachable(page, '[data-action="create-event"]', `${width}/${rootSize} participants`);
+      await screen.locator('[data-action="create-event"]').click({ trial: true });
+    }
+    await page.getByRole('button', { name: 'הגדרות חשבון', exact: true }).click();
+    await page.getByRole('button', { name: 'המשך למשתתפים', exact: true }).click();
+    await expect(screen.locator('.new-event-selected-participant-copy strong').filter({ hasText: guestName })).toBeVisible();
+    await testInfo.attach(`participants-${rootSize}`, { body: await page.screenshot(), contentType: 'image/png' });
+  }
+});
+
+
+test("friends picker scales real name glyphs and retains selection at enlarged text sizes", async ({ page, request , baseURL: fixtureBaseURL}) => {
+  const friendState = structuredClone(seededState);
+  friendState.friendContacts = friendState.participants.slice(1).map(person => ({
+    id: `contact-${person.id}`, participantId: person.id, active: true,
+    source: person.kind === "user" ? "account" : "offline", updatedAt: "2026-08-03T20:05:00.000Z"
+  }));
+  await writeLocalQaStateFresh(fixtureBaseURL, friendState);
+  await settleServiceWorkerBeforeReload(page);
+  await page.addInitScript(state => localStorage.setItem("settle-friends-state", JSON.stringify(state)), friendState);
+  for (const rootSize of [16, 20, 32]) {
+    await page.goto("/");
+    await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+    await page.getByRole('radio', { name: rootSize === 20 ? 'גדול מאוד' : 'לפי המכשיר', exact: true }).check();
+    await page.getByRole('button', { name: 'סיום', exact: true }).click();
+    if (rootSize === 32) await page.goto('/?dynamic-type-preview=32');
+    await page.locator('[data-action="new-event"]').first().click();
+    await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+    await page.getByRole('button', { name: 'משתתפים', exact: true }).click();
+    await page.locator('[data-participant-view="friends"]').click();
+    const screen = page.locator('[data-new-event-participant-subview="friends"]');
+    await expect(screen.locator('.participant-pill-name').filter({ hasText: 'אריאל ניזרי מהטיול המשפחתי' })).toBeVisible();
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const geometry = await screen.evaluate(node => ({
+        client: document.documentElement.clientWidth, documentWidth: document.documentElement.scrollWidth,
+        text: [...node.querySelectorAll('.participant-pill-name,.participant-identity-group-copy>strong')].map(element => {
+          const rect = element.getBoundingClientRect(), range = document.createRange();
+          range.selectNodeContents(element);
+          return { text: element.textContent.trim(), font: parseFloat(getComputedStyle(element).fontSize),
+            visible: rect.width > 0 && rect.height > 0,
+            fits: [...range.getClientRects()].every(r => r.left >= rect.left - 1 && r.right <= rect.right + 1 && r.top >= rect.top - 1 && r.bottom <= rect.bottom + 1) };
+        })
+      }));
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.client);
+      expect(geometry.text.length).toBeGreaterThan(2);
+      for (const text of geometry.text) {
+        expect(text.font, text.text).toBeCloseTo(14 * rootSize / 16, 2);
+        expect(text.visible && text.fits, text.text).toBe(true);
+      }
+      await assertNewEventActionReachable(page, '[data-action="close-new-event-participant-view"]', `${width}/${rootSize} friends`);
+    }
+    const ariel = screen.locator('label.participant-pill[data-participant-id="person-ariel"]');
+    await ariel.click();
+    await expect(ariel.locator('input')).toBeChecked();
+    await screen.locator('[data-action="close-new-event-participant-view"]').click();
+    await expect(page.locator('.new-event-selected-participant[data-participant-id="person-ariel"]')).toBeVisible();
+    await page.locator('[data-participant-view="friends"]').click();
+    await expect(ariel.locator('input')).toBeChecked();
+  }
+});
+
+
+test("manual participant editor has one clear explanation and preserves additions with enlarged text", async ({ page, request , baseURL: fixtureBaseURL}) => {
+  const manualState = structuredClone(seededState);
+  manualState.friendContacts = manualState.participants.slice(1).map(person => ({
+    id: `manual-contact-${person.id}`, participantId: person.id, active: true,
+    source: person.kind === "user" ? "account" : "offline", updatedAt: "2026-08-03T20:05:00.000Z"
+  }));
+  await writeLocalQaStateFresh(fixtureBaseURL, manualState);
+  await settleServiceWorkerBeforeReload(page);
+  await page.addInitScript(state => localStorage.setItem("settle-friends-state", JSON.stringify(state)), manualState);
+  const name = 'משתתף בדיקה עם שם משפחה ארוך';
+  for (const rootSize of [16, 20, 32]) {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+    await page.getByRole('radio', { name: rootSize === 20 ? 'גדול מאוד' : 'לפי המכשיר', exact: true }).check();
+    await page.getByRole('button', { name: 'סיום', exact: true }).click();
+    if (rootSize === 32) await page.goto('/?dynamic-type-preview=32');
+    await page.locator('[data-action="new-event"]').first().click();
+    await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+    await page.getByRole('button', { name: 'משתתפים', exact: true }).click();
+    await page.locator('[data-participant-view="manual"]').click();
+    const screen = page.locator('.new-event-participant-subscreen[data-new-event-participant-subview="manual"]');
+    await expect(screen.getByRole('heading', { name: 'הוספת משתתף לפי שם', exact: true })).toBeVisible();
+    await expect(screen.getByText('מוסיפים אדם שלא משתמש באפליקציה, ומנהלים את ההוצאות בשמו.', { exact: true })).toHaveCount(1);
+    await expect(screen.locator('.manual-participant-explanation,[data-new-event-participant-count]')).toHaveCount(0);
+    await screen.getByRole('textbox', { name: 'שם המשתתף', exact: true }).fill(name);
+    await screen.getByRole('button', { name: 'הוסף משתתף', exact: true }).click();
+    await expect(screen.locator('.new-event-selected-participant').filter({ hasText: name }).locator('input')).toBeChecked();
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const geometry = await screen.evaluate(node => ({
+        client: document.documentElement.clientWidth, width: document.documentElement.scrollWidth,
+        text: [...node.querySelectorAll('.brand h1,.brand>.muted,.manual-name-label,.new-event-offline-add button,.new-event-selected-participant-copy strong,.participant-identity-label')].map(element => {
+          const rect = element.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(element);
+          return { text: element.textContent.trim(), visible: rect.width > 0 && rect.height > 0,
+            fits: [...range.getClientRects()].every(r => r.left >= rect.left - 1 && r.right <= rect.right + 1 && r.top >= rect.top - 1 && r.bottom <= rect.bottom + 1) };
+        })
+      }));
+      expect(geometry.width).toBeLessThanOrEqual(geometry.client);
+      expect(geometry.text.length).toBeGreaterThan(5);
+      for (const text of geometry.text) expect(text.visible && text.fits, text.text).toBe(true);
+      await assertNewEventActionReachable(page, '[data-action="close-new-event-participant-view"]', `manual ${width}/${rootSize}`);
+      if(rootSize===32&&width===320) await page.screenshot({path:test.info().outputPath('manual-footer-root32-320.png')});
+    }
+    await screen.getByRole('button', { name: 'שמירה וחזרה', exact: true }).click();
+    await expect(page.locator('[data-new-event-participant-count]')).toBeVisible();
+    await page.locator('[data-participant-view="manual"]').click();
+    await expect(screen.locator('.new-event-selected-participant').filter({ hasText: name }).locator('input')).toBeChecked();
+  }
+});

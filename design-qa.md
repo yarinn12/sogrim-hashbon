@@ -380,3 +380,145 @@ final result: passed
 ## Final result
 
 passed
+
+
+## Expense deletion confirmation — approved implementation, 2026-10-21
+
+**Comparison target and state**
+- Source visual truth: ../../outputs/design-review-20261021/expense-delete-audit/preview-phone-confirmation.png (approved by the user).
+- Actual shared-source implementation: ../../outputs/design-review-20261021/expense-delete-implemented/implemented-phone-confirmation.png.
+- State: synthetic event “סוף שבוע בצפון”, expense “ארוחת ערב”, ₪120.00; deletion requested but not confirmed, with the safe cancel button focused.
+- Source/implementation pixels: 393×852, CSS viewport 393×852, deviceScaleFactor=1. No scaling, crop or browser/device frame normalization was necessary.
+- Full-view combined comparison: ../../outputs/design-review-20261021/expense-delete-implemented/phone-comparison.png. Both images were opened together in this combined image.
+- Enlarged combined comparison: ../../outputs/design-review-20261021/expense-delete-implemented/enlarged-comparison.png, 320×852 at root32 and density1.
+- Additional same-state comparison pairs: width411/root20, short393×390/root20, long-name320/root32, WebKit393, Firefox360 and desktop1060. All eight pairs have zero different pixels; dimensions and hashes are recorded in design-comparisons.json.
+- The modal text, actions, spacing and amounts are clearly readable in the full-view pairs. A smaller focused crop was not needed.
+
+**Findings and required fidelity surfaces**
+- No actionable P0/P1/P2 drift from the selected deletion-confirmation design remains.
+- Fonts/typography: same app Rubik stack and scoped rem sizes; expense name wraps rather than truncates, money is bidi-isolated. Generic fixed13px label is removed for this action.
+- Spacing/layout rhythm: same modal width, padding, divider, responsive context row and two actions as the approved reference. Large text and short viewport retain reachable controls.
+- Colors/tokens: original app colors; safe cancel is green, destructive confirmation red text on a neutral outlined surface.
+- Image/icon fidelity: no new asset, custom icon or decorative shape was introduced. Underlying app assets remain identical.
+- Copy/content: specific question, actual expense name/amount and one irreversible-action explanation. The accessible description also includes the expense context.
+- The earlier generic label/name-as-heading observations are resolved in the approved design. Initial implementation comparison passed without visual repair iterations; the production screenshots match the final approved sketch.
+- Cross-engine limitation: Windows Playwright WebKit paints variable-font weights thinner in both the approved reference and the actual implementation. The independent probe matches documented issue https://github.com/microsoft/playwright/issues/43004. This is a local renderer limitation, not an accepted physical-iPhone visual result. See font-investigation.json. No production font workaround was applied.
+
+**Implementation checklist**
+- [x] Approved appearance implemented in shared UI with unchanged deletion controller.
+- [x] Same-state visual comparison and browser-rendered screenshots.
+- [x] Actual typography/glyph/control bounds and cancellation checked in eight profiles; no app page errors or external requests in capture fixture.
+- [x] Name/amount included in screen-reader description; focus remains on cancel.
+- [ ] Physical Android/iPhone and signed-package verification remain distribution gates outside this local design acceptance.
+
+
+**Local functional verification**
+- Focused confirmation, notes and financial-safety tests: 84 passed.
+- Normal suite: 4210 JavaScript + 9 JVM tests = 4219 passed, 0 failed/skipped.
+- Browser suite: 66 passed, 0 failed/skipped/flaky, across Chromium Android profile, WebKit iPhone profile and Firefox. Includes 27 deletion cases with final synthetic-cloud ACK/reload and 39 adjacent notes-exit cases.
+- Architecture: 186 modules, 433 dependencies, 0 violations.
+- Native offline checks: 9 static CSS layers and 3 bundled browser modules. No signed package was built.
+- First concurrent normal run hit ETIMEDOUT in two unchanged Native-tool helper tests. Both passed independently and the complete unchanged normal suite then passed after browser/capture work finished. All attempts remain in the receipt folder; no thresholds, assertions or production source were changed between these runs.
+
+final result: passed
+
+
+## Interim event summary — approved implementation, 2026-10-21
+
+**Comparison target and state**
+- Approved source visual truth: ../../outputs/design-review-20261021/event-summary-preview/phone-01-top.png.
+- Actual shared-source implementation: ../../outputs/design-review-20261021/interim-summary-implemented/phone-01-top.png.
+- Same synthetic open event,3 participants,80/30 balances, scroll0;393×852 CSS px, density1 and393×852 image px. No crop/density normalization.
+- Combined comparison opened for visual review: ../../outputs/design-review-20261021/interim-summary-implemented/phone-comparison.png.
+- Enlarged summary/heading comparisons: enlarged-01b-hero-comparison.png and enlarged-01c-heading-comparison.png in the same output folder,320×852/root32/density1. The heading combined image was opened and inspected.
+- All13 same-state comparison pairs, including11 profiles/states plus enlarged hero/heading, have zero different pixels. See visual-comparisons.json. Copy, controls and amounts are legible in the full combined images, so a smaller crop was unnecessary.
+
+**Findings and fidelity surfaces**
+- No actionable P0/P1/P2 drift from the selected sketch remains; no visual repair iteration was required.
+- Typography: original Rubik stack and weights,20/14/15px interim title/body/button at root16, scaling through rem. Transfer heading has full width in large text.
+- Layout: existing green header, event tabs, transfer rows and footer retained; the interim card has one white surface. Named text-relative container query stacks the shortcut and resets its horizontal flex-basis.
+- Colors: existing green/ink/muted tokens; no new decorative glow, badge, asset or promotional block.
+- Image/icon fidelity: all original assets and app library icons retained.
+- Copy: interim wording is explicit until closure, including personal transfer rows; closed/paid/validation/read-only/empty guards retain their behavior.
+- The internal data-settlement-phase marker is a presentation category, computed from existing closure/validation values. It does not decide permissions or calculate money.
+- Known Windows WebKit variable-font painting limitation remains documented in docs/engineering-workflow-he.md; same-engine visual matching does not establish physical iPhone typography parity.
+
+**Regression and functional evidence**
+- Before fix: two targeted unit/Native regressions failed; the browser layout regression also failed on the actual old screen (expected heading width>=295px, actual152px).
+- Cause: personal waiting labels took priority before the open/closed display condition, and the shortcut consumed a horizontal heading column in large type.
+- After fix:179 focused tests passed; full normal suite4215JavaScript+9JVM=4224 passed,0failed/skipped.
+- Browser:36passed,0failed/skipped/flaky across Chromium Android profile, WebKit iPhone profile and Firefox. Covers interim labels, cancelled closure, real closure in synthetic data, payment final write+ACK+reload, single transfer, short/empty states, existing direct repayment and paid remainder.
+-11 actual-source capture cases passed; no app page errors or external requests. Calculated amounts and expense records match the approved sketch fixtures.
+- Architecture186modules/433dependencies/0violations;9Native static CSS layers and3offline module bundles verified.
+- Financial calculation module and preparation/closure/payment/reconciliation controllers are byte-equivalent to the pre-change checkpoint after newline normalization; see financial-controller-compatibility.json.
+
+**Limits and next area**
+- Synthetic local/cloud fixtures, not a live database or physical device.
+- No signed package, store build or public deployment was performed.
+- Closed summary/close-confirmation design remains the next user-reviewed area; functionality was tested without restyling those decisions.
+
+final result: passed
+
+
+## 2026-10-21 — approved close action and centered status disclosure
+
+Source visual truth: outputs/design-review-20261021/summary-status-arrow-preview/after-final/{phone,enlarged,iphone-browser,firefox,desktop,closed}-{top,collapsed-view,expanded-view}.png.
+Rendered shared source: matching files in outputs/design-review-20261021/summary-close-arrow-implemented/actual-source/; http://127.0.0.1:4414/.
+Same-state combined evidence: phone-collapsed-view-comparison.png, enlarged-collapsed-view-comparison.png, phone-expanded-view-comparison.png and firefox-collapsed-view-comparison.png in the implementation output. Status-cluster crops and pixel measurements provide focused evidence.
+Viewport/CSS sizes:393x852/root16,320x852/root32,360x800/root20,1060x900/root16, WebKit393x852/root16, closed393x852/root16. Density1; equal source/implementation pixel sizes; no resampling.
+State: identical synthetic open event, interim balances, collapsed/expanded disclosure; separate closed fixture. No live data.
+
+Intentional changes: “סגור אירוע והתחל להתחשבן”; existing explanation replaced with “הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.”; original shared chevron replaces the font glyph,4px label top margin reset, scalable.875rem icon and.375rem gap centered. Existing parent rotation, row hit area, keyboard toggle and closure confirmation retained.
+
+Required fidelity surfaces:
+- Typography: original Rubik/Inter weights, sizes and status line heights retained. Close-label glyphs fit the control, including natural root32 wrapping. Arrow is independent of font fallback. Windows WebKit variable-weight rendering remains an environment limitation.
+- Spacing/layout: original summary panel, hierarchy, padding and radii retained. Visible-ink center passes12states, maximum1px (original8.5px). Short-height footer reachable; no horizontal overflow.
+- Colors/tokens: original green, neutral status and expanded brand colors retained.
+- Assets: existing source iconSvg chevron-left, avatars and logo reused; no approximated/new decorative assets.
+- Copy/content: exactly the two approved literals; no extra badge or explanation.
+
+Visual comparison history: first implementation comparison passed; all18same-state pairs are pixel-identical to the approved preview. No visual fixes after capture.
+Findings: no actionable P0/P1/P2 drift. The requested correction adds no generic decoration, nested surface or glow.
+
+Validation:
+- Complete normal suite4225passed (4216JavaScript+9JVM), zero failures/skips, one complete run.
+- Focused180passed; architecture186modules/433dependencies, zero violations.
+- Final complete browser run54passed, zero failures/skips/flaky, retries0, across Android-profile Chromium, iPhone-profile WebKit and Firefox. Root16/20/32; open/closed disclosure centers, settled rotation, touch/keyboard toggle, exact expense/transfer/lock preservation, closure cancellation, final cloud write+ACK and paid-state reload.
+- Actual-source full-screen captures11cases passed; disclosure capture6profiles/12states passed.
+- Native static CSS9layers and3offline bundles compiled; no signed package claimed.
+- Financial compatibility receipt proves app differs only in the approved icon span and Ledger only in approved CSS. Money, authorization, closure and sync controllers unchanged after newline normalization.
+- Permanent old-source regressions:2unit failures and1browser failure for the actual2px vertical-center deviation versus.5px limit; same checks pass after the fix.
+
+Test-authoring correction: initial browser run47passed/7failed because the new wait accepted matrix.a magnitude>.99 while b/c were still nonzero; getBoundingClientRect measured an in-flight rotated square. Wait now requires all4rotation terms within1e-6 of their final matrix. All geometry,size,SVG-paint,overflow,keyboard and financial assertions are byte-unchanged after reversing only that wait edit. No retries,skips,timeout increases or production-source changes. Initial report,log,script and artifacts retained; see test-wait-correction.md. The complete final54test rerun passed.
+Normal-suite application/src/scripts/normal-test bytes stayed unchanged after that run; only this E2E wait changed, followed by syntax validation and the fresh full browser run. Documentation appended after verification.
+
+Limits: local synthetic evidence; physical Android/iPhone, signed packages and exact-source release CI remain open. No database change/export, new cost or public/store publication. Git source retention documented separately.
+
+final result: passed
+
+
+## 2026-10-21 — clearer provisional amount wording
+
+Source visual truth: outputs/design-review-20261021/summary-amount-copy-implemented/baseline/{phone,enlarged,iphone-browser,firefox,desktop,closed}-{top,collapsed-view,expanded-view}.png.
+Actual shared source: matching screenshots in actual-source/ of the same output; http://127.0.0.1:4414/.
+Full-view comparisons: phone-collapsed-view-comparison.png, firefox-collapsed-view-comparison.png, closed-collapsed-view-comparison.png. Focused large-text and expanded-state comparisons: enlarged-collapsed-view-comparison.png and phone-expanded-view-comparison.png. Current single-transfer capture: single-01-top.png.
+Same viewport/state/theme/fixture, density1 and identical pixel dimensions/CSS size:393x852/root16,320x852/root32,360x800/root20,1060x900/root16, WebKit393x852/root16 and closed393x852/root16. No image resampling.
+
+Intentional difference: “יתרה זמנית” replaced with approved “סכום לא סופי” in4visible summary literals, including the single-transfer sender/receiver route. User approved this exact wording before source implementation.
+Typography: original fonts, weights, sizes and line heights unchanged; new phrase fits at enlarged root32 without clipping.
+Spacing/layout: original card layout, icon, radii, alignment and responsive rules unchanged. Actual-ink centers pass12states with the original1.5px tolerance, maximum1.5px; no threshold change. No horizontal overflow; short-height footer reachable.
+Colors/tokens: unchanged brand/neutral palette and expanded-state color.
+Assets: original shared chevron, avatars and logos retained; no new asset or decoration.
+Copy/content: new phrase consistent in ordinary rows and the single-transfer summary; closed/paid labels preserved.
+Generic-design assessment: no new surface, badge, explanation or decoration added; plainer wording replaces accounting terminology.
+Comparison history: first comparison passed;5same-state pairs inspected. Closed-event comparison is pixel-identical. Open-event text/arrow horizontal extent changes are intentional from the new phrase.
+Findings: no actionable P0/P1/P2 mismatch.
+
+Verification: full normal4225passed (4216JavaScript+9JVM), focused180passed, architecture186modules/433dependencies/zero violations. One scoped browser run30passed across Chromium/WebKit/Firefox, zero failures/skips/flaky/retries. Covers ordinary copy/cancel, single-transfer copy and closure, root16/20/32, open/closed disclosure centers, touch/keyboard toggle and exact expense/transfer/lock preservation. Full-screen capture11cases and disclosure capture6profiles passed. All3offline modules compiled. Native CSS unchanged and its existing extraction regression remains green.
+Before/after evidence: existing normal regression and browser scenario failed on old text and passed after the replacement. Existing checks updated, featured copy assertion added; no redundant test file, assertion weakening or retry.
+Application code reverses byte-for-byte to baseline by replacing only the4approved copy literals, proving no controller, calculation, authorization or synchronization edit. Existing closure/payment behavior checks retained.
+
+Limits: local synthetic/browser evidence, no physical device or signed package verification. No live DB change/export, new cost or app/store publication. Existing release gates remain open.
+Application/test bytes frozen during verification; QA documentation appended afterwards.
+
+final result: passed
