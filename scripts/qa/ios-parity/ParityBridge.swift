@@ -21,6 +21,7 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     private var statusCallbacks = 0
     private var statusPublications = 0
     private var statusPublicationPolicy = StatusPublicationPolicy()
+    private var statusRefreshPolicy = StatusRefreshPolicy()
     private var statusLog: FileHandle?
     private let fixtureSha = "__FIXTURE_SHA__"
     private let fixtureTree = "__FIXTURE_TREE__"
@@ -170,10 +171,20 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
                 "safeArea": ["top": safe.top, "bottom": safe.bottom, "left": safe.left, "right": safe.right]]
     }
     private func refreshStatus(_ origin: String) {
+        guard let targetWebView = webView else { return }
+        guard statusRefreshPolicy.begin(origin: origin) else {
+            observeStatus("coalesced", ["origin": origin])
+            return
+        }
         statusRequests += 1
         observeStatus("requested", ["origin": origin, "webViewPresent": webView != nil, "timerValid": timer?.isValid ?? false])
-        webView?.evaluateJavaScript("JSON.stringify(globalThis.__iosParityLive?.() || {})") { [weak self] value, error in
+        targetWebView.evaluateJavaScript("JSON.stringify(globalThis.__iosParityLive?.() || {})") { [weak self] value, error in
             guard let self = self else { return }
+            // A decode error, unready result or duplicate label still completes
+            // the request. A capture arriving meanwhile gets one fresh read.
+            defer {
+                if self.statusRefreshPolicy.complete() { self.refreshStatus("capture") }
+            }
             self.statusCallbacks += 1
             self.observeStatus("callback", ["valueType": value.map { String(describing: type(of: $0)) } ?? "nil",
                                            "textLength": (value as? String)?.utf8.count ?? 0,

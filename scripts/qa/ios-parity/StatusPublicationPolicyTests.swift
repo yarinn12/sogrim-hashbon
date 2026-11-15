@@ -1,4 +1,40 @@
 final class StatusPublicationPolicyTests: XCTestCase {
+    func testRefreshTimerCannotOverlapAnUnansweredRequest() {
+        var policy = StatusRefreshPolicy()
+        XCTAssertTrue(policy.begin(origin: "timer"))
+        for _ in 0..<16 { XCTAssertFalse(policy.begin(origin: "timer")) }
+        XCTAssertFalse(policy.complete())
+        XCTAssertTrue(policy.begin(origin: "timer"))
+    }
+
+    func testPendingCaptureIsCoalescedAndThenReadFresh() {
+        var policy = StatusRefreshPolicy()
+        XCTAssertTrue(policy.begin(origin: "timer"))
+        for _ in 0..<16 {
+            XCTAssertFalse(policy.begin(origin: "capture"))
+            XCTAssertFalse(policy.begin(origin: "timer"))
+        }
+        XCTAssertTrue(policy.complete())
+        XCTAssertTrue(policy.begin(origin: "capture"))
+        XCTAssertFalse(policy.complete())
+    }
+
+    func testCompletedRefreshDoesNotSuppressTheNextTimer() {
+        var policy = StatusRefreshPolicy()
+        for _ in 0..<16 {
+            XCTAssertTrue(policy.begin(origin: "timer"))
+            XCTAssertFalse(policy.complete())
+        }
+    }
+
+    func testUnownedCompletionCannotInventACapture() {
+        var policy = StatusRefreshPolicy()
+        XCTAssertFalse(policy.complete())
+        XCTAssertTrue(policy.begin(origin: "capture"))
+        XCTAssertFalse(policy.complete())
+        XCTAssertFalse(policy.complete())
+    }
+
     private func state(phase: String = "saved", backgrounds: Int = 0, poll: Int = 1) -> [String: Any] {
         return ["phase": phase,
                 "native": ["backgrounds": backgrounds,

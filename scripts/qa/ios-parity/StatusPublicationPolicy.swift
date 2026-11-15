@@ -1,5 +1,30 @@
 import Foundation
 
+// Timer reads must not queue up while WebKit is still answering. A capture
+// requested during a read keeps one fresh follow-up, using the same timer and
+// readiness/deadline rules as before.
+struct StatusRefreshPolicy {
+    private var requestInFlight = false
+    private var capturePending = false
+
+    mutating func begin(origin: String) -> Bool {
+        if requestInFlight {
+            capturePending = capturePending || origin == "capture"
+            return false
+        }
+        requestInFlight = true
+        return true
+    }
+
+    mutating func complete() -> Bool {
+        guard requestInFlight else { return false }
+        requestInFlight = false
+        let pending = capturePending
+        capturePending = false
+        return pending
+    }
+}
+
 // The UI label is a diagnostic transport. Capture reports and the status
 // journal retain their complete native counters independently of this policy.
 enum StatusPublicationPolicyError: Error {
