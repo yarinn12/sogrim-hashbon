@@ -44,12 +44,19 @@ async function completeExpense(page, { amount = "10", converted = "₪35.00" } =
   return page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state")).events[0].expenses[0]);
 }
 
-async function selectSourceCurrency(page, currency, { openDetails = true } = {}) {
+async function selectSourceCurrency(page, currency, { openDetails = true, eventCurrency = state.events[0].currency } = {}) {
   await page.locator('[data-choice-select-action="expense-source-currency"]').click();
   await page.locator(`.app-choice-option[data-choice-value="${currency}"]`).click();
-  if (!openDetails) return;
+  // A real choice schedules a render. The previous conversion panel can still
+  // exist immediately after click, then disappear when selecting event currency.
+  await expect(page.locator('[data-action="expense-source-currency"]')).toHaveValue(currency);
   const details = page.locator("details.expense-fx-details");
-  if (await details.count() && await details.getAttribute("open") === null) await details.locator("summary").click();
+  if (currency === eventCurrency) {
+    await expect(details).toHaveCount(0);
+    return;
+  }
+  await expect(details).toHaveCount(1);
+  if (openDetails && await details.getAttribute("open") === null) await details.locator("summary").click();
 }
 
 function openAccessResponse(base, rates) {
@@ -57,6 +64,51 @@ function openAccessResponse(base, rates) {
   return { result: "success", provider: "https://www.exchangerate-api.com", base_code: base,
     time_last_update_unix: last, time_next_update_unix: last + 86400, time_eol_unix: 0, rates };
 }
+
+test('returning to event currency survives a stale optional-panel observation', async ({ page }) => {
+  await page.route('**/v6/latest/USD', route => route.fulfill({ contentType: 'application/json',
+    body: JSON.stringify(openAccessResponse('USD', { USD: 1, ILS: 3.5 })) }));
+  await selectSourceCurrency(page, 'USD');
+  await expect(page.locator('[data-action="expense-fx-rate"]')).toHaveValue('3.5');
+  let observedForeignPanelCount;
+  let removedPanelAttributeReads = 0;
+  const details = page.locator('details.expense-fx-details');
+  const racePage = new Proxy(page, { get(target, key) {
+    if (key !== 'locator') return typeof target[key] === 'function' ? target[key].bind(target) : target[key];
+    return selector => {
+      const actual = page.locator(selector);
+      return new Proxy(actual, { get(locator, method) {
+        if (selector === '.app-choice-option[data-choice-value="ILS"]' && method === 'click') return async (...args) => {
+          // Preserve an actual positive observation from the foreign-currency DOM.
+          // Finish the real selection before the next attribute call, reproducing
+          // the count=1 -> removed-panel interleaving in the original QA536 trace.
+          observedForeignPanelCount = await details.count();
+          expect(observedForeignPanelCount).toBe(1);
+          await locator.click(...args);
+          await expect(page.locator('[data-action="expense-source-currency"]')).toHaveValue('ILS');
+          await expect(details).toHaveCount(0);
+        };
+        if (selector === 'details.expense-fx-details' && method === 'count') return () => observedForeignPanelCount === undefined ? actual.count() : observedForeignPanelCount;
+        if (selector === 'details.expense-fx-details' && method === 'getAttribute') return async (...args) => {
+          if (await details.count() === 0) {
+            removedPanelAttributeReads++;
+            throw new Error('FX helper queried an attribute after the conversion panel was removed');
+          }
+          return actual.getAttribute(...args);
+        };
+        return typeof locator[method] === 'function' ? locator[method].bind(locator) : locator[method];
+      } });
+    };
+  } });
+  await selectSourceCurrency(racePage, 'ILS');
+  expect(observedForeignPanelCount).toBe(1);
+  expect(removedPanelAttributeReads).toBe(0);
+  await expect(page.locator('[data-action="expense-source-currency"]')).toHaveValue('ILS');
+  await expect(details).toHaveCount(0);
+  const saved = await completeExpense(page, { amount: '35', converted: '₪35.00' });
+  expect(saved.total).toBe(3500);
+  expect(saved.fxConversion).toBeUndefined();
+});
 
 test("automatic Open Access rate previews and saves a locked snapshot; edit retains the rate", async ({ page }) => {
   const requests = [];
