@@ -8,8 +8,8 @@ import {RELEASE_SOURCE, RELEASE_TREE, SOURCE, requiredRuns, verifyRuns, verifyCo
 import {protect, unprotect, publicIpaIdentity} from './protect-artifact.mjs';
 import {verifyRuns as verifyIntakeRuns, readUnusedBuild as readIntakeUnusedBuild} from './intake-source-guard.mjs';
 
-const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '43683623214', SOURCE_WINDOWS_QA_RUN: '43683623163',
-  SOURCE_FONT_QA_RUN: '43683623164', SOURCE_AUTH_QA_RUN: '43683623199',
+const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '43690040408', SOURCE_WINDOWS_QA_RUN: '43690040385',
+  SOURCE_FONT_QA_RUN: '43690040386', SOURCE_AUTH_QA_RUN: '43690040372',
   GITHUB_REPOSITORY: 'yarinn12/sogrim-hashbon', GITHUB_EVENT_NAME: 'workflow_dispatch',
   APPLE_TEAM_ID: 'MA9S4L7WKS', IOS_VERSION: '4.59', IOS_BUILD: '197'};
 const names = ['unit','cross-platform','two-client-sync','unit-and-mobile','backup-runtime',
@@ -262,8 +262,8 @@ for(const name of ['cross-platform-shard-1 (1)','cross-platform-shard-2 (9)'])
 
 test('4.59 one-shot binds the exact application tree and all four coordinator run IDs',()=>{
  const raw=readFileSync(new URL('../../../.github/workflows/ios197-459-private-sign-one-day-20261114.yml',import.meta.url),'utf8');
- assert.equal(RELEASE_SOURCE,'e333c69de1e543baca0678bfa26251d65b913fad');
- assert.equal(RELEASE_TREE,'f8fcffbeb9f62314ea530f040553e88d91c04b48');
+ assert.equal(RELEASE_SOURCE,'4f6c5f1d31fe7dd191683cb08daa72118c3ea39d');
+ assert.equal(RELEASE_TREE,'ecf07b8488305792d528abf61afd0a1d19601930');
  for(const [name,value]of [['SOURCE_SHA',RELEASE_SOURCE],['SOURCE_QA_RUN',env.SOURCE_QA_RUN],
   ['SOURCE_WINDOWS_QA_RUN',env.SOURCE_WINDOWS_QA_RUN],['SOURCE_FONT_QA_RUN',env.SOURCE_FONT_QA_RUN],
   ['SOURCE_AUTH_QA_RUN',env.SOURCE_AUTH_QA_RUN],['IOS_VERSION','4.59'],['IOS_BUILD','197']]){
