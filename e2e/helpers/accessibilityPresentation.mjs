@@ -3,7 +3,11 @@ async function stable(p) {
   await p.evaluate(() => document.fonts.ready);
   await expect.poll(() => p.evaluate(() => document.getAnimations().filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime) && a.playState === "running").length)).toBe(0);
   await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  await expect.poll(() => p.locator('.accessibility-center').evaluate(e => {
+  await expect.poll(() => p.evaluate(() => {
+    // Read the current node and transform in one sample. A separate selector
+    // round trip can outlast this poll while the JavaScript motion has settled.
+    const e = document.querySelector('.accessibility-center');
+    if (!e) return false;
     const transform = getComputedStyle(e).transform;
     if (transform === 'none') return true;
     const matrix = new DOMMatrixReadOnly(transform);

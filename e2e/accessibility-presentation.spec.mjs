@@ -24,6 +24,35 @@ test('accessibility readiness waits for JavaScript-driven dialog motion', async 
   await stable(page);
   await expect(page.locator('.accessibility-center')).toHaveCSS('transform', 'none', { timeout: 100 });
 });
+test('accessibility readiness samples current transform without a delayed locator lookup', async ({ page }) => {
+  await page.setContent('<section class="accessibility-center" role="dialog">הגדרות נגישות</section>');
+  await page.locator('.accessibility-center').evaluate(e => {
+    e.style.transform = 'translateY(12px) scale(0.99)';
+    setTimeout(() => { e.style.transform = 'none'; }, 400);
+  });
+  const lookups = [];
+  const transportDelayedPage = {
+    evaluate: (...args) => page.evaluate(...args),
+    locator(selector) {
+      const real = page.locator(selector);
+      return { evaluate(...args) {
+        const pending = (async () => {
+          // Original QA538 selector transport lasted 1111.539ms inside a 1000ms poll.
+          await new Promise(resolve => setTimeout(resolve, 1112));
+          return real.evaluate(...args);
+        })();
+        lookups.push(pending);
+        return pending;
+      } };
+    }
+  };
+  try {
+    await stable(transportDelayedPage);
+    await expect(page.locator('.accessibility-center')).toHaveCSS('transform', 'none', { timeout: 100 });
+  } finally {
+    await Promise.allSettled(lookups);
+  }
+});
 const prefs = (p) => p.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-accessibility-preferences-v1")));
 const identity = (p) => p.evaluate(() => {
   const s = JSON.parse(localStorage.getItem("settle-friends-account-session"));
