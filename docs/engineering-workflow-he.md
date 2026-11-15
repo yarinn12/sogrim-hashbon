@@ -139,6 +139,8 @@ GitHub QA מריץ גבולות ארכיטקטורה, Unit ו־Integration ול�
 
 ## קבלת עדכון
 
+ב־QA531 בקשת צילום מערכת של XCTest נכשלה, אך המתודה האסינכרונית המשיכה לקלט ולשמירה. בודקים כעת `testRun.totalFailureCount` מיד אחרי כל צילום מערכת במסלול התקין ועוצרים לפני הפעולה הבאה אם נרשם כשל או שחסר מצב ריצה. הכשל והצילום נשארים מחייבים; אין retry, השמטת ראיה או הארכת תקציב. בקרת הזרימה המקומית אינה הרצת Swift או הוכחה שסיבת תקיעת הצילום תוקנה. נדרשת שוב קבלת Native ושאר ארבעת מסלולי ה־CI על המקור הסופי; ראו `qa-evidence/ios-native-screenshot-continuation-qa531.md`.
+
 כל מסירה רושמת: SHA/tree, נקודת שמירה, בדיקות ותוצאות כולל כשלים ודילוגי תחולה, גרסאות iOS/Android/PWA, SHA256 של חבילות, מצב החנויות ודרך חזרה. לפני שילוב מסירים קבצים פרטיים וראיות מקומיות מה־diff. כשכמה צ׳אטים עובדים, לכל קובץ משותף יש עורך אחד והראשי מאחד את המקור לפני החתימה.
 
 מקורות: [Git revert](https://git-scm.com/docs/git-revert), [GitHub environments](https://docs.github.com/en/actions/concepts/workflows-and-actions/deployment-environments), [Vercel Git configuration](https://vercel.com/docs/project-configuration/git-configuration).

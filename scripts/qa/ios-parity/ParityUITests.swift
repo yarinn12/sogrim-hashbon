@@ -111,6 +111,9 @@ final class ParityProbeUITests: XCTestCase {
         app.typeText("120")
         wait("real amount input and keyboard capture") { state()["amount"] as? String == "120" && state()["phase"] as? String == "keyboard-amount" }
         systemScreenshot("keyboard-amount")
+        // Screenshot requests can record an XCTest failure without stopping an
+        // async method. Keep that failure and stop before further native input.
+        guard testRun?.totalFailureCount == 0 else { return }
         let keyboardState = state()["native"] as? [String: Any] ?? [:]
         XCTAssertGreaterThan(keyboardState["keyboardShows"] as? Int ?? 0, 0)
         tap("nextPoint")
@@ -119,6 +122,7 @@ final class ParityProbeUITests: XCTestCase {
         app.typeText("QA iOS")
         wait("real name input and keyboard capture") { state()["name"] as? String == "QA iOS" && state()["phase"] as? String == "keyboard-name" }
         systemScreenshot("keyboard-name")
+        guard testRun?.totalFailureCount == 0 else { return }
         // Navigate the real wizard with hit-tested native-coordinate taps.
         for _ in 0..<4 {
             if state()["savePoint"] is [String: Double] { break }
@@ -143,10 +147,12 @@ final class ParityProbeUITests: XCTestCase {
                    current["phase"] as? String == "resumed"
         }
         systemScreenshot("resumed")
+        guard testRun?.totalFailureCount == 0 else { return }
         app.terminate(); app.launch()
         wait("persisted expense after real relaunch", timeout: 45) { state()["phase"] as? String == "restored" }
         XCTAssertEqual(state()["restored"] as? Bool, true)
         systemScreenshot("restored")
+        guard testRun?.totalFailureCount == 0 else { return }
         print("NATIVE_PARITY_XCTEST_SUCCESS: keyboard, native taps, acknowledged save, portrait policy, lifecycle, relaunch")
     }
 }
