@@ -7,9 +7,13 @@ import {createHash} from 'node:crypto';
 
 const current=fileURLToPath(new URL('../scripts/qa/native-auth-session/native-auth-session-probe.py',import.meta.url));
 const baseline=process.env.IOS_AUTH_SCHEME_PROBE_SOURCE||current;
-const scheme=readFileSync(new URL('../ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme',import.meta.url),'utf8');
+const scheme=readFileSync(new URL('../ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const contract=JSON.parse(readFileSync(new URL('./fixtures/auth110-launch-contract.json',import.meta.url),'utf8'));
-const python=process.env.PYTHON_EXECUTABLE||(process.platform==='win32'?'C:/Users/A/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe':'python3');
+const python=[process.env.PYTHON_EXECUTABLE,process.env.PYTHON,'python3','python'].filter(Boolean).find(command=>{
+ const probe=spawnSync(command,['--version'],{encoding:'utf8',timeout:10_000,windowsHide:true});
+ return probe.status===0&&/\bPython 3\./.test(String(probe.stdout||'')+String(probe.stderr||''));
+});
+assert.ok(python,'Python3 is required for the actual QA scheme controls; none may be skipped');
 const harness=String.raw`import ast,contextlib,io,json,pathlib,sys,tempfile,xml.etree.ElementTree as ET
 p=json.load(sys.stdin);src=pathlib.Path(p['source']).read_text(encoding='utf-8');helper=pathlib.Path(p['helper']).read_text(encoding='utf-8');ns={}
 for node in ast.parse(helper).body:
@@ -38,8 +42,8 @@ test('auth launch preparation refuses a scheme without its exact enabled UI-test
 test('auth launch preparation refuses duplicate action blocks',()=>{const s=run('baseline').xml;assert.equal(run('prepare',s.replace('</Scheme>','<TestAction/></Scheme>'),current).ok,false)});
 test('auth launch preparation refuses unknown launchers rather than silently rewriting them',()=>{const s=run('baseline').xml.replace('Xcode.DebuggerFoundation.Launcher.LLDB','unrecognized.launcher');assert.equal(run('prepare',s,current).ok,false)});
 test('auth launch preparation is idempotent on its exact already prepared scheme',()=>{const a=generated();const b=run('prepare',a.xml,current);assert.equal(b.ok,true);assert.equal(b.xml,a.xml)});
-test('original cold launches, complete auth assertions and deadlines remain byte-identical; shipping scheme retains debugging',()=>{
- const p=readFileSync(current,'utf8'),start=p.indexOf("test=r'''"),end=p.indexOf("'''.replace('BEFORE'",start);
+test('original cold launches, auth assertions and deadlines retain their canonical LF bytes; shipping scheme retains debugging',()=>{
+ const p=readFileSync(current,'utf8').replace(/\r\n/g,'\n'),start=p.indexOf("test=r'''"),end=p.indexOf("'''.replace('BEFORE'",start);
  assert.equal(createHash('sha256').update(p.slice(start,end)).digest('hex'),contract.originalXctestLiteralSha256);
  assert.equal(createHash('sha256').update(scheme).digest('hex'),contract.shippingSchemeSha256);
  assert.match(scheme,/selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"/);

@@ -97,6 +97,34 @@ The actual deletion dialog, wording, animation,
 consent/disabled state, delete request boundary and application code are unchanged.
 All scenarios use synthetic data and never invoke actual account deletion.
 
+## Windows216: portability of the new scheme controls
+
+Windows216 run43682326134/job132715412964 rejected source5e3d33cc:
+the seven Python-backed controls used a workstation-only interpreter path and
+failed ENOENT; the frozen-text control hashed CRLF checkout text against LF.
+The original complete job log and failed conclusion are retained. A controlled
+copy of the actual four test inputs uses CRLF, makes only the workstation path
+absent at the child-process boundary and leaves an actual Python3 command on PATH.
+OLD fails all eight controls; FINAL passes all eight using real Python execution.
+The test now discovers an available Python3 from explicit configuration or PATH
+and normalizes CRLF to canonical LF only for frozen textual contracts. All other
+characters, generated scheme attributes, original XCTest assertions and shipping
+scheme contents remain strict. Missing Python3 still fails and cannot skip tests.
+
+An initial copier rejected an already-CRLF JSON fixture before test execution;
+that is an environment/control failure, not OLD bug proof. Another local run with
+no configured Python3 correctly rejected the environment. Both are retained.
+The final paired reproduction supplies the same installed-PATH environment for
+OLD and FINAL. No application, Native driver, persistence, financial rule or
+database change is included in this test-portability correction.
+
+Auth111 on5e3d33cc independently passed the original SDK/OS authentication and
+relaunch test in95.750 seconds: signedIn=true, gate=false, eventVisible=true,
+pkce=1, bound=true, writes=1 and writeValid=true. The actual QA scheme logged
+debugger=none/PosixSpawn. This confirms the new complete run, not the exact
+historical cause of Auth110. Windows216 still rejects that source; fresh complete
+same-source CI is mandatory for the portability fix.
+
 All pending event data and shared/personal ACK rules are untouched. Full normal
 checks plus four fresh original CI lanes and all68 QA jobs on one final source
 are still required before test-only193/197 signing and distribution. The actual
