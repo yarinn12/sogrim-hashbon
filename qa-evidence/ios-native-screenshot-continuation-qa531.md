@@ -19,10 +19,15 @@ run state returns from the async method before later native input, relaunch or
 the success marker. All screenshot requests and attachments remain required;
 the original error is neither swallowed nor retried. Native input, ACK,
 lifecycle, persistence, real OS text sizes and their existing budgets remain.
+The startup-diagnostics content seal now permits exactly the four reviewed
+stop lines and their explanatory comment. Removing only those additions and
+the previously reviewed startup stop must still recover the unchanged original
+action/deadline SHA-256 seal. The first full local run caught the old seal
+mismatch; its two failures are retained. No assertion or timeout was removed.
 
 `tests/iosParityScreenshotFailure.test.mjs` is a source-backed control-flow model
 for local Windows execution. OLD has three failing controls; FINAL passes them
-and the nearby existing tests. This is not execution of Swift, XCTest or a
+and all 26 nearby controls, including the original content seal. This is not execution of Swift, XCTest or a
 physical iPhone. Final acceptance still requires the original Native job and
 all four CI lanes on the final exact source, including full normal/large-text
 journeys. A further screenshot failure must block delivery again.

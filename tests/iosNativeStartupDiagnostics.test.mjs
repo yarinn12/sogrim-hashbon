@@ -86,8 +86,8 @@ test('a failed telemetry sink does not throw or publish readiness', () => {
 test('synthetic service and frozen native UI driver retain their exact content seals', () => {
   const baselines = {
     'synthetic-service.js': '0b9dce3a03526794b24063ff367370828fe1aa0594b3d5da4ae02467d7444bed',
-    // Reviewed startup-failure stop; original action/deadline seal checked below.
-    'ParityUITests.swift': '0ce7b08cc7780c53e76d6ae96da78093067eb4eecbeb40a0d446405085f0fc5e'
+    // Reviewed startup and screenshot-failure stops; original seal checked below.
+    'ParityUITests.swift': '978b077dbe15e8d20fb5c1bb05967339798c1f2197af5f45703c156019b5dc68'
   };
   for (const [name, digest] of Object.entries(baselines)) {
     const source = readFileSync(new URL(name, dir), 'utf8');
@@ -98,7 +98,7 @@ test('synthetic service and frozen native UI driver retain their exact content s
   assert.notEqual(canonicalHash(uiTests.replace('timeout: 35', 'timeout: 36')), baselines['ParityUITests.swift']);
 });
 
-test('reviewed startup stop is the sole change from the sealed native action driver', () => {
+test('only reviewed startup and screenshot stops differ from the sealed native action driver', () => {
   const source = readFileSync(new URL('ParityUITests.swift', dir), 'utf8').replace(/\r\n/g, '\n');
   const reviewedStop = [
     '        // Async XCTest methods can continue after an assertion has failed.',
@@ -108,7 +108,19 @@ test('reviewed startup stop is the sole change from the sealed native action dri
     ''
   ].join('\n');
   assert.equal(source.split(reviewedStop).length, 2, 'one explicit startup stop is required');
-  const original = source.replace(reviewedStop, '');
+  const screenshotComment = [
+    '        // Screenshot requests can record an XCTest failure without stopping an',
+    '        // async method. Keep that failure and stop before further native input.',
+    ''
+  ].join('\n');
+  assert.equal(source.split(screenshotComment).length, 2, 'one reviewed screenshot comment is required');
+  let original = source.replace(reviewedStop, '').replace(screenshotComment, '');
+  for (const phase of ['keyboard-amount', 'keyboard-name', 'resumed', 'restored']) {
+    const call = `        systemScreenshot("${phase}")\n`;
+    const reviewedScreenshotStop = call + '        guard testRun?.totalFailureCount == 0 else { return }\n';
+    assert.equal(original.split(reviewedScreenshotStop).length, 2, `${phase}: one exact stop must follow the original screenshot`);
+    original = original.replace(reviewedScreenshotStop, call);
+  }
   assert.equal(canonicalHash(original), 'd32ebec6eeda462e1f5b83fb8dc2e6c56addec7c18a6fe8db824feab3fc5c6e4',
     'all original assertions, action predicates and deadlines must remain byte-identical');
   assert.match(source, /XCTAssertTrue\(statusExists\)\n[\s\S]*?guard statusExists else \{ return \}\n        func state\(\)/);
