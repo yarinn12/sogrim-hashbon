@@ -27,6 +27,19 @@
   --font-ui: var(--font-hebrew);
 }
 
+/* Keep keyboard navigation available without an unfocused link intercepting
+   header taps while the later presentation layers initialize. */
+.skip-link {
+  position: fixed;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.skip-link:focus {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* Cloud notification inbox */
 .notification-inbox-entry {
   width: 100%;

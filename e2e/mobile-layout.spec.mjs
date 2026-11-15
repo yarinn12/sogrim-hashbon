@@ -1,6 +1,7 @@
 import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
 import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 import { calculateSettlement } from "../src/domain/settlement.mjs";
 import { prepareMobileLayoutFixture } from "./helpers/prepareMobileLayoutFixture.mjs";
@@ -95,6 +96,10 @@ const seededState = {
 
 test.beforeEach(async ({ page }, testInfo) => {
   runtimeIssues = [];
+  // Immutable OLD stylesheet responses for controlled regression evidence only.
+  // Normal CI serves the checkout unchanged; no application readiness override.
+  if (process.env.SKIP_LINK_BASELINE_CSS) await page.route('**/styles.css*', async route => route.fulfill({contentType:'text/css',body:await readFile(process.env.SKIP_LINK_BASELINE_CSS,'utf8')}));
+  if (process.env.SKIP_LINK_BASELINE_STUDIO) await page.route('**/src/publicStudioDesignLayer.mjs*', async route => route.fulfill({contentType:'text/javascript',body:await readFile(process.env.SKIP_LINK_BASELINE_STUDIO,'utf8')}));
   page.on("pageerror", (error) => runtimeIssues.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
     const text = message.text();
@@ -1861,6 +1866,38 @@ test("partially clipped workspace navigation probes visible controls and rejects
   await page.locator('#unexpected-hit-blocker').evaluate(element=>element.remove());
   await page.mouse.click(visiblePoint.x,visiblePoint.y);
   await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+});
+
+test('an unfocused skip link cannot cover profile during style activation and remains keyboard usable',async({page})=>{
+  const profile=page.getByRole('button',{name:'פתיחת הפרופיל',exact:true});
+  const skip=page.getByRole('link',{name:'דלג לתוכן הראשי',exact:true});
+  await expect(skip).not.toBeFocused();
+  // Model the real late-style/transition interval with the actual anchor inside
+  // the viewport. Unfocused navigation must never claim another control's hit.
+  const disturbance=await page.addStyleTag({content:'html body a.skip-link:not(:focus){transform:translateY(0)!important}'});
+  const samples=await profile.evaluate(async element=>{
+    const rows=[];
+    for(let n=0;n<12;n++){
+      const rect=element.getBoundingClientRect(),hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+      rows.push({reachable:hit===element||element.contains(hit),blocker:hit?.className});
+      await new Promise(resolve=>requestAnimationFrame(resolve));
+    }
+    return rows;
+  });
+  expect(samples.filter(row=>!row.reachable)).toEqual([]);
+  await disturbance.evaluate(element=>element.remove());
+  const originalUrl=page.url();
+  await skip.focus();await expect(skip).toBeFocused();await expect(skip).toBeInViewport({ratio:1});
+  const visible=await skip.evaluate(element=>{
+    const s=getComputedStyle(element),rules=[];
+    const inspect=sheet=>{for(const rule of sheet.cssRules||[]){if(rule.selectorText){try{if(element.matches(rule.selectorText)&&rule.style?.transitionProperty)rules.push({selector:rule.selectorText,transition:rule.style.cssText})}catch{}}else if(rule.cssRules)inspect(rule)}};
+    for(const sheet of document.styleSheets){try{inspect(sheet)}catch{}}
+    return {opacity:s.opacity,pointer:s.pointerEvents,transition:s.transition,animations:element.getAnimations().map(a=>({playState:a.playState,frames:a.effect.getKeyframes()})),rules};
+  });
+  await test.info().attach('skip-link-focus-style-evidence',{contentType:'application/json',body:JSON.stringify(visible)});
+  expect({opacity:visible.opacity,pointer:visible.pointer}).toEqual({opacity:'1',pointer:'auto'});
+  await skip.press('Enter');await expect(page.locator('#app')).toBeFocused();expect(page.url()).toBe(originalUrl);
+  await profile.click();await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
 });
 
 test("core mobile journey remains readable, reachable and correctly layered", async ({ page }) => {

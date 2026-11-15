@@ -1,6 +1,39 @@
 from pathlib import Path
 import json, os, plistlib, subprocess
 
+def prepare_auth_probe_scheme(content, target):
+    """Disable only optional debugger attachment in the isolated QA scheme."""
+    import re
+    import xml.etree.ElementTree as ET
+    if '<!DOCTYPE' in content or '<!ENTITY' in content:
+        raise ValueError('Unexpected scheme declarations')
+    tree = ET.fromstring(content)
+    if tree.tag != 'Scheme':
+        raise ValueError('Expected an Xcode scheme')
+    testables = tree.findall('./TestAction/Testables/TestableReference')
+    if len(testables) != 1 or testables[0].get('skipped') != 'NO':
+        raise ValueError('Require exactly one enabled auth UI test')
+    refs = testables[0].findall('BuildableReference')
+    if len(refs) != 1 or refs[0].get('BlueprintIdentifier') != target or refs[0].get('BlueprintName') != 'AuthProbeUITests':
+        raise ValueError('Foreign auth UI-test target')
+    for name in ['TestAction', 'LaunchAction']:
+        actions = tree.findall(name)
+        if len(actions) != 1:
+            raise ValueError('Expected one ' + name)
+        action = actions[0]
+        if action.get('selectedDebuggerIdentifier') not in ['', 'Xcode.DebuggerFoundation.Debugger.LLDB'] or action.get('selectedLauncherIdentifier') not in ['Xcode.DebuggerFoundation.Launcher.LLDB', 'Xcode.IDEFoundation.Launcher.PosixSpawn']:
+            raise ValueError('Unknown debugger or launcher')
+        def replace_action(match):
+            value, debugger_count = re.subn(r'(\bselectedDebuggerIdentifier\s*=\s*")[^"]*(")', lambda m: m[1] + m[2], match[0])
+            value, launcher_count = re.subn(r'(\bselectedLauncherIdentifier\s*=\s*")[^"]*(")', lambda m: m[1] + 'Xcode.IDEFoundation.Launcher.PosixSpawn' + m[2], value)
+            if debugger_count != 1 or launcher_count != 1:
+                raise ValueError('Missing or duplicate launch attributes')
+            return value
+        content, count = re.subn(r'<' + name + r'\b[^>]*>', replace_action, content)
+        if count != 1:
+            raise ValueError('Missing or duplicate launch action')
+    return content
+
 root=Path.cwd()
 fixtures=Path(os.environ['PROBE_FIXTURES'])
 mode=os.environ['PROBE_MODE']
@@ -146,7 +179,8 @@ content=scheme.read_text()
 ref=f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="AuthProbeUITests.xctest" BlueprintName="AuthProbeUITests" ReferencedContainer="container:App.xcodeproj"/>'
 content=content.replace('<Testables>','<Testables><TestableReference skipped="NO">'+ref+'</TestableReference>')
 content=content.replace('<BuildActionEntries>','<BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="NO">'+ref+'</BuildActionEntry>')
-scheme.write_text(content)
+scheme.write_text(prepare_auth_probe_scheme(content, target))
+print('AUTH_PROBE_COLD_LAUNCH_POLICY: debugger=none launcher=PosixSpawn; original XCTest cold launches and assertions retained')
 test=r'''
 import XCTest
 final class AuthProbeUITests: XCTestCase {

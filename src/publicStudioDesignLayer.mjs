@@ -4214,7 +4214,7 @@ const CSS = `
     box-shadow: var(--studio-shadow-panel) !important;
     font-weight: 750 !important;
     transform: translateY(-160%) !important;
-    transition: transform 160ms ease !important;
+    transition: none !important;
   }
 
   html.product-studio-v3 .skip-link:focus {

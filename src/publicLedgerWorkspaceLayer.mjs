@@ -155,6 +155,7 @@ html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-acti
     color: #ffffff !important;
     background: var(--ledger-brand) !important;
     transform: translateY(-160%) !important;
+    transition: none !important;
   }
 
   html.ledger-workspace-v1 .skip-link:focus {
