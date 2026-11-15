@@ -16,7 +16,7 @@ function fixture(t,change=()=>{}){
  const build=join(root,'build','ios');mkdirSync(build,{recursive:true});
  const ipa=Buffer.from('SYNTHETIC_PACKAGE_BYTES_ONLY_NOT_A_SIGNED_IPA');
  const archive=Buffer.from('SYNTHETIC_ORIGINAL_ARCHIVE_BYTES');
- const proof={sourceCommit:process.env.SOURCE_SHA,sourceTree:'fbdbdb03c930bde163c8aa65890da364c98a6b23',
+ const proof={sourceCommit:process.env.SOURCE_SHA,sourceTree:'55c58e9ba2ae42c307b769aff73ebcf61a910a49',
   version:'4.59',build:'197',ipaSha256:sha(ipa),appleUploadPerformed:false,
   signatureVerified:true,everyWwwAssetMatches:true,everyWwwAssetMatchesCanonicalGitBuild:true};
  // Actual producer contract: verify-ios-artifact writes bytes/sha256 into the
