@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import vm from 'node:vm';
 import {CONTRACT,INTAKE_BINDINGS,requireBoundIntakePins,boundEnvironment} from '../scripts/qa/ios-signing/intake-bindings.mjs';
+import * as bindingModule from '../scripts/qa/ios-signing/intake-bindings.mjs';
 import {verifyOrigin} from '../scripts/qa/ios-signing/intake194-package-origin.mjs';
 import {verifySigningControls,verifyStoredFirstCreation,SIGNING_STEPS} from '../scripts/qa/ios-signing/intake-nov5-proof.mjs';
 import {CONTRACT as SIGN,verifyFirstCreation as signingCreation} from '../scripts/qa/ios-signing/first-creation-guard.mjs';
@@ -14,7 +15,7 @@ import {SOURCE_QA_JOBS} from '../scripts/qa/ios-signing/source-ci-required-jobs.
 import {main as originMain} from '../scripts/qa/ios-signing/intake-origin-guard.mjs';
 import {main as downloadMain} from '../scripts/qa/ios-signing/download-intake-artifact.mjs';
 import {main as decryptMain,unprotect} from '../scripts/qa/ios-signing/protect-artifact.mjs';
-const data=JSON.parse(readFileSync(new URL('./fixtures/ios196-qa509-synthetic-intake.json',import.meta.url),'utf8'));
+const data=JSON.parse(readFileSync(new URL('./fixtures/ios197-synthetic-intake.json',import.meta.url),'utf8'));
 assert.equal(data.scope,'SYNTHETIC_ONLY_NOT_AN_ARTIFACT_OR_RELEASE');
 const copy=x=>JSON.parse(JSON.stringify(x)),hash=x=>createHash('sha256').update(x).digest('hex');
 function fixture(counter=7){
@@ -40,7 +41,7 @@ function reads(f){
  return {records,read:path=>path.endsWith('/SogrimHashbon.ipa')?Buffer.from(f.ipaBase64,'base64'):Buffer.from(JSON.stringify(records[path.split('/').at(-1)]))};
 }
 test('real source/tool preparation is separate from explicit synthetic artifact fixtures',()=>{
- assert.equal(INTAKE_BINDINGS.application.sourceSha,'6d7b90a1a15e4e6c2a5af3cf17558d993322f45e');assert.equal(INTAKE_BINDINGS.signing.toolsSha,'b12ac3ff4dc030a8c27d1e3037d785045e5ec6ed');
+ assert.equal(INTAKE_BINDINGS.application.sourceSha,'44b148445a65ef079ee4ab0a5096ff691ce5ba45');assert.equal(INTAKE_BINDINGS.signing.toolsSha,'b1ec7a5b6a96788506fa17f0331c4f5a04ba5e44');
  if(JSON.stringify(INTAKE_BINDINGS).includes('PENDING'))assert.throws(()=>requireBoundIntakePins(),/PENDING/);else requireBoundIntakePins();assert.doesNotThrow(()=>requireBoundIntakePins(fixture().pins));
 });
 for(const key of ['runId','artifactId','runNumber','jobId','artifactSize','ipaSize','ciphertextSize','zipSha256','ipaSha256','ciphertextSha256'])
@@ -158,7 +159,7 @@ test('PENDING stops actual operational bodies before GET, filesystem work or key
  assert.deepEqual(counts(),{gets:0,writes:0,secrets:0,commands:0});
 });
 test('Nov5 preparation stays inactive; creation and original origin precede keys; old route stays disabled',()=>{
- const read=p=>readFileSync(new URL(p,import.meta.url),'utf8').replaceAll('\r\n','\n'),w=read('../.github/workflows/ios196-459-private-intake-only-20261111.yml');
+ const read=p=>readFileSync(new URL(p,import.meta.url),'utf8').replaceAll('\r\n','\n'),w=read('../.github/workflows/ios197-459-private-intake-only-20261114.yml');
  assert.ok(read('../.github/workflows/ios195-459-private-intake-only.yml').includes('false && github.repository'));if(JSON.stringify(INTAKE_BINDINGS).includes('PENDING'))assert.match(w,/if: \$\{\{ false &&/);else assert.match(w,/github.event.created == true/);
  assert.ok(!w.includes('run_number == 1')&&!w.includes('run_number == 3'));assert.ok(w.includes(CONTRACT.intakeBranch));
  const at=w.indexOf('intake-first-creation-guard.mjs" --output');assert.ok(at>0&&at<w.indexOf('name: Checkout frozen application'));assert.ok(at<w.indexOf('secrets.APPSTORE_API_PRIVATE_KEY'));
@@ -182,6 +183,30 @@ test('historical Nov5 fixture remains immutable alongside the successor route fi
  assert.equal(hash(readFileSync(new URL('./fixtures/ios195-nov5-intake.json',import.meta.url))),'16eb9d57c2794354973201b0fca625ec71ea56b5ef51c6727dcfda10b1374049');
 });
 
-test('historical delivered195 envelope fixture stays immutable for196 preparation',()=>{
+test('historical delivered195 envelope fixture stays immutable for197 preparation',()=>{
  assert.equal(hash(readFileSync(new URL('./fixtures/ios195-envelope-intake.json',import.meta.url))),'2459d58b86ff24ada0cd222b212c0274a8420e5d7a7c4d12da1493bb603d3052');
+});
+
+function actualIntakeWorkflow(){return readFileSync(new URL('../'+CONTRACT.intakePath,import.meta.url),'utf8');}
+function workflowGuard(text){
+ if(bindingModule.requireBoundWorkflow)return bindingModule.requireBoundWorkflow(text);
+ // Controlled OLD preparation predicate: it confuses forced == false && with
+ // an unconditional false prefix. The real canonical first-creation gate fails.
+ assert.ok(!text.includes('PENDING')&&!text.includes('false &&')&&text.split('retention-days: 1').length===2,'Legacy preparation predicate rejected the legitimate force-push protection');
+}
+test('intake bound workflow accepts the legitimate force/delete false guards',()=>{
+ assert.doesNotThrow(()=>workflowGuard(actualIntakeWorkflow()));
+});
+const workflowMutations=[
+ ['unconditional false prefix',text=>text.replace("if: "+'$'+'{{ github.repository',"if: "+'$'+'{{ false && github.repository')],
+ ['unconditional false suffix',text=>text.replace('github.event.deleted == false }}','github.event.deleted == false && false }}')],
+ ['forced branch update',text=>text.replace('github.event.forced == false','github.event.forced == true')],
+ ['noncreation update',text=>text.replace('github.event.created == true','github.event.created == false')],
+ ['stale producer SHA',text=>text.replace('SIGNING_TOOLS_SHA: "'+INTAKE_BINDINGS.signing.toolsSha+'"','SIGNING_TOOLS_SHA: "b12ac3ff4dc030a8c27d1e3037d785045e5ec6ed"')],
+ ['duplicate producer field',text=>text.replace('      SIGNING_TOOLS_SHA: "'+INTAKE_BINDINGS.signing.toolsSha+'"','      SIGNING_TOOLS_SHA: "'+INTAKE_BINDINGS.signing.toolsSha+'"\n      SIGNING_TOOLS_SHA: "'+INTAKE_BINDINGS.signing.toolsSha+'"')],
+ ['longer artifact retention',text=>text.replace('retention-days: 1','retention-days: 7')]
+];
+for(const [name,mutate]of workflowMutations)test('intake bound workflow rejects '+name,()=>{
+ const original=actualIntakeWorkflow(),changed=mutate(original);assert.notEqual(changed,original);
+ assert.throws(()=>workflowGuard(changed));
 });

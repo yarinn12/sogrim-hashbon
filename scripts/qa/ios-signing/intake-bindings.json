@@ -1,33 +1,33 @@
 {
   "schemaVersion": 1,
   "application": {
-    "sourceSha": "6d7b90a1a15e4e6c2a5af3cf17558d993322f45e",
-    "sourceTree": "4d5792fee5cf5043f1528a38f70becf4697b3dc4",
+    "sourceSha": "44b148445a65ef079ee4ab0a5096ff691ce5ba45",
+    "sourceTree": "55c58e9ba2ae42c307b769aff73ebcf61a910a49",
     "branch": "codex/test-release-459-20261104",
     "pwa": "532",
     "ciRuns": {
-      "SOURCE_QA_RUN": "43586734389",
-      "SOURCE_WINDOWS_QA_RUN": "43586734354",
-      "SOURCE_FONT_QA_RUN": "43586734326",
-      "SOURCE_AUTH_QA_RUN": "43586734332"
+      "SOURCE_QA_RUN": "43698506773",
+      "SOURCE_WINDOWS_QA_RUN": "43698506764",
+      "SOURCE_FONT_QA_RUN": "43698506781",
+      "SOURCE_AUTH_QA_RUN": "43698506733"
     }
   },
   "signing": {
-    "toolsSha": "b12ac3ff4dc030a8c27d1e3037d785045e5ec6ed",
-    "runId": "43621803389",
+    "toolsSha": "b1ec7a5b6a96788506fa17f0331c4f5a04ba5e44",
+    "runId": "43703402260",
     "runNumber": 1,
-    "jobId": 132528922930,
-    "artifactId": "14124457546",
-    "artifactSize": 13710155,
-    "zipSha256": "eb3f44d3c630f0cd0db94052087bd9f4774ae79f508c1b7aa47c906bd4d7fc94",
-    "ipaSha256": "df2ce559fcb504aeb9935da887ea97a03a4de9ec77904c1d6b9a08dad54223c8",
-    "ipaSize": 12797258,
-    "ciphertextSha256": "f3853c9804f0c07fa390668e54cb3092ee26bd63dc1d6eb6a5db4cfa0cf88006",
-    "ciphertextSize": 13705216,
+    "jobId": 132779220595,
+    "artifactId": "14158015016",
+    "artifactSize": 13721425,
+    "zipSha256": "57795dc559d43ac041f15390f8051a7534e937027be458bca0d7f926e7856ffe",
+    "ipaSha256": "7616f55285e8d7d731d7c3ad71362b1b303d258b9a082d9da1f07b35d7dee123",
+    "ipaSize": 12800677,
+    "ciphertextSha256": "d24ff3417c097a808c9d1ce0e94bccbaed1861405c982b38dbe3bc21460ef39a",
+    "ciphertextSize": 13716480,
     "controls": {
-      "firstCreation": "51fc0186ad240f654c40b9442c9ed97bf0c3da7c09a44925fa21bc2e976d5d8f",
-      "sourceGuard": "68be5a21e79659615eb0e4ba01cce4391e92df04ffa14033c1a921cd85f1122e",
-      "workflow": "acb3195d6a301e72e0f4c314badca8431ef7c5ce476e22a87cd5c10ab1177f79",
+      "firstCreation": "a5aa8c0ec06ee062020c78f461fad66b8b6b6a0929ede86075a9184110b3920e",
+      "sourceGuard": "c06f1f74334a36f53a9927a2d4a3bb2956a268d1ed5b46910e5770a8f126c211",
+      "workflow": "442f78f290ece4f6bd8ce0757a3cc515a2403591a4201aa0cbade6a76cebc60b",
       "requiredJobs": "62b035d2e175acc5e6006a548fb5bb2167d679dc2c9be680ca2f517d14c83db3"
     }
   }

@@ -4,14 +4,14 @@ import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 export const CONTRACT=Object.freeze({
- repository:'yarinn12/sogrim-hashbon',repositoryId:1247836328,version:'4.59',build:'196',
- signingBranch:'codex/ios196-459-signing-one-day-20261114',
- signingPath:'.github/workflows/ios196-459-private-sign-one-day-20261114.yml',
- signingName:'iOS196 4.59 private signed one-day artifact only',
- intakeBranch:'codex/ios196-459-private-intake-20261111',
- intakePath:'.github/workflows/ios196-459-private-intake-only-20261111.yml',
- artifactName:'sogrim-ios-4.59-196-encrypted',
- producerVerifierSha256:'51fc0186ad240f654c40b9442c9ed97bf0c3da7c09a44925fa21bc2e976d5d8f'
+ repository:'yarinn12/sogrim-hashbon',repositoryId:1247836328,version:'4.59',build:'197',
+ signingBranch:'codex/ios197-459-signing-one-day-20261114',
+ signingPath:'.github/workflows/ios197-459-private-sign-one-day-20261114.yml',
+ signingName:'iOS197 4.59 private signed one-day artifact only',
+ intakeBranch:'codex/ios197-459-private-intake-20261114',
+ intakePath:'.github/workflows/ios197-459-private-intake-only-20261114.yml',
+ artifactName:'sogrim-ios-4.59-197-encrypted',
+ producerVerifierSha256:'a5aa8c0ec06ee062020c78f461fad66b8b6b6a0929ede86075a9184110b3920e'
 });
 const freeze=value=>{for(const item of Object.values(value??{}))if(item&&typeof item==='object')freeze(item);return Object.freeze(value);};
 export const INTAKE_BINDINGS=freeze(JSON.parse(readFileSync(new URL('./intake-bindings.json',import.meta.url),'utf8')));
@@ -51,8 +51,36 @@ export function requireBoundEnvironment(env,pins=INTAKE_BINDINGS){
  for(const [key,value]of Object.entries(expected))assert.equal(env[key],value,'Immutable intake environment differs: '+key);
  return pins;
 }
+export function requireBoundWorkflow(workflow,pins=INTAKE_BINDINGS){
+ requireBoundIntakePins(pins);
+ assert.equal(typeof workflow,'string');
+ const expectedGate='$'+'{{ '+[
+  "github.repository == '"+CONTRACT.repository+"'",
+  "github.ref == 'refs/heads/"+CONTRACT.intakeBranch+"'",
+  "github.event_name == 'push'",
+  'github.run_attempt == 1',
+  'github.event.created == true',
+  "github.event.before == '"+'0'.repeat(40)+"'",
+  'github.event.forced == false',
+  'github.event.deleted == false'
+ ].join(' && ')+' }}';
+ const gates=[...workflow.matchAll(/^    if: (.+)$/gm)].map(m=>m[1].trim());
+ assert.deepEqual(gates,[expectedGate],'Intake must use the exact live first-creation gate');
+ assert.ok(!workflow.includes('PENDING'),'Workflow bindings remain pending');
+ const retention=[...workflow.matchAll(/^          retention-days: (\d+)\s*$/gm)].map(m=>Number(m[1]));
+ assert.deepEqual(retention,[1],'Exactly one one-day artifact is required');
+ for(const [key,value]of Object.entries(boundEnvironment(pins))){
+  const fields=[...workflow.matchAll(new RegExp('^      '+key+': (.*)$','gm'))];
+  assert.equal(fields.length,1,'Missing or duplicate workflow binding: '+key);
+  const token=fields[0][1].trim(),quote=token[0];
+  assert.ok((quote==='"'||quote==="'")&&token.at(-1)===quote,'Quoted immutable workflow binding required: '+key);
+  assert.equal(token.slice(1,-1),value,'Workflow binding differs from original pins: '+key);
+ }
+ return pins;
+}
 export function main(env=process.env){
  requireBoundEnvironment(env);
+ requireBoundWorkflow(readFileSync(new URL('../../../'+CONTRACT.intakePath,import.meta.url),'utf8'));
  if(env.GITHUB_OUTPUT)appendFileSync(env.GITHUB_OUTPUT,'source_sha='+INTAKE_BINDINGS.application.sourceSha+
   '\nsigning_tools_sha='+INTAKE_BINDINGS.signing.toolsSha+'\n');
  console.log('All immutable intake pins are bound; no key, download or decryption accessed.');

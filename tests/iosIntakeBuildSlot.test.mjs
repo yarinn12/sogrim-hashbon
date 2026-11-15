@@ -14,29 +14,29 @@ function fixture(pages, {bundle='com.sogrimhashbon.app'}={}) {
   }};
 }
 const page=(versions,next=null)=>({data:versions.map(version=>({attributes:{version}})),links:{next}});
-for(const versions of [['195'],['194'],[]])test(`intake accepts existing ${versions.join(',')||'empty roster'} for the explicit196 slot`,async()=>{
-  assert.equal(CONTRACT.build,'196');
+for(const versions of [['196'],['195'],[]])test(`intake accepts existing ${versions.join(',')||'empty roster'} for the explicit197 slot`,async()=>{
+  assert.equal(CONTRACT.build,'197');
   const p=fixture([page(versions)]), result=await readUnusedBuild(p.request);
-  assert.equal(result.candidateBuild,196);
+  assert.equal(result.candidateBuild,197);
   assert.equal(result.maximumUploadedBuild,versions.length?Number(versions[0]):0);
   assert.equal(result.reserved,false);
 });
-for(const version of ['196','197'])test(`intake rejects occupied or superseded196 slot when ${version} exists`,async()=>{
+for(const version of ['197','198'])test(`intake rejects occupied or superseded197 slot when ${version} exists`,async()=>{
   const p=fixture([page([version])]);
   await assert.rejects(()=>readUnusedBuild(p.request),/no longer unused/);
 });
 test('intake checks the next page before accepting the slot',async()=>{
   const next='https://api.appstoreconnect.apple.com/v1/builds?cursor=second';
-  const p=fixture([page(['195'],next),page(['196'])]);
+  const p=fixture([page(['196'],next),page(['197'])]);
   await assert.rejects(()=>readUnusedBuild(p.request),/no longer unused/);
   assert.equal(p.calls.length,3);
 });
 test('intake rejects a foreign pagination origin',async()=>{
-  const p=fixture([page(['194'],'https://example.test/v1/builds?cursor=second')]);
+  const p=fixture([page(['195'],'https://example.test/v1/builds?cursor=second')]);
   await assert.rejects(()=>readUnusedBuild(p.request));assert.equal(p.calls.length,2);
 });
 test('intake rejects pagination that never completes',async()=>{
-  const p=fixture([page(['194'],'/v1/builds?cursor=again')]);
+  const p=fixture([page(['195'],'/v1/builds?cursor=again')]);
   await assert.rejects(()=>readUnusedBuild(p.request),/pagination incomplete/);
   assert.equal(p.calls.length,21);
 });
@@ -48,6 +48,6 @@ for(const version of ['invalid','9007199254740992'])test(`intake rejects invalid
   const p=fixture([page([version])]);await assert.rejects(()=>readUnusedBuild(p.request));
 });
 test('intake rejects an unrelated app before reading its builds',async()=>{
-  const p=fixture([page(['195'])],{bundle:'example.wrong'});
+  const p=fixture([page(['196'])],{bundle:'example.wrong'});
   await assert.rejects(()=>readUnusedBuild(p.request));assert.equal(p.calls.length,1);
 });
