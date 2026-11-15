@@ -1836,19 +1836,21 @@ function restoreRenderInteractionState(snapshot, expectedRenderGeneration) {
     setDialogBackgroundInert(dialog);
   }
 
+  // Restore during this render, before a new view or a user gesture can own
+  // the scroll. Replaying this snapshot in a later frame can scroll a newly
+  // opened picker or undo a gesture made after the replacement DOM appeared.
+  if (expectedRenderGeneration === renderGeneration && dialog &&
+      (!snapshot.expenseStep || dialog.dataset.expenseStep === snapshot.expenseStep) &&
+      (dialog.dataset?.expenseParticipantAddView ?? "") === (snapshot.expenseParticipantAddView ?? "")) {
+    dialog.scrollTop = Math.max(0, snapshot.dialogScrollTop);
+  }
+
   requestAnimationFrame(() => {
     if (expectedRenderGeneration !== renderGeneration) return;
     const currentDialog = snapshot.dialogSelector
       ? app.querySelector(snapshot.dialogSelector)
       : null;
     if (snapshot.dialogSelector && !currentDialog) return;
-    // Each expense stage and participant-add view owns its initial scroll.
-    // A scrolled parent must not restore its offset into a newly opened view.
-    if (currentDialog && (!snapshot.expenseStep || currentDialog.dataset.expenseStep === snapshot.expenseStep) &&
-      (currentDialog.dataset?.expenseParticipantAddView ?? "") === (snapshot.expenseParticipantAddView ?? "")) {
-      currentDialog.scrollTop = Math.max(0, snapshot.dialogScrollTop);
-    }
-
     const eventId = app.querySelector('[data-screen-kind="event"]')?.dataset.eventId;
     const event = getEvent(eventId);
     for (const expenseId of snapshot.openExpenseParticipantIds ?? []) {

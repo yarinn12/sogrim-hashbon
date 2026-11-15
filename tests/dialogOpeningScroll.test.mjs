@@ -33,3 +33,17 @@ test('old opening callbacks cannot scroll a replacement dialog',()=>{
 test('opening focus still respects a newer field selection',()=>{
  const h=harness();h.activate();h.dialog.scrollTop=140;h.field.focus();h.flush();assert.equal(h.document.activeElement,h.field);assert.equal(h.dialog.scrollTop,140);
 });
+
+function renderRestoreHarness(){
+ const frames=[],dialog={scrollTop:0,dataset:{}};
+ const context=vm.createContext({renderGeneration:1,app:{querySelector:s=>s==='.event-modal'?dialog:null},document:{body:{classList:{add(){}}},activeElement:{isConnected:true}},setDialogBackgroundInert(){},requestAnimationFrame:cb=>frames.push(cb),getEvent(){}});
+ const a=source.indexOf('function restoreRenderInteractionState('),b=source.indexOf('function dialogRenderSelector(',a);assert.ok(a>=0&&b>a);vm.runInContext(source.slice(a,b),context);
+ return{dialog,restore:()=>context.restoreRenderInteractionState({dialogSelector:'.event-modal',dialogScrollTop:171},1),flush:()=>frames.splice(0).forEach(cb=>cb())};
+}
+test('render restores its captured scroll before a newly opened view takes ownership',()=>{
+ const h=renderRestoreHarness();h.restore();assert.equal(h.dialog.scrollTop,171);
+ h.dialog.scrollTop=0;h.flush();assert.equal(h.dialog.scrollTop,0);
+});
+test('deferred render focus cannot replace a newer user scroll',()=>{
+ const h=renderRestoreHarness();h.restore();h.dialog.scrollTop=140;h.flush();assert.equal(h.dialog.scrollTop,140);
+});

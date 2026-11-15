@@ -50,6 +50,15 @@ test('late opening focus cannot undo a user scroll in the landscape invitation s
   await geometry(page,32);
 });
 
+test('a scrolled invitation cannot restore its offset into the friends view',async({page})=>{
+  await page.setViewportSize({width:320,height:390});await open(page,32);
+  await page.locator('.event-invitation-choice-screen [data-participant-view="friends"]').click();
+  const picker=page.locator('.event-friends-picker-screen');await expect(picker).toBeVisible();
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  await expect.poll(()=>picker.evaluate(e=>e.scrollTop)).toBe(0);
+  await expect(picker.locator('h2').first()).toBeInViewport();
+});
+
 test('invitation action labels grow at root32 instead of staying15px',async({page})=>{
   await page.setViewportSize({width:320,height:852});await open(page,32);
   const label=page.locator('.event-participant-add-route-modal [data-action="open-event-share"] strong');
