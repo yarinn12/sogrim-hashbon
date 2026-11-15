@@ -1543,6 +1543,10 @@ function renderAccountRecoveryScreen({ screen, email = "", error = "", message =
   else if (error || message) focusAccountFeedback(gate);
   else requestAnimationFrame(() => {
     if (!gate.isConnected || document.getElementById(GATE_ID) !== gate) return;
+    // Opening feedback must not take focus back after the user starts editing.
+    // A late frame between select-all and deletion otherwise loses the selection.
+    const activeElement = document.activeElement;
+    if (activeElement && activeElement !== document.body && activeElement !== document.documentElement) return;
     gate.querySelector("#account-recovery-title")?.focus({ preventScroll: true });
   });
 }

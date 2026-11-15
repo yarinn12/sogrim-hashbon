@@ -88,6 +88,33 @@ test('account recovery: orientation changes preserve the editable draft and sent
  await assertAccountLayout(gate,32);expectNoExternalFailures(f);
 });
 
+test('account recovery regression: delayed heading focus cannot interrupt selected email replacement or change its recipient',async({page,baseURL})=>{
+ const f=await prepareAccountEntry(page,baseURL);
+ // Delay only the actual recovery heading callback. Other frames, app rendering,
+ // keyboard events and all delivery/rotation assertions execute unchanged.
+ await page.addInitScript(()=>{
+  const raf=window.requestAnimationFrame.bind(window),pending=[];
+  window.requestAnimationFrame=callback=>{
+   if(String(callback).includes('gate.querySelector("#account-recovery-title")')){pending.push(callback);return -1}
+   return raf(callback);
+  };
+  window.__qaReleaseRecoveryHeading=()=>{const work=pending.splice(0);for(const callback of work)callback(performance.now());return work.length};
+ });
+ const gate=await request(page,{size:32,width:320,height:568}),email=gate.locator('input[name=email]');
+ const draft='long.synthetic.address.for.review@example.test';
+ await email.press('ControlOrMeta+A');
+ expect(await page.evaluate(()=>window.__qaReleaseRecoveryHeading())).toBe(1);
+ await expect(email).toBeFocused();
+ await page.keyboard.press('Backspace');await expect(email).toHaveValue('');
+ await email.pressSequentially(draft);await expect(email).toHaveValue(draft);
+ await page.setViewportSize({width:844,height:390});await assertAccountLayout(gate,32);await expect(email).toHaveValue(draft);
+ await send(gate);await page.setViewportSize({width:320,height:568});
+ await expect(gate).toHaveAttribute('data-account-recovery-screen','reset-sent');
+ await expect(gate.locator('.account-flow-recipient p')).toHaveText(draft);
+ expect(f.record.recover.map(r=>r.payload)).toEqual([{email:draft}]);
+ await assertAccountLayout(gate,32);expectNoExternalFailures(f);
+});
+
 for(const size of[16,32])test(`account recovery: safe areas and all four screens reflow at ${size}px`,async({page,baseURL})=>{
  const options={acceptLogin:true,blockUserReads:false},f=await prepareAccountEntry(page,baseURL,options);await emulateAccountSafeArea(page,{top:47,left:31,right:19,bottom:34});const gate=await request(page,{size,width:size===16?393:320,height:568});await assertAccountLayout(gate,size);await send(gate);await expect(gate).toHaveAttribute('data-account-recovery-screen','reset-sent');await assertAccountLayout(gate,size);await gate.locator('[data-account-action=recovery-login]').click();await gate.locator('[data-account-mode=signup]').click();await signup(gate);await expect(gate).toHaveAttribute('data-account-recovery-screen','verify');await assertAccountLayout(gate,size);
  await gate.locator('[data-account-action=recovery-login]').click();options.blockUserReads=true;await gate.locator('input[name=password]').fill('SyntheticOnly123!');await gate.locator('[type=submit]').click();await expect(gate.getByRole('heading',{name:'פתיחת החשבון מתעכבת',exact:true})).toBeVisible();await assertAccountLayout(gate,size);expectNoExternalFailures(f);
