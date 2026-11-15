@@ -49,29 +49,37 @@ async function hit(l, click = true) {
 }
 async function textLines(l) {
   const lines = await l.evaluate((e) => {
-    const d = e.closest(".account-delete-dialog"), walker = document.createTreeWalker(e, NodeFilter.SHOW_TEXT), rows = /* @__PURE__ */ new Map();
-    let n;
-    while (n = walker.nextNode()) for (let i = 0; i < n.length; i++) {
-      if (!n.textContent[i].trim()) continue;
-      const r = document.createRange();
-      r.setStart(n, i);
-      r.setEnd(n, i + 1);
-      for (const b of r.getClientRects()) if (b.width && b.height) {
-        const y = b.top + d.scrollTop, key = Math.round(y * 10), old = rows.get(key);
-        rows.set(key, { top: y, h: b.height, left: Math.min(old?.left ?? b.left, b.left), right: Math.max(old?.right ?? b.right, b.right) });
+    const walker = document.createTreeWalker(e, NodeFilter.SHOW_TEXT), rows = new Map();
+    let n, nodeIndex = -1;
+    while (n = walker.nextNode()) {
+      nodeIndex++;
+      for (let i = 0; i < n.length; i++) {
+        if (!n.textContent[i].trim()) continue;
+        const r = document.createRange();r.setStart(n, i);r.setEnd(n, i + 1);
+        for (const b of r.getClientRects()) if (b.width && b.height) {
+          const key = nodeIndex + ':' + Math.round(b.top * 10), old = rows.get(key);
+          rows.set(key, {nodeIndex,start:Math.min(old?.start??i,i),end:Math.max(old?.end??i+1,i+1)});
+        }
       }
     }
     return [...rows.values()];
   });
   expect(lines.length).toBeGreaterThan(0);
   for (const line of lines) {
-    await l.evaluate((e, line2) => {
-      const d = e.closest(".account-delete-dialog"), r = d.getBoundingClientRect();
-      d.scrollTop += line2.top - d.scrollTop - r.top - (d.clientHeight - line2.h) / 2;
-    }, line);
+    // Keep text identities, not viewport coordinates from an earlier Motion
+    // frame. Measure glyphs, scroll and hit-test together on every poll.
     await expect.poll(() => l.evaluate((e, line2) => {
-      const d = e.closest(".account-delete-dialog"), b = d.getBoundingClientRect(), y = line2.top - d.scrollTop, hit2 = document.elementFromPoint((line2.left + line2.right) / 2, y + line2.h / 2);
-      return y >= b.top - 1 && y + line2.h <= b.bottom + 1 && !!hit2 && (e === hit2 || e.contains(hit2));
+      const d = e.closest('.account-delete-dialog'),walker=document.createTreeWalker(e,NodeFilter.SHOW_TEXT),nodes=[];
+      let n;while(n=walker.nextNode())nodes.push(n);
+      const node=nodes[line2.nodeIndex];if(!node||node.length<line2.end)return false;
+      const range=document.createRange();range.setStart(node,line2.start);range.setEnd(node,line2.end);
+      const first=range.getBoundingClientRect(),b=d.getBoundingClientRect();
+      d.scrollTop+=(first.top+first.height/2)-(b.top+d.clientHeight/2);
+      const rects=[...range.getClientRects()].filter(r=>r.width&&r.height),bounds=d.getBoundingClientRect();
+      return rects.length>0&&rects.every(r=>{
+        const hit=document.elementFromPoint((r.left+r.right)/2,(r.top+r.bottom)/2);
+        return r.top>=bounds.top-1&&r.bottom<=bounds.bottom+1&&!!hit&&(e===hit||e.contains(hit));
+      });
     }, line)).toBe(true);
   }
 }
@@ -90,6 +98,39 @@ async function reopen(page) {
 }
 test.describe(() => {
 requireHeldHomeReadiness(test, {resource:"image"});
+
+test('account deletion text checks follow live glyphs after a delayed entrance and still reject a real blocker',async({page})=>{
+  await page.setViewportSize({width:393,height:852});await open(page,16);
+  const d=page.locator('.account-delete-dialog'),heading=d.locator('h2'),before=await state(page);
+  let first=true;
+  const movingHeading={evaluate:async(fn,arg)=>{
+    if(!first)return heading.evaluate(fn,arg);
+    first=false;
+    // Set, measure and restore in one DOM task: a real Motion frame cannot
+    // replace our controlled entrance pose before the helper takes its sample.
+    const atEntrance=new Function(`return (element,arg)=>{
+      const d=element.closest('.account-delete-dialog'),before=d.getBoundingClientRect().top;
+      const value=d.style.getPropertyValue('transform'),priority=d.style.getPropertyPriority('transform');
+      d.style.setProperty('transform','translateY(96px)','important');
+      const during=d.getBoundingClientRect().top,result=(${fn.toString()})(element,arg);
+      if(value)d.style.setProperty('transform',value,priority);else d.style.removeProperty('transform');
+      window.__qaDeletionPoseShift={before,during,after:d.getBoundingClientRect().top};
+      return result;
+    }`)();
+    return heading.evaluate(atEntrance,arg);
+  }};
+  // The actual readability helper measures during the entrance and checks
+  // after it settles. Cached viewport positions must not impersonate glyphs.
+  await textLines(movingHeading);
+  const pose=await page.evaluate(()=>window.__qaDeletionPoseShift);
+  expect(Math.abs(pose.during-pose.after)).toBeGreaterThan(70);
+  await page.evaluate(()=>{
+    const blocker=document.createElement('div');blocker.id='qa-deletion-text-blocker';
+    Object.assign(blocker.style,{position:'fixed',inset:'0',zIndex:'2147483647'});document.body.append(blocker);
+  });
+  try{await expect(textLines(heading)).rejects.toThrow()}finally{await page.locator('#qa-deletion-text-blocker').evaluate(element=>element.remove())}
+  expect(await state(page)).toEqual(before);expect(await deletionCount(page)).toBe(0);
+});
 
 for (const [id, root, width, height] of [["normal", 16, 393, 852], ["text20", 20, 411, 852], ["text32", 32, 320, 852], ["short", 32, 320, 390], ["landscape", 32, 852, 393]]) test("account deletion presentation " + id, async ({ page }, info) => {
   await page.setViewportSize({ width, height });

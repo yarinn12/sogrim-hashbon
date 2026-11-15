@@ -66,6 +66,37 @@ generic anchor transition. Its specific skip-link transition is now disabled too
 FINAL: all15 original core, keyboard/draft and new obstruction cases pass over
 the five profiles, with zero failures, skips, retries or flaky cases.
 
+## QA534 cross-platform shard9: cached text coordinates
+
+Original job132705084543, artifact14147893516:10546278 bytes, SHA256
+3443738ce608648d5df356cd4269da4122c5378cecc24c6dc2dd42bb322d9b80;
+full size/digest/CRC verified. Desktop WebKit's normal account-deletion text
+check failed initially and passed on retry. Original precheck and failure images
+show different dialog poses. The helper cached viewport glyph coordinates once,
+then used them after later Motion frames; it could inspect an obsolete point
+instead of the text. The exact original interleaving is not proven by the images.
+
+A controlled real-DOM regression measures the heading at a96px entrance pose,
+restores the pose in the same task and exercises the original helper. OLD fails
+the unchanged eight-second visibility/hit predicate. This reproduces the stale
+coordinate mechanism, not a claimed96px displacement in the original archive.
+The first non-atomic reproduction passed and is retained as non-evidence. An
+intermediate diagnostic function-transport error is retained and also excluded.
+Only the final callable real-DOM reproduction is counted as OLD failure proof.
+
+The helper now retains text-node character ranges, then measures current glyphs,
+scrolls and checks actual bounds/hits together on every original-budget poll.
+Every nonempty visible text line remains covered; missing text fails. A full
+viewport blocker must still make the real helper reject, proving that the fix
+does not hide persistent overlap. Six cases passed on the failing Desktop WebKit
+profile; the same five presentation sizes plus regression are required on all
+five mobile/font profiles. FINAL passed all30 mobile/font cases in addition to
+the six Desktop WebKit cases, with zero failures, skips, retries or flaky cases.
+All six real-blocker controls rejected as expected within the original budget.
+The actual deletion dialog, wording, animation,
+consent/disabled state, delete request boundary and application code are unchanged.
+All scenarios use synthetic data and never invoke actual account deletion.
+
 All pending event data and shared/personal ACK rules are untouched. Full normal
 checks plus four fresh original CI lanes and all68 QA jobs on one final source
 are still required before test-only193/197 signing and distribution. The actual
