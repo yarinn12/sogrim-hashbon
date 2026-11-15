@@ -11,6 +11,24 @@ test("native auth returns bypass the worker instead of falling back to a login s
   assert.equal(worker.cacheWrites.length, 0);
 });
 
+test("browser auth callbacks bypass the worker without caching one-time codes", async () => {
+  for (const suffix of ["?code=synthetic-code&state=synthetic-state", "?error=access_denied"]) {
+    const worker = await createWorker();
+    const request = {
+      method: "GET",
+      mode: "navigate",
+      headers: new Headers(),
+      url: `https://sogrim-hesbon-app.vercel.app/auth/callback${suffix}`
+    };
+
+    const handled = worker.dispatchFetch(request);
+    if (handled) await handled;
+    assert.equal(worker.cacheWrites.length, 0, "a callback response must not enter Cache Storage");
+    assert.equal(handled, undefined, "the browser handles the callback directly");
+    assert.equal(worker.fetchCalls.length, 0);
+  }
+});
+
 async function createWorker({
   fetchImpl,
   cachePut = async () => {},

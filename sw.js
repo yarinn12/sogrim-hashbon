@@ -456,7 +456,7 @@ self.addEventListener("fetch", (event) => {
     event.request.method !== "GET" ||
     !sameOrigin ||
     url.pathname.startsWith("/api/") ||
-    (url.pathname === "/auth/callback" && url.searchParams.has("native_auth_session"))
+    url.pathname === "/auth/callback"
   ) {
     return;
   }
