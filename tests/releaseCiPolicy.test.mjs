@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { evaluateReleaseCi,REQUIRED_RELEASE_WORKFLOWS,CROSS_PLATFORM_SHARD_JOBS,MOBILE_SHARD_JOBS } from "../scripts/lib/release-ci-policy.mjs";
 const source="a".repeat(40),repository="yarinn12/sogrim-hashbon";
 const qaJobs=["unit","backup-runtime","two-client-sync",...CROSS_PLATFORM_SHARD_JOBS,"cross-platform","unit-and-mobile","mobile (android-mobile)","mobile (iphone-webkit)","mobile (ipad-webkit)","mobile (iphone-large-text)","mobile (reflow-200)",...MOBILE_SHARD_JOBS,"android-native / native-parity","ios-native / native-parity"];
@@ -60,11 +61,22 @@ test("Windows, font and AuthReturn jobs cannot be replaced by a successful noop"
  for(const id of [101,102,103]){const f=fixture();f.jobsByRun[id][0].name="noop";assert.equal(evaluateReleaseCi(f).passed,false);}
 });
 test("explicit private candidate readiness is labeled and cannot become public release acceptance",()=>{
- const f=fixture();for(const r of f.runs){r.event="pull_request";r.head_branch="codex/candidate";}
- const privateResult=evaluateReleaseCi({...f,candidateBranch:"codex/candidate"});
- assert.equal(privateResult.passed,true);assert.equal(privateResult.scope,"candidate-readiness-only");
- assert.equal(evaluateReleaseCi(f).passed,false);
- assert.throws(()=>evaluateReleaseCi({...f,candidateBranch:"main"}),/non-main branch/);
+ const workflow=readFileSync(new URL('../.github/workflows/qa.yml',import.meta.url),'utf8');
+ const triggers=workflow.split(/^permissions:/m)[0];
+ assert.match(triggers,/^  workflow_dispatch:\s*$/m,'full QA must have a deliberate manual entry point');
+ assert.doesNotMatch(workflow,/github\.event\.inputs|\binputs\s*:/,'manual QA must not expose a partial-test or skip input');
+ for(const event of ['pull_request','workflow_dispatch']){
+  const f=fixture();for(const r of f.runs){r.event=event;r.head_branch="codex/candidate";}
+  const privateResult=evaluateReleaseCi({...f,candidateBranch:"codex/candidate"});
+  assert.equal(privateResult.passed,true);assert.equal(privateResult.scope,"candidate-readiness-only");
+  assert.equal(evaluateReleaseCi(f).passed,false);
+  assert.throws(()=>evaluateReleaseCi({...f,candidateBranch:"main"}),/non-main branch/);
+  if(event==='workflow_dispatch')for(const name of qaJobs){
+   const missing=fixture();for(const r of missing.runs){r.event=event;r.head_branch='codex/candidate';}
+   missing.jobsByRun[100]=missing.jobsByRun[100].filter(job=>job.name!==name);
+   assert.equal(evaluateReleaseCi({...missing,candidateBranch:'codex/candidate'}).passed,false,`manual QA cannot omit ${name}`);
+  }
+ }
 });
 test("a newer trusted failed diagnostic cannot be hidden behind an older green public run",()=>{
  const f=fixture();f.runs.push({...f.runs[0],id:300,event:"workflow_dispatch",conclusion:"failure"});
