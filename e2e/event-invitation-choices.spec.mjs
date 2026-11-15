@@ -28,6 +28,28 @@ async function open(page,root=16,query=''){
   await expect(page.locator('.event-participant-add-route-modal')).toBeVisible();
   await page.evaluate(()=>document.fonts.ready);
 }
+test('late opening focus cannot undo a user scroll in the landscape invitation screen',async({page})=>{
+  await page.addInitScript(()=>{
+    const schedule=requestAnimationFrame.bind(window);
+    window.__invitationOpeningFrames=[];
+    window.requestAnimationFrame=callback=>{
+      const text=String(callback);
+      if(text.includes('dialog !== immediateDialog')||text.includes('dialog !== renderedDialog')){
+        return schedule(()=>window.__invitationOpeningFrames.push(callback));
+      }
+      return schedule(callback);
+    };
+  });
+  await page.setViewportSize({width:852,height:393});await open(page,32);
+  await expect.poll(()=>page.evaluate(()=>window.__invitationOpeningFrames.length)).toBeGreaterThanOrEqual(2);
+  const modal=page.locator('.event-invitation-choice-screen');
+  await modal.evaluate(e=>e.scrollTop=140);
+  await expect.poll(()=>modal.evaluate(e=>e.scrollTop)).toBe(140);
+  await page.evaluate(()=>{for(const callback of window.__invitationOpeningFrames.splice(0))callback(performance.now());});
+  await expect.poll(()=>modal.evaluate(e=>e.scrollTop)).toBe(140);
+  await geometry(page,32);
+});
+
 test('invitation action labels grow at root32 instead of staying15px',async({page})=>{
   await page.setViewportSize({width:320,height:852});await open(page,32);
   const label=page.locator('.event-participant-add-route-modal [data-action="open-event-share"] strong');

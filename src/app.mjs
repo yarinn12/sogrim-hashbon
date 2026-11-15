@@ -22754,6 +22754,7 @@ function reactivateDialogAfterRender(selector, focusSelector = "", scrollTop = 0
   }
   const renderedDialog = app.querySelector(selector);
   activateDialog(selector, focusSelector);
+  const renderedScrollTop = renderedDialog?.scrollTop;
   requestAnimationFrame(() => {
     const dialog = app.querySelector(selector);
     if (!dialog || dialog !== renderedDialog) return;
@@ -22762,7 +22763,10 @@ function reactivateDialogAfterRender(selector, focusSelector = "", scrollTop = 0
     if (document.activeElement !== dialog && document.activeElement !== focusTarget &&
       dialog.contains(document.activeElement)) return;
     focusTarget?.closest("details")?.setAttribute("open", "");
-    dialog.scrollTop = Math.max(0, scrollTop);
+    // A delayed focus frame must not replace a scroll made after activation.
+    if (dialog.scrollTop === renderedScrollTop) {
+      dialog.scrollTop = Math.max(0, scrollTop);
+    }
     focusTarget?.focus({ preventScroll: true });
   });
 }
@@ -22779,6 +22783,8 @@ function activateDialog(selector, focusSelector = "") {
 
   document.body.classList.add("app-dialog-open");
   const immediateDialog = app.querySelector(selector);
+  // Initialize before the user can scroll, rather than resetting at a later frame.
+  if (immediateDialog) immediateDialog.scrollTop = 0;
   const immediateFocusTarget = focusSelector
     ? immediateDialog?.querySelector(focusSelector)
     : null;
@@ -22792,7 +22798,6 @@ function activateDialog(selector, focusSelector = "") {
     // focused before this frame ran. WebKit can otherwise send the next typed
     // text to the dialog container instead of the note/expense input.
     if (document.activeElement !== dialog && dialog.contains(document.activeElement)) return;
-    dialog.scrollTop = 0;
     const focusTarget = focusSelector ? dialog.querySelector(focusSelector) : dialog;
     focusTarget?.focus({ preventScroll: true });
   });
