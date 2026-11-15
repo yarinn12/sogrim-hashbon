@@ -1228,3 +1228,23 @@ test("native invitation keeps hovered primary color in its runtime CSS",async()=
   const {contents}=await onLoad({path:referral});
   assert.match(contents,/#public-referral-rewards-dialog \.primary-button:hover:not\(:disabled\)\s*\{\s*color:\s*#ffffff\s*!important;/);
 });
+
+test('native repayment shortcut preserves painted-group centering and optical label alignment', async () => {
+  const ledger=resolve('src/publicLedgerWorkspaceLayer.mjs'),{extractNativeStaticCss,files}=await harness((file,...args)=>readFile(file===ledger&&process.env.REPAYMENT_SHORTCUT_BASELINE_ROOT?join(process.env.REPAYMENT_SHORTCUT_BASELINE_ROOT,'src/publicLedgerWorkspaceLayer.mjs'):file,...args));
+  await extractNativeStaticCss([{path:ledger}],'fixture-assets');
+  const original=files.get(join('fixture-assets','native-layers.css'));
+  for(const css of [original,minifyCss({filename:'native-layers.css',code:Buffer.from(original),minify:true}).code.toString()]) {
+    const compact=css.replace(/\s+/g,'');
+    assert.ok(/\.settlement-repayment-shortcut>span:first-child\{[^}]*width:12px!important/.test(compact),
+      'the native icon slot must reserve the painted width, not all 24 viewBox units');
+    assert.ok(/\.settlement-repayment-shortcut>span:first-child\{[^}]*justify-content:center!important/.test(compact));
+    assert.ok(/\.settlement-repayment-shortcut\[data-repayment-shortcut-mode=["']?optimized["']?\]>span:nth-child\(2\)\{[^}]*transform:translateY\(-0?\.15625em\)!important/.test(compact),
+      'the optimized Hebrew label needs its measured ink-baseline compensation');
+    const container=compact.slice(compact.indexOf('@containersummary-transfer-section'));
+    const rule=container.match(/\.settlement-repayment-shortcut\{([^}]+)\}/)?.[1];
+    assert.ok(rule,'the native compact repayment rule must survive extraction');
+    assert.match(rule,/justify-content:center!important/,'the compact full-width button must center its visible group');
+    const wide=compact.match(/@containersummary-transfer-section\((?:min-width:20\.001rem|width>=20\.001rem)\)([\s\S]*)/)?.[1];
+    assert.ok(wide?.includes('width:13rem!important'),'the enlarged wide layout must retain its guard and font-relative slot after minification');
+  }
+});

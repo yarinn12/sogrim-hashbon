@@ -39,6 +39,7 @@ const journeys = [
   "e2e/readable-pass-regression.spec.mjs",
   "e2e/event-rounding-presentation.spec.mjs",
   "e2e/event-repayment-presentation.spec.mjs",
+  "e2e/repayment-shortcut-centering.spec.mjs",
   "e2e/event-currency-presentation.spec.mjs",
   "e2e/event-management-defaults.spec.mjs",
   "e2e/event-management-presentation.spec.mjs",

@@ -16123,16 +16123,28 @@ html.ledger-workspace-v1 body #app .friend-invitation-screen .friend-invite-acti
       transform 160ms ease !important;
   }
 
+  /* The transfer paths paint 16 of 24 viewBox units including their stroke.
+     Reserve that ink width while retaining the existing 17px SVG scale. */
   html.ledger-workspace-v1 .settlement-repayment-shortcut > span:first-child {
-    width: 17px !important;
+    width: 12px !important;
     height: 17px !important;
+    flex: 0 0 12px !important;
     display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 
   html.ledger-workspace-v1 .settlement-repayment-shortcut svg {
     width: 17px !important;
     height: 17px !important;
+    flex: 0 0 17px !important;
     stroke-width: 1.9 !important;
+  }
+
+  /* Qof descenders make this shorter Hebrew label paint below its line box.
+     Match its ink center to the unchanged transfer icon at every text size. */
+  html.ledger-workspace-v1 .settlement-repayment-shortcut[data-repayment-shortcut-mode="optimized"] > span:nth-child(2) {
+    transform: translateY(-0.15625em) !important;
   }
 
   html.ledger-workspace-v1 .settlement-repayment-shortcut small {
@@ -22796,10 +22808,18 @@ html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[
   width:100%!important;
  }
  html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-repayment-shortcut{
-  align-self:flex-start!important;width:100%!important;max-width:100%!important;justify-content:flex-start!important;flex:0 0 auto!important;height:auto!important;min-height:44px!important;padding:10px 14px!important;line-height:1.5!important;
+  align-self:flex-start!important;width:100%!important;max-width:100%!important;justify-content:center!important;flex:0 0 auto!important;height:auto!important;min-height:44px!important;padding:10px 14px!important;line-height:1.5!important;
  }
 }
 
+
+/* Outside the compact stacked layout, enlarged type still needs a stable
+   left-hand slot wide enough for both the label and its existing helper. */
+@container summary-transfer-section (min-width:20.001rem){
+ html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-screen-kind="event"][data-event-view="summary"] .settlement-repayment-shortcut{
+  width:13rem!important;min-width:0!important;max-width:100%!important;flex:0 0 auto!important;
+ }
+}
 
 /* Settlement disclosure alignment: shared chevron and optical status center. */
 html.design-coherence-v1.ledger-workspace-v1.circle-design-v1 body #app .screen[data-event-view="summary"] .transfer-status-cluster {

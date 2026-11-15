@@ -9410,6 +9410,7 @@ function renderSettlementRepaymentShortcut(event) {
     <button
       class="settlement-repayment-shortcut"
       type="button"
+      data-repayment-shortcut-mode="${usesDirectSettlementTransfers(event) ? "direct" : "optimized"}"
       data-action="open-event-repayment-settings"
       data-event-id="${escapeAttribute(event.id)}"
       aria-label="שנה את חלוקת ההחזרים. כרגע: ${escapeAttribute(label)}"
