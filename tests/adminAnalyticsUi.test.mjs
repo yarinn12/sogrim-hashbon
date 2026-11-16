@@ -26,9 +26,11 @@ test("admin overview supports app and native back navigation", () => {
   );
 });
 
-test("admin overview inherits the product header and bottom navigation", () => {
+test("admin overview inherits the product header and bottom navigation", async () => {
   assert.match(brandSource, /"admin"/);
-  assert.match(brandSource, /kind === "admin"\s*\? "profile"/);
+  assert.match(brandSource, /primaryNavigationDestinationForScreen\(kind\)/);
+  const { primaryNavigationDestinationForScreen: destination } = await import("../src/ui/primaryNavigationState.mjs");
+  assert.equal(destination("admin"), "profile");
   assert.match(styles, /\.admin-status-hero/);
   assert.match(styles, /\.admin-quick-stats/);
   assert.match(styles, /\.admin-detail-grid/);

@@ -1,4 +1,5 @@
 import test from "node:test";
+import {renderPendingSyncSummary} from "../src/ui/syncNoticePresentation.mjs";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
@@ -8,6 +9,7 @@ for (const [error, kind] of [
   [{ status: 403 }, "permission"], [{ cause: { status: 401 } }, "auth"],
   [{ code: "LOCAL_STORAGE_UNAVAILABLE" }, "storage"], [{ name: "QuotaExceededError" }, "storage"],
   [{ code: "CLOUD_STATE_CONFLICT" }, "conflict"], [{ status: 422 }, "rejected"],
+  [{ code: "CLOUD_FX_CONFLICT", status: 400 }, "fx-conflict"],
   [{ status: 404 }, "missing"], [{ status: 503 }, "server"], [{ status: 429 }, "server"],
   [{ code: "NETWORK_TIMEOUT" }, "connection"], [new TypeError("Failed to fetch"), "connection"],
   [new TypeError("Cannot read properties of null (reading 'connection')"), "unavailable"],
@@ -37,6 +39,14 @@ test("error wording preserves drafts without leaking server text", () => {
   const message = saveFailureMessage({ error: { status: 403, message: "private-payload" } }, "הפתק לא נשמר.", { draft: true });
   assert.match(message, /הטיוטה נשארה כאן/); assert.doesNotMatch(message, /private-payload|בדקו את החיבור/);
   assert.equal(noticePresentation(message).kind, "error");
+});
+
+test("FX conflict explains the safe next step and keeps the draft", () => {
+  const error = { code: "CLOUD_FX_CONFLICT", status: 400, message: "private server detail" };
+  const message = saveFailureMessage({ error }, "ההוצאה לא נשמרה.", { draft: true });
+  assert.match(message, /בדקו את הסכום והשער/);
+  assert.match(message, /הטיוטה נשארה כאן/);
+  assert.doesNotMatch(message, /private server detail/);
 });
 test("pending authentication is actionable and never promises automatic completion", () => {
   assert.match(pendingSaveMessage("auth"), /התחברו מחדש/);
@@ -73,6 +83,47 @@ function functionSource(name) {
   const rest = layer.slice(match.index + 1), end = /\n(?:async )?function /.exec(rest);
   return layer.slice(match.index, end ? match.index + 1 + end.index : undefined);
 }
+test("late permission status keeps its review target stable across observer passes", () => {
+  const descendants = root => (root.children || []).flatMap(child => [child, ...descendants(child)]);
+  const element = () => ({ dataset: {}, children: [], setAttribute() {}, querySelector: () => null,
+    replaceChildren() { this.children = []; },
+    append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } } });
+  const target = {
+    dataset: { syncAccountSummary: "" }, classList: {add() {}}, children: [],
+    querySelector: () => null, // This fixture has one event and no details element.
+    replaceChildren() { this.children = []; },
+    append(...nodes) { this.children.push(...nodes); },
+    contains(node) { return descendants(this).includes(node); }
+  };
+  const eventRow = {
+    dataset: { eventId: "event-a" },
+    querySelector: () => ({ textContent: "אירוע לבדיקה" })
+  };
+  const document = {
+    querySelectorAll: () => [
+      ...descendants(target).filter((child) => child.dataset?.action === "open-event"),
+      eventRow
+    ],
+    createTextNode: (textContent) => ({ textContent }),
+    createElement: element
+  };
+  const context = vm.createContext({ document, renderPendingSyncSummary: (target,message,options) => renderPendingSyncSummary(target,message,{...options,document}), pendingEventIds: ["event-a"] });
+  vm.runInContext(functionSource("renderAccountPendingSummary"), context);
+  const reviewButtons = () => descendants(target).filter((child) => child.dataset?.action === "open-event");
+  const retryButtons = () => descendants(target).filter((child) => child.dataset?.syncRetry !== undefined);
+  context.renderAccountPendingSummary(target, "אין הרשאה לבצע את השינוי");
+  assert.equal(reviewButtons().length, 1);
+  assert.equal(retryButtons().length, 1, "the pending home summary offers an explicit retry");
+  const firstButton = reviewButtons()[0];
+  const firstRetry = retryButtons()[0];
+  for (let pass = 0; pass < 3; pass++) {
+    context.renderAccountPendingSummary(target, "אין הרשאה לבצע את השינוי");
+    assert.equal(reviewButtons().length, 1, "an observer pass must not remove the review target");
+    assert.equal(reviewButtons()[0], firstButton, "unchanged status must not rebuild its action");
+    assert.equal(retryButtons()[0], firstRetry, "unchanged status must not rebuild its retry control");
+    assert.equal(reviewButtons()[0].dataset.eventId, "event-a");
+  }
+});
 function harness(result) {
   const statuses = [], target = { className: "hint", textContent: "", hidden: true, dataset: { syncEventId: "event-a" }, closest: () => null };
   const timers = new Map();
@@ -86,7 +137,7 @@ function harness(result) {
     flushPendingSharedState: async () => { if (result instanceof Error) throw result; return result; },
     loadRuntimeConfig: async () => ({ storage: { mode: "supabase" } }),
     pendingSharedSyncStatus: () => ({ pending: false, pendingEventIds: [] }),
-    showStatus: status => statuses.push(status), syncMutationControls: () => {},
+    showStatus: status => statuses.push(status), syncMutationControls: () => {}, syncNoticeView: {place() {}},
     activeSaveScreenSignature: "", screenSignature: () => "event:notes",
     document: { body: { classList: { toggle() {} } }, querySelector: () => null,
       querySelectorAll: selector => selector === "[data-inline-sync-status]" ? [target] : [] }
@@ -137,6 +188,64 @@ test("an actionable failure in one event never labels another event", () => {
   delete h.target.dataset.syncEventId;
   h.context.syncInlineStatusTargets();
   assert.equal(h.target.hidden, false, "the account overview must still show an actionable failure");
+});
+
+test("one known permission rejection cannot label the other five queued events or their retry controls", () => {
+  const h = harness({ ok: true });
+  const ids = Array.from({ length: 6 }, (_, index) => `event-${index + 1}`);
+  const details = { pending: true, pendingEventIds: ids, failureKind: "permission",
+    eventFailures: [{ id: "event-1", failureKind: "permission" }] };
+  h.context.pendingSharedSyncStatus = () => details;
+  const retry = { hidden: false, closest: () => ({ querySelector: () => h.target }) };
+  h.context.document.querySelectorAll = selector => selector === "[data-inline-sync-status]"
+    ? [h.target] : selector === "[data-inline-sync-retry]" ? [retry] : [];
+  h.context.handleSyncStatus({ detail: { status: "unavailable", ...details } });
+  for (const id of ids.slice(1)) {
+    h.target.dataset.syncEventId = id;
+    h.context.syncInlineStatusTargets();
+    assert.equal(h.target.hidden, true, `${id} has no confirmed permission failure`);
+    assert.equal(retry.hidden, true, `${id} must not inherit another event's retry warning`);
+  }
+  h.target.dataset.syncEventId = "event-1";
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, false);
+  assert.match(h.target.textContent, /הרשאה/);
+  assert.equal(retry.hidden, false);
+  assert.equal(h.context.pendingSync, true);
+  assert.deepEqual(Array.from(h.context.pendingEventIds), ids, "UI scoping never acknowledges queued writes");
+  assert.deepEqual(details.eventFailures, [{ id: "event-1", failureKind: "permission" }]);
+});
+
+test("an account-only rejection does not become a permission failure inside all pending events", () => {
+  const h = harness({ ok: true });
+  const details = { pending: true, pendingEventIds: ["event-a"], failureKind: "permission", eventFailures: [] };
+  h.context.pendingSharedSyncStatus = () => details;
+  h.context.handleSyncStatus({ detail: { status: "unavailable", ...details } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, true);
+  delete h.target.dataset.syncEventId;
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, false, "the account-level failure remains actionable in the account overview");
+  assert.equal(h.context.pendingSync, true);
+});
+
+test("routine reconnect notices keep an unresolved permission warning visible", () => {
+  const h = harness({ ok: true });
+  h.context.handleSyncStatus({ detail: { status: "unavailable", pending: true, failureKind: "permission", pendingEventIds: ["event-a"] } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, false);
+  const warning = h.target.textContent;
+  h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true, pendingEventIds: ["event-a"] } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, false);
+  assert.equal(h.target.textContent, warning);
+  h.context.pendingSharedSyncStatus = () => ({ pending: true, pendingEventIds: ["event-a"] });
+  h.context.refreshPendingStatus();
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.textContent, warning, "session refresh must keep the pending warning readable");
+  h.context.handleSyncStatus({ detail: { status: "saved", pending: false, pendingEventIds: [] } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, true, "a real acknowledgement clears the warning");
 });
 
 test("partial progress clears healthy event warnings while preserving the failed event", () => {
@@ -261,4 +370,36 @@ test("a new save stays silent after the previous outbox is acknowledged", () => 
   assert.equal(h.target.hidden, true);
   assert.equal(h.timers.size, 0);
   assert.equal(h.context.pendingSync, true);
+});
+
+
+test("the five-event permission summary names every event and keeps its controls stable", () => {
+  const node = () => ({ dataset: {}, classList: {add() {}}, children: [], textContent: "", setAttribute() {},
+    replaceChildren() { this.children = []; }, append(...children) { this.children.push(...children); },
+    contains(child) { return this.children.some(item => item === child || item.contains?.(child)); }, querySelector: () => null });
+  const events = [1, 2, 3, 4, 5].map(number => ({ id: `event-${number}`, name: `אירוע ${number}` }));
+  const target = node();
+  target.dataset.syncAccountSummary = "";
+  target.dataset.syncAccountEvents = JSON.stringify(events);
+  const document = { querySelectorAll: () => [], createElement: node,
+    createTextNode: textContent => ({ textContent }) };
+  const context = vm.createContext({ document, renderPendingSyncSummary: (target,message,options) => renderPendingSyncSummary(target,message,{...options,document}), pendingEventIds: events.map(event => event.id) });
+  vm.runInContext(functionSource("renderAccountPendingSummary"), context);
+  const descendants = root => root.children.flatMap(child => [child, ...(child.children ? descendants(child) : [])]);
+  const failureDetails = { failureKind: "permission", eventFailures: [{ id: "event-1", failureKind: "permission" }] };
+  context.renderAccountPendingSummary(target, pendingSaveMessage("permission"), failureDetails);
+  assert.equal(descendants(target).filter(child => child.textContent?.includes("— השמירה נחסמה בגלל הרשאה")).length, 1,
+    "one known403 cannot be attributed to all five pending events");
+  const buttons = descendants(target).filter(child => child.dataset?.action === "open-event");
+  assert.deepEqual(buttons.map(button => button.dataset.eventId), events.map(event => event.id));
+  assert.deepEqual(buttons.map(button => button.textContent), events.map(event => event.name));
+  const details = descendants(target).find(child => child.dataset?.syncEventDetails !== undefined);
+  assert.ok(details, "all affected events can be reviewed without guessing which one the summary means");
+  details.open = true;
+  for (let pass = 0; pass < 4; pass++) {
+    context.renderAccountPendingSummary(target, pendingSaveMessage("permission"), failureDetails);
+    assert.equal(descendants(target).find(child => child.dataset?.syncEventDetails !== undefined), details);
+    assert.equal(details.open, true, "unchanged status cannot collapse or rebuild the open list");
+  }
+  assert.equal(descendants(target).filter(child => child.dataset?.syncRetry !== undefined).length, 1);
 });

@@ -1,6 +1,32 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
+  "git": {
+    "deploymentEnabled": {
+      "codex/qa523-startup-entry-20261113": false,
+      "codex/ios-auth76-system-log-footer-20261107": false,
+      "codex/ios-auth76-system-log-focused-20261107": false,
+      "codex/ios-auth76-system-log-help-20261107": false,
+      "codex/ios-auth76-system-log-inspection-20261107": false,
+      "codex/ios-auth76-result-inspection-20261107": false,
+      "codex/ios-native-stage-diagnostics-20261107": false,
+      "codex/test-release-459-20261104": false,
+      "codex/unified-release-4-58-20261012": false,
+      "codex/shared-event-reference-20261013": false,
+      "main": false,
+      "codex/engineering-foundation-20261013": false,
+      "codex/platform-visual-candidate-20261014": false,
+      "codex/ios475-observer-footprint-abba-20261016": false,
+      "codex/android-asg-qa-coverage-20261015": false,
+      "codex/android-host-profile-2d4-20261106": false,
+      "codex/android-host-profile-info-2d4-20261107": false,
+      "codex/android-host-profile-stdout-2d4-20261107": false,
+      "codex/android-host-profile-env-2d4-20261107": false,
+      "codex/android-host-profile-sdk-env-2d4-20261107": false,
+      "codex/android-host-profile-runtime-2d4-20261107": false,
+      "codex/android-swangle-compatibility-2d4-20261107": false
+    }
+  },
   "builds": [
     {
       "src": "server.mjs",
@@ -21,6 +47,7 @@
     { "src": "src/app/**", "use": "@vercel/static" },
     { "src": "src/data/**", "use": "@vercel/static" },
     { "src": "src/domain/**", "use": "@vercel/static" },
+    { "src": "src/ui/**", "use": "@vercel/static" },
     { "src": "src/vendor/**", "use": "@vercel/static" }
   ],
   "crons": [
@@ -38,7 +65,7 @@
         "Referrer-Policy": "no-referrer",
         "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
         "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
-        "Content-Security-Policy": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.googleusercontent.com; connect-src 'self' https://*.supabase.co https://accounts.google.com; frame-src https://accounts.google.com https://*.supabase.co; manifest-src 'self'; worker-src 'self'"
+        "Content-Security-Policy": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.googleusercontent.com; connect-src 'self' https://*.supabase.co https://accounts.google.com https://open.er-api.com; frame-src https://accounts.google.com https://*.supabase.co; manifest-src 'self'; worker-src 'self'"
       },
       "continue": true
     },

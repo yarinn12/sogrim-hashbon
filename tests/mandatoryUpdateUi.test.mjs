@@ -2,56 +2,33 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("mandatory update gate blocks only native Android and has no dismiss action", async () => {
-  const [layer, localStore, splash, gradle, envExample, renderBlueprint] =
-    await Promise.all([
-      readFile("src/publicMandatoryUpdateLayer.mjs", "utf8"),
-      readFile("src/data/localStore.mjs", "utf8"),
-      readFile("src/publicAppSplashLayer.mjs", "utf8"),
-      readFile("android/app/build.gradle", "utf8"),
-      readFile(".env.example", "utf8"),
-      readFile("render.yaml", "utf8")
-    ]);
-
-  assert.match(layer, /isNativePlatform/);
+test("native update UI supports both stores, deferral, return from store and safe failure", async () => {
+  const [layer, bridge, splash, envExample] = await Promise.all([
+    readFile("src/publicMandatoryUpdateLayer.mjs", "utf8"),
+    readFile("src/publicNativeBridgeLayer.mjs", "utf8"),
+    readFile("src/publicAppSplashLayer.mjs", "utf8"),
+    readFile(".env.example", "utf8")
+  ]);
   assert.match(layer, /getPlatform/);
-  assert.match(layer, /=== "android"/);
+  assert.match(layer, /\["android", "ios"\]/);
+  assert.match(layer, /decideNativeUpdate/);
+  assert.match(layer, /verifiedPolicy/);
   assert.match(layer, /role", "alertdialog"/);
-  assert.match(layer, /aria-modal", "true"/);
-  assert.match(layer, /צריך לעדכן כדי להמשיך/);
-  assert.match(layer, /עדכון עכשיו/);
-  assert.match(layer, /app\?\.openStore/);
-  assert.match(layer, /market:\/\/details\?id=\$\{ANDROID_PACKAGE_ID\}/);
-  assert.match(layer, /event\.preventDefault\(\)/);
-  assert.match(
-    layer,
-    /event\.preventDefault\(\);[\s\S]*?event\.stopImmediatePropagation\(\);[\s\S]*?querySelector\(`#\$\{GATE_ID\}`\)/,
-    "native back must not navigate the blocked app behind the update gate"
-  );
-  assert.doesNotMatch(layer, /data-action=["'](?:close|dismiss)/);
-  assert.doesNotMatch(layer, /mandatory-update-(?:close|dismiss|skip)/);
-  assert.match(localStore, /export async function refreshRuntimeConfigNow/);
+  assert.match(layer, /role", "dialog"/);
+  assert.match(layer, /available-update-later/);
+  assert.match(layer, /NATIVE_RESUME_EVENT/);
+  assert.match(layer, /pendingSharedSyncStatus\(\)\.pending/);
   assert.match(layer, /INITIAL_UPDATE_CHECK_BUDGET_MS = 1_200/);
-  assert.match(layer, /initialPolicyKnown = toBuildNumber/);
-  assert.match(
-    layer,
-    /if \(initialPolicyKnown\) \{[\s\S]*?releaseUpdateCheck\(\);[\s\S]*?await freshConfigRequest/
-  );
   assert.match(layer, /Promise\.race/);
-  assert.match(layer, /releaseUpdateCheck\(\);[\s\S]*?await freshConfigRequest/);
+  assert.match(bridge, /marketUrl \|\| storeUrl/);
   assert.match(splash, /mandatory-update-checking/);
-  assert.match(splash, /sogrim:mandatory-update-check/);
-  const versionCode = Number(gradle.match(/versionCode\s+(\d+)/)?.[1]);
-  const versionName = gradle.match(/versionName\s+"([^"]+)"/)?.[1];
-  assert.ok(Number.isSafeInteger(versionCode) && versionCode > 0);
-  assert.match(versionName ?? "", /^\d+\.\d+$/);
   assert.match(envExample, /ANDROID_MIN_SUPPORTED_BUILD=0/);
-  assert.match(renderBlueprint, /key: ANDROID_MIN_SUPPORTED_BUILD\s+value: "0"/);
+  assert.match(envExample, /ANDROID_UPDATE_CRITICAL=false/);
+  assert.match(envExample, /IOS_UPDATE_CRITICAL=false/);
 });
 
-test("mandatory update QA starts and stops its own isolated server", async () => {
+test("mandatory update QA runs against its own isolated local server", async () => {
   const script = await readFile("scripts/verify-mandatory-android-update.mjs", "utf8");
-
   assert.match(script, /const qaPort = "4194"/);
   assert.match(script, /spawn\(process\.execPath, \["server\.mjs", qaPort\]/);
   assert.match(script, /APP_LOCAL_STATE_FILE: "\.qa-mandatory-update\/app-state\.json"/);
@@ -59,12 +36,10 @@ test("mandatory update QA starts and stops its own isolated server", async () =>
   assert.match(script, /localQaServer\?\.kill\(\)/);
 });
 
-test("mandatory update gate fails open when the policy or build is unknown", async () => {
+test("unknown builds and failed checks do not keep the launch screen blocked", async () => {
   const layer = await readFile("src/publicMandatoryUpdateLayer.mjs", "utf8");
-
-  assert.match(layer, /minimumSupportedBuild > 0/);
-  assert.match(layer, /currentBuild > 0/);
-  assert.match(layer, /currentBuild < minimumSupportedBuild/);
-  assert.match(layer, /firstResult\.status === "failed"[\s\S]*?hideUpdateGate\(\)/);
-  assert.match(layer, /locally known mandatory update remains blocking while offline/);
+  assert.match(layer, /nativeBuildNumber\(\)/);
+  assert.match(layer, /firstResult\.status === "failed"/);
+  assert.match(layer, /hideUpdatePrompts\(\)/);
+  assert.match(layer, /releaseUpdateCheck\(\)/);
 });

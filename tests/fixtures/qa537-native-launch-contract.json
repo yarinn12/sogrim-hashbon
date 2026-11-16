@@ -1,0 +1,12 @@
+{
+  "source": "4f6c5f1d31fe7dd191683cb08daa72118c3ea39d",
+  "originalPrepareSha256": "cda733fc0d8167694ed3ea3c0f249353e5f318d01816dd76c4a4ce82ba2251c6",
+  "canonicalLfProtectedFiles": {
+    "scripts/qa/ios-parity/ParityUITests.swift": "978b077dbe15e8d20fb5c1bb05967339798c1f2197af5f45703c156019b5dc68",
+    "scripts/qa/ios-parity/ParityBridge.swift": "3ff5fa0aa301a3c9ba89583c2dbb64956bdec61c2ed6a77d491f8680bb2ad8c5",
+    "scripts/qa/ios-parity/StatusPublicationPolicy.swift": "df3f5737de78f75e1cb0bb8c76e9ea9d51aacb1be2d47356f007348b7f34cd83",
+    "scripts/qa/ios-parity/StatusPublicationPolicyTests.swift": "cc169d11e419665b5ac3ba26318c7f4de97b629567dd75590bad30f39e9a815b",
+    "scripts/qa/ios-parity/journey.js": "f33783a144c36bafedde382bd599a2d4849430e2274d3be2a9f05dc0b433ddd9",
+    "ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme": "3af2807253bafc78265cbd7613f2be246a5f28bf05204e79180858c7dd81bce1"
+  }
+}

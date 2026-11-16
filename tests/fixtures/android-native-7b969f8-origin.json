@@ -1,0 +1,32 @@
+{
+  "source": "7b969f8ea4933669fa10d69fc740778789c682d1",
+  "tree": "eca6195aa529e662749734d6ab399c1e340bde85",
+  "run": 38113596895,
+  "androidJob": 114394138199,
+  "artifactId": 11693096231,
+  "zipSha256": "fd62541f58ff5c9623634b9030f0e259413a259499eeeb07f6cc2b1da3d168ee",
+  "originalCaptureComplete": false,
+  "writerCloseVerified": false,
+  "fixtures": [
+    {
+      "path": "android-native-7b969f8-close-raw.txt",
+      "artifactMemberSuffix": "trace-diagnostics/finish-6-perfetto-stop-close.txt",
+      "bytes": 232,
+      "sha256": "5a04dadc72a0ba6836f46f004a2d35f0e2a52e7307f19d1346b4d66e945201aa",
+      "exitCode": 3,
+      "stderrBytes": 223,
+      "stderrSha256": "2e90285b64d8f8f9542c325fa5607a3c88b011143a7cac765551f3326e97f3cc"
+    },
+    {
+      "path": "android-native-7b969f8-pull-raw.txt",
+      "artifactMemberSuffix": "trace-diagnostics/finish-9-perfetto-pull.txt",
+      "bytes": 151,
+      "sha256": "10a08030b91bf98072ded426c61a5a26d7e30febf279c479bcbb974b1731f3a2",
+      "exitCode": 0,
+      "stderrBytes": 142,
+      "stderrSha256": "22698dbcc21d1ba81da5567a1226f7e93af75de66498900fef1e775edab0ed66",
+      "actualTraceBytes": 189789438
+    }
+  ],
+  "normalTests": "Use recorded protocol/error bytes, replace only the owned session path and pulled byte count for independent synthetic scheduling bytes. They do not execute Android or prove SELinux/guest behavior. The full original trace is replayed separately in the forensic output."
+}

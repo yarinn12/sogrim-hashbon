@@ -1,0 +1,12 @@
+{
+  "file": "/usr/bin/bpftrace",
+  "args": [
+    "--info"
+  ],
+  "exitCode": 1,
+  "signal": null,
+  "error": null,
+  "stdout": "",
+  "stderr": "ERROR: bpftrace currently only supports running as the root user.\n",
+  "scope": "Nonprivileged feature report; actual privileged compile/attach/scope proof below is mandatory"
+}

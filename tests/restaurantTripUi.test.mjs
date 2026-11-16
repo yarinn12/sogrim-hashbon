@@ -1,3 +1,4 @@
+import {renderExpenseDateFieldView} from "../src/ui/expenseFormPresentation.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -6,13 +7,15 @@ test("restaurant entry starts with a simple split choice and asks for payment la
   const app = await readFile("src/app.mjs", "utf8");
   const quickFormStart = app.indexOf("function renderQuickExpenseForm");
   const quickFormEnd = app.indexOf("function renderQuickItemRow", quickFormStart);
-  const quickForm = app.slice(quickFormStart, quickFormEnd);
-  const itemRow = app.slice(
+  const presentation = await readFile("src/ui/restaurantBillPresentation.mjs", "utf8");
+  const quickForm = app.slice(quickFormStart, quickFormEnd) + presentation;
+  const itemRow = presentation + app.slice(
     app.indexOf("function renderQuickItemRow"),
     app.indexOf("function renderEventExpenseGroups")
   );
 
-  assert.match(app, /data-action="expense-date"/);
+  assert.match(app, /return renderExpenseDateFieldView\(\{value: expenseDraft\.occurredOn/);
+  assert.match(renderExpenseDateFieldView({value:"2026-10-20"}), /data-action="expense-date" name="expenseDate"/);
   assert.match(quickForm, /data-action="restaurant-split-mode" data-mode="equal"/);
   assert.match(quickForm, /data-action="restaurant-split-mode" data-mode="items"/);
   assert.match(quickForm, /חלוקה שווה/);

@@ -1,3 +1,4 @@
+import {renderClosedFixture} from "./helpers/closedSettlementHarness.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -13,8 +14,8 @@ test("settlement screen lets a paid transfer return to pending", async () => {
   assert.doesNotMatch(app, /transfer-complete-button is-static/);
   assert.match(app, /updateTransferStatus/);
   assert.match(app, /"מחכה שתעביר"/);
-  assert.match(app, /"מחכה שיגיע"/);
-  assert.match(app, /"יתרה זמנית"/);
+  assert.match(app, /"ממתין לתשלום אליך"/);
+  assert.match(app, /"סכום לא סופי"/);
   assert.match(app, /"ממתין להעברה"/);
   assert.match(app, /paymentActionsEnabled = isEventClosed\(event\)/);
   assert.doesNotMatch(app, /אפשר לסמן אחרי סגירת האירוע/);
@@ -64,8 +65,9 @@ test("reopening asks whether to keep or reset recorded payments", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
   assert.match(app, /function requestReopenCurrentEvent\(eventId, trigger\)/);
-  assert.match(app, /לשמור תשלומים שבוצעו/);
-  assert.match(app, /לאפס את כל התשלומים/);
+  const reopenView = await readFile("src/ui/eventReopenConfirmationPresentation.mjs", "utf8");
+  assert.match(reopenView, /לשמור סימוני תשלום/);
+  assert.match(reopenView, /לאפס סימוני תשלום/);
   assert.match(app, /paymentMode: "keep"/);
   assert.match(app, /resetPayments: action\.payload\.paymentMode === "reset"/);
   // The reset's persistence behavior is exercised in reopenPaymentReset.test.mjs.
@@ -90,7 +92,7 @@ test("settlement transfer identity and disclosure stay platform-neutral", async 
 
 test("the final paid transfer opens one completion celebration without automatic archiving", async () => {
   const [app, styles] = await Promise.all([
-    readFile("src/app.mjs", "utf8"),
+    readFile("src/app.mjs", "utf8").then(async source => source + await readFile("src/ui/settlementCompletionPresentation.mjs", "utf8")),
     readFile("styles.css", "utf8")
   ]);
 
@@ -102,7 +104,7 @@ test("the final paid transfer opens one completion celebration without automatic
   assert.match(app, /settlementCelebration = \{ eventId: event\.id \}/);
   assert.match(app, /data-action="archive-settled-event"/);
   assert.match(app, /סגור חשבון/);
-  assert.match(app, /המעבר לארכיון תמיד ידני/);
+  assert.match(app, /כל התשלומים באירוע סומנו כשולמו\./);
   assert.match(app, /closeCurrentEvent\(eventId, \{ destination: "home" \}\)/);
   assert.match(
     app,
@@ -110,12 +112,12 @@ test("the final paid transfer opens one completion celebration without automatic
   );
   assert.doesNotMatch(app, /\.settlement-complete-state \[data-action="back-to-event"\]/);
   assert.match(styles, /\.settlement-celebration-dialog/);
-  assert.match(styles, /@keyframes settlement-confetti-burst/);
+  assert.doesNotMatch(app, /class="settlement-confetti/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
 test("closing with pending transfers uses stateful confirmation and stays reversible", async () => {
-  const app = await readFile("src/app.mjs", "utf8");
+  const app = await readFile("src/app.mjs", "utf8") + await readFile("src/ui/settlementClosePresentation.mjs", "utf8");
 
   assert.match(app, /let settlementCloseConfirmation = null/);
   assert.match(app, /function requestCloseCurrentEvent\(eventId\)/);
@@ -137,24 +139,21 @@ test("closing with pending transfers uses stateful confirmation and stays revers
 });
 
 test("settlement action hierarchy follows payment state", async () => {
+  const open = renderClosedFixture({closedEvent:false}).html;
+  assert.match(open, /class="primary-button settlement-close-primary"/);
+  assert.doesNotMatch(open, /data-action="mark-paid"/);
+  const pending = renderClosedFixture().html;
+  assert.match(pending, /class="settlement-debt-share"/);
+  assert.match(pending, /data-action="share-whatsapp"/);
+  assert.match(pending, /data-action="reopen-event"/);
+  const single = renderClosedFixture({transfers:[{id:"pending",fromParticipantId:"guest-a",toParticipantId:"owner",amount:8000,status:"pending"}]}).html;
+  assert.match(single, /class="primary-button settlement-featured-complete"/);
+  assert(single.indexOf('data-action="mark-paid"') < single.indexOf('class="settlement-debt-share"'));
+  const paid = renderClosedFixture({transfers:[{id:"paid",fromParticipantId:"guest-a",toParticipantId:"owner",amount:8000,status:"paid"}]}).html;
+  assert.doesNotMatch(paid, /data-action="mark-paid"/);
+  assert.match(paid, /שתף סיכום/);
   const app = await readFile("src/app.mjs", "utf8");
-
-  assert.match(
-    app,
-    /const shareButtonClass = isClosed \|\| \(hasPendingTransfers && !personalPendingTransfers\.length\)/
-  );
-  assert.match(app, /data-action="share-whatsapp"/);
-  assert.match(app, /class="settlement-more-actions"/);
-  assert.match(app, /data-action="close-event"/);
-  assert.match(app, /data-action="reopen-event"/);
-  assert.match(
-    app,
-    /data-action="share-whatsapp"[\s\S]*?class="settlement-more-actions"[\s\S]*?data-action="(?:reopen-event|close-event)"/
-  );
-  assert.match(
-    app,
-    /isPersonal \? "primary-button" : "secondary-button transfer-group-complete-button"/
-  );
+  assert.match(app, /isPersonal \? "primary-button" : "secondary-button transfer-group-complete-button"/);
 });
 
 test("settlement summary leads with one ordered transfer list", async () => {

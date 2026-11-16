@@ -120,6 +120,9 @@ async function nativeAndroidContext(build) {
         updates: {
           android: {
             minimumSupportedBuild,
+            latestAvailableBuild: minimumSupportedBuild,
+            releaseAvailableToAll: true,
+            critical: true,
             currentBuild: Number.isSafeInteger(requestBuild) ? requestBuild : 0,
             required: Boolean(
               Number.isSafeInteger(requestBuild) &&

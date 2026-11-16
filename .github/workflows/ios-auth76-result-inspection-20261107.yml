@@ -1,0 +1,78 @@
+name: READ_ONLY_ORIGINAL_EVIDENCE Auth76 xcresult inspection
+
+on:
+  push:
+    branches: [codex/ios-auth76-result-inspection-20261107]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect-original-failed-result-only:
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios-auth76-result-inspection-20261107' && github.event.created == true && github.event.deleted == false && github.event.forced == false && github.run_attempt == 1 && github.run_number == 1
+    runs-on: macos-26-intel
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      PYTHONDONTWRITEBYTECODE: "1"
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Focused synthetic validation of evidence gates
+        run: python3 -B tests/ios_auth76_result_inspection_test.py
+      - name: Read and verify original GitHub metadata using GET only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          private="$RUNNER_TEMP/auth76-original-private"
+          report="$GITHUB_WORKSPACE/artifacts/auth76-result-inspection"
+          mkdir -p "$private/metadata" "$report"
+          printf 'READ_ONLY_ORIGINAL_EVIDENCE\nOriginal failed Auth76 attempt 1 only. Not release acceptance.\n' > "$report/README.txt"
+          fetch_json() {
+            local name="$1" endpoint="$2"
+            if ! gh api --method GET "$endpoint" > "$private/metadata/$name.json" 2> "$private/gh-error.log"; then
+              echo "::error::Original evidence metadata GET failed"
+              exit 1
+            fi
+          }
+          fetch_json repo repos/yarinn12/sogrim-hashbon
+          fetch_json run repos/yarinn12/sogrim-hashbon/actions/runs/42396343370
+          fetch_json job repos/yarinn12/sogrim-hashbon/actions/jobs/128474426526
+          fetch_json attempt_jobs 'repos/yarinn12/sogrim-hashbon/actions/runs/42396343370/attempts/1/jobs?per_page=100'
+          fetch_json artifact repos/yarinn12/sogrim-hashbon/actions/artifacts/13584775403
+          fetch_json run_artifacts 'repos/yarinn12/sogrim-hashbon/actions/runs/42396343370/artifacts?per_page=100'
+          python3 -B scripts/qa/native-auth-session/inspect-original-xcresult.py verify-metadata "$private/metadata" "$report/metadata-validation.json"
+      - name: Download exact original artifact ZIP and safely extract its xcresult
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          private="$RUNNER_TEMP/auth76-original-private"
+          report="$GITHUB_WORKSPACE/artifacts/auth76-result-inspection"
+          if ! gh api --method GET repos/yarinn12/sogrim-hashbon/actions/artifacts/13584775403/zip > "$private/original.zip" 2> "$private/gh-error.log"; then
+            echo "::error::Original artifact GET failed"
+            exit 1
+          fi
+          python3 -B scripts/qa/native-auth-session/inspect-original-xcresult.py verify-extract "$private/original.zip" "$private/extracted" "$report/archive-validation.json"
+      - name: Inspect original result with Xcode 26.6 xcresulttool only
+        run: |
+          set -euo pipefail
+          python3 -B scripts/qa/native-auth-session/inspect-original-xcresult.py inspect "$RUNNER_TEMP/auth76-original-private/extracted/result.xcresult" "$GITHUB_WORKSPACE/artifacts/auth76-result-inspection/xcresulttool"
+      - name: State evidence scope
+        if: always()
+        run: |
+          echo 'READ_ONLY_ORIGINAL_EVIDENCE: original failed Auth76 attempt 1 only. No rerun, simulator, signing, or release acceptance.' >> "$GITHUB_STEP_SUMMARY"
+          if test -f artifacts/auth76-result-inspection/xcresulttool/xcresulttool-manifest.json; then
+            python3 -B -c 'import json; p="artifacts/auth76-result-inspection/xcresulttool/xcresulttool-manifest.json"; d=json.load(open(p)); print("xcresulttool unavailable or failed commands: "+", ".join(d["unavailableOrFailed"]))' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: READ_ONLY_ORIGINAL_EVIDENCE-auth76-result-inspection
+          path: artifacts/auth76-result-inspection/
+          if-no-files-found: warn
+          retention-days: 14

@@ -164,6 +164,7 @@ function installCssHasFallback() {
     }
 
     html.sogrim-css-has-fallback.ledger-workspace-v1 .expense-row.sogrim-has-open-expense-menu {
+      animation: none !important;
       position: relative !important;
       z-index: 60 !important;
     }

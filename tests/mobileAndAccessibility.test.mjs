@@ -1,8 +1,10 @@
+import { renderExpensePayerAmountView } from "../src/ui/expensePayerAmount.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const app = readFileSync("src/app.mjs", "utf8");
+const noticeView = readFileSync("src/ui/appNoticePresentation.mjs", "utf8");
 const ledger = readFileSync("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 const mobileModal = readFileSync("src/publicMobileModalLayer.mjs", "utf8");
 const inviteJoinLayer = readFileSync("src/publicInviteJoinFixLayer.mjs", "utf8");
@@ -29,7 +31,11 @@ test("long-press text selection stays limited to live editing fields", () => {
 
 test("every money field opens a numeric keypad and stays LTR", () => {
   for (const action of ["expense-total", "expense-payer-amount", "quick-item-amount"]) {
-    const field = app.slice(app.indexOf(`data-action="${action}"`));
+    // The payer field moved into a pure UI renderer; check its actual markup.
+    const markup = action === "expense-payer-amount"
+      ? renderExpensePayerAmountView({index:0,amount:"12.34",currency:"ILS",currencyLabel:"₪"})
+      : app;
+    const field = markup.slice(markup.indexOf(`data-action="${action}"`));
     const tag = field.slice(0, field.indexOf("/>"));
     assert.match(tag, /inputmode="decimal"/, `${action} requests a decimal keypad`);
     assert.match(tag, /dir="ltr"/, `${action} keeps digits left to right`);
@@ -124,7 +130,12 @@ test("expense row edit and delete actions keep comfortable mobile touch targets"
 });
 
 test("reduced motion is honoured in the active design layer", () => {
-  const reduced = ledger.slice(ledger.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
+  // Locate the shared rule, not whichever scoped reduced-motion block is last.
+  const shared = ledger.lastIndexOf("html.ledger-workspace-v1 *,");
+  assert.ok(shared >= 0);
+  const media = ledger.lastIndexOf("@media (prefers-reduced-motion: reduce)", shared);
+  assert.ok(media >= 0);
+  const reduced = ledger.slice(media, ledger.indexOf("}", shared) + 1);
 
   assert.match(reduced, /animation-duration: 1ms !important;/);
   assert.match(reduced, /transition-duration: 1ms !important;/);
@@ -191,10 +202,10 @@ test("validation errors are announced, including the profile screen", () => {
 
 test("status messages use a polite live region", () => {
   assert.match(
-    app,
-    /class="notice app-toast" role="status" aria-live="polite" aria-atomic="true"/
+    noticeView,
+    /class="notice app-toast app-inline-notice"[^>]*role="status" aria-live="polite" aria-atomic="true"/
   );
-  assert.match(app, /data-action="dismiss-notice" aria-label="סגירת ההודעה"/);
+  assert.match(noticeView, /data-action="dismiss-notice" aria-label="סגירת ההודעה"/);
   assert.match(app, /class="expense-loop-status" role="status" aria-live="polite"/);
 });
 

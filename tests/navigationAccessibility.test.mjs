@@ -62,7 +62,7 @@ test("focused tasks keep back and home in quick controls", async () => {
   assert.match(brand, /renderPrimaryNavigation/);
   assert.match(primaryNavigation, /\["product-app-nav", extraClass\]/);
   assert.match(primaryNavigation, /data-action="home" data-nav-destination="home"/);
-  assert.match(primaryNavigation, /data-nav-destination="events"/);
+  assert.match(primaryNavigation, /data-nav-destination="friends"/);
   assert.match(primaryNavigation, /data-action="open-notifications" data-nav-destination="notifications"/);
   assert.match(primaryNavigation, /data-nav-destination="profile"/);
   assert.match(layer, /controls\.hidden = false/);
@@ -101,8 +101,10 @@ test("friends hub does not claim the profile destination as the current page", a
 
   assert.ok(start >= 0);
   assert.ok(end > start);
-  assert.match(navigationState, /kind === "profile"\s*\? "profile"/);
-  assert.doesNotMatch(navigationState, /\["profile", "groups"\]\.includes\(kind\)/);
+  assert.match(navigationState, /primaryNavigationDestinationForScreen\(kind\)/);
+  const { primaryNavigationDestinationForScreen: destination } = await import("../src/ui/primaryNavigationState.mjs");
+  assert.equal(destination("profile"), "profile");
+  assert.equal(destination("groups"), "friends");
 });
 
 test("mobile navigation stays visible and uses store-ready touch targets", async () => {

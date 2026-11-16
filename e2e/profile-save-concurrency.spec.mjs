@@ -1,13 +1,15 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 test.use({ serviceWorkers: "block", reducedMotion: "no-preference" });
 const errors = new WeakMap();
-test.beforeEach(async ({ page, request }) => {
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
   const owner = "person-profile-race";
   const state = { currentParticipantId: owner,
     participants: [{ id: owner, displayName: "בדיקת פרופיל", kind: "user", avatarPreset: "avatar-1" }],
     friendContacts: [], groups: [], events: [], deletedEvents: [], deletedParticipants: [] };
-  await request.post("/api/reset"); await request.put("/api/state", { data: state });
+  await resetLocalQaStateFresh(fixtureBaseURL); await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript(({ state, owner }) => {
     localStorage.clear(); sessionStorage.clear();
     localStorage.setItem("settle-friends-state", JSON.stringify(state));

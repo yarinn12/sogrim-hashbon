@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import {
@@ -53,9 +55,9 @@ const seededState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: seededState });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, seededState);
   await page.addInitScript(({ participantId, state }) => {
     if (sessionStorage.getItem("event-settings-flow-seeded") === "1") {
       sessionStorage.setItem("settle-friends-skip-next-splash", "1");
@@ -89,20 +91,21 @@ test("event settings remain still while the user reads or scrolls", async ({ pag
   const settingsDialog = page.locator('.event-settings-modal[role="region"]');
   await expect(settingsDialog).toBeVisible();
   const settingsBody = settingsDialog.locator(':scope > .event-modal-body');
-  const initialScrollMetrics = await settingsBody.evaluate((element) => ({
+  // Approved overview now scrolls the whole foreground route; its body flows.
+  await expect(settingsBody).toHaveCSS("overflow-y", "visible");
+  await expect(settingsBody).toHaveCSS("touch-action", "pan-y");
+  const initialScrollMetrics = await settingsDialog.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
     scrollTop: element.scrollTop,
-    overflowY: getComputedStyle(element).overflowY,
-    touchAction: getComputedStyle(element).touchAction
+    overflowY: getComputedStyle(element).overflowY
   }));
   expect(initialScrollMetrics.scrollHeight).toBeGreaterThan(initialScrollMetrics.clientHeight);
   expect(initialScrollMetrics.overflowY).toBe("auto");
-  expect(initialScrollMetrics.touchAction).toContain("pan-y");
-  await settingsBody.evaluate((element) => {
+  await settingsDialog.evaluate((element) => {
     element.scrollTop = Math.min(180, element.scrollHeight - element.clientHeight);
   });
-  await expect.poll(() => settingsBody.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect.poll(() => settingsDialog.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   const dangerCard = page.locator('[data-settings-section="danger"]');
   await dangerCard.scrollIntoViewIfNeeded();
   await dangerCard.focus();
@@ -124,7 +127,7 @@ test("event manager can delete an event and the deletion survives reload", async
   await deleteButton.click();
 
   const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
-  await expect(confirmation).toContainText("מחיקת אירוע");
+  await expect(confirmation).toContainText("למחוק את האירוע?");
   await expect(confirmation).toContainText("משתתפים");
   await expect(confirmation).toContainText("הוצאות");
   await confirmation.locator('[data-action="confirm-important-action"]').click();
@@ -144,7 +147,7 @@ test("event manager can delete an event and the deletion survives reload", async
 test("the only manager must hand over management before leaving", async ({ page }) => {
   await page.locator('[data-settings-section="danger"]').click();
   await expect(page.locator('[data-action="leave-event"]')).toBeDisabled();
-  await expect(page.getByRole("region", { name: "עזיבה ומחיקה" })).toContainText("מנהל יחיד צריך קודם להעביר ניהול");
+  await expect(page.getByRole("region", { name: "עזיבה ומחיקה" })).toContainText("כדי לעזוב, צריך קודם למנות מנהל נוסף דרך רשימת המשתתפים.");
 });
 
 test("activity history opens from settings and returns to its card", async ({ page }) => {
@@ -168,7 +171,7 @@ test("event cover upload previews the exact wide crop before saving", async ({ p
   const cropDialog = page.locator(".image-crop-dialog");
   const cropStage = cropDialog.locator(".image-crop-stage.is-rectangle");
   await expect(cropDialog).toBeVisible();
-  await expect(cropDialog).toContainText("בחר את תמונת האירוע");
+  await expect(cropDialog).toContainText("התאמת תמונת האירוע");
   const cropBounds = await cropStage.boundingBox();
   expect((cropBounds?.width ?? 0) / (cropBounds?.height ?? 1)).toBeCloseTo(16 / 7, 1);
   await cropDialog.locator('[data-crop-action="confirm"]').click();
@@ -217,7 +220,7 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
     .locator('.app-choice-option[data-choice-value="USD"]')
     .click();
   const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
-  await expect(confirmation).toContainText("הסכומים יישארו בדיוק כפי שהוזנו");
+  await expect(confirmation).toContainText("סכומי ההוצאות הקיימות לא יומרו לפי שער חליפין");
   await confirmation.locator('[data-action="confirm-important-action"]').click();
   await expect(currency).toHaveValue("USD");
   await expect(currencyTrigger).toBeFocused();
@@ -227,18 +230,18 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
   const repaymentCard = page.locator('[data-settings-section="repayment"]');
   await repaymentCard.click();
   const repaymentDialog = page.locator('.event-modal:has(.event-repayment-field)');
-  const direct = page.locator(
+  const direct = repaymentDialog.locator(
     '[data-action="set-event-repayment-mode"][data-repayment-mode="direct"]'
   );
-  const optimized = page.locator(
+  const optimized = repaymentDialog.locator(
     '[data-action="set-event-repayment-mode"][data-repayment-mode="optimized"]'
   );
   await direct.click();
   await expect(direct).toHaveAttribute("aria-checked", "true");
-  await expect(repaymentDialog).toContainText("ההחזרים יועברו ישירות למי ששילם");
+  await expect(direct).toContainText("כל אחד מחזיר ישירות למי ששילם עבורו.");
   await optimized.click();
   await expect(optimized).toHaveAttribute("aria-checked", "true");
-  await expect(repaymentDialog).toContainText("המערכת תאזן את החובות ותציע כמה שפחות העברות");
+  await expect(optimized).toContainText("מצמצמים את מספר ההעברות. אפשר להחזיר גם למי שלא שילם עבורכם.");
   await direct.click();
   await expect(direct).toHaveAttribute("aria-checked", "true");
   await expect(direct).toBeFocused();
@@ -261,12 +264,12 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
   const lock = page.locator('[data-action="toggle-lock"]');
   await lock.click();
   await expect(page.getByText("האירוע נעול לעריכה", { exact: true })).toBeVisible();
-  await expect(lock).toHaveText("פתח עריכה");
+  await expect(lock).toHaveText("פתח שוב לעריכה");
   await expect(lock).toBeFocused();
   await lock.click();
-  await expect(lock).toHaveText("נעל עריכה");
+  await expect(lock).toHaveText("נעל את האירוע");
   await lock.click();
-  await expect(lock).toHaveText("פתח עריכה");
+  await expect(lock).toHaveText("פתח שוב לעריכה");
 
   const saved = await page.evaluate((eventId) => {
     const state = JSON.parse(localStorage.getItem("settle-friends-state") || "{}");
@@ -293,8 +296,8 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
   await expect(page.locator('[data-settings-section="management"]')).toContainText("ניהול מרוכז");
   await expect(page.locator('[data-settings-section="currency"]')).toContainText("דולר אמריקאי");
   await expect(page.locator('[data-settings-section="repayment"]')).toContainText("לפי מי ששילם");
-  await expect(page.locator('[data-settings-section="rounding"]')).toContainText("דיוק מלא ללא עיגול");
-  await expect(page.locator('[data-settings-section="lock"]')).toContainText("האירוע נעול");
+  await expect(page.locator('[data-settings-section="rounding"] .event-settings-menu-copy small')).toHaveText("ללא עיגול");
+  await expect(page.locator('[data-settings-section="lock"] .event-settings-menu-copy small')).toHaveText("נעול לעריכה");
 });
 
 test("closing the choice picker preserves an account lock acquired while it was open", async ({ page }) => {

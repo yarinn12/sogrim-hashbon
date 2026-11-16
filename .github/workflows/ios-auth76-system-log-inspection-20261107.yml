@@ -1,0 +1,81 @@
+name: READ_ONLY_ORIGINAL_EVIDENCE Auth76 system log inspection
+
+on:
+  push:
+    branches: [codex/ios-auth76-system-log-inspection-20261107]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  decode-original-system-log-only:
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios-auth76-system-log-inspection-20261107' && github.event.created == true && github.event.deleted == false && github.event.forced == false && github.run_attempt == 1 && github.run_number == 1
+    runs-on: macos-26-intel
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      TZ: UTC
+      PYTHONDONTWRITEBYTECODE: "1"
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Focused synthetic archive and command controls
+        run: |
+          python3 -B tests/ios_auth76_result_inspection_test.py
+          python3 -B tests/ios_auth76_system_log_inspection_test.py
+      - name: Read and verify original Auth76 metadata using GET only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          private="$RUNNER_TEMP/auth76-system-log-private"
+          report="$GITHUB_WORKSPACE/artifacts/auth76-system-log-inspection"
+          mkdir -p "$private/metadata" "$report"
+          printf 'READ_ONLY_ORIGINAL_EVIDENCE\nOriginal failed Auth76 attempt 1 system log only. Not release acceptance.\n' > "$report/README.txt"
+          fetch_json() {
+            local name="$1" endpoint="$2"
+            if ! gh api --method GET "$endpoint" > "$private/metadata/$name.json" 2> "$private/gh-error.log"; then
+              echo "::error::Original evidence metadata GET failed"
+              exit 1
+            fi
+          }
+          fetch_json repo repos/yarinn12/sogrim-hashbon
+          fetch_json run repos/yarinn12/sogrim-hashbon/actions/runs/42396343370
+          fetch_json job repos/yarinn12/sogrim-hashbon/actions/jobs/128474426526
+          fetch_json attempt_jobs 'repos/yarinn12/sogrim-hashbon/actions/runs/42396343370/attempts/1/jobs?per_page=100'
+          fetch_json artifact repos/yarinn12/sogrim-hashbon/actions/artifacts/13584775403
+          fetch_json run_artifacts 'repos/yarinn12/sogrim-hashbon/actions/runs/42396343370/artifacts?per_page=100'
+          python3 -B scripts/qa/native-auth-session/inspect-original-xcresult.py verify-metadata "$private/metadata" "$report/metadata-validation.json"
+      - name: Download exact original ZIP once and safely extract its result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          private="$RUNNER_TEMP/auth76-system-log-private"
+          report="$GITHUB_WORKSPACE/artifacts/auth76-system-log-inspection"
+          if ! gh api --method GET repos/yarinn12/sogrim-hashbon/actions/artifacts/13584775403/zip > "$private/original.zip" 2> "$private/gh-error.log"; then
+            echo "::error::Original artifact GET failed"
+            exit 1
+          fi
+          python3 -B scripts/qa/native-auth-session/inspect-original-xcresult.py verify-extract "$private/original.zip" "$private/extracted" "$report/archive-validation.json"
+      - name: Export original diagnostics and decode only its bounded system log archive
+        run: |
+          set -euo pipefail
+          python3 -B scripts/qa/native-auth-session/inspect-original-system-log.py inspect "$RUNNER_TEMP/auth76-system-log-private" "$GITHUB_WORKSPACE/artifacts/auth76-system-log-inspection"
+      - name: State evidence scope and availability
+        if: always()
+        run: |
+          echo 'READ_ONLY_ORIGINAL_EVIDENCE: original failed Auth76 attempt 1 only. No application rerun, live logs, or release acceptance.' >> "$GITHUB_STEP_SUMMARY"
+          if test -f artifacts/auth76-system-log-inspection/system-log/manifest.json; then
+            python3 -B -c 'import json; p="artifacts/auth76-system-log-inspection/system-log/manifest.json"; d=json.load(open(p)); print("Archive log status: "+d["status"]+"; output is incomplete if timeout or cap was reached.")' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: READ_ONLY_ORIGINAL_EVIDENCE-auth76-system-log
+          path: artifacts/auth76-system-log-inspection/
+          if-no-files-found: warn
+          retention-days: 14

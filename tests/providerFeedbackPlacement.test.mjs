@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
+import { renderAccountEntryView } from "../src/ui/accountEntryPresentation.mjs";
 
 const source = (await readFile("src/publicAccountAuthLayer.mjs", "utf8")).replaceAll("\r\n", "\n");
 const start = source.indexOf("function renderAccountGate(");
@@ -11,6 +12,7 @@ assert.ok(start >= 0 && end > start);
 test("provider rejection is rendered beside the provider controls rather than beneath the expanded email form", () => {
   let gate;
   const context = vm.createContext({
+    renderAccountEntryView,
     runtimeConfig: { launch: { authEmailDeliveryReady: true } },
     googleEnabled: true, appleEnabled: true, emailAuthExpanded: true,
     GATE_ID: "auth-gate",

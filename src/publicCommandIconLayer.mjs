@@ -21,8 +21,8 @@ const ACTION_ICON_NAMES = {
   "delete-expense": "trash",
   "leave-event": "log-out",
   "remove-event-participant": "user-minus",
-  "remove-network-friend": "user-minus",
-  "remove-offline-friend": "user-minus",
+  "remove-network-friend": "trash",
+  "remove-offline-friend": "trash",
   "remove-participant": "user-minus",
   "delete-account-open": "trash"
 };

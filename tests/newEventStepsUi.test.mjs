@@ -34,7 +34,8 @@ test("new event creation separates type and details", async () => {
   assert.doesNotMatch(typeStep, /data-action="create-event"/);
 
   assert.match(detailsStep, /data-event-creation-step="details"/);
-  assert.match(detailsStep, /data-action="new-event-name"/);
+  assert.match(detailsStep, /renderEventDetailsNameFieldView\(/);
+  assert.match(await readFile("src/ui/eventDetailsNameField.mjs", "utf8"), /data-action="new-event-name"/);
   assert.match(detailsStep, /data-action="open-new-event-settlement"/);
   assert.doesNotMatch(detailsStep, /data-action="create-event"/);
   assert.doesNotMatch(participantsStep, /data-action="new-event-group"/);
@@ -55,7 +56,9 @@ test("event creation defaults to collaborative management and settings keep the 
   assert.match(app, /אני מנהל עבור כולם/);
   assert.match(app, /כולם מעדכנים יחד/);
   assert.match(app, /adminsCanEditOnly: managementModeRequiresAdmin\(newEventDraft\.managementMode\)/);
-  assert.match(app, /action: "set-event-management-mode"/);
+  const managementView = await readFile("src/ui/eventManagementPresentation.mjs", "utf8");
+  assert.match(app, /renderEventManagementView/);
+  assert.match(managementView, /data-action="set-event-management-mode"/);
   assert.match(app, /data-action="\$\{action\}"/);
   assert.match(app, /מי יעדכן את ההוצאות/);
 });
@@ -84,8 +87,10 @@ test("event name is clearly optional because a default is generated", async () =
   const app = await readFile("src/app.mjs", "utf8");
   const detailsStep = sourceBetween(app, "function renderNewEvent()", "function renderEventCreationProgress");
 
-  assert.match(detailsStep, /שם האירוע \(לא חובה\)/);
-  assert.match(detailsStep, /לקבל שם אוטומטי/);
+  assert.match(detailsStep, /renderEventDetailsNameFieldView\(/);
+  const field = await readFile("src/ui/eventDetailsNameField.mjs", "utf8");
+  assert.match(field, /שם האירוע \(לא חובה\)/);
+  assert.match(field, /לקבל שם אוטומטי/);
   assert.match(app, /newEventDraft\.name\.trim\(\) \|\|\s*uniqueDefaultEventName/);
 });
 
@@ -102,14 +107,18 @@ test("event creation shows a clear four-step progress indicator", async () => {
 
   assert.match(typeStep, /renderEventCreationProgress\("type"\)/);
   assert.match(detailsStep, /renderEventCreationProgress\("details"\)/);
-  assert.match(progress, /event-creation-progress/);
-  assert.match(progress, /aria-current="step"/);
-  assert.match(progress, /label: "אירוע"/);
-  assert.match(progress, /פרטים/);
-  assert.match(progress, /label: "הגדרות חשבון"/);
-  assert.match(progress, /label: "משתתפים"/);
-  assert.doesNotMatch(progress, /label: "ניהול"/);
-  assert.match(ledgerStyles, /\.event-creation-progress\s*\{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\) !important;/);
+  const component = await readFile("src/ui/eventCreationProgress.mjs", "utf8");
+  assert.match(progress, /renderEventCreationProgressView/);
+  assert.match(progress, /eventTypeSelected: Boolean\(newEventDraft\?\.eventType\)/);
+  assert.match(ledgerStyles, /Approved event creation tabs/);
+  assert.match(component, /event-creation-progress/);
+  assert.match(component, /aria-current="step"/);
+  assert.match(component, /label: "אירוע"/);
+  assert.match(component, /פרטים/);
+  assert.match(component, /label: "הגדרות חשבון"/);
+  assert.match(component, /label: "משתתפים"/);
+  assert.doesNotMatch(component, /label: "ניהול"/);
+  assert.match(ledgerStyles, /\.event-creation-tabs\s*\{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\) !important;/);
 });
 
 test("event details open settlement before participant management", async () => {
@@ -126,13 +135,15 @@ test("event details open settlement before participant management", async () => 
   assert.doesNotMatch(detailsStep, /data-new-event-participant-count/);
   assert.doesNotMatch(detailsStep, /new-event-participants-body/);
   assert.ok(
-    detailsStep.indexOf('data-action="new-event-name"') <
+    detailsStep.indexOf("renderEventDetailsNameFieldView(") <
       detailsStep.indexOf('data-action="open-new-event-settlement"')
   );
   assert.match(participantsStep, /function renderNewEventParticipants\(\)/);
   assert.match(participantsStep, /data-action="create-event"/);
   assert.match(participantsStep, /data-action="cancel-new-event-participants"/);
-  assert.match(participantsStep, /autocomplete="off"/);
+  assert.match(participantsStep, /renderEventManualParticipantEditorView\(\{ value: newEventDraft\.guestName \}\)/);
+  const manualEditor = await readFile("src/ui/eventManualParticipantEditor.mjs", "utf8");
+  assert.match(manualEditor, /autocomplete="off"/);
   assert.match(app, /function syncNewEventParticipantControls\(\)/);
   assert.match(app, /function newEventParticipantSelectionLabel\(participantIds\)/);
   assert.match(app, /return "רק אתה כרגע"/);
@@ -192,7 +203,7 @@ test("new event participants offer friends, offline names, and an invite link or
   assert.match(participantsStep, /בחר מחברים/);
   assert.match(participantsStep, /renderParticipantChecks\(newEventDraft\.participantIds, "new-event-participant"\)/);
   assert.match(participantsStep, /הוסף שם ידנית/);
-  assert.match(participantsStep, /הזמן בקישור/);
+  assert.match(participantsStep, /שתף בקישור או QR/);
   assert.match(participantsStep, /משתתפים שנבחרו/);
   assert.match(participantsStep, /new-event-participant-additions/);
   assert.match(participantsStep, /הוספת משתתפים/);
@@ -219,7 +230,7 @@ test("new event participants offer friends, offline names, and an invite link or
     createFlow,
     /events: state\.events\.filter\(item => item\.id !== event\.id\)/
   );
-  assert.match(createFlow, /void finishCreatedEventPublication\(saveResult/);
+  assert.match(createFlow, /void finishCreatedEventPublication\(publication/);
   assert.match(createFlow, /const result = await completedSaveResult\(saveResult\)/);
   assert.match(createFlow, /result\.mode !== "cloud"/);
   assert.match(
@@ -253,8 +264,10 @@ test("new event participants offer friends, offline names, and an invite link or
   assert.match(createFlow, /if \(createEventBusy\) return/);
   assert.match(createFlow, /finally \{[\s\S]*?createEventBusy = false/);
   assert.doesNotMatch(createFlow, /Promise\.resolve\(saveRequest\)\.catch/);
-  assert.match(createFlow, /await openPreparedEventShare/);
-  assert.match(createFlow, /openPreparedEventShare\(eventId, app\.querySelector\('\[data-action="open-event-share"\]'\), "link"\)/);
+  assert.match(createFlow, /const publication = completedSaveResult\(saveResult\)/);
+  assert.match(createFlow, /void openPreparedEventShare\(event\.id,[\s\S]*?"link", \{ waitForSave: publication \}/);
+  assert.ok(createFlow.indexOf("const saveResult = await saveRequest") < createFlow.indexOf("void openPreparedEventShare"),
+    "open sharing only after durable local creation has been accepted");
   assert.match(ledgerStyles, /\.new-event-participant-route-action/);
 });
 

@@ -1,3 +1,10 @@
+import {renderParticipantRenameBodyView} from '../src/ui/eventParticipantActionsPresentation.mjs';
+import {renderParticipantAliasEditorView} from '../src/ui/eventParticipantIdentityPresentation.mjs';
+import {renderEventShareLinkView} from "../src/ui/eventSharePresentation.mjs";
+import {renderExistingEventManualParticipantEditorView} from "../src/ui/eventManualParticipantEditor.mjs";
+import {renderProfileIdentitySummaryView} from "../src/ui/profileIdentityPresentation.mjs";
+import {renderExpenseDateFieldView} from "../src/ui/expenseFormPresentation.mjs";
+import {renderAccountEntryView} from "../src/ui/accountEntryPresentation.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -37,15 +44,16 @@ test("existing profile identity is read-only until the user chooses edit", async
   assert.match(app, /class="profile-identity-grid profile-shortcuts"/);
   assert.match(app, /data-action="edit-profile-name"/);
   assert.match(app, /data-action="edit-profile-username"/);
-  assert.match(app, /aria-label="עריכת שם פרטי ושם משפחה"/);
-  assert.match(app, /aria-label="עריכת שם משתמש"/);
+  const identityHtml=["display-name","username"].map(field=>renderProfileIdentitySummaryView({field,value:"בדיקה",editIconHtml:"",chevronIconHtml:""})).join("");
+  assert.match(identityHtml, /aria-label="עריכת שם פרטי ושם משפחה"/);
+  assert.match(identityHtml, /aria-label="עריכת שם משתמש"/);
   assert.match(app, /data-action="cancel-profile-name-edit"/);
   assert.match(app, /data-action="cancel-profile-username-edit"/);
   assert.match(app, /if \(action === "edit-profile-name"\)/);
   assert.match(app, /if \(action === "edit-profile-username"\)/);
 });
 
-test("tester-facing forms use accessible names and polished loading copy", async () => {
+test("user-facing forms use accessible names and polished loading copy", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const accountLayer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
   const coherence = await readFile("src/publicDesignCoherenceLayer.mjs", "utf8");
@@ -53,10 +61,16 @@ test("tester-facing forms use accessible names and polished loading copy", async
   assert.match(app, /name="eventParticipantSearch"[\s\S]*?placeholder="חיפוש לפי שם…"/);
   assert.match(app, /name="savedFriendSearch"[\s\S]*?placeholder="הקלד כדי לסנן…"/);
   assert.match(app, /name="participantSearch"[\s\S]*?placeholder="הקלד כדי לסנן…"/);
-  assert.match(app, /data-action="expense-date" name="expenseDate"/);
-  assert.match(app, /מכין קישור…/);
+  assert.match(app, /return renderExpenseDateFieldView\(\{value: expenseDraft\.occurredOn/);
+  const dateField=renderExpenseDateFieldView({value:"2026-10-20"});
+  assert.match(dateField, /data-action="expense-date" name="expenseDate"/);
+  assert.match(dateField, /aria-label="תאריך ההוצאה: 20\.10\.2026"/);
+  const preparingShare = renderEventShareLinkView();
+  assert.match(preparingShare, /מכינים את הקישור/);
+  assert.match(preparingShare, /disabled aria-disabled="true" aria-busy="true"/);
   assert.match(app, /פותח את האירוע ושומר…/);
-  assert.match(accountLayer, /name="message"[\s\S]*?autocomplete="off"[\s\S]*?השלב הבא…/);
+  const feedbackView = await readFile("src/ui/feedbackPagePresentation.mjs", "utf8");
+  assert.match(feedbackView, /name="message"[\s\S]*?autocomplete="off"[\s\S]*?כתבו כאן את הפרטים…/);
   assert.match(coherence, /\.event-participant-route-modal:focus-visible[\s\S]*?outline: 3px solid/);
   assert.match(
     coherence,
@@ -90,7 +104,9 @@ test("participant validation stays inside the app and returns focus to the choic
 
 test("interactive form controls expose stable browser field names", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const account = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const deletionView = await readFile("src/ui/accountDeletionPresentation.mjs", "utf8");
+  const currencyView = await readFile("src/ui/eventCurrencyPresentation.mjs", "utf8");
+  const { renderExpenseParticipantOfflineFormView } = await import("../src/ui/expenseParticipantAddPresentation.mjs");
 
   for (const name of [
     "friendSearch",
@@ -106,9 +122,10 @@ test("interactive form controls expose stable browser field names", async () => 
     "expenseDate",
     "participantSelection"
   ]) {
-    assert.match(app, new RegExp(`name="${name}"`));
+    const markup = name === "participantAlias" ? renderParticipantAliasEditorView({eventId:"qa",participantId:"qa-person",name:"QA"}) : name === "offlineParticipantName" ? renderParticipantRenameBodyView({canEdit:true}) : name === "expenseDate" ? renderExpenseDateFieldView({value:"2026-10-20"}) : name === "eventGuestName" ? renderExistingEventManualParticipantEditorView({canEdit:true}) : name === "eventInviteUrl" ? renderEventShareLinkView() : name === "eventCurrency" ? currencyView : app;
+    assert.match(name === "expenseGuestName" ? renderExpenseParticipantOfflineFormView({canEdit:true}) : markup, new RegExp(`name="${name}"`));
   }
-  assert.match(account, /name="deleteAccountConfirmation"/);
+  assert.match(deletionView, /name="deleteAccountConfirmation"/);
 });
 
 test("public account gate supports password and Google login with one cloud identity", async () => {
@@ -158,10 +175,19 @@ test("account entry keeps an event invitation visible through authentication", a
   );
 
   assert.match(accountGate, /const inviteContext = accountInviteContext\(\)/);
-  assert.match(accountGate, /מצטרפים ל־\$\{escapeHtml\(inviteContext\.eventName\)\}/);
-  assert.match(accountGate, /נכנסים או נרשמים, ומיד ממשיכים לאירוע שקיבלת/);
-  assert.match(accountGate, /צור חשבון והצטרף/);
-  assert.match(accountGate, /התחבר והצטרף/);
+  assert.match(accountGate, /const inviteMarkup = accountInviteMarkup\(inviteContext\)/);
+  assert.match(accountGate, /renderAccountEntryView\(\{[\s\S]*?hasInvite: Boolean\(inviteContext\),[\s\S]*?inviteEventName: inviteContext\?\.eventName/);
+  assert.match(accountGate, /\}, \{inviteMarkup, providerMarkup: providerOptionsMarkup\(\)\}\)/);
+  for (const mode of ["login", "signup"]) {
+    const markup = renderAccountEntryView({
+      mode, emailDeliveryReady: true, hasInvite: true,
+      inviteEventName: 'טיול <חברים> & "משפחה"'
+    });
+    assert.match(markup, /<h2>מצטרפים ל־טיול &lt;חברים&gt; &amp; &quot;משפחה&quot;<\/h2>/);
+    assert.doesNotMatch(markup, /<חברים>/);
+    assert.match(markup, /נכנסים או נרשמים, ומיד ממשיכים לאירוע שקיבלת/);
+    assert.match(markup, mode === "signup" ? /צור חשבון והצטרף/ : /התחבר והצטרף/);
+  }
   assert.match(inviteContext, /pendingInviteUrl\(window\.location\.href\)/);
   assert.match(inviteContext, /eventName: event\?\.name\?\.trim\(\) \|\| "האירוע שקיבלת"/);
   assert.match(inviteContext, /function accountInviteMarkup\(context = accountInviteContext\(\)\)/);
@@ -189,7 +215,7 @@ test("public home screen focuses on event creation and the event list", async ()
   assert.doesNotMatch(homeMatch[0], /renderPersonalDashboard|renderPersonalActionList/);
 });
 
-test("public home keeps one primary action, a secondary friends entry and a compact referral benefit", async () => {
+test("public home keeps event creation primary and places friend referrals in the friends hub", async () => {
   const [app, referralLayer] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
     readFile("src/publicReferralRewardsLayer.mjs", "utf8")
@@ -199,12 +225,13 @@ test("public home keeps one primary action, a secondary friends entry and a comp
   assert.ok(homeMatch);
   assert.match(homeMatch[0], /<header class="top">/);
   assert.match(homeMatch[0], /data-action="new-event"/);
-  assert.match(homeMatch[0], /class="home-quick-action home-friends-action" data-action="groups" data-tab="people"/);
+  assert.doesNotMatch(homeMatch[0], /home-friends-action|home-benefit-actions/);
   assert.doesNotMatch(homeMatch[0], /class="home-event-tools home-invite-hub"/);
   assert.doesNotMatch(homeMatch[0], /data-action="join-event-link"/);
   assert.doesNotMatch(homeMatch[0], /data-action="join-existing-event"/);
   assert.doesNotMatch(homeMatch[0], /data-action="join-event-screen"/);
-  assert.match(referralLayer, /referralRewardCard\("home"\)/);
+  assert.match(referralLayer, /referralRewardCard\("friends"\)/);
+  assert.doesNotMatch(referralLayer, /referralRewardCard\("home"\)/);
 });
 
 test("an empty home reuses the approved compact home hero copy", async () => {

@@ -1,3 +1,5 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 const EVENT_ID = "event-direct-repayment";
@@ -58,9 +60,9 @@ const seededState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: seededState });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, seededState);
   await page.addInitScript(({ participantId, state }) => {
     localStorage.clear();
     sessionStorage.clear();
@@ -85,16 +87,17 @@ test("a manager can reimburse only net funders without reciprocal transfers", as
     .first();
   const eventAvatarStack = eventOpenAction.locator(".avatar-stack");
   const eventMain = eventOpenAction.locator(".event-row-main");
+  const eventTitle = eventOpenAction.locator(".event-row-title > strong");
   const [avatarBox, mainBox] = await Promise.all([
     eventAvatarStack.boundingBox(),
-    eventMain.boundingBox()
+    eventTitle.boundingBox()
   ]);
   expect(avatarBox).not.toBeNull();
   expect(mainBox).not.toBeNull();
-  expect(
-    Math.min(avatarBox.x + avatarBox.width, mainBox.x + mainBox.width) -
-      Math.max(avatarBox.x, mainBox.x)
-  ).toBeLessThanOrEqual(0.5);
+  const horizontalOverlap = Math.min(avatarBox.x + avatarBox.width, mainBox.x + mainBox.width) - Math.max(avatarBox.x, mainBox.x);
+  const verticalOverlap = Math.min(avatarBox.y + avatarBox.height, mainBox.y + mainBox.height) - Math.max(avatarBox.y, mainBox.y);
+  expect(horizontalOverlap <= 0.5 || verticalOverlap <= 0.5,
+    'visible event title and avatars must not overlap in either side-by-side or stacked cards').toBe(true);
   await eventMain.click();
   await page.locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`).first().click();
   await expect(page.getByText("חלוקת ההחזרים", { exact: true })).toBeVisible();
@@ -107,7 +110,7 @@ test("a manager can reimburse only net funders without reciprocal transfers", as
   await expect(directOption).toContainText("לפי מי ששילם");
   await directOption.click();
   await expect(directOption).toHaveAttribute("aria-checked", "true");
-  await page.getByText("מידע נוסף", { exact: true }).click();
+  await page.getByText("תשלומים שכבר סומנו", { exact: true }).click();
   await expect(page.getByText("סימוני תשלום שכבר בוצעו נשמרים")).toBeVisible();
 
   const savedDirectMode = await page.evaluate((eventId) => {

@@ -1,6 +1,9 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 
 const OWNER_ID = "person-accessibility-owner";
+const PRE_ACCOUNT_TEST = "accessibility remains available before account setup";
 const emptyState = {
   currentParticipantId: OWNER_ID,
   participants: [
@@ -18,12 +21,12 @@ const emptyState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: emptyState });
-  await page.addInitScript(({ participantId, state }) => {
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, emptyState);
+  await page.addInitScript(({ participantId, state, skipProfileSeed }) => {
     if (
-      sessionStorage.getItem("accessibility-test-no-profile") !== "1" &&
+      !skipProfileSeed &&
       !localStorage.getItem("settle-friends-local-profile")
     ) {
       localStorage.setItem("settle-friends-state", JSON.stringify(state));
@@ -38,9 +41,15 @@ test.beforeEach(async ({ page, request }) => {
       localStorage.setItem("settle-friends-current-participant", participantId);
     }
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
-  }, { participantId: OWNER_ID, state: emptyState });
+  }, {
+    participantId: OWNER_ID,
+    state: emptyState,
+    skipProfileSeed: testInfo.title === PRE_ACCOUNT_TEST
+  });
   await page.goto("/");
-  await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
+  if (testInfo.title !== PRE_ACCOUNT_TEST) {
+    await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
+  }
 });
 
 test("accessibility settings open, persist and close with back", async ({ page }) => {
@@ -89,13 +98,13 @@ test("accessibility settings open, persist and close with back", async ({ page }
   }
 });
 
-test("accessibility remains available before account setup", async ({ page }) => {
+test(PRE_ACCOUNT_TEST, async ({ page }) => {
   await page.evaluate(() => {
-    sessionStorage.setItem("accessibility-test-no-profile", "1");
-    localStorage.removeItem("settle-friends-local-profile");
-    localStorage.removeItem("settle-friends-current-participant");
+    window.dispatchEvent(new Event("online"));
   });
   await page.reload();
+
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("settle-friends-local-profile"))).toBeNull();
 
   await expect(
     page.locator(

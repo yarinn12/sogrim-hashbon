@@ -153,3 +153,10 @@ function readDraftAmountResult(value) {
     return { amount: 0, valid: false };
   }
 }
+
+// Notes-only editing never treats status messages or financial fields as edits.
+export function expenseNotesHaveChanges(draft) {
+  if (!draft?.notesOnly || !draft.notesExitBaseline) return false;
+  return String(draft.notes ?? "") !== String(draft.notesExitBaseline.notes ?? "") ||
+    String(draft.attachmentImage ?? "") !== String(draft.notesExitBaseline.attachmentImage ?? "");
+}

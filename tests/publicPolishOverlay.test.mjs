@@ -36,13 +36,11 @@ test("public brand layer gives the app name a visible logo lockup", async () => 
   assert.match(styles, /\.brand::after/);
 });
 
-test("public brand navigation state is initialized before the first enhancement", async () => {
+test("public brand navigation uses an imported presentation model before the first enhancement", async () => {
   const brandLayer = await readFile("src/publicBrandLayer.mjs", "utf8");
-
-  assert.ok(
-    brandLayer.indexOf('let preferredHomeDestination = "home"') <
-      brandLayer.indexOf("enhanceBranding();")
-  );
+  const modelImport = brandLayer.indexOf('import { primaryNavigationDestinationForScreen }');
+  assert.ok(modelImport >= 0 && modelImport < brandLayer.indexOf("enhanceBranding();"));
+  assert.doesNotMatch(brandLayer, /preferredHomeDestination/);
 });
 
 test("public brand layer synchronizes the identity header with every rendered screen", async () => {

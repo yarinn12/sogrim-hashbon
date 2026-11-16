@@ -1,3 +1,4 @@
+import {renderInstallGuideView} from "./ui/installGuidePresentation.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 
 const STYLE_ID = "public-install-app-layer-style";
@@ -7,6 +8,7 @@ const NATIVE_BACK_EVENT = "settle-friends:native-back";
 
 let deferredInstallPrompt = null;
 let installDialogReturnFocus = null;
+let installDialogReturnContext = "profile";
 let installEnhancementScheduled = false;
 let installHistoryActive = false;
 let installHistoryClosing = false;
@@ -89,6 +91,7 @@ async function handleInstallClick(event) {
   if (installButton) {
     event.preventDefault();
     installDialogReturnFocus = installButton;
+    installDialogReturnContext = installButton.closest("#public-account-auth-gate") ? "auth" : "profile";
 
     if (deferredInstallPrompt) {
       const prompt = deferredInstallPrompt;
@@ -115,41 +118,7 @@ async function handleInstallClick(event) {
 function openInstallDialog() {
   document.querySelector(".install-app-backdrop")?.remove();
   const ios = isIosDevice();
-  const instructions = ios
-    ? `
-        <ol class="install-app-steps">
-          <li><span>1</span><div><strong>פתח את הקישור ב-Safari</strong><p>אם הגעת מוואטסאפ או מדפדפן אחר, בחר פתיחה ב-Safari.</p></div></li>
-          <li><span>2</span><div><strong>פתח את כפתור השיתוף</strong><p>הכפתור נראה כמו ריבוע עם חץ כלפי מעלה.</p></div></li>
-          <li><span>3</span><div><strong>בחר "הוספה למסך הבית"</strong><p>גלול ברשימת הפעולות אם האפשרות לא מופיעה מיד.</p></div></li>
-          <li class="install-app-required-step"><span>4</span><div><strong>חובה להפעיל "Open as Web App"</strong><p>אם המתג כבוי ייווצר קיצור דרך שמרגיש כמו דפדפן. הפעל אותו ורק אז לחץ "הוסף".</p></div></li>
-        </ol>
-      `
-    : `
-        <ol class="install-app-steps">
-          <li><span>1</span><div><strong>פתח את תפריט הדפדפן</strong><p>בדרך כלל זה כפתור של שלוש נקודות.</p></div></li>
-          <li><span>2</span><div><strong>בחר "התקנת אפליקציה"</strong><p>בחלק מהמכשירים האפשרות נקראת "הוספה למסך הבית".</p></div></li>
-        </ol>
-      `;
-
-  document.body.insertAdjacentHTML(
-    "beforeend",
-    `
-      <div class="install-app-backdrop">
-        <section class="install-app-dialog" role="dialog" aria-modal="true" aria-labelledby="install-app-title" tabindex="-1">
-          <header>
-            <img src="./icon-192.png" alt="" width="56" height="56" />
-            <div>
-              <p>סוגרים חשבון</p>
-              <h2 id="install-app-title">${ios ? "הוספה כאפליקציה באייפון" : "התקנה בטלפון"}</h2>
-            </div>
-            <button class="icon-button modal-close-button" data-public-close-install type="button" aria-label="סגור" title="סגור"><span class="modal-control-icon" aria-hidden="true">${iconSvg("x")}</span></button>
-          </header>
-          ${instructions}
-          <button class="primary-button install-app-done" data-public-close-install type="button">הבנתי</button>
-        </section>
-      </div>
-    `
-  );
+  document.body.insertAdjacentHTML("beforeend", renderInstallGuideView({ios}));
 
   document.documentElement.classList.add("install-app-open");
   document.querySelector("#app")?.setAttribute("inert", "");
@@ -176,8 +145,24 @@ function closeInstallDialog({ fromHistory = false } = {}) {
     document.querySelector("#app")?.removeAttribute("inert");
   }
   document.querySelector("#public-account-auth-gate")?.removeAttribute("inert");
-  installDialogReturnFocus?.focus();
+  restoreInstallDialogFocus();
   installDialogReturnFocus = null;
+  installDialogReturnContext = "profile";
+}
+
+function restoreInstallDialogFocus() {
+  const selector = installDialogReturnContext === "auth"
+    ? '#public-account-auth-gate [data-public-install-app]'
+    : '.account-profile-actions [data-public-install-app]';
+  const target = installDialogReturnFocus?.isConnected
+    ? installDialogReturnFocus
+    : document.querySelector(selector);
+  const details = target?.closest?.(".account-profile-controls");
+  if (details && !details.open) details.open = true;
+  const fallback = installDialogReturnContext === "auth"
+    ? '#public-account-auth-gate input:not([disabled]), #public-account-auth-gate button:not([disabled])'
+    : '.account-profile-controls-summary';
+  (target ?? document.querySelector(fallback))?.focus({preventScroll:true});
 }
 
 function pushInstallHistoryState() {

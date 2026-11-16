@@ -71,7 +71,7 @@ test("public invite snapshot layer upgrades links but imports only verified even
     "async function initializeInviteImport()",
     "function scheduleInviteSnapshotEnhancement()"
   );
-  assert.match(initializeFlow, /const imported = await importIncomingSharedEvent\(config\)/);
+  assert.match(initializeFlow, /const imported = await importIncomingSharedEvent\(config, undefined, \{\s*reportTemporaryFailure: true\s*\}\)/);
   assert.match(initializeFlow, /if \(imported\) \{[\s\S]*cleanInviteAddress\(\)/);
   assert.match(initializeFlow, /else \{\s*schedulePendingInviteRetry\(\)/);
   assert.doesNotMatch(layer, /function importIncomingInviteSnapshot/);

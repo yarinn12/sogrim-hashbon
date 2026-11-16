@@ -1,0 +1,235 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "dab14db12ce950cc53b6055486ead5341fdf1fac",
+  "sourceTree": "2c2a7c97cd584abd454b732bb18d999ac6640dd0",
+  "runId": 41873438044,
+  "jobId": 126727766164,
+  "artifactId": 13345928916,
+  "artifactSha256": "ecb6c670ae0f638aabbbcbb23cc5040bb1ea976d6b17400a27e6976045fd83cc",
+  "originalMatrixSha256": "e191a77c0cacf98488539721db460d88dede20897d20ca73d11636f40906abf7",
+  "scope": "Frozen measurements from failed Native CI; not release acceptance or an ANR fix",
+  "rows": [
+    {
+      "scale": 1,
+      "orientation": "portrait",
+      "fontContract": {
+        "width": 411,
+        "height": 866,
+        "pointerCoarse": false,
+        "pointerFine": false,
+        "orientation": "portrait",
+        "active": false,
+        "dynamicType": "normal",
+        "headerUtilitiesContained": true,
+        "scale": 1
+      },
+      "measurements": [
+        {
+          "selector": ".settlement-hero-title-row .muted",
+          "text": "הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.",
+          "fontSize": 14
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "משתתפים",
+          "fontSize": 14
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "שיתוף",
+          "fontSize": 14
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "הגדרות",
+          "fontSize": 14
+        }
+      ]
+    },
+    {
+      "scale": 1,
+      "orientation": "landscape",
+      "fontContract": {
+        "width": 914,
+        "height": 363,
+        "pointerCoarse": false,
+        "pointerFine": false,
+        "orientation": "landscape",
+        "active": false,
+        "dynamicType": "normal",
+        "headerUtilitiesContained": true,
+        "scale": 1
+      },
+      "measurements": [
+        {
+          "selector": ".settlement-hero-title-row .muted",
+          "text": "הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.",
+          "fontSize": 14
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "משתתפים",
+          "fontSize": 14
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "שיתוף",
+          "fontSize": 14
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "הגדרות",
+          "fontSize": 14
+        }
+      ]
+    },
+    {
+      "scale": 1.5,
+      "orientation": "portrait",
+      "fontContract": {
+        "width": 411,
+        "height": 866,
+        "pointerCoarse": false,
+        "pointerFine": false,
+        "orientation": "portrait",
+        "active": true,
+        "dynamicType": "extra-large",
+        "headerUtilitiesContained": true,
+        "scale": 1.5
+      },
+      "measurements": [
+        {
+          "selector": ".settlement-hero-title-row .muted",
+          "text": "הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.",
+          "fontSize": 21
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "משתתפים",
+          "fontSize": 21
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "שיתוף",
+          "fontSize": 21
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "הגדרות",
+          "fontSize": 21
+        }
+      ]
+    },
+    {
+      "scale": 1.5,
+      "orientation": "landscape",
+      "fontContract": {
+        "width": 914,
+        "height": 363,
+        "pointerCoarse": false,
+        "pointerFine": false,
+        "orientation": "landscape",
+        "active": true,
+        "dynamicType": "extra-large",
+        "headerUtilitiesContained": true,
+        "scale": 1.5
+      },
+      "measurements": [
+        {
+          "selector": ".settlement-hero-title-row .muted",
+          "text": "הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.",
+          "fontSize": 21
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "משתתפים",
+          "fontSize": 21
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "שיתוף",
+          "fontSize": 21
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "הגדרות",
+          "fontSize": 21
+        }
+      ]
+    },
+    {
+      "scale": 2,
+      "orientation": "portrait",
+      "fontContract": {
+        "width": 411,
+        "height": 866,
+        "pointerCoarse": false,
+        "pointerFine": false,
+        "orientation": "portrait",
+        "active": true,
+        "dynamicType": "extra-large",
+        "headerUtilitiesContained": true,
+        "scale": 2
+      },
+      "measurements": [
+        {
+          "selector": ".settlement-hero-title-row .muted",
+          "text": "הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.",
+          "fontSize": 28
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "משתתפים",
+          "fontSize": 28
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "שיתוף",
+          "fontSize": 28
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "הגדרות",
+          "fontSize": 28
+        }
+      ]
+    },
+    {
+      "scale": 2,
+      "orientation": "landscape",
+      "fontContract": {
+        "width": 914,
+        "height": 363,
+        "pointerCoarse": false,
+        "pointerFine": false,
+        "orientation": "landscape",
+        "active": true,
+        "dynamicType": "extra-large",
+        "headerUtilitiesContained": true,
+        "scale": 2
+      },
+      "measurements": [
+        {
+          "selector": ".settlement-hero-title-row .muted",
+          "text": "הסגירה נועלת את ההוצאות ומאפשרת לסמן תשלומים.",
+          "fontSize": 28
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "משתתפים",
+          "fontSize": 28
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "שיתוף",
+          "fontSize": 28
+        },
+        {
+          "selector": ".event-header-action-label",
+          "text": "הגדרות",
+          "fontSize": 28
+        }
+      ]
+    }
+  ]
+}

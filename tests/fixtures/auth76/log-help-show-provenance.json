@@ -1,0 +1,20 @@
+{
+  "sourceRunId": 42405429359,
+  "sourceAttempt": 1,
+  "sourceJobId": 128501982395,
+  "sourceArtifactId": 13586779629,
+  "sourceArtifactZipSha256": "947aff9989fac96b26094de9038459ebad74fe104d8cc976f933ac51f04723a1",
+  "originalCommand": [
+    "/usr/bin/log",
+    "help",
+    "show"
+  ],
+  "macOSVersion": "26.6.1",
+  "exitCode": 64,
+  "stream": "stderr",
+  "rawSha256": "74d4578c6fd671200607673230f85fa546ce2f52cd7c34bd53a796657f82047c",
+  "publishedSha256": "3a43dd7f4391fe507b462c038649c6c0d27be078f879f47f4cb2a6b9c4025230",
+  "sanitization": "URL redacted by inspect-original-xcresult.py; fixture is published text, not raw stderr",
+  "originalEvidence": "outputs/ios-auth76-system-log-inspection-20261107/original-extracted/system-log",
+  "fixtureWhitespace": "Exact published CLI stderr bytes retained: one trailing space after shorthand usage and a final blank line."
+}

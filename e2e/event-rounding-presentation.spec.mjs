@@ -1,0 +1,28 @@
+import {test,expect} from '@playwright/test';
+import{readFileSync}from'node:fs';
+import{installSyntheticSystemText}from'./helpers/accessibilityPresentation.mjs';
+import{geometry,finish,ack}from'./helpers/eventRoundingPresentation.mjs';
+const fixture=readFileSync(new URL('./fixtures/eventRoundingBootstrap.js',import.meta.url),'utf8'),evidence=new WeakMap();
+test.use({serviceWorkers:'block'});
+test.beforeEach(async({page})=>{
+ const e={errors:[],external:[]};evidence.set(page,e);page.on('pageerror',x=>e.errors.push(x.message));
+ await page.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():(e.external.push(r.request().url()),r.abort()));
+ await page.addInitScript({content:fixture});
+});
+test.afterEach(async({page})=>{const e=evidence.get(page);expect(e.errors).toEqual([]);expect(e.external).toEqual([])});
+async function start(page,{width=393,height=852,root=16,query='',system=false}={}) {
+ if(system)await page.addInitScript(installSyntheticSystemText);await page.setViewportSize({width,height});
+ await page.goto('/?review=1&requests=accepted&reward=inactive'+(!system&&root>16?'&dynamic-type-preview='+root:'')+query);
+ await page.locator('.product-home-screen .event-list [data-action="open-event"][data-event-id="friend-weekend"]').click();
+ await page.locator('.screen [data-action="open-event-settings"]').click();await page.locator('[data-settings-section="rounding"]').click();
+ const menu=page.locator('.event-modal:has([data-action="set-event-rounding-mode"])');await expect(menu).toBeVisible();await page.evaluate(()=>document.fonts.ready);
+ await expect.poll(()=>page.evaluate(()=>document.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime)&&a.playState==='running').length)).toBe(0);
+ return{page,menu,root:system?32:root};
+}
+const profiles=[['phone',393,852,16,''],['exact',393,852,16,'&rounding-exact=1'],['medium',360,740,20,''],['large',320,852,32,''],['short',320,390,32,''],['landscape',852,393,32,''],['readonly',320,852,32,'&settings-readonly=1'],['locked',320,852,32,'&management-locked=1'],['long-title',320,852,32,'&settings-long-title=1'],['desktop',1280,720,16,'']];
+for(const[id,width,height,root,query]of profiles)test('rounding readable layout '+id,async({page})=>{const x=await start(page,{width,height,root,query});await geometry(x);for(const n of await x.menu.locator('[role=radio]').all())if(id==='readonly'){await expect(n).toBeDisabled();const before=await page.evaluate(()=>__friendInviteQa.canonicalWrites.length);await n.evaluate(e=>e.click());expect(await page.evaluate(()=>__friendInviteQa.canonicalWrites.length)).toBe(before)}else await expect(n).toBeEnabled();await finish(page)});
+test('rounding actual option leaves grow with large text',async({page})=>{const x=await start(page,{width:320,root:32});await expect(x.menu.locator('.event-management-copy strong').first()).toHaveCSS('font-size','30px');await expect(x.menu.locator('legend')).toHaveCSS('font-size','32px');await geometry(x);await finish(page)});
+test('rounding original save changes transfers and acknowledges exact and rounded amounts',async({page})=>{const x=await start(page,{query:'&rounding-fraction=1'});for(const[mode,enabled,amount]of[['exact',false,6001],['rounded',true,6000]]){const n=x.menu.locator('[data-rounding-mode="'+mode+'"]');await n.click();await ack(page,enabled);await expect(n).toHaveAttribute('aria-checked','true');await expect(n).toBeFocused();const transfers=await page.evaluate(()=>__friendInviteQa.canonicalWrites.at(-1).events.find(e=>e.id==='friend-weekend').transfers);expect(transfers).toHaveLength(1);expect(transfers[0].amount).toBe(amount);await finish(page,{allowMode:true})}});
+test('rounding radio keyboard and Back keep original focus and selected mode',async({page})=>{const x=await start(page),rounded=x.menu.locator('[data-rounding-mode="rounded"]'),exact=x.menu.locator('[data-rounding-mode="exact"]');await rounded.focus();await page.keyboard.press('ArrowDown');await ack(page,false);await expect(exact).toBeFocused();await expect(exact).toHaveAttribute('aria-checked','true');await x.menu.locator('[data-action="event-settings-back"]').click();await expect(page.locator('[data-settings-section="rounding"]')).toBeFocused();await page.locator('[data-settings-section="rounding"]').click();await expect(exact).toHaveAttribute('aria-checked','true');await finish(page,{allowMode:true})});
+test('rounding system text preference, orientation and all lines stay reachable',async({page})=>{const x=await start(page,{system:true,width:320,height:390});await geometry(x);const entry=x.menu.locator('[data-open-accessibility]');for(const[value,root]of[['extra-large',20],['system',32]]){await entry.click();await page.locator('.accessibility-segmented-control label:has(input[value="'+value+'"])').click();await page.keyboard.press('Escape');await expect(entry).toBeFocused();x.root=root;await geometry(x)}await page.setViewportSize({width:852,height:393});await geometry(x);await page.setViewportSize({width:320,height:852});await geometry(x);await finish(page)});
+test('rounding rejected save restores selection while preserving original expenses',async({page})=>{const x=await start(page,{query:'&rounding-denied=1'}),exact=x.menu.locator('[data-rounding-mode="exact"]'),rounded=x.menu.locator('[data-rounding-mode="rounded"]');await exact.click();await expect.poll(()=>page.evaluate(()=>__friendInviteQa.roundingDenied.length)).toBeGreaterThan(0);await expect(rounded).toHaveAttribute('aria-checked','true');await expect(exact).toHaveAttribute('aria-checked','false');await expect(exact).toBeFocused();expect(await page.evaluate(()=>__friendInviteQa.canonicalWrites.length)).toBe(0);await finish(page,{allowMode:true})});

@@ -1,0 +1,109 @@
+{
+  "source": "0250290da45813a17fb188518dfcb89b461a7562",
+  "artifact": 13971375693,
+  "archiveSha256": "92e34516d9f78cc5dd5f00412f934633132d3d417c15a821dfed4609b4d53d46",
+  "phase": "keyboard-name",
+  "viewport": {
+    "height": 852,
+    "visualHeight": 449,
+    "visualPageTop": 226.65625,
+    "visualTop": 226.65625,
+    "width": 393
+  },
+  "documentScroll": {
+    "x": 0,
+    "y": 227
+  },
+  "keyboardLayout": {
+    "fieldHittable": true,
+    "footer": {
+      "bottom": 449,
+      "left": 0,
+      "right": 393,
+      "top": 346
+    },
+    "header": {
+      "bottom": 57,
+      "left": 0,
+      "right": 393,
+      "top": -258
+    },
+    "headerControls": {
+      "accessibility": {
+        "bottom": 115,
+        "left": 14,
+        "right": 62,
+        "top": 67
+      },
+      "accessibilityHittable": true,
+      "back": {
+        "bottom": 115,
+        "left": 331,
+        "right": 379,
+        "top": 67
+      },
+      "backHittable": true
+    },
+    "nextHittable": true
+  },
+  "native": {
+    "keyboardFrame": {
+      "height": 403,
+      "width": 393,
+      "x": 0,
+      "y": 449
+    },
+    "scrollViewFrame": {
+      "height": 852.0000000000001,
+      "width": 393,
+      "x": 0,
+      "y": 0
+    },
+    "nativeContentOffset": {
+      "x": 0,
+      "y": 226.66666666666666
+    },
+    "statusBarFrame": {
+      "height": 54,
+      "width": 393,
+      "x": 0,
+      "y": 0
+    },
+    "windowBounds": {
+      "height": 852,
+      "width": 393,
+      "x": 0,
+      "y": 0
+    }
+  },
+  "metrics": {
+    "name": {
+      "bounds": {
+        "bottom": 293.265625,
+        "left": 16,
+        "right": 377,
+        "top": 184
+      },
+      "nativeBounds": {
+        "bottom": 293.59895833333337,
+        "left": 16,
+        "right": 377,
+        "top": 184.33333333333334
+      }
+    },
+    "next": {
+      "bounds": {
+        "bottom": 415,
+        "left": 16,
+        "right": 377,
+        "top": 359
+      },
+      "nativeBounds": {
+        "bottom": 415.33333333333337,
+        "left": 16,
+        "right": 377,
+        "top": 359.33333333333337
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "source": "65f3c04bef2dd607e7abb07ca26b6d773bc8bc59",
+  "run": 43670572054,
+  "job": 132682703531,
+  "artifact": 14145201033,
+  "artifactSha256": "e583c714de83cedbcb1768cc1aac762d767b785637f9e26f6057919795a6ee4a",
+  "testStartEpochSeconds": 1794713043.155,
+  "statusWaitStartTestSeconds": 20.33,
+  "statusWaitBudgetSeconds": 35,
+  "homeCaptureWrittenEpochSeconds": 1794713094.098948,
+  "firstStatusPublicationEpochSeconds": 1794713100.0062199,
+  "maximumOutstandingRefreshes": 16,
+  "lastCapturedPhase": "keyboard-ready",
+  "nativeInputCompleted": false,
+  "causeOfSlowWebKitOrCallbackDeliveryProven": false,
+  "scope": "Original synthetic CI evidence only; not user or physical-device data"
+}

@@ -132,7 +132,13 @@ function reactivationHarness({ backgroundMatch = false } = {}) {
   vm.runInContext(appSource.slice(reactivateStart, end), context);
   return { document, get dialog() { return dialog; }, background,
     run: () => context.reactivateDialogAfterRender(".event-modal", "title", 40),
-    replace: () => { dialog = makeDialog(); },
+    replace: () => {
+      // Replacing real modal markup blurs a focused descendant as it detaches.
+      if (document.activeElement === dialog || dialog.contains(document.activeElement)) {
+        document.activeElement = null;
+      }
+      dialog = makeDialog();
+    },
     flush: () => { for (const callback of frames.splice(0)) callback(); } };
 }
 
@@ -154,6 +160,16 @@ test("reactivation finds its requested field only inside its own modal", () => {
 });
 test("ordinary reactivation still focuses its requested field and restores scroll", () => {
   const h = reactivationHarness(); h.run(); h.flush();
+  assert.equal(h.document.activeElement, h.dialog.title);
+  assert.equal(h.dialog.scrollTop, 40);
+});
+
+test("validation focus replaces the previously retained field before deferred callbacks", () => {
+  const h = reactivationHarness();
+  h.dialog.body.focus();
+  h.run();
+  assert.equal(h.document.activeElement, h.dialog.title);
+  h.flush();
   assert.equal(h.document.activeElement, h.dialog.title);
   assert.equal(h.dialog.scrollTop, 40);
 });

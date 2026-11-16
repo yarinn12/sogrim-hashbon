@@ -1,0 +1,773 @@
+{
+  "referenceRun": 42266716697,
+  "referenceArtifact": 13527881983,
+  "referenceArtifactSha256": "5db423d6be9725a75e8ac41bb187715a86048bf513df1334795044fdb8dc2cb4",
+  "scope": "Actual Linux SDK emulator ELF inventory from d23 A1; historical2d4 executable identity was not captured",
+  "coverage": "emulator-elf-tree-v1",
+  "historicalBinaryComparison": false,
+  "historical2d4BinaryComparisonProven": false,
+  "files": [
+    {
+      "path": "emulator/bin64/e2fsck",
+      "resolvedPath": "emulator/bin64/e2fsck",
+      "bytes": 475248,
+      "sha256": "0373e5bfd914dcca287b40f85d6358d04fa57145321870c2ccddff145501c0f4"
+    },
+    {
+      "path": "emulator/bin64/fsck.ext4",
+      "resolvedPath": "emulator/bin64/fsck.ext4",
+      "bytes": 475248,
+      "sha256": "ee265627626a5a7bdebfd697a7db34e39cfc18d99d50c09bcfd84aac29d22257"
+    },
+    {
+      "path": "emulator/bin64/mkfs.ext4",
+      "resolvedPath": "emulator/bin64/mkfs.ext4",
+      "bytes": 309896,
+      "sha256": "ba14d80078a807d5dcc5074d929f557ae78652c2d17e07b247f014eb9aa35759"
+    },
+    {
+      "path": "emulator/bin64/resize2fs",
+      "resolvedPath": "emulator/bin64/resize2fs",
+      "bytes": 157512,
+      "sha256": "9165842ef534e740cf6392261082bec99bfc57f40708d9f18d2d8cebfa7925fb"
+    },
+    {
+      "path": "emulator/bin64/tune2fs",
+      "resolvedPath": "emulator/bin64/tune2fs",
+      "bytes": 282728,
+      "sha256": "54d81d124a1e1833469ebaf000f9a8af90e950f8132c943bc28913d23fa46714"
+    },
+    {
+      "path": "emulator/crashpad_handler",
+      "resolvedPath": "emulator/crashpad_handler",
+      "bytes": 3194424,
+      "sha256": "0353a04d83164f6732148a993a7e3df1cb87baae51d844725e1c541523cfc5f1"
+    },
+    {
+      "path": "emulator/crashreport",
+      "resolvedPath": "emulator/crashreport",
+      "bytes": 3855160,
+      "sha256": "9f074103dcbe2e9cce5d385c49a881a0e5284bfe333a93c87e4d8ff84fd42197"
+    },
+    {
+      "path": "emulator/emulator",
+      "resolvedPath": "emulator/emulator",
+      "bytes": 10144264,
+      "sha256": "1ac258315d123bfcf7637396d710b0a1b3237ef77113917612f7d3b38a7697b7"
+    },
+    {
+      "path": "emulator/emulator-check",
+      "resolvedPath": "emulator/emulator-check",
+      "bytes": 3196264,
+      "sha256": "002714dbefbb6e30aa708fdefe09443050b24aa478aec2960715db6d9ec56938"
+    },
+    {
+      "path": "emulator/lib64/gles_angle/libEGL.so",
+      "resolvedPath": "emulator/lib64/gles_angle/libEGL.so",
+      "bytes": 260192,
+      "sha256": "47c86444df8aa5309e98ecd2946760281bfd1a036be22b8a61fa1a10886e2902"
+    },
+    {
+      "path": "emulator/lib64/gles_angle/libGLESv2.so",
+      "resolvedPath": "emulator/lib64/gles_angle/libGLESv2.so",
+      "bytes": 6603408,
+      "sha256": "8286cae2fec6022fcd6f5c73fbc9e5713291691b1fef87622366541c89da2cc8"
+    },
+    {
+      "path": "emulator/lib64/gles_angle/libvk_swiftshader.so",
+      "resolvedPath": "emulator/lib64/gles_angle/libvk_swiftshader.so",
+      "bytes": 4498208,
+      "sha256": "9490e93f308615aa9fb5731f4c4889439cbec012041eddaead1b956e968301c3"
+    },
+    {
+      "path": "emulator/lib64/gles_angle/libvulkan.so",
+      "resolvedPath": "emulator/lib64/gles_angle/libvulkan.so",
+      "bytes": 612992,
+      "sha256": "c137499ef642212970b94f332d1b8a172f815952c2d6cbe227c6811453c5d1d1"
+    },
+    {
+      "path": "emulator/lib64/gles_angle/libvulkan.so.1",
+      "resolvedPath": "emulator/lib64/gles_angle/libvulkan.so.1",
+      "bytes": 612992,
+      "sha256": "27bf47e258e00653eef414882168caf0178031f1bb4ec8325f0477f15dde4994"
+    },
+    {
+      "path": "emulator/lib64/gles_llvmpipe/dri/kms_swrast_dri.so",
+      "resolvedPath": "emulator/lib64/gles_llvmpipe/dri/kms_swrast_dri.so",
+      "bytes": 109536,
+      "sha256": "ae7e9e037376da0042f1589e81094c1709397e03f929f184d99bc0c378d08ba4"
+    },
+    {
+      "path": "emulator/lib64/gles_llvmpipe/dri/libdril_dri.so",
+      "resolvedPath": "emulator/lib64/gles_llvmpipe/dri/libdril_dri.so",
+      "bytes": 109536,
+      "sha256": "7fec43f8a0148ea7ae536145c605d68ffcbdba9f5eae8dc12a78512989568bd1"
+    },
+    {
+      "path": "emulator/lib64/gles_llvmpipe/dri/swrast_dri.so",
+      "resolvedPath": "emulator/lib64/gles_llvmpipe/dri/swrast_dri.so",
+      "bytes": 109528,
+      "sha256": "eda8f5827447c9e4e8be16a1014f85d1fe7ced90f23ac1455217b785ddb13688"
+    },
+    {
+      "path": "emulator/lib64/gles_llvmpipe/gbm/dri_gbm.so",
+      "resolvedPath": "emulator/lib64/gles_llvmpipe/gbm/dri_gbm.so",
+      "bytes": 50200,
+      "sha256": "4f7e42d9f43db32864b5267603c04bf55f7cf64176d303fa744c256817b399fa"
+    },
+    {
+      "path": "emulator/lib64/gles_llvmpipe/libEGL.so",
+      "resolvedPath": "emulator/lib64/gles_llvmpipe/libEGL.so",
+      "bytes": 432568,
+      "sha256": "8f8399fe99282ac1f88eb33be96395235b13613f33c9f87c617bd7ebace48c67"
+    },
+    {
+      "path": "emulator/lib64/gles_llvmpipe/libGL.so",
+      "resolvedPath": "emulator/lib64/gles_llvmpipe/libGL.so",
+      "bytes": 1263504,
+      "sha256": "11ab2fa266894dae97f7915edc92255bc13fbc5694812ea11825edc54538df64"
+    },
+    {
+      "path": "emulator/lib64/gles_llvmpipe/libGLES_CM.so",
+      "resolvedPath": "emulator/lib64/gles_llvmpipe/libGLES_CM.so",
+      "bytes": 15960,
+      "sha256": "56cd7015744687460bcdde44202cb13470a5fc28c9d2ee6d2bc90b6bd1294adf"
+    },
+    {
+      "path": "emulator/lib64/gles_llvmpipe/libGLESv2.so",
+      "resolvedPath": "emulator/lib64/gles_llvmpipe/libGLESv2.so",
+      "bytes": 34392,
+      "sha256": "748c211be929d13d9ceb3006aee9efb58d88af0b30f0ef1f3c0fb856cd68a0fe"
+    },
+    {
+      "path": "emulator/lib64/gles_llvmpipe/libgallium-25.2.4.so",
+      "resolvedPath": "emulator/lib64/gles_llvmpipe/libgallium-25.2.4.so",
+      "bytes": 18134264,
+      "sha256": "beabdd03cdb29583929627525188f7de70946e654fd96d375fa423b35012ab83"
+    },
+    {
+      "path": "emulator/lib64/gles_llvmpipe/libgbm.so",
+      "resolvedPath": "emulator/lib64/gles_llvmpipe/libgbm.so",
+      "bytes": 254288,
+      "sha256": "e082115dcfe543f8b3227a8c4616f32e93ddebe2d74bf51f0f01f2f1f16fd99f"
+    },
+    {
+      "path": "emulator/lib64/gles_swiftshader/libEGL.so",
+      "resolvedPath": "emulator/lib64/gles_swiftshader/libEGL.so",
+      "bytes": 59064,
+      "sha256": "481c137b6d8fe7480f3e74374d4fd002e33c9250dffd66a05684f5494982e012"
+    },
+    {
+      "path": "emulator/lib64/gles_swiftshader/libGLES_CM.so",
+      "resolvedPath": "emulator/lib64/gles_swiftshader/libGLES_CM.so",
+      "bytes": 6230832,
+      "sha256": "f0488371cd5ad063831e6d6572fcd1d49935688ef86150269e545f6c30003c79"
+    },
+    {
+      "path": "emulator/lib64/gles_swiftshader/libGLESv2.so",
+      "resolvedPath": "emulator/lib64/gles_swiftshader/libGLESv2.so",
+      "bytes": 6800840,
+      "sha256": "9471a220fd966c629278b1b6b99227dbe292e57c6374a59132a410370e795b06"
+    },
+    {
+      "path": "emulator/lib64/libabseil_dll.so",
+      "resolvedPath": "emulator/lib64/libabseil_dll.so",
+      "bytes": 800264,
+      "sha256": "5717aeff2a2d5f55fa4b0b6c07bf6ca164ff0cc2396bb568b1b25cff3506c523"
+    },
+    {
+      "path": "emulator/lib64/libandroid-emu-agents.so",
+      "resolvedPath": "emulator/lib64/libandroid-emu-agents.so",
+      "bytes": 14304,
+      "sha256": "1647143422ce1a2c4e43c2c2606e241c01c0f062684b5cd722b9aa3cd86692ae"
+    },
+    {
+      "path": "emulator/lib64/libandroid-emu-base-logging.so",
+      "resolvedPath": "emulator/lib64/libandroid-emu-base-logging.so",
+      "bytes": 45336,
+      "sha256": "b53d1d27e395291bb24cee004439482893d9d986ad8fc88553489b74a45597a4"
+    },
+    {
+      "path": "emulator/lib64/libandroid-emu-curl.so",
+      "resolvedPath": "emulator/lib64/libandroid-emu-curl.so",
+      "bytes": 3269864,
+      "sha256": "b1640b76bc8381e24fa694a60c9493062403e2d46b071de4620fcc901e9a3890"
+    },
+    {
+      "path": "emulator/lib64/libandroid-emu-metrics.so",
+      "resolvedPath": "emulator/lib64/libandroid-emu-metrics.so",
+      "bytes": 6566800,
+      "sha256": "798a1f251a4bda8c8dfe58f024677f53ee349cd9dfe6b66b33745b328501bd47"
+    },
+    {
+      "path": "emulator/lib64/libandroid-emu-protos.so",
+      "resolvedPath": "emulator/lib64/libandroid-emu-protos.so",
+      "bytes": 847440,
+      "sha256": "8b1532718d3dbe53be5aca95f1703907b97e39927a1af1fcce6935b978b8bee7"
+    },
+    {
+      "path": "emulator/lib64/libandroid-emu-shared.so",
+      "resolvedPath": "emulator/lib64/libandroid-emu-shared.so",
+      "bytes": 4903488,
+      "sha256": "2f10b44ad19ac685873b3579264e70103c27018ad4e54652c9479dab850edcff"
+    },
+    {
+      "path": "emulator/lib64/libandroid-emu-tracing.so",
+      "resolvedPath": "emulator/lib64/libandroid-emu-tracing.so",
+      "bytes": 62200,
+      "sha256": "e5da961decb00a1205392e16fd05bf4d2598e38c3b4391071d9b989371da99ae"
+    },
+    {
+      "path": "emulator/lib64/libandroid-webrtc.so",
+      "resolvedPath": "emulator/lib64/libandroid-webrtc.so",
+      "bytes": 34056184,
+      "sha256": "ef9f6689d5df93e875fd37807f76853d65544fe5d682caf60607aeb59c934126"
+    },
+    {
+      "path": "emulator/lib64/libc++.so",
+      "resolvedPath": "emulator/lib64/libc++.so",
+      "bytes": 1355368,
+      "sha256": "bd6e61007f7cb72c4e9e68901d9fff64e3d61fe41d96f38b1fc9c08237f94c93"
+    },
+    {
+      "path": "emulator/lib64/libc++.so.1",
+      "resolvedPath": "emulator/lib64/libc++.so.1",
+      "bytes": 1355376,
+      "sha256": "a5e5c904291a01d2f0b7a3d04e53a0aa210da3a881ad6d120445ad2d4f16f185"
+    },
+    {
+      "path": "emulator/lib64/libemugl_common.so",
+      "resolvedPath": "emulator/lib64/libemugl_common.so",
+      "bytes": 24824,
+      "sha256": "5ccabb9e3099b282267cad4275b038fb6c862f304a11cf019162404b595f0050"
+    },
+    {
+      "path": "emulator/lib64/libgfxstream_backend.so",
+      "resolvedPath": "emulator/lib64/libgfxstream_backend.so",
+      "bytes": 15727152,
+      "sha256": "67fa485ebe97369429e283fbefb6db9046024f7264102de60c4bfc70d2628f7e"
+    },
+    {
+      "path": "emulator/lib64/libglib2_linux-x86_64.so",
+      "resolvedPath": "emulator/lib64/libglib2_linux-x86_64.so",
+      "bytes": 1289904,
+      "sha256": "8914e2de2abf5998a8a2b39171a07b9328358430a2cafb3eb0c061bf3186c2a2"
+    },
+    {
+      "path": "emulator/lib64/libimage_converter.so",
+      "resolvedPath": "emulator/lib64/libimage_converter.so",
+      "bytes": 8096,
+      "sha256": "36ed82bc66e9fd6432dc8a0be8b5368ca6bc544e27450ff4691a3f7197072522"
+    },
+    {
+      "path": "emulator/lib64/libprotobuf.so",
+      "resolvedPath": "emulator/lib64/libprotobuf.so",
+      "bytes": 2460264,
+      "sha256": "130638ffe4d71c2c285902b6453b22ed9ede68daff19144a435abf31650c2c10"
+    },
+    {
+      "path": "emulator/lib64/libprotobuf.so.28.4.0",
+      "resolvedPath": "emulator/lib64/libprotobuf.so.28.4.0",
+      "bytes": 2460264,
+      "sha256": "130638ffe4d71c2c285902b6453b22ed9ede68daff19144a435abf31650c2c10"
+    },
+    {
+      "path": "emulator/lib64/libshadertranslator.so",
+      "resolvedPath": "emulator/lib64/libshadertranslator.so",
+      "bytes": 1671640,
+      "sha256": "a8832f3f2d8f900b77d2e894b659c71ef5093afd514543bba3b398baa450804e"
+    },
+    {
+      "path": "emulator/lib64/libtcmalloc_minimal.so.4",
+      "resolvedPath": "emulator/lib64/libtcmalloc_minimal.so.4",
+      "bytes": 297704,
+      "sha256": "747aa105754329be0d771999ab4c1ae6d0201b8e9a419e3a80b694f5d9c295b1"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6CoreAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6CoreAndroidEmu.so.6",
+      "bytes": 5733104,
+      "sha256": "db7efa4ee372ec6c148aec41af8afb1c7ab83cac7d1d1b728f322778956003d3"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6DBusAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6DBusAndroidEmu.so.6",
+      "bytes": 757944,
+      "sha256": "2b10488e18f56037a6ebced6a83ce4c01a2a94a0580ec3230098eacc971b594b"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6GuiAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6GuiAndroidEmu.so.6",
+      "bytes": 7955904,
+      "sha256": "7cf8296f375259ab877d7696803a7ad9c0703d86ca960925a84c694a14a79bf3"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6NetworkAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6NetworkAndroidEmu.so.6",
+      "bytes": 1365184,
+      "sha256": "098dd5bfbba7eb9048200a3cc3e4196bce291726232cc3d0ea294de5e822ba47"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6PositioningAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6PositioningAndroidEmu.so.6",
+      "bytes": 628624,
+      "sha256": "b904283ef85d1664c24720b02d3a946eae539798a7f8621eef4b05c99abf4b1e"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6QmlAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6QmlAndroidEmu.so.6",
+      "bytes": 5740488,
+      "sha256": "1e852b46a9735bb3ee873b4bc0a5ccd348c9788ac274024a45f99f7af8533852"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6QmlModelsAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6QmlModelsAndroidEmu.so.6",
+      "bytes": 791288,
+      "sha256": "9715f2b8057dd73a41c82d25cf13ebb31ae827938418ab6e9f3804c108edcb7a"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6QuickAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6QuickAndroidEmu.so.6",
+      "bytes": 6596256,
+      "sha256": "a227099cc8de6462d7fbec39e5e46706c7f615e3d8331e3ec44e83e6977b7be3"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6QuickWidgetsAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6QuickWidgetsAndroidEmu.so.6",
+      "bytes": 110912,
+      "sha256": "b7f656b0f56db111a9f26f7fca99c67305bc9629d61c3e279fb870ac76469584"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6SvgAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6SvgAndroidEmu.so.6",
+      "bytes": 347616,
+      "sha256": "ed6cd8cc610f768c3f9c28565b37b2ebc3395d02cacd12cb246700c1776be255"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6SvgWidgetsAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6SvgWidgetsAndroidEmu.so.6",
+      "bytes": 38760,
+      "sha256": "7890d68af1c58b6325906f5031623b76cd3ea46931d52217a8905762b349def2"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6WebChannelAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6WebChannelAndroidEmu.so.6",
+      "bytes": 254368,
+      "sha256": "e0486c38edc5af2062537d3ca3c8ee2e074a4aa8f05bc6258ab16f2fe11344ac"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6WebEngineCoreAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6WebEngineCoreAndroidEmu.so.6",
+      "bytes": 157045232,
+      "sha256": "47f6811889157b12cc3337a7eb73aeb2eae9c9e8cf7125d120cf6c027a3d1c13"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6WebEngineWidgetsAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6WebEngineWidgetsAndroidEmu.so.6",
+      "bytes": 140304,
+      "sha256": "942f299e589ceee2658df46d70fc94c7d6da9d0ffc85d5d3834d7d001e54d5e1"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6WebSocketsAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6WebSocketsAndroidEmu.so.6",
+      "bytes": 172192,
+      "sha256": "bf1987ce0126c41167b76a5b7d907021f68f7cc3d1ea1869b6e89bdb2cdb8e44"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6WidgetsAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6WidgetsAndroidEmu.so.6",
+      "bytes": 7231464,
+      "sha256": "8344d3b0c4325dc5bdaef2d30a2b0a8bc741ef066ec9941243cface8499950ab"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libQt6XcbQpaAndroidEmu.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libQt6XcbQpaAndroidEmu.so.6",
+      "bytes": 676200,
+      "sha256": "fef34bf716206798cc34e903c92eb1743aa89dbed50ffade4f3af13e71be3b9b"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libX11-xcb.so.1",
+      "resolvedPath": "emulator/lib64/qt/lib/libX11-xcb.so.1",
+      "bytes": 14144,
+      "sha256": "7638e9f043ba4fcf0a219e782c286b47b17785b0029f3cf15e9e510529bb1745"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libXau.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libXau.so.6",
+      "bytes": 18776,
+      "sha256": "abb13281838478b5d47463c0c512a655e339e4886c323f9758dc81bef561a326"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libXdmcp.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libXdmcp.so.6",
+      "bytes": 26888,
+      "sha256": "814381cc28f9f83da24680f5e928b60a3b5b677a2cc7813add54c82911e1f8bb"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libfontconfig.so.1",
+      "resolvedPath": "emulator/lib64/qt/lib/libfontconfig.so.1",
+      "bytes": 285936,
+      "sha256": "6db38ead1abccfd689634eb31aec66a4f25a08614656bf464f8f730b319ff5d0"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libfreetype.so.6",
+      "resolvedPath": "emulator/lib64/qt/lib/libfreetype.so.6",
+      "bytes": 776352,
+      "sha256": "89feb98ff85153f98c5024265bfe363520e52023dc78cf0856c5920d2fa8c154"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libjpeg.so.8",
+      "resolvedPath": "emulator/lib64/qt/lib/libjpeg.so.8",
+      "bytes": 539440,
+      "sha256": "971e25b4aadae8acbc904e16a2648d8b3e85e586a0e64bb90466a5c69ea8f209"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libpcre2-16.so.0",
+      "resolvedPath": "emulator/lib64/qt/lib/libpcre2-16.so.0",
+      "bytes": 535328,
+      "sha256": "aa33679f88088dbd0029860383d04a967b84b7f362b63a3eacbde17f8b07637b"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-cursor.so.0",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-cursor.so.0",
+      "bytes": 24176,
+      "sha256": "35794978fa1ea695c093011fdeed874616dea6c4e5a0165336ebbdc1ce676025"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-icccm.so.4",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-icccm.so.4",
+      "bytes": 22552,
+      "sha256": "2aec38b627f628601fc983a09cdf011adb70e47fa9b6caa1a059171b35e2d16d"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-image.so.0",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-image.so.0",
+      "bytes": 18624,
+      "sha256": "db7872901e19a94c9a46d4edf0456339e5beb8fecc7ec975b8f721267e579c0f"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-keysyms.so.1",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-keysyms.so.1",
+      "bytes": 14584,
+      "sha256": "93f90ad2a68babd8eefd8683e697b6093fac5d81972e0abdd0d67960a810155f"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-randr.so.0",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-randr.so.0",
+      "bytes": 72000,
+      "sha256": "0bc6750337a92a05505c4c1b8c6bdc6bd435fa2d15a28ec83e6b3e1574c11aa0"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-render-util.so.0",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-render-util.so.0",
+      "bytes": 22968,
+      "sha256": "1a68ddff64183fd0f1a59ce32839d60d8aff0fbec92c7d77e90974379be22181"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-render.so.0",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-render.so.0",
+      "bytes": 55640,
+      "sha256": "b13fcf08f0ad021e78de568f961160b5c8c4d5528962f1ff4e11ca2d8b329411"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-shape.so.0",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-shape.so.0",
+      "bytes": 14640,
+      "sha256": "fcad45fcac5e11accb0df5e7ecd4d56feb9d4767b087667679dbe57f939c6faf"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-shm.so.0",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-shm.so.0",
+      "bytes": 14656,
+      "sha256": "ac8e6e9439477ae569d63cde45b29359713693cb8f8fc2175425b76223d86853"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-sync.so.1",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-sync.so.1",
+      "bytes": 35152,
+      "sha256": "09ef738e005a9023b2b6b9cffc7e970dd29363043f59a234f52924f151d1a4f1"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-util.so.1",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-util.so.1",
+      "bytes": 22832,
+      "sha256": "a82b3804e54bd319e95b229ac395be3ee5381434cabc00810b628f43d6289f95"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-xfixes.so.0",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-xfixes.so.0",
+      "bytes": 35128,
+      "sha256": "873cdf29c0f0bba264662c5b8df618994538a9a7c5e471c081cecf7dd82446a1"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxcb-xkb.so.1",
+      "resolvedPath": "emulator/lib64/qt/lib/libxcb-xkb.so.1",
+      "bytes": 117072,
+      "sha256": "bbf3eb7abab1e0e1f72ada13cd8d765c9bce074b630488621277dc988235cd90"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxkbcommon-x11.so.0",
+      "resolvedPath": "emulator/lib64/qt/lib/libxkbcommon-x11.so.0",
+      "bytes": 39984,
+      "sha256": "b3723e018efa10e40ce992df5cbfcfe5430a33b3547122e7382af0c992e5f97e"
+    },
+    {
+      "path": "emulator/lib64/qt/lib/libxkbcommon.so.0",
+      "resolvedPath": "emulator/lib64/qt/lib/libxkbcommon.so.0",
+      "bytes": 264856,
+      "sha256": "ad6f1dc6b5a3cf94db5f935b900e74ca2bc8c9954af6929a20c2a79a86ff1355"
+    },
+    {
+      "path": "emulator/lib64/qt/libexec/QtWebEngineProcess",
+      "resolvedPath": "emulator/lib64/qt/libexec/QtWebEngineProcess",
+      "bytes": 186144,
+      "sha256": "cac415fb684c0fdbd0ac61b5a2771b60ea104658ae007e27c057b31417bf5bfc"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/iconengines/libqsvgiconAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/iconengines/libqsvgiconAndroidEmu.so",
+      "bytes": 47512,
+      "sha256": "f632d5c175b058583bb5bb15d12e6698c0131ae9d458e026bd8efce5caf3b20b"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/imageformats/libqgifAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/imageformats/libqgifAndroidEmu.so",
+      "bytes": 28368,
+      "sha256": "05d7dfa9c12cdfc5b18210e681bab88356e5658a63b782a5772ba20df818ff39"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/imageformats/libqicnsAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/imageformats/libqicnsAndroidEmu.so",
+      "bytes": 34832,
+      "sha256": "473d5c13027006b680901047dc631329b5cbf3169644b682bfb1fd46d8654b5e"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/imageformats/libqicoAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/imageformats/libqicoAndroidEmu.so",
+      "bytes": 29600,
+      "sha256": "7ae5fe79646de0540e1f599542fcb74aac52bd06e73432af2aa57b036a4c2cc3"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/imageformats/libqjpegAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/imageformats/libqjpegAndroidEmu.so",
+      "bytes": 39688,
+      "sha256": "7d243b52183a22e635dcc25ae5488dd1bdf682c915208c20e04c4e83cf5c3d6a"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/imageformats/libqsvgAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/imageformats/libqsvgAndroidEmu.so",
+      "bytes": 21216,
+      "sha256": "848f436daecf60270b966311fd234a15f5a5d57c6ad8c5ad08aba0eaa208fa88"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/imageformats/libqtgaAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/imageformats/libqtgaAndroidEmu.so",
+      "bytes": 18592,
+      "sha256": "d51c4fcb998cec260a166e175419b3d831e1bc96652a31cf0e3542fb49e70175"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/imageformats/libqtiffAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/imageformats/libqtiffAndroidEmu.so",
+      "bytes": 35816,
+      "sha256": "20ff70d23339c0d4efa9f20f3d76aa2bce2f78af10c1bdb906637dcb16a246ff"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/imageformats/libqwbmpAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/imageformats/libqwbmpAndroidEmu.so",
+      "bytes": 17408,
+      "sha256": "6df51442ea4e12a9969e36c6864dc10ed5b1ddeeaa7e4eaa6f4b713c82c847cd"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/imageformats/libqwebpAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/imageformats/libqwebpAndroidEmu.so",
+      "bytes": 606104,
+      "sha256": "00f6804b1858aefffba9396fecd0eb92c694d35cad9b24587fae602e28755c74"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/platforminputcontexts/libcomposeplatforminputcontextpluginAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/platforminputcontexts/libcomposeplatforminputcontextpluginAndroidEmu.so",
+      "bytes": 19832,
+      "sha256": "27580e743f788616274f33f3b117c0e9f803a5ca5602ce86df0b340329632e5e"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/platforminputcontexts/libibusplatforminputcontextpluginAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/platforminputcontexts/libibusplatforminputcontextpluginAndroidEmu.so",
+      "bytes": 136624,
+      "sha256": "0a19e7788e0beb507cdd346c658a059a741f63f341cf070218080a9a41403cae"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/platforms/libqlinuxfbAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/platforms/libqlinuxfbAndroidEmu.so",
+      "bytes": 327112,
+      "sha256": "8ffc7b4f0f0899e398ce2e842217e34bb0b3bc4a28a44458da4c1012416dfc30"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/platforms/libqminimalAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/platforms/libqminimalAndroidEmu.so",
+      "bytes": 25992,
+      "sha256": "836666076529c02571e19b8aad98886fee245155ccfe66475c5931788fc165a7"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/platforms/libqoffscreenAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/platforms/libqoffscreenAndroidEmu.so",
+      "bytes": 94776,
+      "sha256": "b24dacd1920bbc62c33fa0d55a039dca788d17b103288df21f8968215b8c9f72"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/platforms/libqvncAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/platforms/libqvncAndroidEmu.so",
+      "bytes": 106976,
+      "sha256": "6eccd5f4fa78dc00417b1d2dfffd7e109f65e068f6f5a4ebf30e1313fec6da3c"
+    },
+    {
+      "path": "emulator/lib64/qt/plugins/platforms/libqxcbAndroidEmu.so",
+      "resolvedPath": "emulator/lib64/qt/plugins/platforms/libqxcbAndroidEmu.so",
+      "bytes": 10592,
+      "sha256": "f677452c7e5724a02c9846df496cc30334aff0a26674db59ab0e6f524c52f304"
+    },
+    {
+      "path": "emulator/lib64/vulkan/glslangValidator",
+      "resolvedPath": "emulator/lib64/vulkan/glslangValidator",
+      "bytes": 7976760,
+      "sha256": "77e00bf683895f62f8d330690885f00ca308320f6caf47f050ee8ea936b59326"
+    },
+    {
+      "path": "emulator/lib64/vulkan/layers/libVkLayer_khronos_validation.so",
+      "resolvedPath": "emulator/lib64/vulkan/layers/libVkLayer_khronos_validation.so",
+      "bytes": 31355856,
+      "sha256": "ff74c47ef0b86146015c8cbe7f55b27877d5c42c833d3ea479a209a4d67d31e5"
+    },
+    {
+      "path": "emulator/lib64/vulkan/libLLVM.so",
+      "resolvedPath": "emulator/lib64/vulkan/libLLVM.so",
+      "bytes": 95955104,
+      "sha256": "c94801c39ddb7ae09eef3feda2c45dc8fc023b0f40256c3de1b9bd272dd894d2"
+    },
+    {
+      "path": "emulator/lib64/vulkan/libedit.so.0",
+      "resolvedPath": "emulator/lib64/vulkan/libedit.so.0",
+      "bytes": 228456,
+      "sha256": "5332e7b68129374d572133d43b78c5745bf88ea99da65c3392677d63ae8d5cf0"
+    },
+    {
+      "path": "emulator/lib64/vulkan/libncurses.so.6",
+      "resolvedPath": "emulator/lib64/vulkan/libncurses.so.6",
+      "bytes": 386272,
+      "sha256": "48bb1e9b4a211f12cb07cceb25c5727a0110922be3afcc64c029db732a2a9bcf"
+    },
+    {
+      "path": "emulator/lib64/vulkan/libvk_swiftshader.so",
+      "resolvedPath": "emulator/lib64/vulkan/libvk_swiftshader.so",
+      "bytes": 4703056,
+      "sha256": "9e2cebc35ffd7f0dd234c219f6b3a1150801b4675ccc26498fcdfce8c79064e7"
+    },
+    {
+      "path": "emulator/lib64/vulkan/libvulkan.so",
+      "resolvedPath": "emulator/lib64/vulkan/libvulkan.so",
+      "bytes": 612992,
+      "sha256": "c137499ef642212970b94f332d1b8a172f815952c2d6cbe227c6811453c5d1d1"
+    },
+    {
+      "path": "emulator/lib64/vulkan/libvulkan.so.1",
+      "resolvedPath": "emulator/lib64/vulkan/libvulkan.so.1",
+      "bytes": 612992,
+      "sha256": "27bf47e258e00653eef414882168caf0178031f1bb4ec8325f0477f15dde4994"
+    },
+    {
+      "path": "emulator/lib64/vulkan/libvulkan_lvp.so",
+      "resolvedPath": "emulator/lib64/vulkan/libvulkan_lvp.so",
+      "bytes": 12801616,
+      "sha256": "307b9efb94cd4431988268d8a2e2df38d31c71641e4c1ef5a171f94c5866bc15"
+    },
+    {
+      "path": "emulator/lib64/vulkan/libxcb-aemu.so",
+      "resolvedPath": "emulator/lib64/vulkan/libxcb-aemu.so",
+      "bytes": 821576,
+      "sha256": "67e9b459abb9cea13cb529fdaa770bd18152c6de72a4fc0738c38cc4a6142045"
+    },
+    {
+      "path": "emulator/lib64/vulkan/libxml2.so.2",
+      "resolvedPath": "emulator/lib64/vulkan/libxml2.so.2",
+      "bytes": 1376912,
+      "sha256": "aa8c008f4de635cdcc1d507aaca4375e69926afa38ca4583afcd48336dd035b8"
+    },
+    {
+      "path": "emulator/mksdcard",
+      "resolvedPath": "emulator/mksdcard",
+      "bytes": 9848,
+      "sha256": "22ed09344d35d3722f7d787e4182526c1a76578874554c6dcfefc33a6540f134"
+    },
+    {
+      "path": "emulator/netsimd",
+      "resolvedPath": "emulator/netsimd",
+      "bytes": 24318752,
+      "sha256": "b32f5ff232b86e2b4bd43e0245b04f72a8c19851ba6087b041a770bd24157088"
+    },
+    {
+      "path": "emulator/nimble_bridge",
+      "resolvedPath": "emulator/nimble_bridge",
+      "bytes": 11733584,
+      "sha256": "8384f089884467b75c38a5b92f22c98f085c6aba56ebb0f7cd30d40ef69ef99d"
+    },
+    {
+      "path": "emulator/qemu-img",
+      "resolvedPath": "emulator/qemu-img",
+      "bytes": 1391040,
+      "sha256": "7d3ff90024b99afab84f4c15322f1f0d9a6baf1ca89c1158ab8e48fc273c305c"
+    },
+    {
+      "path": "emulator/qemu/linux-x86_64/qemu-system-aarch64",
+      "resolvedPath": "emulator/qemu/linux-x86_64/qemu-system-aarch64",
+      "bytes": 34148824,
+      "sha256": "56daf672df2f4739353a7baf8768d8bd2f77ec2f6e4ce10aac91e68ac23edf89"
+    },
+    {
+      "path": "emulator/qemu/linux-x86_64/qemu-system-aarch64-headless",
+      "resolvedPath": "emulator/qemu/linux-x86_64/qemu-system-aarch64-headless",
+      "bytes": 25919960,
+      "sha256": "e697effa1e3f5e0962dab1c8fdbca5787582e6081e2c22eabe74ff396fbd2436"
+    },
+    {
+      "path": "emulator/qemu/linux-x86_64/qemu-system-armel",
+      "resolvedPath": "emulator/qemu/linux-x86_64/qemu-system-armel",
+      "bytes": 33872080,
+      "sha256": "31ce687a332f887173cd38263f55c941f1df4df9d2c991c2f04c48e22e49ef48"
+    },
+    {
+      "path": "emulator/qemu/linux-x86_64/qemu-system-armel-headless",
+      "resolvedPath": "emulator/qemu/linux-x86_64/qemu-system-armel-headless",
+      "bytes": 25651368,
+      "sha256": "e98116b03258b000f68b1b4b46282d0448cb02a79031b9fc5260e4e78091b9c3"
+    },
+    {
+      "path": "emulator/qemu/linux-x86_64/qemu-system-i386",
+      "resolvedPath": "emulator/qemu/linux-x86_64/qemu-system-i386",
+      "bytes": 32624560,
+      "sha256": "ea7b33d4fb49c260fcab793a2e9b09f0c4261b98a22b99e8460ca993cb5e11b7"
+    },
+    {
+      "path": "emulator/qemu/linux-x86_64/qemu-system-i386-headless",
+      "resolvedPath": "emulator/qemu/linux-x86_64/qemu-system-i386-headless",
+      "bytes": 24399656,
+      "sha256": "becf8a1eb6aab27819f282f523c1765f9a54f6cc7d55a21d63c4bc213616704a"
+    },
+    {
+      "path": "emulator/qemu/linux-x86_64/qemu-system-x86_64",
+      "resolvedPath": "emulator/qemu/linux-x86_64/qemu-system-x86_64",
+      "bytes": 32658088,
+      "sha256": "b8f1576c0052ddd2f05771b0975b5ea1b2d4262d1893243a03b06546e24de057"
+    },
+    {
+      "path": "emulator/qemu/linux-x86_64/qemu-system-x86_64-headless",
+      "resolvedPath": "emulator/qemu/linux-x86_64/qemu-system-x86_64-headless",
+      "bytes": 24433280,
+      "sha256": "abb80393dabc80f419b180c2d4db4d2249e1499262a71106bff597d39e7abf11"
+    },
+    {
+      "path": "emulator/qsn",
+      "resolvedPath": "emulator/qsn",
+      "bytes": 4357720,
+      "sha256": "35b79ae9a03a4e1376da2ff9ad8b7eab09cc35db256f2b14e7ab06b24a2b7134"
+    }
+  ]
+}

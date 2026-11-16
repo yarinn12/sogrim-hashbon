@@ -18,11 +18,11 @@ test("notification time stays relative within today and switches to calendar lab
 
 test("signed-out notifications use the approved compact account state", async () => {
   const [app, coherenceLayer] = await Promise.all([
-    readFile("src/app.mjs", "utf8"),
+    readFile("src/ui/notificationInboxPresentation.mjs", "utf8"),
     readFile("src/publicDesignCoherenceLayer.mjs", "utf8")
   ]);
   const source = app.slice(
-    app.indexOf("function renderNotificationInbox()"),
+    app.indexOf("export function renderNotificationInboxView("),
     app.indexOf("function renderNotificationInboxItem(")
   );
 
@@ -46,10 +46,7 @@ test("profile and notification headers omit redundant green labels", async () =>
     app.indexOf("function renderProfileSetup()"),
     app.indexOf("function renderAdminAnalyticsOverview()")
   );
-  const notifications = app.slice(
-    app.indexOf("function renderNotificationInbox()"),
-    app.indexOf("function renderNotificationInboxItem(")
-  );
+  const notifications = await readFile("src/ui/notificationInboxPresentation.mjs", "utf8");
 
   assert.doesNotMatch(profile, /isEditingProfile \? "פרופיל"/);
   assert.match(profile, /isEditingProfile \? "" : '<p class="eyebrow">סוגרים חשבון<\/p>'/);

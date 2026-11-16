@@ -55,6 +55,9 @@ function harness({ events = [], status = "loading" } = {}) {
     sharedStateSaveRevision: () => revision,
     visibleEventsForParticipant: state => state.events,
     syncLocalProfile: state => state,
+    // The source slice runs without the independent pin migration helper.
+    // This fixture still checks that a cloud response can complete hydration.
+    queueLegacyAccountPinMigration: () => {},
     hasSharedStateChanged: (a, b) => JSON.stringify(a) !== JSON.stringify(b),
     render: () => {},
     retryAccountEventHydration: async () => {},

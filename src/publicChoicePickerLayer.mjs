@@ -1,4 +1,5 @@
 import { iconSvg } from "./uiIcons.mjs";
+import { currencySearchText } from "./domain/currencies.mjs";
 
 const STYLE_ID = "public-choice-picker-style";
 const ENHANCED_CLASS = "app-choice-native";
@@ -7,7 +8,8 @@ const PICKER_CLASS = "app-choice-picker-backdrop";
 const PICKER_HISTORY_KEY = "settleFriendsChoicePicker";
 const SEARCHABLE_CHOICE_ACTIONS = new Set([
   "new-event-currency",
-  "event-currency"
+  "event-currency",
+  "expense-source-currency"
 ]);
 
 let activeSelect = null;
@@ -161,7 +163,7 @@ function openChoicePicker(select, trigger) {
 
   const searchable = isSearchableChoiceSelect(select);
   Array.from(select.options).forEach((option) => {
-    list.append(renderChoiceOption(option, select.value));
+    list.append(renderChoiceOption(option, select.value, searchable));
   });
 
   const optionsRegion = document.createElement("div");
@@ -180,7 +182,7 @@ function openChoicePicker(select, trigger) {
   dialog.append(header);
   if (searchable) {
     dialog.classList.add("has-search");
-    dialog.append(renderChoiceSearch(list, emptyState));
+    dialog.append(renderChoiceSearch(list, emptyState, select.dataset.choiceSearchPlaceholder));
   }
   dialog.append(optionsRegion);
   backdrop.append(dialog);
@@ -200,7 +202,7 @@ function openChoicePicker(select, trigger) {
   (selectedOption ?? firstOption ?? closeButton).focus({ preventScroll: true });
 }
 
-function renderChoiceOption(option, selectedValue) {
+function renderChoiceOption(option, selectedValue, searchable = false) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "app-choice-option";
@@ -214,7 +216,7 @@ function renderChoiceOption(option, selectedValue) {
 
   const normalizedText = option.textContent?.replace(/\s+/g, " ").trim() ?? "";
   button.dataset.choiceSearch = normalizeChoiceSearch(
-    `${normalizedText} ${option.value}`
+    `${normalizedText} ${option.value} ${searchable ? currencySearchText(option.value) : ""}`
   );
   const [primaryText, ...detailParts] = normalizedText
     .split("·")
@@ -252,7 +254,7 @@ function renderChoiceOption(option, selectedValue) {
   return button;
 }
 
-function renderChoiceSearch(list, emptyState) {
+function renderChoiceSearch(list, emptyState, placeholder = "חיפוש לפי מטבע, מדינה או קוד") {
   const search = document.createElement("div");
   search.className = "app-choice-search";
   search.setAttribute("role", "search");
@@ -265,7 +267,7 @@ function renderChoiceSearch(list, emptyState) {
   const input = document.createElement("input");
   input.type = "search";
   input.className = "app-choice-search-input";
-  input.placeholder = "חיפוש לפי מטבע, מדינה או קוד";
+  input.placeholder = placeholder;
   input.setAttribute("aria-label", "חיפוש מטבע");
   input.setAttribute("autocomplete", "off");
   input.setAttribute("autocapitalize", "off");
@@ -339,6 +341,11 @@ async function chooseOption(optionButton) {
     requestAnimationFrame(() => {
       if (activePicker || pickerSequence !== closingPickerSequence) return;
       enhanceChoiceSelects();
+      // The select change handler may move focus to the next field before
+      // this callback runs. Respect that newer focus choice.
+      if (document.activeElement?.isConnected &&
+          document.activeElement !== document.body &&
+          document.activeElement !== document.documentElement) return;
       findChoiceSelect(focusDescriptor)
         ?.nextElementSibling?.focus({ preventScroll: true });
     });

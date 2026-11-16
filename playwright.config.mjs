@@ -30,6 +30,7 @@ export default defineConfig({
   projects: [
     {
       name: "android-mobile",
+      testIgnore: "**/account-entry-webkit-reload-evidence.spec.mjs",
       use: { ...devices["Pixel 5"] }
     },
     {
@@ -47,6 +48,7 @@ export default defineConfig({
     },
     {
       name: "reflow-200",
+      testIgnore: "**/account-entry-webkit-reload-evidence.spec.mjs",
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 320, height: 800 },
@@ -56,7 +58,7 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: `node server.mjs ${port}`,
+    command: `node scripts/qa/serve-browser-qa.mjs ${port}`,
     url: `${baseURL}/api/health`,
     reuseExistingServer: false,
     timeout: 30_000,

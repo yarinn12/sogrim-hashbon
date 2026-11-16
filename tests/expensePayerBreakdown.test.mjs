@@ -1,3 +1,4 @@
+import { renderExpenseTitleView, renderExpenseParticipantsHeadingView } from "../src/ui/expenseDisclosure.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
@@ -19,6 +20,7 @@ function renderRow(currency, payers, names = ["ירין יצחק", "לירון �
   const event = { id: "event-payer-breakdown", currency, participantIds: participants.map(p => p.id) };
   const context = vm.createContext({
     formatCurrency, normalizeCurrency, calculateSettlement,
+    renderExpenseTitleView, renderExpenseParticipantsHeadingView,
     canCurrentParticipantEdit: () => true,
     eventParticipants: () => participants,
     participantName: id => participants.find(p => p.id === id)?.displayName ?? "משתתף",

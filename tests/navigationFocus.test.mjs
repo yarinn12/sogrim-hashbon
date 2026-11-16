@@ -18,7 +18,7 @@ test("launch actions restore either event creation or the profile before clearin
     "function render()"
   );
 
-  assert.match(launchRoute, /action !== "new-event" && action !== "profile"/);
+  assert.match(launchRoute, /\["new-event", "profile", "feedback"\]\.includes\(action\)/);
   assert.match(launchRoute, /action === "profile" \? \{ name: "profile" \}/);
   assert.match(launchRoute, /url\.searchParams\.delete\("action"\)/);
 });
@@ -44,11 +44,15 @@ test("the active event keeps one primary expense action and two focused internal
   );
 
   assert.match(event, /data-screen-kind="event"/);
-  assert.match(event, /event-header-actions/);
-  assert.match(event, /data-action="show-expense-form"/);
-  assert.match(event, /data-action="open-event-participants"/);
-  assert.match(event, /data-action="open-event-participant-add"/);
-  assert.match(event, /data-action="open-event-settings"/);
+  const header = await readFile("src/ui/eventHeader.mjs", "utf8");
+  assert.match(event, /renderEventHeader\(event, activeParticipants\)/);
+  assert.match(header, /event-header-actions/);
+  assert.match(event, /renderEventActionDockView/);
+  const financialView = await readFile("src/ui/eventFinancialCards.mjs", "utf8");
+  assert.match(financialView, /data-action="show-expense-form"/);
+  assert.match(header, /data-action="open-event-participants"/);
+  assert.match(header, /data-action="open-event-participant-add"/);
+  assert.match(header, /data-action="open-event-settings"/);
   assert.match(navigation, /data-active-event-view/);
   assert.match(navigation, /data-action="back-to-event"/);
   assert.match(navigation, /הוצאות/);
@@ -162,16 +166,14 @@ test("settlement stays inside the event shell and only switches the active works
     "function renderSettlement(event)",
     "function hasReliableSettlementIdentity"
   );
-  const header = sourceBetween(
-    app,
-    "function renderEventHeader(event",
-    "function renderEventIdentityNotice"
-  );
+  const header = await readFile("src/ui/eventHeader.mjs", "utf8");
 
   assert.match(settlement, /data-screen-kind="event"/);
   assert.match(settlement, /data-event-view="summary"/);
   assert.match(settlement, /renderEventHeader\(event, activeEventParticipants\(event\)\)/);
   assert.match(settlement, /renderEventWorkspaceNav\(event, "summary"\)/);
+  assert.match(settlement, /renderEventHeader\(event, activeEventParticipants\(event\)\)[\s\S]*?renderEventWorkspaceNav\(event, "summary"\)/);
+  assert.doesNotMatch(settlement, /renderEventHeaderActions\(event, activeEventParticipants\(event\)\)/);
   assert.match(settlement, /renderEventDialog\(event\)/);
   assert.match(header, /data-action="open-event-participants"/);
   assert.match(header, /data-action="open-event-participant-add"/);
@@ -197,7 +199,7 @@ test("legacy overlays do not merge event creation and joining back together", as
   assert.match(brandLayer, /\.product-app-nav\[hidden\]/);
 });
 
-test("primary navigation exposes home, events, notifications and profile as distinct destinations", async () => {
+test("primary navigation exposes home, friends, notifications and profile as distinct destinations", async () => {
   const [app, brandLayer, primaryNavigation] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
     readFile("src/publicBrandLayer.mjs", "utf8"),
@@ -208,18 +210,18 @@ test("primary navigation exposes home, events, notifications and profile as dist
 
   assert.equal([...navigation.matchAll(/class="product-nav-button"/g)].length, 4);
   assert.match(navigation, /data-action="home" data-nav-destination="home"/);
-  assert.match(navigation, /data-nav-destination="events"/);
+  assert.match(navigation, /data-action="groups" data-nav-destination="friends" data-tab="people"/);
   assert.match(navigation, /data-action="open-notifications" data-nav-destination="notifications"/);
   assert.match(navigation, /class="product-nav-badge" hidden/);
   assert.match(navigation, /data-nav-destination="profile"/);
   assert.match(navigation, /aria-label="ניווט ראשי"/);
   assert.doesNotMatch(navigation, /data-public-action="go-home"/);
-  assert.doesNotMatch(navigation, /data-action="join-event-screen"|data-action="groups"/);
-  assert.match(brandLayer, /function focusHomeEvents\(\)/);
+  assert.doesNotMatch(navigation, /data-action="join-event-screen"|data-nav-destination="events"/);
+  assert.match(brandLayer, /primaryNavigationDestinationForScreen\(kind\)/);
   assert.match(brandLayer, /setPrimaryNavigationActiveDestination\(/);
   assert.doesNotMatch(home, /class="home-event-tools/);
   assert.doesNotMatch(home, /data-action="join-event-link"/);
   assert.doesNotMatch(home, /data-action="join-existing-event"/);
   assert.doesNotMatch(home, /data-action="join-event-screen"/);
-  assert.match(home, /class="home-quick-action home-friends-action" data-action="groups" data-tab="people"/);
+  assert.doesNotMatch(home, /home-friends-action|home-benefit-actions/);
 });

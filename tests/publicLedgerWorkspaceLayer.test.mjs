@@ -22,7 +22,7 @@ test("mobile headers, tablet workspaces and compact actions keep safe geometry",
   );
   assert.match(
     ledger,
-    /@media \(min-width: 721px\) and \(max-width: 1366px\) and \(hover: none\) and \(pointer: coarse\)[\s\S]*?body #app \.screen,[\s\S]*?max-width: 960px !important;[\s\S]*?\.product-home-screen\) \{[\s\S]*?max-width: 960px !important;/
+    /@media \(min-width: 721px\) and \(max-width: 1366px\) \{\s*html\.ledger-workspace-v1 body #app \.screen,[\s\S]*?width: min\(calc\(100% - 32px\), 960px\) !important;[\s\S]*?max-width: 960px !important;[\s\S]*?\.product-home-screen\) \{[\s\S]*?max-width: 960px !important;/
   );
   assert.match(
     ledger,
@@ -553,13 +553,15 @@ test("profile identity fields stay stacked at every viewport width", async () =>
 
   assert.match(app, /data-profile-identity="display-name"/);
   assert.match(app, /data-profile-identity="username"/);
+  // Bound each check to the identity rule; later unrelated two-column layouts
+  // must not be mistaken for profile field declarations.
   assert.match(
     layer,
-    /\.profile-identity-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/
+    /\.profile-identity-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\) !important/
   );
   assert.doesNotMatch(
     layer,
-    /\.profile-identity-grid \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/
+    /\.profile-identity-grid \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/
   );
 });
 
@@ -750,7 +752,7 @@ test("core task screens use a distilled progressive-disclosure layer", async () 
   assert.match(layer, /Distilled task surfaces: one clear next action/);
   assert.match(layer, /\.screen\[data-screen-kind="event"\] > \.top \{[\s\S]*?min-height: 140px !important/);
   assert.match(layer, /\.event-personal-balance-copy > small \{[\s\S]*?display: none !important/);
-  assert.match(layer, /\.event-action-total > span:first-child \{[\s\S]*?display: none !important/);
+  assert.doesNotMatch(layer, /\.event-action-total > span:first-child \{\s*display: none !important/);
   assert.match(layer, /\.expense-row-actions-menu > summary/);
   assert.match(layer, /\.expense-actions \{[\s\S]*?display: flex !important;[\s\S]*?flex-wrap: nowrap !important/);
   assert.match(layer, /\.expense-row-actions-icon \{[\s\S]*?width: 18px !important;[\s\S]*?fill: currentColor !important/);
@@ -775,7 +777,7 @@ test("core task screens use a distilled progressive-disclosure layer", async () 
   );
   assert.match(layer, /\.settlement-hero:has\(\.settlement-more-actions\[open\]\) \{[\s\S]*?z-index: 30 !important;[\s\S]*?overflow: visible !important/);
   assert.match(layer, /\.settlement-more-actions > div \{[\s\S]*?position: absolute !important/);
-  assert.match(layer, /\.referral-reward-card\.is-home[\s\S]*?grid-template-columns: 40px minmax\(0, 1fr\) auto !important/);
+  assert.match(layer, /\.referral-reward-card\.is-friends[\s\S]*?grid-template-columns: 40px minmax\(0, 1fr\) auto !important/);
   assert.match(
     layer,
     /\.profile-avatar-options \{[\s\S]*?display: grid !important;[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\) !important;[\s\S]*?overflow: visible !important;/
@@ -807,7 +809,7 @@ test("distilled task surfaces keep mobile controls reachable and narrow rows rea
     layer,
     /\.event-invite-rotate-button \{[\s\S]*?width: auto !important;[\s\S]*?min-height: 44px !important;[\s\S]*?text-decoration: none !important/
   );
-  assert.match(layer, /\.referral-reward-card\.is-home > button \{[\s\S]*?min-height: 44px !important/);
+  assert.match(layer, /\.referral-reward-card\.is-friends > button \{[\s\S]*?min-height: 44px !important/);
   assert.match(layer, /@media \(max-width: 380px\)[\s\S]*?\.event-row-open \{[\s\S]*?grid-template-columns: 70px minmax\(0, 1fr\) !important/);
 });
 
@@ -820,43 +822,28 @@ test("new-event participant actions remain above the persistent iPhone navigatio
   );
   assert.match(
     layer,
-    /dynamic-type-extra-large[\s\S]*?\.screen\[data-event-creation-step\] \{[\s\S]*?padding-bottom: calc\(232px \+ env\(safe-area-inset-bottom\)\) !important;[\s\S]*?\.new-event-participant-footer \{[\s\S]*?bottom: calc\(max\(14px, env\(safe-area-inset-bottom\)\) \+ 148px\) !important/
+    /dynamic-type-extra-large[\s\S]*?\.screen\[data-event-creation-step\] \{[\s\S]*?padding-bottom: calc\(232px \+ env\(safe-area-inset-bottom\)\) !important;[\s\S]*?\.new-event-participant-footer \{[\s\S]*?bottom: calc\(max\(14px, env\(safe-area-inset-bottom\)\) \+ var\(--dynamic-type-bottom-nav-block, 148px\)\) !important/
   );
 });
 
-test("referral rewards present one focused gift card with progressive details", async () => {
-  const [referralLayer, ledgerLayer, coherenceLayer] = await Promise.all([
+test("referral invitation keeps one sharing surface and progressive details", async () => {
+  const [referralLayer, ledgerLayer, coherenceLayer, view] = await Promise.all([
     readFile("src/publicReferralRewardsLayer.mjs", "utf8"),
     readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8"),
-    readFile("src/publicDesignCoherenceLayer.mjs", "utf8")
+    readFile("src/publicDesignCoherenceLayer.mjs", "utf8"),
+    readFile("src/ui/referralInvitationPresentation.mjs", "utf8")
   ]);
-
-  assert.match(referralLayer, /class="referral-dialog-lead"/);
-  assert.match(referralLayer, /class="referral-gift-card"/);
-  assert.match(referralLayer, /class="referral-share-workspace"/);
-  assert.match(referralLayer, /class="referral-qr-card" data-referral-qr/);
-  assert.match(referralLayer, /class="referral-more-details"/);
-  assert.match(referralLayer, /class="referral-link-details"/);
-  assert.match(
-    ledgerLayer,
-    /\.referral-dialog-header \{[\s\S]*?min-height: 92px !important;[\s\S]*?background: rgba\(255, 255, 255, 0\.96\) !important/
-  );
-  assert.match(
-    ledgerLayer,
-    /\.referral-benefit-card \{[\s\S]*?linear-gradient\(136deg, #071f18 0%, #0b4a38 60%, #0f6b50 100%\) !important/
-  );
-  assert.match(
-    ledgerLayer,
-    /\.referral-qr-code svg \{[\s\S]*?outline: 1px solid oklch\(0 0 0 \/ 0\.1\) !important/
-  );
-  assert.match(
-    ledgerLayer,
-    /@media \(max-width: 760px\)[\s\S]*?\.referral-share-workspace \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/
-  );
-  assert.doesNotMatch(
-    coherenceLayer,
-    /:is\(\.event-modal-header, \.expense-modal-header, \.app-choice-picker-header, \.referral-dialog-header\)/
-  );
+  assert.match(referralLayer, /renderReferralInvitationDialogView/);
+  assert.doesNotMatch(view, /class="referral-dialog-lead"/);
+  for (const token of ['class="referral-gift-card"','class="referral-share-workspace"','class="referral-qr-card" data-referral-qr','class="referral-more-details"','class="referral-link-details"']) assert.ok(view.includes(token));
+  const prefix="html.design-coherence-v1.ledger-workspace-v1 body #public-referral-rewards-dialog ";
+  const rule=selector=>{const i=ledgerLayer.indexOf(prefix+selector+'{');assert.ok(i>=0,'Missing approved invitation rule: '+selector);return ledgerLayer.slice(i,ledgerLayer.indexOf('}',i))};
+  assert.match(rule('.referral-dialog-header'),/min-height:72px!important/);
+  assert.match(rule('.referral-dialog-header'),/background:var\(--app-surface\)!important/);
+  assert.match(rule('.referral-benefit-card'),/background:transparent!important/);
+  assert.match(rule('.referral-qr-code svg'),/outline:0!important/);
+  assert.match(rule('.referral-share-workspace'),/flex-direction:column!important/);
+  assert.doesNotMatch(coherenceLayer,/:is\(\.event-modal-header, \.expense-modal-header, \.app-choice-picker-header, \.referral-dialog-header\)/);
 });
 
 test("shared route and progress controls keep Android touch targets at least 44px", async () => {
@@ -922,13 +909,13 @@ test("home makes the new-event action primary and keeps the empty state on the s
   assert.match(layer, /\.product-home-screen > \.top \+ \.home-quick-actions,[\s\S]*?\.top \+ \.app-toast \+ \.home-quick-actions \{\s*margin-top: calc\(-1 \* var\(--home-create-overlap, 28px\)\) !important;/);
   assert.match(
     layer,
-    /@media \(min-width: 721px\) and \(max-width: 1024px\),[\s\S]*?max-width: 960px !important/
+    /@media \(min-width: 721px\) and \(max-width: 1366px\) \{\s*html\.circle-design-v1\.ledger-workspace-v1 body #app\s*\.screen\[data-screen-kind="home"\] \{[\s\S]*?max-width: 960px !important/
   );
   assert.match(layer, /aspect-ratio: 1672 \/ 941 !important/);
   assert.match(layer, /object-fit: contain !important;[\s\S]*?transform: none !important/);
   assert.match(
     layer,
-    /\.product-home-screen \.home-benefit-actions \{[\s\S]*?grid-template-columns: minmax\(0, 1\.48fr\) minmax\(126px, 0\.92fr\) !important/
+    /\.groups-overview-screen \.referral-reward-card\.is-friends \{[\s\S]*?width: 100% !important;[\s\S]*?box-shadow: none !important/
   );
   assert.match(
     layer,
@@ -954,4 +941,18 @@ test("home makes the new-event action primary and keeps the empty state on the s
     layer,
     /\.home-quick-action\.is-primary \.home-quick-action-icon:active:not\(:disabled\) \{[\s\S]*?scale: 0\.96 !important/
   );
+});
+
+
+test("home event archive selector fills two equal centered columns", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+  const selectorRule = layer.match(/\.event-primary-filter \{([^}]+)\}/)?.[1] ?? "";
+  const buttonRule = layer.match(/\.event-primary-filter button \{([^}]+)\}/)?.[1] ?? "";
+  assert.ok(/display: grid !important/.test(selectorRule), "Events/archive must use a two-column layout");
+  assert.ok(/grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/.test(selectorRule), "Both tabs must reserve an equal share of the selector");
+  assert.ok(/min-width: 0 !important/.test(buttonRule));
+  assert.ok(/width: 100% !important/.test(buttonRule));
+  assert.ok(/justify-content: center !important/.test(buttonRule), "Visible labels must stay centered in each half");
+  assert.ok(/text-align: center !important/.test(buttonRule));
+  assert.ok(/min-height: 44px !important/.test(buttonRule), "The tab touch targets must remain usable");
 });

@@ -30,6 +30,8 @@ function lifecycle({ action = async (ctx) => { ctx.eventDialog = null; } } = {})
     eventStatusMenu: null, settlementCelebration: null, settlementCloseConfirmation: null,
     dialogReturnFocus: null, pendingDialogReturnFocus: null, dialogReturnScrollY: 0, pendingDialogReturnScrollY: 0,
     pendingSettingsReturnFocusSection: "", appHistoryDepth: 3, lastNavigationViewKey: "", restoringBrowserHistory: false,
+    // The extracted popstate handler also reads dialog-rewind coordination state.
+    pendingDialogHistoryRewind: null,
     APP_HISTORY_STATE_KEY: "qa-history", NEW_EVENT_FLOW_SCREENS: new Set(),
     document: { body: { classList: { remove() {} } } },
     app: { querySelector: () => null },

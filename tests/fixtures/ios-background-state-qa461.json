@@ -1,0 +1,19 @@
+{
+  "source": "fdce6de7bb15aa0d9122bedbdca1d50acbbcaeae",
+  "run": 38701027824,
+  "attempt": 1,
+  "artifact": 11956791485,
+  "artifactSize": 109853409,
+  "artifactSha256": "3fba90827a28e6e4aa43ea4784dabe4dea7a39a4c47597745e7e5914a1a7bfef",
+  "category": "default",
+  "homePressAtSeconds": 65.7,
+  "firstOSState": 4,
+  "firstRemainingSeconds": 34.525043964385986,
+  "failureScreenshotAtSeconds": 118.58,
+  "diagnosticOSState": 3,
+  "lifecycleBudgetSeconds": 35,
+  "lastPhase": "saved",
+  "capturedPhases": 11,
+  "activationObserved": false,
+  "interpretation": "Observed monitor values only. The local timing model exercises queued asynchronous state delivery; fresh Mac Native remains required."
+}

@@ -1,0 +1,21 @@
+{
+  "source": "a393f2cdef1046e5a5f1a548868a31d5e44002d8",
+  "run": 43257912369,
+  "artifact": 13964234813,
+  "artifactSha256": "448f449a68a2436626a9bd4a3858e47418337af60be7f540601c5c8160a47dd4",
+  "project": "reflow-200",
+  "existingCondition": "!info.project.use.hasTouch",
+  "existingReason": "software keyboard geometry applies to touch profiles",
+  "cases": [
+    {
+      "id": "0865b70856d5378c98db-07c9597a99a6e4c49215",
+      "file": "keyboard-scroll-intent.spec.mjs",
+      "title": "a newer scroll to Next survives an older layout correction at root 16"
+    },
+    {
+      "id": "0865b70856d5378c98db-6fa32820b975fe96ed3d",
+      "file": "keyboard-scroll-intent.spec.mjs",
+      "title": "a newer scroll to Next survives an older layout correction at root 32"
+    }
+  ]
+}

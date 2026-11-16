@@ -7,8 +7,8 @@ export function renderPrimaryNavigation(extraClass = "") {
       <button class="product-nav-button" data-action="home" data-nav-destination="home" type="button">
         ${iconSvg("home")}<span>בית</span>
       </button>
-      <button class="product-nav-button" data-action="home" data-nav-destination="events" type="button">
-        ${iconSvg("calendar")}<span>אירועים</span>
+      <button class="product-nav-button" data-action="groups" data-nav-destination="friends" data-tab="people" type="button">
+        ${iconSvg("users")}<span>חברים</span>
       </button>
       <button class="product-nav-button" data-action="open-notifications" data-nav-destination="notifications" type="button" aria-label="התראות">
         ${iconSvg("bell")}<span>התראות</span><span class="product-nav-badge" hidden aria-hidden="true"></span>

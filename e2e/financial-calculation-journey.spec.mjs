@@ -1,4 +1,9 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test);
 
 const OWNER_ID = "financial-owner";
 const PARTICIPANTS = [
@@ -87,9 +92,9 @@ const seededState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: seededState });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, seededState);
   await page.addInitScript(({ participantId, state }) => {
     localStorage.clear();
     sessionStorage.clear();
@@ -105,7 +110,7 @@ test.beforeEach(async ({ page, request }) => {
     localStorage.setItem("settle-friends-current-participant", participantId);
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, { participantId: OWNER_ID, state: seededState });
-  await page.goto("/");
+  await openHeldRenderedHome(page);
 });
 
 async function openSummary(page, eventId) {

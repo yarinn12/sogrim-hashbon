@@ -3,23 +3,28 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 test("profile offers a compact accessible avatar picker", async () => {
-  const [app, layer, coherenceLayer] = await Promise.all([
+  const [app, layer, coherenceLayer, view] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
     readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8"),
-    readFile("src/publicDesignCoherenceLayer.mjs", "utf8")
+    readFile("src/publicDesignCoherenceLayer.mjs", "utf8"),
+    readFile("src/ui/profileAvatarPresentation.mjs", "utf8")
   ]);
 
   assert.match(app, /function renderProfileAvatarPicker\(\)/);
-  assert.match(app, /name="avatarPreset"/);
-  assert.match(app, /data-action="profile-avatar"/);
-  assert.match(app, /!profileAvatarImageDraft && profileAvatarDraft === preset\.id \? "checked" : ""/);
-  assert.match(app, /class="profile-avatar-picker-shell"/);
-  assert.match(app, /class="profile-avatar-picker-summary"/);
-  assert.match(app, /if \(!localProfile \|\| screen\.name !== "profile"\) return picker/);
+  assert.match(app, /return renderProfileAvatarPickerView\(/);
+  assert.match(app, /selectedPresetId: profileAvatarDraft/);
+  assert.match(app, /hasImage: Boolean\(profileAvatarImageDraft\)/);
+  assert.match(app, /editing: Boolean\(localProfile && screen\.name === "profile"\)/);
+  assert.match(view, /name="avatarPreset"/);
+  assert.match(view, /data-action="profile-avatar"/);
+  assert.match(view, /!hasImage && selectedPresetId === preset\.id \? "checked" : ""/);
+  assert.match(view, /class="profile-avatar-picker-shell avatar-selection-review"/);
+  assert.match(view, /class="profile-avatar-picker-summary"/);
+  assert.match(view, /if \(!editing\) return picker/);
   assert.match(app, /profile-avatar-summary-preview img/);
   assert.match(app, /pickerShell\.open = false/);
-  assert.match(app, /data-action="profile-avatar-image"[^>]*accept="image\/\*"/);
-  assert.match(app, /data-action="profile-avatar-image"[^>]*capture="environment"/);
+  assert.match(view, /data-action="profile-avatar-image"[^>]*accept="image\/\*"/);
+  assert.match(view, /data-action="profile-avatar-image"[^>]*capture="environment"/);
   assert.match(app, /requestImageCrop\(file, \{[\s\S]*?shape: "circle"[\s\S]*?aspectRatio: 1[\s\S]*?outputWidth: 480[\s\S]*?outputHeight: 480/);
   assert.match(app, /if \(!croppedCanvas\) return;[\s\S]*?compressProfileAvatarImage\(croppedCanvas\)/);
   assert.doesNotMatch(app, /data-action="profile-avatar-url"/);

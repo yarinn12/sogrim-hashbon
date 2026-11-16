@@ -116,12 +116,14 @@ test("client creates an authenticated open invite without sending event credenti
         ok: true,
         eventId: EVENT_ID,
         token: TOKEN,
+        referralCode: "0123456789abcdefabcd",
         createdAt: "2026-07-29T10:00:00.000Z"
       });
     }
   );
 
   assert.equal(result.token, TOKEN);
+  assert.equal(result.referralCode, "0123456789abcdefabcd");
   assert.equal(request.url, "https://sogrim.example/api/event-invites/open-link");
   assert.equal(request.options.headers.authorization, "Bearer account-token");
   const body = JSON.parse(request.options.body);
@@ -318,6 +320,13 @@ test("server rotates open links atomically and stores only the token hash", asyn
     if (address.includes("/rest/v1/event_invite_tokens?")) {
       return jsonResponse([]);
     }
+    if (address.includes("/rest/v1/friend_invite_codes?")) {
+      const query = new URL(address).searchParams;
+      assert.equal(query.get("user_id"), `eq.${USER_ID}`);
+      assert.equal(query.get("select"), "code");
+      assert.equal(options.headers.authorization, "Bearer service-role");
+      return jsonResponse([{ code: "0123456789abcdefabcd" }]);
+    }
     if (address.endsWith("/rest/v1/rpc/rotate_open_event_invite")) {
       return jsonResponse("33333333-3333-4333-8333-333333333333");
     }
@@ -336,6 +345,7 @@ test("server rotates open links atomically and stores only the token hash", asyn
 
   assert.equal(result.status, 200);
   assert.equal(result.payload.token, TOKEN);
+  assert.equal(result.payload.referralCode, "0123456789abcdefabcd");
   const rotation = requests.find((item) =>
     item.address.endsWith("/rest/v1/rpc/rotate_open_event_invite")
   );
@@ -345,6 +355,41 @@ test("server rotates open links atomically and stores only the token hash", asyn
   assert.equal(body.p_space_key, SPACE_KEY);
   assert.match(body.p_token_hash, /^[a-f0-9]{64}$/);
   assert.notEqual(body.p_token_hash, TOKEN);
+});
+
+test("a stalled optional referral lookup does not hold an authorized event invite", async () => {
+  const startedAt = Date.now();
+  const result = await manageOpenEventInvite({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-token",
+    eventId: EVENT_ID,
+    operation: "rotate",
+    tokenFactory: () => TOKEN,
+    requestTimeoutMs: 2_400,
+    fetchImpl: async (url) => {
+      const address = String(url);
+      if (address.endsWith("/auth/v1/user")) return jsonResponse({ id: USER_ID });
+      if (address.includes("/rest/v1/app_snapshots?")) {
+        return jsonResponse(address.includes("owner_user_id")
+          ? [{ state: serverState() }]
+          : [sharedSnapshot()]);
+      }
+      if (address.includes("/rest/v1/friend_invite_codes?")) {
+        return new Promise(() => {});
+      }
+      if (address.includes("/rest/v1/event_invite_tokens?")) return jsonResponse([]);
+      if (address.endsWith("/rest/v1/rpc/rotate_open_event_invite")) {
+        return jsonResponse("33333333-3333-4333-8333-333333333333");
+      }
+      throw new Error(`Unexpected request: ${address}`);
+    }
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.token, TOKEN);
+  assert.equal(result.payload.referralCode, "");
+  assert.ok(Date.now() - startedAt < 1_800);
 });
 
 test("server bounds the entire open-link operation when Supabase stops responding", async () => {
@@ -963,6 +1008,7 @@ test("a recovered member replaces an existing invite with canonical credentials 
 });
 
 test("collaborative participants reuse the event open link instead of creating parallel links", async () => {
+  const sharerReferralCode = "0123456789abcdefabcd";
   const participantId = `account-${USER_ID}`;
   const otherParticipantId = `account-${OTHER_USER_ID}`;
   const collaborativeState = serverState();
@@ -1006,6 +1052,14 @@ test("collaborative participants reuse the event open link instead of creating p
           ])
         : jsonResponse([]);
     }
+    if (address.includes("/rest/v1/friend_invite_codes?")) {
+      assert.equal(
+        new URL(address).searchParams.get("user_id"),
+        `eq.${USER_ID}`,
+        "an invite reused from another member must use the current sharer's code"
+      );
+      return jsonResponse([{ code: sharerReferralCode }]);
+    }
     if (address.endsWith("/rest/v1/rpc/rotate_open_event_invite")) {
       return jsonResponse("44444444-4444-4444-8444-444444444444");
     }
@@ -1025,6 +1079,7 @@ test("collaborative participants reuse the event open link instead of creating p
 
   assert.equal(result.status, 200);
   assert.equal(result.payload.token, TOKEN);
+  assert.equal(result.payload.referralCode, sharerReferralCode);
   assert.equal(result.payload.rotated, false);
   assert.equal(
     requests.some((request) =>

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import vm from "node:vm";
 
 import {
   ACCESSIBILITY_PREFERENCES_STORAGE_KEY,
@@ -48,27 +49,28 @@ test("accessibility preferences persist on the device", () => {
 });
 
 test("accessibility center is semantic, persistent and compatible with app navigation", async () => {
-  const [index, app, layer, splash, motion, icons, ledger] = await Promise.all([
+  const [index, app, layer, splash, motion, icons, ledger, presentation] = await Promise.all([
     readFile("index.html", "utf8"),
     readFile("src/app.mjs", "utf8"),
     readFile("src/publicAccessibilityLayer.mjs", "utf8"),
     readFile("src/publicAppSplashLayer.mjs", "utf8"),
     readFile("src/publicFramerMotionLayer.mjs", "utf8"),
     readFile("src/uiIcons.mjs", "utf8"),
-    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8")
+    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8"),
+    readFile("src/ui/accessibilityPresentation.mjs", "utf8")
   ]);
 
   assert.match(index, /publicAccessibilityLayer\.mjs/);
   assert.match(layer, /aria-label="פתיחת הגדרות נגישות"/);
   assert.match(app, /class="secondary-button profile-accessibility-entry" data-open-accessibility/);
-  assert.match(layer, /role="dialog"/);
-  assert.match(layer, /aria-modal="true"/);
-  assert.match(layer, /aria-labelledby="accessibility-center-title"/);
-  assert.match(layer, /aria-describedby="accessibility-center-description"/);
+  assert.match(presentation, /role="dialog"/);
+  assert.match(presentation, /aria-modal="true"/);
+  assert.match(presentation, /aria-labelledby="accessibility-center-title"/);
+  assert.match(presentation, /aria-describedby="accessibility-center-description"/);
   assert.match(layer, /\.accessibility-entry-auth \{[\s\S]*?left: 14px;[\s\S]*?right: auto;/);
-  assert.match(layer, /role="status" aria-live="polite"/);
-  assert.match(layer, /role="switch"/);
-  assert.match(layer, /href="\.\/accessibility\.html"/);
+  assert.match(presentation, /role="status" aria-live="polite"/);
+  assert.match(presentation, /role="switch"/);
+  assert.match(presentation, /href="\.\/accessibility\.html"/);
   assert.match(layer, /min-height: 44px/);
   assert.match(layer, /handleAccessibilityHistoryBack/);
   assert.match(layer, /handleAccessibilityNativeBack/);
@@ -97,3 +99,43 @@ test("accessibility center is semantic, persistent and compatible with app navig
   assert.match(motion, /accessibility-reduced-motion/);
   assert.match(icons, /accessibility:/);
 });
+
+
+async function changeHandlerHarness(kind, value, checked=true) {
+  const layer=await readFile('src/publicAccessibilityLayer.mjs','utf8');
+  const start=layer.indexOf('function handleAccessibilityChange('), end=layer.indexOf('\nfunction ',start+1);
+  const initial={textSize:'extra-large',highContrast:true,reduceMotion:true};
+  const storage=memoryStorage({[ACCESSIBILITY_PREFERENCES_STORAGE_KEY]:JSON.stringify(initial)});
+  const calls={applied:0,synced:0,announced:[],writes:0};
+  const set=storage.setItem.bind(storage);storage.setItem=(...args)=>{calls.writes++;set(...args);};
+  const rootMarker={value:undefined,matches:selector=>selector.includes('data-accessibility-text-size')};
+  class InputControl {
+    constructor(){this.value=value;this.checked=checked;}
+    closest(){return ['text-size','contrast','motion'].includes(kind)?this:rootMarker;}
+    matches(selector){return selector.includes('data-accessibility-'+kind);}
+  }
+  const context=vm.createContext({HTMLInputElement:InputControl,preferences:{...initial},
+    saveAccessibilityPreferences:p=>saveAccessibilityPreferences(p,storage),
+    applyAccessibilityPreferences:()=>{calls.applied++;},syncAccessibilityControls:()=>{calls.synced++;},
+    announceAccessibilityUpdate:message=>calls.announced.push(message)});
+  vm.runInContext(layer.slice(start,end),context);
+  context.handleAccessibilityChange({target:new InputControl()});
+  return{initial,stored:loadAccessibilityPreferences(storage),calls};
+}
+for(const ordinary of ['ordinary-text','ordinary-checkbox','ordinary-select']){
+ test(`ordinary ${ordinary} changes cannot treat the root preference marker as a settings control`,async()=>{
+  const result=await changeHandlerHarness(ordinary,'שם שהוזן');
+  assert.deepEqual(result.stored,result.initial,'a form change must preserve the explicit device text-size choice');
+  assert.equal(result.calls.writes,0);assert.equal(result.calls.applied,0);assert.equal(result.calls.synced,0);assert.deepEqual(result.calls.announced,[]);
+ });
+}
+for(const [kind,value,checked,expected] of [
+ ['text-size','large',true,{textSize:'large',highContrast:true,reduceMotion:true}],
+ ['contrast',undefined,false,{textSize:'extra-large',highContrast:false,reduceMotion:true}],
+ ['motion',undefined,false,{textSize:'extra-large',highContrast:true,reduceMotion:false}]
+]){
+ test(`the actual ${kind} input still saves and applies its chosen preference`,async()=>{
+  const result=await changeHandlerHarness(kind,value,checked);assert.deepEqual(result.stored,expected);
+  assert.equal(result.calls.writes,1);assert.equal(result.calls.applied,1);assert.equal(result.calls.synced,1);assert.equal(result.calls.announced.length,1);
+ });
+}

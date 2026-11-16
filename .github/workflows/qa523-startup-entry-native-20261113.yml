@@ -1,0 +1,12 @@
+name: Native startup entry diagnosis
+on:
+  push:
+    branches: [codex/qa523-startup-entry-20261113]
+permissions:
+  contents: read
+jobs:
+  native:
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/qa523-startup-entry-20261113' && github.event_name == 'push' && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false && github.run_attempt == 1 }}
+    uses: ./.github/workflows/ios-parity-qa.yml
+    with:
+      app_sha: 7fb0cedf21b35eb49c7777e4d5df84441e40b2ec

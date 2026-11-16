@@ -17,9 +17,11 @@ public class MainActivity extends BridgeActivity {
     private static final String WEB_BUNDLE_VERSION_KEY = "installed_version_code";
     private boolean lightStatusBars = true;
     private volatile boolean webSplashReady = false;
+    private boolean refreshWebBundleCacheOnLoad;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        refreshWebBundleCacheOnLoad = savedInstanceState == null;
         long splashDeadline = SystemClock.uptimeMillis() + SPLASH_SAFETY_TIMEOUT_MS;
         SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
         splashScreen.setKeepOnScreenCondition(() -> {
@@ -38,19 +40,25 @@ public class MainActivity extends BridgeActivity {
         }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
-            WebView appWebView = getBridge().getWebView();
-            appWebView.setBackgroundColor(Color.WHITE);
+            getBridge().getWebView().setBackgroundColor(Color.WHITE);
+        }
+    }
 
-            // Capacitor serves bundled files through a local WebView origin. Android can
-            // otherwise retain an older HTTP response after an in-place app update even
-            // though the APK already contains the new assets. Clear only the WebView's
-            // resource cache (not cookies, localStorage, or app data) and reload once when
-            // the installed version changes so users always see the bundled update.
-            if (savedInstanceState == null && shouldRefreshWebBundleCache()) {
+    @Override
+    protected void load() {
+        // BridgeActivity has inflated the WebView, but has not yet built the
+        // Bridge or requested the first bundled page. Invalidate resource cache
+        // at this boundary, retaining cookies and storage without a second load.
+        boolean refreshCache = refreshWebBundleCacheOnLoad;
+        refreshWebBundleCacheOnLoad = false;
+        if (refreshCache) {
+            WebView appWebView = findViewById(com.getcapacitor.android.R.id.webview);
+            if (appWebView != null && shouldRefreshWebBundleCache()) {
                 appWebView.clearCache(true);
-                appWebView.post(appWebView::reload);
+                markWebBundleCacheRefreshed();
             }
         }
+        super.load();
     }
 
     @Override
@@ -77,11 +85,17 @@ public class MainActivity extends BridgeActivity {
         );
         int installedVersion = preferences.getInt(WEB_BUNDLE_VERSION_KEY, -1);
         if (installedVersion == BuildConfig.VERSION_CODE) return false;
+        return true;
+    }
 
-        preferences.edit()
+    private void markWebBundleCacheRefreshed() {
+        if (BuildConfig.NATIVE_QA_WEBVIEW) return;
+
+        // A throwing clear must leave the update pending for the next launch.
+        getSharedPreferences(WEB_BUNDLE_CACHE_PREFS, MODE_PRIVATE)
+            .edit()
             .putInt(WEB_BUNDLE_VERSION_KEY, BuildConfig.VERSION_CODE)
             .apply();
-        return true;
     }
 
     private void applySystemBarStyle() {

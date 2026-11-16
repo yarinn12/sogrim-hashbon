@@ -118,8 +118,8 @@ test("accepted email login shows progress immediately and opens the account with
   const holdUser = new Promise(resolve => { releaseUser = resolve; });
   const counts = await prepareLogin(page, { holdUser });
   try {
-    await expect(page.getByRole("heading", { name: "נכנסת בהצלחה" })).toBeVisible();
-    await expect(page.getByRole("status", { name: "", exact: true })).toContainText("פותחים את החשבון שלך…");
+    await expect(page.getByRole("heading", { name: "פותחים את החשבון" })).toBeVisible();
+    await expect(page.getByRole("status", { name: "", exact: true })).toContainText("עוד רגע והאירועים שלך כאן.");
     await expect(page.locator('input[name="password"]')).toHaveCount(0);
     await expect(page.locator("#app")).toHaveAttribute("inert", "");
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-account-session"))?.user?.id)).toBe(user.id);
@@ -130,7 +130,7 @@ test("accepted email login shows progress immediately and opens the account with
 for (const failOnce of ["user", "workspace"]) {
   test(`accepted email login recovers automatically after a temporary ${failOnce} failure`, async ({ page }) => {
     const counts = await prepareLogin(page, { failOnce });
-    await expect(page.getByText("ההתחברות הצליחה. ננסה שוב לפתוח את החשבון בעוד רגע.", { exact: true })).toBeVisible();
+    await expect(page.getByText("הכניסה הצליחה, אבל עדיין לא הצלחנו לטעון את החשבון.", { exact: true })).toBeVisible();
     await expect(page.locator('input[name="password"]')).toHaveCount(0);
     await expectAccountOpen(page, counts);
     expect(counts.users).toBeGreaterThanOrEqual(2);
@@ -139,7 +139,7 @@ for (const failOnce of ["user", "workspace"]) {
 
 test("email login resumes on reconnect without reopening the app or sending the password twice", async ({ page, context }) => {
   const counts = await prepareLogin(page, { failOnce: "user", offlineAfterAcceptance: true });
-  await expect(page.getByText("ההתחברות הצליחה. ננסה שוב לפתוח את החשבון בעוד רגע.", { exact: true })).toBeVisible();
+  await expect(page.getByText("הכניסה הצליחה, אבל עדיין לא הצלחנו לטעון את החשבון.", { exact: true })).toBeVisible();
   await expect(page.locator("#app")).toHaveAttribute("inert", "");
   await page.waitForTimeout(5_100); // Beyond the recovery timer: offline must not loop requests.
   expect(counts.users).toBe(1);
@@ -158,7 +158,7 @@ test("email completion waits for the account write acknowledgement before reload
   const counts = await prepareLogin(page, { holdWrite });
   try {
     await expect.poll(() => counts.writes).toBeGreaterThan(0);
-    await expect(page.getByRole("heading", { name: "נכנסת בהצלחה" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "פותחים את החשבון" })).toBeVisible();
     await expect(page.locator("#app")).toHaveAttribute("inert", "");
     expect(counts.documents).toBe(1);
   } finally { releaseWrite(); }

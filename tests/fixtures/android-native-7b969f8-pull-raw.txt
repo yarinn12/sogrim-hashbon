@@ -1,0 +1,3 @@
+
+STDERR:
+/data/misc/perfetto-traces/sogrim_ci_38113596895_1_82faf9fb4cbf5f9e.pftrace: 1 file pulled, 0 skipped. 114.9 MB/s (189789438 bytes in 1.575s)

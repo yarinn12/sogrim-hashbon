@@ -1,0 +1,240 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {createSyncNoticePresentation,renderPendingSyncSummary} from "../src/ui/syncNoticePresentation.mjs";
+
+class Node {
+  constructor(document) { this.ownerDocument=document; this.dataset={}; this.children=[]; this.attributes={}; this.classList={add(){}}; this.isConnected=true; this.hidden=false; this.offsetHeight=80; this.scrolled=0; }
+  setAttribute(key,value) { this.attributes[key]=value; }
+  append(...nodes) { for(const node of nodes){node.parentElement=this;this.children.push(node);} }
+  prepend(node) { node.parentElement=this;this.children.unshift(node); }
+  after(node) { this.parentElement.append(node); }
+  replaceChildren() { this.children=[]; }
+  contains(node) { return this.children.some(child=>child===node||child.contains?.(node)); }
+  querySelector() { return null; }
+  querySelectorAll() { return []; }
+  closest() { return null; }
+  scrollIntoView() { this.scrolled++; }
+}
+function harness() {
+  const frames=[],tasks=[],listeners=new Map(),windowListeners=new Map(),document={createElement(){return new Node(document);},createTextNode(textContent){return{textContent}},querySelectorAll(){return[]},visibilityState:'visible'};
+  const listen=(map,type,callback)=>{if(!map.has(type))map.set(type,[]);map.get(type).push(callback);};
+  document.addEventListener=(type,callback)=>listen(listeners,type,callback);
+  document.defaultView={setTimeout(callback){tasks.push(callback);return tasks.length;},addEventListener:(type,callback)=>listen(windowListeners,type,callback)};
+  const app=new Node(document),screen=new Node(document),header=new Node(document);screen.append(header);
+  screen.querySelector=selector=>selector===':scope > .top'?header:null;
+  app.querySelector=selector=>selector===':scope > .screen'?screen:null;
+  document.body=new Node(document);
+  document.querySelector=selector=>selector==='#app'?app:document.body.children.find(node=>node.dataset.syncStatus!==undefined)||screen.children.find(node=>node.dataset.syncStatus!==undefined)||null;
+  const view=createSyncNoticePresentation({document,requestFrame:cb=>frames.push(cb)});
+  return{document,app,screen,view,frames,flush(){while(frames.length)frames.shift()()},flushTasks(){while(tasks.length)tasks.shift()()},dispatch(type,event={}){for(const callback of windowListeners.get(type)||[])callback(event);for(const callback of listeners.get(type)||[])callback(event);},dispatchWindow(type,event={}){for(const callback of windowListeners.get(type)||[])callback(event);}};
+}
+test('sync notice is a polite independently owned live region with source close and escaped text',()=>{
+ const h=harness(),node=h.view.render({status:'offline',message:'<img onerror="bad"> & שגיאה'});
+ assert.equal(node.attributes.role,'status');assert.equal(node.attributes['aria-live'],'polite');assert.equal(node.attributes['aria-atomic'],'true');
+ assert.match(node.className,/sync-inline-notice/);assert.doesNotMatch(node.className,/app-inline-notice/);
+ assert.match(node.innerHTML,/&lt;img/);assert.doesNotMatch(node.innerHTML,/<img|app-toast-icon/);assert.match(node.innerHTML,/data-sync-dismiss/);
+});
+test('sync notice retains its identity after the app replaces the screen DOM',()=>{
+ const h=harness(),node=h.view.render({status:'offline',message:'אין חיבור'});h.view.place('offline');assert.equal(node.parentElement,h.screen);
+ h.screen.children=[];h.document.body.children=[];node.parentElement=null;h.view.place('offline');assert.equal(node.parentElement,h.screen);assert.equal(h.screen.children[0],node);
+ assert.equal(h.view.render({status:'conflict',message:'שינוי ממכשיר אחר'}),node);
+});
+test('explicit dismissal and a newer feedback revision cancel old scroll callbacks',()=>{
+ const h=harness(),node=h.view.render({status:'offline',message:'אין חיבור'});h.view.place('offline');node.hidden=true;h.view.place('');h.flush();assert.equal(node.scrolled,0);
+ node.hidden=false;h.view.place('offline');h.view.render({status:'conflict',message:'שינוי ממכשיר אחר'});h.view.place('conflict');h.flush();assert.equal(node.scrolled,1);
+});
+function summary(events,failureDetails){const h=harness(),target=new Node(h.document);target.dataset.syncAccountEvents=JSON.stringify(events);const options={pendingEventIds:events.map(e=>e.id),failureDetails,document:h.document};renderPendingSyncSummary(target,'אין הרשאה לבצע את השינוי',options);return{...h,target,options};}
+const descendants=root=>root.children.flatMap(node=>[node,...(node.children?descendants(node):[])]);
+
+test('six pending events are not presented as six failed events when only one write was rejected',()=>{
+ const events=Array.from({length:6},(_,i)=>({id:`event-${i+1}`,name:`אירוע ${i+1}`}));
+ const h=summary(events,{failureKind:'permission',eventFailures:[{id:'event-1',failureKind:'permission'}]});
+ const nodes=descendants(h.target),copy=nodes.map(node=>node.textContent||'').join(' ');
+ assert.doesNotMatch(copy,/6 אירועים לא סונכרנו|נחסמה ב־6 אירועים/,
+   'the durable pending inventory is not a count of confirmed failures');
+ assert.match(copy,/השמירה לא הושלמה/);
+ assert.equal(nodes.filter(node=>node.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,1);
+ assert.deepEqual(nodes.filter(node=>node.dataset?.action==='open-event').map(node=>node.dataset.eventId),events.map(event=>event.id),
+   'the changes and their review destinations remain available');
+ assert.equal(nodes.filter(node=>node.dataset?.syncRetry!==undefined).length,1);
+ assert.match(copy,/שמורים במכשיר הזה/);
+});
+
+test('an account-level rejection never claims six separate event permission failures',()=>{
+ const events=Array.from({length:6},(_,i)=>({id:`event-${i+1}`,name:`אירוע ${i+1}`}));
+ const h=summary(events,{failureKind:'permission',eventFailures:[]});
+ const copy=descendants(h.target).map(node=>node.textContent||'').join(' ');
+ assert.doesNotMatch(copy,/6 אירועים לא סונכרנו|נחסמה ב־6 אירועים/);
+ assert.match(copy,/השמירה לא הושלמה/);
+ assert.equal(descendants(h.target).filter(node=>node.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,0);
+ assert.match(copy,/אין הרשאה לבצע את השינוי/,'account-level failure guidance remains available inside the disclosure');
+ assert.equal(descendants(h.target).filter(node=>node.dataset?.action==='open-event').length,6);
+});
+test('pending summary keeps original event identity and per-event failure attribution without rebuilding open details',()=>{
+ const events=[{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],h=summary(events,{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'}]});
+ const nodes=descendants(h.target),links=nodes.filter(n=>n.dataset?.action==='open-event');assert.deepEqual(links.map(n=>[n.dataset.eventId,n.textContent]),events.map(e=>[e.id,e.name]));
+ assert.equal(nodes.filter(n=>n.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,1);
+ assert.doesNotMatch(nodes.find(n=>n.className==='sync-pending-heading').textContent,/הרשאה|נחסמ|אירועים/,
+   'the neutral summary cannot label unknown event outcomes as permission rejections');
+ const details=nodes.find(n=>n.dataset?.syncEventDetails!==undefined);details.open=true;renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',h.options);assert.equal(descendants(h.target).find(n=>n.dataset?.syncEventDetails!==undefined),details);assert.equal(details.open,true);
+});
+test('all confirmed permission failures use a concise warning, retained-on-device guidance and explicit retry',()=>{
+ const events=[{id:'a',name:'<b>שם</b>'},{id:'b',name:'אירוע ב'}],h=summary(events,{failureKind:'permission',eventFailures:events.map(e=>({id:e.id,failureKind:'permission'}))});const nodes=descendants(h.target);
+ assert.equal(nodes.find(n=>n.className==='sync-pending-heading').textContent,'השמירה לא הושלמה');assert.match(nodes.find(n=>n.className==='sync-pending-explanation').textContent,/שמורים במכשיר הזה/);
+ assert.equal(nodes.find(n=>n.dataset?.syncRetry!==undefined).textContent,'נסה לשמור שוב');assert.equal(nodes.find(n=>n.dataset?.eventId==='a').textContent,'<b>שם</b>');
+ assert.equal(nodes.find(n=>n.dataset?.syncEventDetails!==undefined).children[0].textContent,'באילו אירועים?');
+});
+
+test('a per-event failure refresh keeps the pending review details open and both event actions',()=>{
+ const events=[{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],h=summary(events,{failureKind:'permission'});
+ h.target.querySelector=selector=>selector==='[data-sync-event-details]'?descendants(h.target).find(node=>node.dataset?.syncEventDetails!==undefined)||null:null;
+ h.target.querySelector('[data-sync-event-details]').open=true;
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,failureDetails:{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'}]}});
+ assert.equal(h.target.querySelector('[data-sync-event-details]').open,true,'new failure attribution must not close an expanded event review');
+ assert.deepEqual(descendants(h.target).filter(node=>node.dataset?.action==='open-event').map(node=>[node.dataset.eventId,node.textContent]),events.map(event=>[event.id,event.name]));
+ assert.equal(descendants(h.target).filter(node=>node.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,1);
+});
+test('quiet or account-wide pending state never invents event IDs or drops failure guidance',()=>{
+ const h=summary([],{failureKind:'auth'});assert.equal(descendants(h.target).filter(n=>n.dataset?.action==='open-event').length,0);assert.match(descendants(h.target).map(n=>n.textContent||'').join(' '),/אין הרשאה לבצע את השינוי/);
+ renderPendingSyncSummary(h.target,'',h.options);assert.equal(h.target.children.length,0);
+});
+
+test('account save feedback starts as one collapsed disclosure with all recovery actions retained inside',()=>{
+ const h=summary([{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],{failureKind:'permission'});
+ const notice=descendants(h.target).find(n=>n.dataset?.syncPendingNotice!==undefined);
+ assert.ok(notice);assert.equal(notice.open,false);
+ assert.equal(notice.children[0].className,'sync-pending-toggle');
+ assert.equal(notice.children[0].children[0].textContent,'השמירה לא הושלמה');
+ assert.equal(descendants(notice).filter(n=>n.dataset?.syncRetry!==undefined).length,1);
+ assert.equal(descendants(notice).filter(n=>n.dataset?.action==='open-event').length,2);
+});
+
+test('new per-event failure evidence preserves both user-opened disclosure levels',()=>{
+ const events=[{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],h=summary(events,{failureKind:'permission'});
+ h.target.querySelector=selector=>descendants(h.target).find(n=>
+   selector==='[data-sync-pending-notice]'?n.dataset?.syncPendingNotice!==undefined:
+   selector==='[data-sync-event-details]'?n.dataset?.syncEventDetails!==undefined:false)||null;
+ h.target.querySelector('[data-sync-pending-notice]').open=true;
+ h.target.querySelector('[data-sync-event-details]').open=true;
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,
+   failureDetails:{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'}]}});
+ assert.equal(h.target.querySelector('[data-sync-pending-notice]').open,true);
+ assert.equal(h.target.querySelector('[data-sync-event-details]').open,true);
+ assert.equal(descendants(h.target).filter(n=>n.dataset?.action==='open-event').length,2);
+});
+
+test('fresh failure evidence preserves the disclosure, keyboard target and retry button identities',()=>{
+ const events=[{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],h=summary(events,{failureKind:'permission'});
+ const before=descendants(h.target),notice=before.find(n=>n.dataset?.syncPendingNotice!==undefined);
+ const toggle=before.find(n=>n.className==='sync-pending-toggle'),retry=before.find(n=>n.dataset?.syncRetry!==undefined);
+ const details=before.find(n=>n.dataset?.syncEventDetails!==undefined),detailsToggle=details.children[0];
+ const reviews=before.filter(n=>n.dataset?.action==='open-event');
+ notice.open=true;
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,
+   failureDetails:{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'}]}});
+ const after=descendants(h.target);
+ assert.ok(after.includes(notice),'incoming status must not detach the user-opened disclosure');
+ assert.ok(after.includes(toggle),'incoming status must not detach the keyboard target');
+ assert.ok(after.includes(retry),'incoming status must not detach the retry during pointer activation');
+ assert.ok(after.includes(details),'incoming status must not detach the nested disclosure during pointer activation');
+ assert.ok(after.includes(detailsToggle),'incoming status must not detach the nested summary before its native click');
+ assert.ok(reviews.every(review=>after.includes(review)),'incoming status must not detach an unchanged event review action');
+ assert.equal(notice.open,true);
+ assert.equal(after.filter(n=>n.textContent?.includes('— השמירה נחסמה בגלל הרשאה')).length,1);
+});
+test('pending review refreshes names in place and removes stale actions when destinations change',()=>{
+ const h=summary([{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],{failureKind:'permission'});
+ const actions=()=>descendants(h.target).filter(n=>n.dataset?.action==='open-event');
+ const original=actions()[0];
+ h.target.dataset.syncAccountEvents=JSON.stringify([{id:'a',name:'<b>שם חדש</b>'},{id:'b',name:'אירוע ב'}]);
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',h.options);
+ assert.equal(actions()[0],original);assert.equal(original.textContent,'<b>שם חדש</b>');
+ assert.equal(original.attributes['aria-label'],'פתיחת האירוע <b>שם חדש</b> לבדיקת העדכון הממתין');
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,pendingEventIds:['b']});
+ assert.deepEqual(actions().map(n=>n.dataset.eventId),['b']);
+ assert.equal(descendants(h.target).filter(n=>n.dataset?.syncEventDetails!==undefined).length,0);
+ h.target.dataset.syncAccountEvents='[]';
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,pendingEventIds:['b']});
+ assert.equal(actions().length,0,'an unavailable event is not a stale navigation action');
+ assert.match(descendants(h.target).map(n=>n.textContent||'').join(' '),/אירוע שהוסר או אינו זמין/);
+ renderPendingSyncSummary(h.target,'אין הרשאה לבצע את השינוי',{...h.options,pendingEventIds:[]});
+ assert.equal(actions().length,0);
+ assert.match(descendants(h.target).map(n=>n.textContent||'').join(' '),/שמורים במכשיר הזה/);
+});
+
+test('sync presentation has no data or server dependency and ships in both offline inventories',()=>{
+ const source=readFileSync('src/ui/syncNoticePresentation.mjs','utf8');assert.doesNotMatch(source,/from ["'][^"']*(?:data|domain|server)\//);assert.equal(readFileSync('sw.js','utf8').split('"/src/ui/syncNoticePresentation.mjs"').length-1,2);
+});
+
+function gestureSummary(){return summary([{id:'a',name:'אירוע א'},{id:'b',name:'אירוע ב'}],{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'},{id:'b',failureKind:'permission'}]});}
+const explanation=h=>descendants(h.target).find(n=>n.className==='sync-pending-explanation');
+const changedReceipt=h=>({...h.options,failureDetails:{failureKind:'permission',eventFailures:[{id:'a',failureKind:'permission'},{id:'b',failureKind:'rejected'}]}});
+
+test('a receipt keeps the pressed summary stationary until native activation has completed',()=>{
+ const h=gestureSummary(),copy=explanation(h),before=copy.textContent,details=descendants(h.target).find(n=>n.dataset?.syncEventDetails!==undefined);
+ h.dispatch('pointerdown',{pointerId:1,button:0});renderPendingSyncSummary(h.target,'פרטי הכשל החדשים',changedReceipt(h));
+ assert.equal(copy.textContent,before,'reflow must not happen between pointerdown and pointerup');
+ h.dispatch('pointerup',{pointerId:1});assert.equal(copy.textContent,before,'mouseup/click still owns the old geometry');
+ details.open=true;h.flushTasks();assert.match(copy.textContent,/פרטי הכשל החדשים/);assert.equal(details.open,true);
+});
+test('only the newest receipt is displayed after a gesture and caller mutations do not change it',()=>{
+ const h=gestureSummary(),copy=explanation(h),before=copy.textContent;
+ h.dispatch('pointerdown',{pointerId:1,button:0});renderPendingSyncSummary(h.target,'תשובה מוקדמת',changedReceipt(h));
+ const latest=changedReceipt(h);renderPendingSyncSummary(h.target,'התשובה האחרונה',latest);
+ latest.pendingEventIds.length=0;latest.failureDetails.eventFailures[1].failureKind='permission';
+ assert.equal(copy.textContent,before);h.dispatch('pointerup',{pointerId:1});h.flushTasks();
+ assert.match(copy.textContent,/התשובה האחרונה/);assert.doesNotMatch(copy.textContent,/תשובה מוקדמת/);
+ assert.deepEqual(descendants(h.target).filter(n=>n.dataset?.action==='open-event').map(n=>n.dataset.eventId),['a','b']);
+});
+test('overlapping pointers and a new press before the queued task cannot release a receipt early',()=>{
+ const h=gestureSummary(),copy=explanation(h),before=copy.textContent;
+ h.dispatch('pointerdown',{pointerId:1,button:0});h.dispatch('pointerdown',{pointerId:2,button:0});renderPendingSyncSummary(h.target,'הודעה שממתינה למחווה',changedReceipt(h));
+ h.dispatch('pointerup',{pointerId:1});h.flushTasks();assert.equal(copy.textContent,before);
+ h.dispatch('pointerup',{pointerId:2});h.dispatch('pointerdown',{pointerId:3,button:0});h.flushTasks();assert.equal(copy.textContent,before);
+ h.dispatch('pointerup',{pointerId:3});h.flushTasks();assert.match(copy.textContent,/מחווה/);
+ const touch=gestureSummary(),touchCopy=explanation(touch),beforeTouch=touchCopy.textContent,details=descendants(touch.target).find(n=>n.dataset?.syncEventDetails!==undefined),control=details.children[0];control.closest=()=>control;
+ touch.dispatch('pointerdown',{pointerId:4,button:0,target:control,isPrimary:true});touch.dispatch('pointerdown',{pointerId:5,button:0,target:control,isPrimary:false});
+ renderPendingSyncSummary(touch.target,'תשובה למחווה הראשית',changedReceipt(touch));touch.dispatch('pointerup',{pointerId:4,target:control});touch.dispatch('pointerup',{pointerId:5,target:control});touch.flushTasks();
+ assert.equal(touchCopy.textContent,beforeTouch,'a secondary contact does not prove the primary activation has completed');
+ touch.dispatchWindow('click',{pointerId:4,target:control});details.open=true;touch.flushTasks();assert.match(touchCopy.textContent,/הראשית/);
+});
+test('pointer cancellation, window blur and a hidden document release the pending presentation',()=>{
+ for(const release of [h=>h.dispatch('pointercancel',{pointerId:1}),h=>h.dispatchWindow('blur'),h=>{h.document.visibilityState='hidden';h.dispatch('visibilitychange');}]){
+  const h=gestureSummary(),copy=explanation(h),before=copy.textContent;h.dispatch('pointerdown',{pointerId:1,button:0});
+  renderPendingSyncSummary(h.target,'תשובה אחרי ביטול',changedReceipt(h));assert.equal(copy.textContent,before);
+  release(h);h.flushTasks();assert.match(copy.textContent,/אחרי ביטול/);
+ }
+});
+test('a removed notice is never repainted by a stale gesture callback',()=>{
+ const h=gestureSummary(),copy=explanation(h),before=copy.textContent;h.dispatch('pointerdown',{pointerId:1,button:0});
+ renderPendingSyncSummary(h.target,'תשובה ליעד ישן',changedReceipt(h));assert.equal(copy.textContent,before);
+ h.target.isConnected=false;h.dispatch('pointerup',{pointerId:1});h.flushTasks();assert.equal(copy.textContent,before);
+ const fresh=new Node(h.document);fresh.dataset.syncAccountEvents=h.target.dataset.syncAccountEvents;
+ renderPendingSyncSummary(fresh,'תשובה למסך חדש',{...changedReceipt(h),document:h.document});
+ assert.match(descendants(fresh).find(n=>n.className==='sync-pending-explanation').textContent,/למסך חדש/);
+});
+
+test('a delayed native touch click retains the old geometry across tasks after pointerup',()=>{
+ const h=gestureSummary(),copy=explanation(h),before=copy.textContent,details=descendants(h.target).find(n=>n.dataset?.syncEventDetails!==undefined),control=details.children[0];
+ control.closest=()=>control;
+ h.dispatch('pointerdown',{pointerId:7,button:0,target:control,pointerType:'touch'});renderPendingSyncSummary(h.target,'תשובת מגע חדשה',changedReceipt(h));
+ h.dispatch('pointerup',{pointerId:7,target:control,pointerType:'touch'});h.flushTasks();
+ assert.equal(copy.textContent,before,'a task boundary is not proof that native touch activation happened');
+ h.dispatchWindow('click',{target:control});details.open=true;h.flushTasks();
+ assert.match(copy.textContent,/תשובת מגע חדשה/);assert.equal(details.open,true);
+});
+test('non-activating releases and canceled touch or context menus cannot retain a stale presentation',()=>{
+ for(const kind of ['outside','disabled','contextmenu','canceled-touchend','late-pointercancel']){
+  const h=gestureSummary(),copy=explanation(h),details=descendants(h.target).find(n=>n.dataset?.syncEventDetails!==undefined),control=details.children[0];control.closest=()=>control;
+  h.dispatch('pointerdown',{pointerId:8,button:0,target:control,pointerType:'touch'});renderPendingSyncSummary(h.target,'תשובה אחרי ביטול מגע',changedReceipt(h));
+  if(kind==='contextmenu')h.dispatch('contextmenu');
+  else{
+   if(kind==='disabled')control.disabled=true;
+   h.dispatch('pointerup',{pointerId:8,target:kind==='outside'?{closest:()=>null}:control,pointerType:'touch'});
+   if(kind==='canceled-touchend')h.dispatch('touchend',{defaultPrevented:true});
+   if(kind==='late-pointercancel')h.dispatch('pointercancel',{pointerId:8,target:control});
+  }
+  h.flushTasks();assert.match(copy.textContent,/אחרי ביטול מגע/,kind);
+ }
+});

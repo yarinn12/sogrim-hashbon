@@ -130,7 +130,7 @@ test("the first stationary tap opens a participant even while scroll restoration
   await expect(page.locator(".event-participant-management-modal")).toBeVisible();
 });
 
-test("participant removal confirmation uses the shared floating app alert", async ({ page }) => {
+test("participant removal confirmation uses the shared in-flow app notice", async ({ page }) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page
     .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)
@@ -145,12 +145,46 @@ test("participant removal confirmation uses the shared floating app alert", asyn
   const toast = page.locator(".app-toast");
   await expect(toast).toBeVisible();
   await expect(toast).toContainText("הסרנו את משתתף לבדיקה מהאירוע");
-  await expect(toast.locator(".app-toast-icon")).toBeVisible();
-  await expect(toast.locator('[data-action="dismiss-notice"]')).toHaveAttribute(
+  await expect(toast).toHaveClass(/app-inline-notice/);
+  await expect(toast).toHaveCSS("position", "static");
+  await expect(toast).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(toast.locator(".app-toast-icon")).toHaveCount(0);
+  const dismiss = toast.locator('[data-action="dismiss-notice"]');
+  await expect(dismiss).toHaveAttribute(
     "aria-label",
     "סגירת ההודעה"
   );
   await expect(page.locator(".event-participant-notice")).toHaveCount(0);
+  await toast.scrollIntoViewIfNeeded();
+  const geometry = await toast.evaluate(element => {
+    const rect = element.getBoundingClientRect(), close = element.querySelector('[data-action="dismiss-notice"]'), closeRect = close.getBoundingClientRect();
+    const parent = element.parentElement, parentRect = parent.getBoundingClientRect(), style = getComputedStyle(parent);
+    const copy = element.querySelector(".app-toast-copy"), hit = document.elementFromPoint(closeRect.left + closeRect.width / 2, closeRect.top + closeRect.height / 2);
+    const nav = [...document.querySelectorAll(".product-app-nav")].find(node => node.getClientRects().length)?.getBoundingClientRect();
+    return {left: rect.left, right: rect.right, bottom: rect.bottom, viewport: innerWidth,
+      contentLeft: parentRect.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
+      contentRight: parentRect.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight),
+      nextTop: element.nextElementSibling?.getBoundingClientRect().top,
+      closeWidth: closeRect.width, closeHeight: closeRect.height, ownsHit: !!hit && (hit === close || close.contains(hit)),
+      copyClipped: copy.scrollWidth > copy.clientWidth + 1 || copy.scrollHeight > copy.clientHeight + 1,
+      navTop: nav?.top ?? innerHeight};
+  });
+  expect(Math.abs(geometry.left - geometry.contentLeft)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.right - geometry.contentRight)).toBeLessThanOrEqual(1);
+  expect(geometry.left).toBeGreaterThanOrEqual(0);
+  expect(geometry.right).toBeLessThanOrEqual(geometry.viewport);
+  expect(geometry.nextTop).toBeGreaterThanOrEqual(geometry.bottom);
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.navTop);
+  expect(geometry.closeWidth).toBe(44);
+  expect(geometry.closeHeight).toBe(44);
+  expect(geometry.ownsHit).toBe(true);
+  expect(geometry.copyClipped).toBe(false);
+  await dismiss.click();
+  await expect(toast).toHaveCount(0);
+  expect(await page.evaluate(({eventId,peerId}) => {
+    const state = JSON.parse(localStorage.getItem("settle-friends-state"));
+    return state.events.find(event => event.id === eventId).participantIds.includes(peerId);
+  }, {eventId: EVENT_ID, peerId: PEER_ID})).toBe(false);
 });
 
 test("scrolling on an event settings row keeps the settings overview open", async ({ page }) => {

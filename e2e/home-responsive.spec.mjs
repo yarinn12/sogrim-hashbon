@@ -1,4 +1,13 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
+import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
+import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test, {
+  skipTitles: ["a newly joined old event appears first before a nonessential image loads"]
+});
 
 const OWNER_ID = "person-home-responsive-owner";
 const emptyAccountState = {
@@ -46,7 +55,7 @@ const newlyJoinedOldEvent = {
   name: "אירוע ישן שהצטרפתי אליו עכשיו",
   eventType: "standard",
   currency: "ILS",
-  participantIds: [OWNER_ID],
+  participantIds: [OWNER_ID, "another-account"],
   adminIds: [],
   createdByParticipantId: "another-account",
   createdAt: "2024-07-03T08:00:00.000Z",
@@ -62,9 +71,9 @@ const newlyJoinedOldEvent = {
   activityLog: []
 };
 
-test.beforeEach(async ({ page, request }) => {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: emptyAccountState });
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, emptyAccountState);
 
   await page.addInitScript(({ participantId, state }) => {
     localStorage.clear();
@@ -101,7 +110,7 @@ test("home centers new-event across the hero edge in narrow and tablet layouts",
 
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
-    await page.goto("/");
+    await openHeldRenderedHome(page);
     await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
     await waitForHomePresentation(page);
     await expect(page.locator(".home-create-event-action")).toBeVisible();
@@ -112,8 +121,8 @@ test("home centers new-event across the hero edge in narrow and tablet layouts",
       const hero = screen?.querySelector(":scope > .top");
       const copy = hero?.querySelector(".brand");
       const action = screen?.querySelector('[data-action="new-event"]');
-      const promo = screen?.querySelector(".home-empty-visual");
-      const promoImage = promo?.querySelector("img");
+      const promo = screen?.querySelector(".home-first-event-empty");
+      const emptyIcon = promo?.querySelector(".home-list-empty-icon svg");
       const brandImage = screen?.querySelector(".product-brand-image");
       const rect = (element) => {
         const bounds = element?.getBoundingClientRect();
@@ -140,7 +149,8 @@ test("home centers new-event across the hero edge in narrow and tablet layouts",
         wrapperPosition: action ? getComputedStyle(action.parentElement).position : "",
         actionContentFits: action ? action.scrollWidth <= action.clientWidth : false,
         promo: rect(promo),
-        promoImageFit: promoImage ? getComputedStyle(promoImage).objectFit : "",
+        emptyIcon: rect(emptyIcon),
+        emptyImageCount: promo?.querySelectorAll("img").length ?? 0,
         brandImageFit: brandImage ? getComputedStyle(brandImage).objectFit : "",
         brandImageTransform: brandImage ? getComputedStyle(brandImage).transform : ""
       };
@@ -160,8 +170,18 @@ test("home centers new-event across the hero edge in narrow and tablet layouts",
       expect(layout.action.width).toBeGreaterThanOrEqual(44);
       expect(layout.action.width).toBeLessThanOrEqual(190);
     }
-    expect(layout.promo.width / layout.promo.height).toBeCloseTo(1672 / 941, 2);
-    expect(layout.promoImageFit).toBe("contain");
+    // The approved first-empty view uses a real calendar icon and one explanation.
+    // Its former decorative landscape image was removed in the prior home batch.
+    expect(layout.promo).not.toBeNull();
+    expect(layout.promo.left).toBeGreaterThanOrEqual(layout.screen.left);
+    expect(layout.promo.right).toBeLessThanOrEqual(layout.screen.right);
+    expect(layout.emptyImageCount).toBe(0);
+    expect(layout.emptyIcon).not.toBeNull();
+    expect(layout.emptyIcon.width).toBeGreaterThan(0);
+    expect(layout.emptyIcon.height).toBeGreaterThan(0);
+    expect(layout.emptyIcon.width).toBeCloseTo(layout.emptyIcon.height, 1);
+    expect(layout.emptyIcon.left).toBeGreaterThanOrEqual(layout.promo.left);
+    expect(layout.emptyIcon.right).toBeLessThanOrEqual(layout.promo.right);
     expect(layout.brandImageFit).toBe("contain");
     expect(layout.brandImageTransform).toBe("none");
 
@@ -185,12 +205,12 @@ test("home centers new-event across the hero edge in narrow and tablet layouts",
   expect(errors).toEqual([]);
 });
 
-test("the first-event action is identical to the regular new-event action", async ({ page, request }, testInfo) => {
-  await page.goto("/");
+test("the first-event action is identical to the regular new-event action", async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
+  await openHeldRenderedHome(page);
   const emptyAction = await homeCreateActionPresentation(page);
   await expectCenteredHomeCreateAction(page);
 
-  await request.put("/api/state", { data: populatedAccountState });
+  await writeLocalQaStateFresh(fixtureBaseURL, populatedAccountState);
   const populatedPage = await page.context().newPage();
   await populatedPage.addInitScript((state) => {
     localStorage.clear();
@@ -207,7 +227,7 @@ test("the first-event action is identical to the regular new-event action", asyn
     localStorage.setItem("settle-friends-current-participant", state.currentParticipantId);
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, populatedAccountState);
-  await populatedPage.goto("/");
+  await openRenderedHome(populatedPage);
   await expect(populatedPage.locator(".event-row")).toHaveCount(1);
   const populatedAction = await homeCreateActionPresentation(populatedPage);
   await expectCenteredHomeCreateAction(populatedPage);
@@ -222,7 +242,7 @@ test("the first-event action is identical to the regular new-event action", asyn
 });
 
 test("hero-edge action respects large text and inline feedback", async ({ page }, testInfo) => {
-  await page.goto("/?dynamic-type-preview=28");
+  await openHeldRenderedHome(page, { path: "/?dynamic-type-preview=28" });
   await waitForHomePresentation(page);
   await expect(page.locator("html")).toHaveClass(/dynamic-type-preview/);
   await page.locator(".home-create-event-action").scrollIntoViewIfNeeded();
@@ -245,16 +265,21 @@ test("hero-edge action respects large text and inline feedback", async ({ page }
   await expect(page.locator('[data-screen-kind="new-event"]')).toBeVisible();
 });
 
-test("an old event joined today appears first on home", async ({ page, request }) => {
+async function assertRecentlyJoinedOldEventAppearsFirst(page, fixtureBaseURL) {
   const syncedState = {
     ...populatedAccountState,
+    participants: [...populatedAccountState.participants, {
+      id: newlyJoinedOldEvent.createdByParticipantId,
+      displayName: "יוצר האירוע",
+      kind: "user"
+    }],
     events: [...populatedAccountState.events, newlyJoinedOldEvent]
   };
-  await request.put("/api/state", { data: syncedState });
+  await writeLocalQaStateFresh(fixtureBaseURL, syncedState);
   await page.addInitScript((state) => {
     localStorage.setItem("settle-friends-state", JSON.stringify(state));
   }, syncedState);
-  await page.goto("/");
+  await openRenderedHome(page);
   await expect(page.locator(".event-row")).toHaveCount(2);
   await expect(
     page.locator(`.event-row[data-event-id="${newlyJoinedOldEvent.id}"]`)
@@ -262,53 +287,69 @@ test("an old event joined today appears first on home", async ({ page, request }
   await expect(page.locator(".event-row").first()).toContainText(
     newlyJoinedOldEvent.name
   );
+}
+
+test("an old event joined today appears first on home", async ({ page, request , baseURL: nestedFixtureBaseURL}) => {
+  await assertRecentlyJoinedOldEventAppearsFirst(page, nestedFixtureBaseURL);
 });
 
-test("home status labels and counts fit their touch targets at narrow widths", async ({ page, request }, testInfo) => {
-  await request.put("/api/state", { data: populatedAccountState });
+test("a newly joined old event appears first before a nonessential image loads", async ({ page, request, baseURL }) => {
+  const heldImage = await holdNonessentialHomeImage(page, baseURL);
+  try {
+    await assertRecentlyJoinedOldEventAppearsFirst(page, baseURL);
+    expect(heldImage.requested, "the held image must actually be requested").toBe(true);
+    expect(await page.evaluate(() => document.readyState)).toBe("interactive");
+  } finally {
+    heldImage.release();
+  }
+});
+
+// The user retired lifecycle chips. Keep the approved Events/Archive tabs usable.
+test("home events and archive labels fit touch targets and retain their selection", async ({ page, request , baseURL: fixtureBaseURL}, testInfo) => {
+  await writeLocalQaStateFresh(fixtureBaseURL, populatedAccountState);
   await page.addInitScript(state => {
     localStorage.setItem("settle-friends-state", JSON.stringify(state));
   }, populatedAccountState);
-
   const dynamicType = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
   for (const width of [320, 375, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
-    await page.goto(dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/");
+    await openHeldRenderedHome(page, { path: dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/" });
     await waitForHomePresentation(page);
-    const filters = page.locator('.event-lifecycle-filter [data-action="event-lifecycle-filter"]');
-    await expect(filters).toHaveCount(4);
-    const layout = await filters.evaluateAll(buttons => buttons.map(button => {
+    await expect(page.locator('.event-lifecycle-filter')).toHaveCount(0);
+    const tabs = page.locator('.event-primary-filter [data-action="event-status-filter"]');
+    await expect(tabs).toHaveCount(2);
+    await expect(tabs).toHaveText(['אירועים', 'ארכיון']);
+    const layout = await tabs.evaluateAll(buttons => buttons.map(button => {
       const bounds = button.getBoundingClientRect();
-      const content = button.querySelector(".event-lifecycle-option-content");
-      const label = content.firstElementChild;
-      const range = document.createRange();
-      range.selectNodeContents(label);
-      const textRects = [...range.getClientRects()];
-      const count = content.querySelector(".font-num").getBoundingClientRect();
-      return {
-        label: label.textContent,
-        width: bounds.width,
-        height: bounds.height,
-        overflow: button.scrollWidth - button.clientWidth,
-        textFits: textRects.every(rect => rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1),
-        countFits: count.left >= bounds.left && count.right <= bounds.right && count.top >= bounds.top && count.bottom <= bounds.bottom,
-        countBottom: count.bottom,
-        columns: getComputedStyle(button.parentElement).gridTemplateColumns,
-        fontSize: getComputedStyle(label).fontSize
-      };
+      const label = button.querySelector('span');
+      const range = document.createRange(); range.selectNodeContents(label);
+      return { label: label.textContent, left:bounds.left, right:bounds.right,
+        top:bounds.top, bottom:bounds.bottom, width:bounds.width, height:bounds.height,
+        overflow:button.scrollWidth-button.clientWidth,
+        textFits:[...range.getClientRects()].every(rect => rect.left>=bounds.left-1
+          && rect.right<=bounds.right+1 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1) };
     }));
-    for (const item of layout) {
-      expect(item.overflow, `${width}px: ${JSON.stringify(item)}`).toBeLessThanOrEqual(1);
-      expect(item.textFits, `${width}px: ${JSON.stringify(item)}`).toBe(true);
-      expect(item.countFits, `${width}px: ${JSON.stringify(item)}`).toBe(true);
-      expect(item.width).toBeGreaterThanOrEqual(44);
-      expect(item.height).toBeGreaterThanOrEqual(44);
+    for(const item of layout) {
+      const context=width+'px: '+JSON.stringify(item);
+      expect(item.overflow,context).toBeLessThanOrEqual(1);
+      expect(item.textFits,context).toBe(true);
+      expect(item.width,context).toBeGreaterThanOrEqual(44);
+      expect(item.height,context).toBeGreaterThanOrEqual(44);
     }
-    expect(Math.max(...layout.map(item => item.countBottom)) - Math.min(...layout.map(item => item.countBottom))).toBeLessThanOrEqual(1);
-    await filters.filter({ hasText: "מוסיפים הוצאות" }).click();
-    await expect(page.locator('.event-lifecycle-filter [data-filter="adding"]')).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator(".event-row")).toHaveCount(1);
-    await page.screenshot({ path: testInfo.outputPath(`home-status-labels-${width}.png`) });
+    const [first,second]=layout;
+    const overlapWidth=Math.min(first.right,second.right)-Math.max(first.left,second.left);
+    const overlapHeight=Math.min(first.bottom,second.bottom)-Math.max(first.top,second.top);
+    expect(Math.min(overlapWidth,overlapHeight),`${width}px: tabs must not overlap`).toBeLessThanOrEqual(1);
+    const archive=tabs.filter({hasText:'ארכיון'}), events=tabs.filter({hasText:'אירועים'});
+    await archive.click();
+    await expect(archive).toHaveAttribute('aria-pressed','true');
+    await expect(events).toHaveAttribute('aria-pressed','false');
+    await expect(page.locator('.event-row')).toHaveCount(0);
+    await events.click();
+    await expect(events).toHaveAttribute('aria-pressed','true');
+    await expect(archive).toHaveAttribute('aria-pressed','false');
+    await expect(page.locator('.event-row')).toHaveCount(1);
+    await page.screenshot({ path: testInfo.outputPath(`home-events-archive-${width}.png`) });
   }
 });
 
@@ -351,27 +392,40 @@ async function expectCenteredHomeCreateAction(page) {
     const hero = element.querySelector(":scope > .top").getBoundingClientRect();
     const button = element.querySelector('[data-action="new-event"]');
     const action = button.getBoundingClientRect();
+    const icon = button.querySelector("svg").getBoundingClientRect();
+    const label = button.querySelector("strong").getBoundingClientRect();
+    const contentStart = Math.min(icon.left, label.left);
+    const contentEnd = Math.max(icon.right, label.right);
     const copy = element.querySelector(":scope > .top .brand").getBoundingClientRect();
-    const benefits = element.querySelector(".home-benefit-actions").getBoundingClientRect();
+    const eventsSection = element.querySelector(":scope > .section").getBoundingClientRect();
     const wrapper = element.querySelector(".home-quick-actions");
     return {
       directChild: wrapper.parentElement === element,
       centerOffset: Math.abs((action.left + action.right - hero.left - hero.right) / 2),
+      iconLabelGap: Math.max(icon.left, label.left) - Math.min(icon.right, label.right),
+      contentCenterOffset: Math.abs((contentStart + contentEnd - action.left - action.right) / 2),
+      contentVerticalOffset: Math.abs((icon.top + icon.bottom - label.top - label.bottom) / 2),
+      tapHeight: action.height,
       edgeOffset: Math.abs((action.top + action.bottom) / 2 - hero.bottom),
       copyGap: action.top - copy.bottom,
       bothHalvesClickable: [0.25, 0.75].every((fraction) =>
         button.contains(document.elementFromPoint((action.left + action.right) / 2, action.top + action.height * fraction))
       ),
-      benefitsGap: benefits.top - action.bottom,
+      eventsGap: eventsSection.top - action.bottom,
       withinHeroWidth: action.left >= hero.left && action.right <= hero.right
     };
   });
   expect(placement.directChild).toBe(true);
   expect(placement.centerOffset).toBeLessThanOrEqual(1);
+  expect(placement.iconLabelGap).toBeGreaterThanOrEqual(6);
+  expect(placement.iconLabelGap).toBeLessThanOrEqual(10);
+  expect(placement.contentCenterOffset).toBeLessThanOrEqual(1);
+  expect(placement.contentVerticalOffset).toBeLessThanOrEqual(1);
+  expect(placement.tapHeight).toBeGreaterThanOrEqual(44);
   expect(placement.edgeOffset).toBeLessThanOrEqual(3);
   expect(placement.copyGap).toBeGreaterThanOrEqual(0);
   expect(placement.bothHalvesClickable).toBe(true);
-  expect(placement.benefitsGap).toBeGreaterThanOrEqual(12);
+  expect(placement.eventsGap).toBeGreaterThanOrEqual(12);
   expect(placement.withinHeroWidth).toBe(true);
 }
 
@@ -398,3 +452,43 @@ async function waitForHomePresentation(page) {
   // 500ms. Measure only the settled layout, never a translucent mid-frame.
   await page.waitForTimeout(600);
 }
+
+
+test("events and archive tabs fill equal halves with centered labels", async ({ page, request , baseURL: fixtureBaseURL}) => {
+  await writeLocalQaStateFresh(fixtureBaseURL, populatedAccountState);
+  await page.addInitScript(state => {
+    localStorage.setItem("settle-friends-state", JSON.stringify(state));
+  }, populatedAccountState);
+  for (const width of [320, 393, 411, 768]) {
+    await page.setViewportSize({ width, height: 852 });
+    await openHeldRenderedHome(page);
+    await waitForHomePresentation(page);
+    const selector = page.getByRole("group", { name: "אירועים וארכיון", exact: true });
+    for (const name of ["ארכיון", "אירועים"]) {
+      await selector.getByRole("button", { name, exact: true }).click();
+      const layout = await selector.evaluate(element => {
+        const box = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const buttons = [...element.querySelectorAll("button")].map(button => {
+          const b = button.getBoundingClientRect();
+          const label = button.querySelector("span").getBoundingClientRect();
+          return { left: b.left, right: b.right, width: b.width, height: b.height,
+            centerOffset: Math.abs((label.left + label.right - b.left - b.right) / 2),
+            textFits: button.scrollWidth <= button.clientWidth + 1 };
+        });
+        return { buttons, available: element.clientWidth - parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight) - parseFloat(style.columnGap),
+          contained: buttons.every(button => button.left >= box.left && button.right <= box.right) };
+      });
+      expect(layout.buttons).toHaveLength(2);
+      expect(Math.abs(layout.buttons[0].width - layout.buttons[1].width)).toBeLessThanOrEqual(1);
+      for (const button of layout.buttons) {
+        expect(Math.abs(button.width - layout.available / 2)).toBeLessThanOrEqual(1);
+        expect(button.centerOffset).toBeLessThanOrEqual(1);
+        expect(button.height).toBeGreaterThanOrEqual(44);
+        expect(button.textFits).toBe(true);
+      }
+      expect(layout.contained).toBe(true);
+    }
+  }
+});

@@ -1,0 +1,11 @@
+# QA536 FX selector render synchronization
+
+The original [QA536 cross-platform run](https://github.com/yarinn12/sogrim-hashbon/actions/runs/43683623214) rejected one originally flaky Desktop WebKit case. The conversion-removal/re-conversion journey timed out at the optional FX details getter; 241 other cases passed in that shard. Its successful retry is not accepted as a release gate.
+
+Original artifact14151586586 was retained locally and verified at38,406,610 bytes, SHA256 `63d48535497b125d651e86011dbe30a68152bf2606b78e6b5e4982074b35d410`, and all ZIP CRCs. The trace records the real ILS choice, a details count of1, then an attribute request2.221ms after that count completed. The details panel disappeared during the scheduled render. The failure screenshot shows ILS, no conversion controls, and the expected amount-reset explanation. The test helper waited for a panel that correctly no longer existed.
+
+The helper now waits for the selected currency value and verifies panel absence for event currency, or panel presence for a foreign currency, before opening optional details. A missing foreign-currency panel and a retained base-currency panel both fail. No currency conversion, application rendering, persistence, Native source, database, timeout, or original financial assertion changes are included.
+
+Eight permanent normal-suite controls exercise the actual helper. OLD passes2 and fails6; FINAL passes all8. A deterministic real-DOM control captures an actual positive foreign-panel observation, performs the real ILS selection, verifies its completed render, then delivers that prior count at the helper boundary. OLD fails by querying the removed panel; FINAL passes. This preserves the interleaving shown by the original trace without delaying or modifying application callbacks.
+
+All eight browser cases, including the seven unchanged original financial journeys and the real-DOM control, pass in32 desktop/compact-browser cases and40 Android, iPhone, iPad, enlarged-text and reflow cases. There are no retries, flaky cases or skips. The ordinary90-second test and8-second assertion budgets remain unchanged. All four CI lanes and all68 required original-attempt jobs on the new exact source are still required before signing or delivery.

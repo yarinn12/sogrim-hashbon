@@ -56,6 +56,7 @@ export function saveFailureKind(error) {
   }
   const has = (...codes) => errors.some(item => codes.includes(item.code));
   const status = (...values) => errors.some(item => values.includes(Number(item.status)));
+  if (has("CLOUD_FX_CONFLICT")) return "fx-conflict";
   if (has("STALE_ACCOUNT")) return "stale-account";
   if (has("LOCAL_STORAGE_UNAVAILABLE") || errors.some(item => item.name === "QuotaExceededError")) return "storage";
   if (status(403) || has("SHARED_EVENT_MEMBERSHIP_REVOKED", "SHARED_EVENT_CREATE_NOT_ALLOWED")) return "permission";
@@ -80,6 +81,7 @@ export function saveFailureMessage(result, prefix = "השינוי לא נשמר.
     permission: "אין לחשבון הרשאה לבצע את השינוי הזה. בקשו ממנהל האירוע לבדוק את ההרשאות.",
     auth: "החיבור לחשבון פג. התחברו מחדש ונסו שוב.",
     conflict: "המידע השתנה במכשיר אחר. בדקו את הגרסה המעודכנת לפני ניסיון נוסף.",
+    "fx-conflict": "פרטי המטבע או הסכום של ההוצאה השתנו. פתחו אותה מחדש ובדקו את הסכום והשער לפני שמירה.",
     rejected: "השינוי לא התקבל בשרת. בדקו את הפרטים לפני ניסיון נוסף.",
     missing: "הפריט כבר אינו זמין. חזרו לאירוע ובדקו אם הוסר.",
     server: "השרת אינו זמין כרגע. אפשר לנסות שוב מאוחר יותר.",
@@ -102,7 +104,8 @@ export function pendingSaveMessage(failureKind = "") {
     missing: "הפריט כבר אינו זמין. חזרו לאירוע ובדקו אם הוסר.",
     storage: "האחסון במכשיר אינו זמין. פנו מקום ונסו שוב.",
     unavailable: "אירעה תקלה בשמירה. אפשר לנסות שוב.",
-    conflict: "המידע השתנה במכשיר אחר. בדקו את הגרסה המעודכנת לפני ניסיון נוסף."
+    conflict: "המידע השתנה במכשיר אחר. בדקו את הגרסה המעודכנת לפני ניסיון נוסף.",
+    "fx-conflict": "פרטי המטבע או הסכום של ההוצאה השתנו. פתחו אותה מחדש ובדקו את הסכום והשער לפני שמירה."
   };
   return actionRequired[failureKind] || "";
 }

@@ -10,6 +10,7 @@ import {
   parseInviteSpaceKey
 } from "../domain/cloudSpace.mjs";
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import { normalizeReferralCode } from "../domain/referralCodes.mjs";
 
 export const EVENT_OPEN_INVITE_TOKEN_FIELD = "openInviteToken";
 
@@ -211,6 +212,7 @@ async function manageOpenEventInvite(
   return {
     eventId,
     token,
+    referralCode: normalizeReferralCode(payload?.referralCode),
     createdAt: String(payload?.createdAt ?? ""),
     rotated: Boolean(payload?.rotated)
   };

@@ -1,0 +1,80 @@
+{
+  "run": 38723325723,
+  "source": "ac50be0e2af336f007b1ab2f702339eb1cebaf27",
+  "artifact": 11967743798,
+  "zipBytes": 49456973,
+  "zipSha256": "4873478576b9b9004a387c9bd84d97ddaeaa7050411e681e380392459234dcfd",
+  "reportStats": {
+    "total": 482,
+    "expected": 478,
+    "unexpected": 0,
+    "flaky": 0,
+    "skipped": 4,
+    "ok": true
+  },
+  "scopeSkips": [
+    {
+      "testId": "06542729a15bf49d6364-986e29ca6f4be1216020",
+      "projectName": "desktop-chromium",
+      "file": "e2e/account-auth-feedback.spec.mjs",
+      "title": "touching the login fields focuses them on iPad and opens the software-input path",
+      "outcome": "skipped",
+      "retry": 0,
+      "results": 1,
+      "annotations": [
+        {
+          "type": "skip",
+          "description": "the software-input path only exists in touch contexts"
+        }
+      ]
+    },
+    {
+      "testId": "06542729a15bf49d6364-d7d7942d60c9f200e4c7",
+      "projectName": "desktop-firefox",
+      "file": "e2e/account-auth-feedback.spec.mjs",
+      "title": "touching the login fields focuses them on iPad and opens the software-input path",
+      "outcome": "skipped",
+      "retry": 0,
+      "results": 1,
+      "annotations": [
+        {
+          "type": "skip",
+          "description": "the software-input path only exists in touch contexts"
+        }
+      ]
+    },
+    {
+      "testId": "06542729a15bf49d6364-dab38be1b99e3de8e141",
+      "projectName": "desktop-webkit",
+      "file": "e2e/account-auth-feedback.spec.mjs",
+      "title": "touching the login fields focuses them on iPad and opens the software-input path",
+      "outcome": "skipped",
+      "retry": 0,
+      "results": 1,
+      "annotations": [
+        {
+          "type": "skip",
+          "description": "the software-input path only exists in touch contexts"
+        }
+      ]
+    },
+    {
+      "testId": "06542729a15bf49d6364-1b8fd69c83adf4e788a6",
+      "projectName": "compact-firefox",
+      "file": "e2e/account-auth-feedback.spec.mjs",
+      "title": "touching the login fields focuses them on iPad and opens the software-input path",
+      "outcome": "skipped",
+      "retry": 0,
+      "results": 1,
+      "annotations": [
+        {
+          "type": "skip",
+          "description": "the software-input path only exists in touch contexts"
+        }
+      ]
+    }
+  ],
+  "originalHtmlReportSha256": "bcec6495cac98687b84a437012499844754b959998cfea566147b03682a1c5bb",
+  "originalFullFileReportSha256": "bab969711118046b99a8a95cffe5794b926f0a9b7b417d2f4e48881c5c736d2f",
+  "htmlWasNotExecuted": true
+}

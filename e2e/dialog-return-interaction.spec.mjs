@@ -1,4 +1,9 @@
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
+import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test);
 
 test.use({ reducedMotion: "no-preference", serviceWorkers: "block" });
 const runtimeErrors = new WeakMap();
@@ -7,7 +12,7 @@ test.afterEach(async ({ page }) => {
   expect(runtimeErrors.get(page) ?? []).toEqual([]);
 });
 
-test.beforeEach(async ({ page, request }) => {
+test.beforeEach(async ({ page, request , baseURL: fixtureBaseURL}) => {
   const owner = "person-return-focus-owner", eventId = "event-return-focus";
   const state = {
     currentParticipantId: owner,
@@ -18,8 +23,8 @@ test.beforeEach(async ({ page, request }) => {
       createdAt: "2026-09-01T08:00:00.000Z", updatedAt: "2026-09-01T08:00:00.000Z",
       expenses: [], transfers: [], notes: [], activityLog: [] }]
   };
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: state });
+  await resetLocalQaStateFresh(fixtureBaseURL);
+  await writeLocalQaStateFresh(fixtureBaseURL, state);
   await page.addInitScript(({ state, owner }) => {
     localStorage.clear(); sessionStorage.clear();
     localStorage.setItem("settle-friends-state", JSON.stringify(state));
@@ -49,7 +54,7 @@ test.beforeEach(async ({ page, request }) => {
   const errors = [];
   runtimeErrors.set(page, errors);
   page.on("pageerror", error => errors.push(error.message));
-  await page.goto("/");
+  await openHeldRenderedHome(page);
   await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
   await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
   await page.locator('[data-action="open-event-notes"]').click();

@@ -1,0 +1,107 @@
+name: Diagnostic only Android host CPU profile stdout 2d4
+
+on:
+  push:
+    branches: [codex/android-host-profile-stdout-2d4-20261107]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnostic-only-not-release-acceptance:
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/android-host-profile-stdout-2d4-20261107' && github.event.created == true && github.event.deleted == false && github.event.forced == false && github.run_attempt == 1 && github.run_number == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
+    steps:
+      # This exact first push starts the diagnostic. Review before pushing.
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Checkout original application bytes
+        uses: actions/checkout@v6
+        with:
+          ref: 2d4a973a197a2228fcd134f01d6763f500fd63bb
+          path: app
+          persist-credentials: false
+      - name: Checkout exact original QA tools
+        uses: actions/checkout@v6
+        with:
+          ref: d0c7bd1040993d15e382e48865e21c72ca8b3236
+          path: original-tools
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Check diagnostic controls before any emulator
+        run: node --test tests/androidHostProfile.test.mjs tests/androidHostProfileInfo.test.mjs tests/androidHostProfileStdout.test.mjs
+      - name: Verify exact application and tools identity
+        run: |
+          set -euo pipefail
+          node --input-type=module -e 'import {requireInvocation} from "./scripts/qa/android-host-profile/contract.mjs";requireInvocation(process.env)'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git -C original-tools rev-parse HEAD)" = 'd0c7bd1040993d15e382e48865e21c72ca8b3236'
+          test "$(git -C original-tools rev-parse 'HEAD^{tree}')" = '6c8c8afe3315d3f86f96c4805aae23894a7aa210'
+          python3 scripts/qa/android-host-profile/artifact.py verify-source "$GITHUB_WORKSPACE/app"
+          cp -R original-tools/scripts/qa/android-native-isolated/. app/scripts/qa/android-native-isolated/
+          python3 scripts/qa/android-host-profile/artifact.py verify-source "$GITHUB_WORKSPACE/app"
+      - name: Install only the official Ubuntu bpftrace package
+        run: |
+          set -euo pipefail
+          mkdir -p app/artifacts/android-host-profile/tool-install
+          sudo apt-get update > app/artifacts/android-host-profile/tool-install/apt-update.log 2>&1
+          apt-cache policy bpftrace > app/artifacts/android-host-profile/tool-install/apt-policy.log
+          sudo apt-get install --yes --no-install-recommends bpftrace > app/artifacts/android-host-profile/tool-install/apt-install.log 2>&1
+          dpkg-query -W bpftrace > app/artifacts/android-host-profile/tool-install/package-version.log
+      - name: Match recorded QA496 SDK configuration and d23 binary reference
+        run: |
+          set -euo pipefail
+          mkdir -p app/artifacts/android-native-isolated
+          sdk_bin="$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -1)")"
+          test -x "$sdk_bin/sdkmanager"
+          "$sdk_bin/sdkmanager" --install 'platforms;android-36' 'build-tools;36.1.0' 'platform-tools' 'emulator' 'system-images;android-36.1;google_apis_playstore;x86_64' > app/artifacts/android-native-isolated/sdk-install.log 2>&1
+          python3 scripts/qa/android-host-profile/artifact.py verify-sdk "$ANDROID_HOME" > app/artifacts/android-native-isolated/sdk-match.json
+          echo "ANDROID_QA_AVDMANAGER=$sdk_bin/avdmanager" >> "$GITHUB_ENV"
+          test -c /dev/kvm
+          sudo setfacl -m "u:$USER:rw" /dev/kvm
+      - name: Verify original immutable APK before boot without rebuilding
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error --connect-timeout 15 --max-time 120 \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            "$GITHUB_API_URL/repos/yarinn12/sogrim-hashbon/actions/artifacts/13534285250/zip" \
+            --output "$RUNNER_TEMP/original-2d4-artifact.zip"
+          python3 scripts/qa/android-host-profile/artifact.py prepare "$RUNNER_TEMP/original-2d4-artifact.zip" "$GITHUB_WORKSPACE/app" > app/artifacts/android-native-isolated/original-apk-validation.log 2>&1
+          "$ANDROID_HOME/build-tools/36.1.0/aapt" dump badging app/android/app/build/outputs/apk/debug/app-debug.apk > app/artifacts/android-native-isolated/apk-badging.txt
+          grep -q "package: name='com.sogrimhashbon.app.debug'" app/artifacts/android-native-isolated/apk-badging.txt
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs app/android/app/build/outputs/apk/debug/app-debug.apk > app/original-debug-certificate.txt
+      - name: Run one original ASG workload with owned host CPU profile
+        run: |
+          set -euo pipefail
+          ulimit -c 0
+          node scripts/qa/android-host-profile/runner.mjs
+      - name: Publish diagnostic interpretation even when technical commands failed
+        if: always()
+        run: |
+          node --input-type=module -e 'import fs from "node:fs";const p="app/artifacts/android-host-profile/diagnostic-result.json";let summary="No complete diagnostic result; preparation/execution failed.\n";if(fs.existsSync(p)){const r=JSON.parse(fs.readFileSync(p,"utf8"));summary=JSON.stringify({diagnosticOutcome:r.diagnosticOutcome,technicalExitCode:r.technicalExitCode,originalSourceGate:r.originalSourceGate,targetAnr:r.workload?.targetAnr,totalSamples:r.profile?.parsed?.totalSamples,profileDataAvailability:r.profileDataAvailability,offlineAnalysisReady:r.offlineAnalysisReady,offlineFunctionAvailability:r.profile?.offlineAnalysis?.decoding?.functionAttributionAvailability,nativeAcceptance:r.nativeAcceptance,releaseAcceptance:r.releaseAcceptance},null,2);}fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"Host CPU profile only; original source remains failed; no causal or release acceptance.\n\n"+summary);'
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: diagnostic-only-host-profile-stdout-2d4-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            app/artifacts/android-host-profile/
+            app/artifacts/android-native-isolated/
+            app/original-debug-certificate.txt
+          if-no-files-found: error
+          retention-days: 14

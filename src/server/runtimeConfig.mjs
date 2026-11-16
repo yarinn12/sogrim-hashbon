@@ -1,4 +1,5 @@
 import { canonicalizePublicUrl } from "../domain/publicOrigin.mjs";
+import { decideNativeUpdate, validNativeStoreUrl } from "../domain/appUpdatePolicy.mjs";
 
 const SNAPSHOT_TABLE = "app_snapshots";
 const DEFAULT_ANDROID_AD_BUILD = 28;
@@ -70,10 +71,21 @@ export function getRuntimeConfig(env = process.env, trustedPublicUrl = "") {
     },
     updates: {
       android: {
-        minimumSupportedBuild: nonNegativeInteger(
+        minimumSupportedBuild: updateBuild(
           env.ANDROID_MIN_SUPPORTED_BUILD
         ),
+        latestAvailableBuild: updateBuild(env.ANDROID_LATEST_AVAILABLE_BUILD),
+        releaseAvailableToAll: parseBoolean(env.ANDROID_UPDATE_FULLY_AVAILABLE),
+        critical: parseBoolean(env.ANDROID_UPDATE_CRITICAL),
         storeUrl: ANDROID_STORE_URL
+      },
+      ios: {
+        minimumSupportedBuild: updateBuild(env.IOS_MIN_SUPPORTED_BUILD),
+        latestAvailableBuild: updateBuild(env.IOS_LATEST_AVAILABLE_BUILD),
+        releaseAvailableToAll: parseBoolean(env.IOS_UPDATE_FULLY_AVAILABLE),
+        critical: parseBoolean(env.IOS_UPDATE_CRITICAL),
+        storeUrl: validNativeStoreUrl("ios", env.IOS_APP_STORE_URL)
+          ? String(env.IOS_APP_STORE_URL).trim() : ""
       }
     },
     monetization: {
@@ -140,12 +152,15 @@ export function getClientRuntimeConfig(
   const monetization = config?.monetization ?? {};
   const updates = config?.updates ?? {};
   const androidUpdates = updates.android ?? {};
-  const clientBuild = nonNegativeInteger(build);
+  const iosUpdates = updates.ios ?? {};
+  const clientBuild = updateBuild(build);
   const normalizedPlatform = String(platform).trim().toLowerCase();
   const isAndroid = normalizedPlatform === "android";
-  const minimumSupportedBuild = nonNegativeInteger(
+  const isIos = normalizedPlatform === "ios";
+  const minimumSupportedBuild = updateBuild(
     androidUpdates.minimumSupportedBuild
   );
+  const minimumIosBuild = updateBuild(iosUpdates.minimumSupportedBuild);
   const minimumAndroidBuild = positiveInteger(
     monetization.minimumAndroidBuild,
     DEFAULT_ANDROID_AD_BUILD
@@ -170,13 +185,14 @@ export function getClientRuntimeConfig(
         ...androidUpdates,
         minimumSupportedBuild,
         currentBuild: isAndroid ? clientBuild : 0,
-        required: Boolean(
-          isAndroid &&
-          clientBuild > 0 &&
-          minimumSupportedBuild > 0 &&
-          clientBuild < minimumSupportedBuild
-        ),
+        required: isAndroid && decideNativeUpdate("android", clientBuild, androidUpdates).kind === "required",
         storeUrl: ANDROID_STORE_URL
+      },
+      ios: {
+        ...iosUpdates,
+        minimumSupportedBuild: minimumIosBuild,
+        currentBuild: isIos ? clientBuild : 0,
+        required: isIos && decideNativeUpdate("ios", clientBuild, iosUpdates).kind === "required"
       }
     },
     monetization: {
@@ -228,6 +244,13 @@ function percentage(value) {
 function nonNegativeInteger(value) {
   const number = Number.parseInt(value, 10);
   return Number.isFinite(number) ? Math.max(0, number) : 0;
+}
+
+function updateBuild(value) {
+  const raw = String(value ?? "").trim();
+  if (!/^(?:0|[1-9]\d*)$/.test(raw)) return 0;
+  const number = Number(raw);
+  return Number.isSafeInteger(number) ? number : 0;
 }
 
 function positiveInteger(value, fallback) {

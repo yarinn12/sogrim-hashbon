@@ -10,7 +10,12 @@ import {
 
 test("usernames are normalized as stable lowercase account identifiers", () => {
   assert.equal(normalizeUsername(" @Yarin_12 "), "yarin_12");
-  assert.equal(formatUsername("YARIN_12"), "@yarin_12");
+  for (const input of ["YARIN_12", "@yarin_12", " @@Yarin_12 "]) {
+    assert.equal(formatUsername(input), "yarin_12");
+    assert.equal(normalizeUsername(input), "yarin_12");
+  }
+  assert.equal(formatUsername(""), "");
+  assert.equal(formatUsername("invalid name"), "");
 });
 
 test("usernames reject ambiguous or invalid public identifiers", () => {
