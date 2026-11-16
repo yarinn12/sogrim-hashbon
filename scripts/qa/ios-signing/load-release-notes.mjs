@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 const DELIMITER='SOGRIM_RELEASE_NOTES_4_59_197';
 export function releaseNotesEnvironment(metadata){
   assert.equal(metadata.app.bundleId,'com.sogrimhashbon.app');
-  assert.equal(metadata.version.number,'4.59');assert.equal(metadata.version.build,'197');
+  assert.equal(metadata.version.number,'4.59');assert.equal(metadata.version.build,'198');
   const notes=metadata.version.releaseNotes;
   assert.equal(typeof notes,'string');assert.ok(notes.trim().length>=1&&notes.trim().length<=4000);
   assert.ok(!notes.split(/\r?\n/).includes(DELIMITER),'Release notes must not terminate the environment block');

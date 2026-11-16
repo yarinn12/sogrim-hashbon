@@ -13,12 +13,12 @@ test('historical194 fixtures retain the complete original17871 bytes',()=>{
   };
   for(const[name,hash]of Object.entries(hashes))assert.equal(createHash('sha256').update(readFileSync(new URL('./fixtures/'+name,import.meta.url))).digest('hex'),hash,name);
 });
-test('current197 keeps its68-role contract and cannot consume historical fixture acceptance',()=>{
-  assert.equal(CONTRACT.build,'197');assert.equal(CONTRACT.version,'4.59');
+test('current198 keeps its68-role contract and cannot consume historical fixture acceptance',()=>{
+  assert.equal(CONTRACT.build,'198');assert.equal(CONTRACT.version,'4.59');
   assert.equal(SOURCE_QA_JOBS.length,68);assert.equal(new Set(SOURCE_QA_JOBS).size,68);
   const source=readFileSync(new URL('../scripts/qa/ios-signing/intake-source-guard.mjs',import.meta.url),'utf8');
   assert.ok(source.includes("from './source-ci-required-jobs.mjs'"));
-  const workflow=readFileSync(new URL('../.github/workflows/ios197-459-private-intake-only-20261114.yml',import.meta.url),'utf8');
+  const workflow=readFileSync(new URL('../.github/workflows/ios198-459-private-intake-only-20261116.yml',import.meta.url),'utf8');
   assert.ok(!workflow.includes('fixtures/ios194'));
   if(JSON.stringify(INTAKE_BINDINGS).includes('PENDING'))assert.throws(()=>requireBoundIntakePins(),/PENDING/);
 });

@@ -2,12 +2,12 @@ import json,pathlib,re
 REPO='yarinn12/sogrim-hashbon'
 REPO_ID=1247836328
 VERSION='4.59'
-BUILD='197'
-SIGNING_BRANCH='codex/ios197-459-signing-one-day-20261114'
-SIGNING_PATH='.github/workflows/ios197-459-private-sign-one-day-20261114.yml'
-SIGNING_NAME='iOS197 4.59 private signed one-day artifact only'
+BUILD='198'
+SIGNING_BRANCH='codex/ios198-459-signing-3a88662e-20261116'
+SIGNING_PATH='.github/workflows/ios198-459-private-sign-one-day-20261116.yml'
+SIGNING_NAME='iOS198 4.59 private signed one-day artifact only'
 SIGNING_REF=REPO+'/'+SIGNING_PATH+'@refs/heads/'+SIGNING_BRANCH
-VERIFIER_SHA='a5aa8c0ec06ee062020c78f461fad66b8b6b6a0929ede86075a9184110b3920e'
+VERIFIER_SHA='fed503242d331be330c1a77a741029e2462804d00300e17c5696cf531236fc5d'
 STEPS=[
  'Require first branch creation and two complete workflow histories',
  'Require all four successful source CI runs before signing secrets',

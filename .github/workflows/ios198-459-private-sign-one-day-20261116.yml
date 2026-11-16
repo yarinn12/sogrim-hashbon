@@ -1,9 +1,9 @@
-name: iOS197 4.59 private signed one-day artifact only
-run-name: iOS signed artifact 4.59 (197) from 44b148445a65ef079ee4ab0a5096ff691ce5ba45
+name: iOS198 4.59 private signed one-day artifact only
+run-name: iOS signed artifact 4.59 (198) from 3a88662e8e8df0d20f148900a7a4014c1e14f19c
 
 on:
   push:
-    branches: [codex/ios197-459-signing-one-day-20261114]
+    branches: [codex/ios198-459-signing-3a88662e-20261116]
 
 permissions:
   contents: read
@@ -16,7 +16,8 @@ concurrency:
 
 jobs:
   build-export-verify-private:
-    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios197-459-signing-one-day-20261114' && github.workflow_ref == 'yarinn12/sogrim-hashbon/.github/workflows/ios197-459-private-sign-one-day-20261114.yml@refs/heads/codex/ios197-459-signing-one-day-20261114' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
+    # Preparation only; Root must review the activation gate after all exact-source CI.
+    if: ${{ false && github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios198-459-signing-3a88662e-20261116' && github.workflow_ref == 'yarinn12/sogrim-hashbon/.github/workflows/ios198-459-private-sign-one-day-20261116.yml@refs/heads/codex/ios198-459-signing-3a88662e-20261116' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
     runs-on: macos-26
     timeout-minutes: 75
     defaults:
@@ -24,12 +25,12 @@ jobs:
         shell: bash
         working-directory: app
     env:
-      SOURCE_SHA: "44b148445a65ef079ee4ab0a5096ff691ce5ba45"
-      SOURCE_TREE: "55c58e9ba2ae42c307b769aff73ebcf61a910a49"
-      SOURCE_QA_RUN: "43698506773"
-      SOURCE_WINDOWS_QA_RUN: "43698506764"
-      SOURCE_FONT_QA_RUN: "43698506781"
-      SOURCE_AUTH_QA_RUN: "43698506733"
+      SOURCE_SHA: "3a88662e8e8df0d20f148900a7a4014c1e14f19c"
+      SOURCE_TREE: "10a3551c877b569fa78ff885b56c9370984c8f1e"
+      SOURCE_QA_RUN: "43862986714"
+      SOURCE_WINDOWS_QA_RUN: "43862986462"
+      SOURCE_FONT_QA_RUN: "43862986587"
+      SOURCE_AUTH_QA_RUN: "43862986532"
       WORKFLOW_COMMIT: ${{ github.workflow_sha }}
       WORKFLOW_REF: ${{ github.workflow_ref }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
@@ -39,7 +40,7 @@ jobs:
       GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
       IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"
       IOS_VERSION: "4.59"
-      IOS_BUILD: "197"
+      IOS_BUILD: "198"
 
     steps:
       - name: Checkout immutable first-creation controls only
@@ -59,17 +60,17 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node "$GITHUB_WORKSPACE/release-bootstrap/scripts/qa/ios-signing/first-creation-guard.mjs" --output "$RUNNER_TEMP/ios197-first-creation-one-day-20261114"
+        run: node "$GITHUB_WORKSPACE/release-bootstrap/scripts/qa/ios-signing/first-creation-guard.mjs" --output "$RUNNER_TEMP/ios198-first-creation-one-day-20261116"
 
       - name: Validate mandatory frozen source and release inputs
         working-directory: ${{ github.workspace }}
         run: |
-          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"44b148445a65ef079ee4ab0a5096ff691ce5ba45");a.equal(process.env.IOS_VERSION,"4.59");a.equal(process.env.IOS_BUILD,"197");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
+          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"3a88662e8e8df0d20f148900a7a4014c1e14f19c");a.equal(process.env.IOS_VERSION,"4.59");a.equal(process.env.IOS_BUILD,"198");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
 
       - name: Checkout the frozen application source explicitly
         uses: actions/checkout@v6
         with:
-          ref: "44b148445a65ef079ee4ab0a5096ff691ce5ba45"
+          ref: "3a88662e8e8df0d20f148900a7a4014c1e14f19c"
           path: app
           persist-credentials: false
 
@@ -225,7 +226,7 @@ jobs:
         id: private_artifact
         uses: actions/upload-artifact@v6
         with:
-          name: sogrim-ios-4.59-197-encrypted
+          name: sogrim-ios-4.59-198-encrypted
           path: |
             app/build/ios/private-artifact/release.tar.enc
             app/build/ios/private-artifact/envelope.json
@@ -235,7 +236,7 @@ jobs:
       - name: Record preparation outcome
         run: |
           printf '%s\n' \
-            'Signed iOS 4.59 (197) artifact prepared from 44b148445a65ef079ee4ab0a5096ff691ce5ba45.' \
+            'Signed iOS 4.59 (198) artifact prepared from 3a88662e8e8df0d20f148900a7a4014c1e14f19c.' \
             'The retained artifact is encrypted and requires the existing App Store API private key to decrypt.' \
             'No TestFlight upload, App Review submission, device acceptance or build-number reservation was performed.' \
             >> "$GITHUB_STEP_SUMMARY"

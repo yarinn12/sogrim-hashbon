@@ -14,20 +14,20 @@ function fixture(pages, {bundle='com.sogrimhashbon.app'}={}) {
   }};
 }
 const page=(versions,next=null)=>({data:versions.map(version=>({attributes:{version}})),links:{next}});
-for(const versions of [['196'],['195'],[]])test(`intake accepts existing ${versions.join(',')||'empty roster'} for the explicit197 slot`,async()=>{
-  assert.equal(CONTRACT.build,'197');
+for(const versions of [['197'],['196'],['195'],[]])test(`intake accepts existing ${versions.join(',')||'empty roster'} for the explicit197 slot`,async()=>{
+  assert.equal(CONTRACT.build,'198');
   const p=fixture([page(versions)]), result=await readUnusedBuild(p.request);
-  assert.equal(result.candidateBuild,197);
+  assert.equal(result.candidateBuild,198);
   assert.equal(result.maximumUploadedBuild,versions.length?Number(versions[0]):0);
   assert.equal(result.reserved,false);
 });
-for(const version of ['197','198'])test(`intake rejects occupied or superseded197 slot when ${version} exists`,async()=>{
+for(const version of ['198','199'])test(`intake rejects occupied or superseded197 slot when ${version} exists`,async()=>{
   const p=fixture([page([version])]);
   await assert.rejects(()=>readUnusedBuild(p.request),/no longer unused/);
 });
 test('intake checks the next page before accepting the slot',async()=>{
   const next='https://api.appstoreconnect.apple.com/v1/builds?cursor=second';
-  const p=fixture([page(['196'],next),page(['197'])]);
+  const p=fixture([page(['196'],next),page(['198'])]);
   await assert.rejects(()=>readUnusedBuild(p.request),/no longer unused/);
   assert.equal(p.calls.length,3);
 });

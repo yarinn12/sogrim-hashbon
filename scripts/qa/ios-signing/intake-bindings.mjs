@@ -4,14 +4,14 @@ import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 export const CONTRACT=Object.freeze({
- repository:'yarinn12/sogrim-hashbon',repositoryId:1247836328,version:'4.59',build:'197',
- signingBranch:'codex/ios197-459-signing-one-day-20261114',
- signingPath:'.github/workflows/ios197-459-private-sign-one-day-20261114.yml',
- signingName:'iOS197 4.59 private signed one-day artifact only',
- intakeBranch:'codex/ios197-459-private-intake-20261114',
- intakePath:'.github/workflows/ios197-459-private-intake-only-20261114.yml',
- artifactName:'sogrim-ios-4.59-197-encrypted',
- producerVerifierSha256:'a5aa8c0ec06ee062020c78f461fad66b8b6b6a0929ede86075a9184110b3920e'
+ repository:'yarinn12/sogrim-hashbon',repositoryId:1247836328,version:'4.59',build:'198',
+ signingBranch:'codex/ios198-459-signing-3a88662e-20261116',
+ signingPath:'.github/workflows/ios198-459-private-sign-one-day-20261116.yml',
+ signingName:'iOS198 4.59 private signed one-day artifact only',
+ intakeBranch:'codex/ios198-459-intake-3a88662e-20261116',
+ intakePath:'.github/workflows/ios198-459-private-intake-only-20261116.yml',
+ artifactName:'sogrim-ios-4.59-198-encrypted',
+ producerVerifierSha256:'fed503242d331be330c1a77a741029e2462804d00300e17c5696cf531236fc5d'
 });
 const freeze=value=>{for(const item of Object.values(value??{}))if(item&&typeof item==='object')freeze(item);return Object.freeze(value);};
 export const INTAKE_BINDINGS=freeze(JSON.parse(readFileSync(new URL('./intake-bindings.json',import.meta.url),'utf8')));

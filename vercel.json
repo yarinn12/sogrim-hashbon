@@ -17,7 +17,11 @@
       "codex/ios195-459-private-intake-20261105": false,
       "codex/ios196-459-private-intake-20261111": false,
       "codex/ios196-459-signing-20261111": false,
-      "codex/ios197-459-private-intake-20261114": false
+      "codex/ios197-459-private-intake-20261114": false,
+      "codex/ios198-459-signing-8f0621bc-20261116": false,
+      "codex/ios198-459-intake-8f0621bc-20261116": false,
+      "codex/ios198-459-signing-3a88662e-20261116": false,
+      "codex/ios198-459-intake-3a88662e-20261116": false
     }
   },
   "builds": [

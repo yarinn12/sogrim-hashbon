@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {releaseNotesEnvironment} from './load-release-notes.mjs';
-const fixture={app:{bundleId:'com.sogrimhashbon.app'},version:{number:'4.59',build:'197',releaseNotes:'שיפור מסכים ושמירת טיוטות.'}};
+const fixture={app:{bundleId:'com.sogrimhashbon.app'},version:{number:'4.59',build:'198',releaseNotes:'שיפור מסכים ושמירת טיוטות.'}};
 test('loaded notes equal the actual frozen application metadata',()=>{
  assert.ok(process.env.IOS_RELEASE_METADATA_FILE,'Frozen metadata path is mandatory');
  const actual=JSON.parse(readFileSync(process.env.IOS_RELEASE_METADATA_FILE,'utf8'));

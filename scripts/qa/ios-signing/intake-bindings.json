@@ -1,34 +1,34 @@
 {
   "schemaVersion": 1,
   "application": {
-    "sourceSha": "44b148445a65ef079ee4ab0a5096ff691ce5ba45",
-    "sourceTree": "55c58e9ba2ae42c307b769aff73ebcf61a910a49",
+    "sourceSha": "3a88662e8e8df0d20f148900a7a4014c1e14f19c",
+    "sourceTree": "10a3551c877b569fa78ff885b56c9370984c8f1e",
     "branch": "codex/test-release-459-20261104",
     "pwa": "532",
     "ciRuns": {
-      "SOURCE_QA_RUN": "43698506773",
-      "SOURCE_WINDOWS_QA_RUN": "43698506764",
-      "SOURCE_FONT_QA_RUN": "43698506781",
-      "SOURCE_AUTH_QA_RUN": "43698506733"
+      "SOURCE_QA_RUN": "43862986714",
+      "SOURCE_WINDOWS_QA_RUN": "43862986462",
+      "SOURCE_FONT_QA_RUN": "43862986587",
+      "SOURCE_AUTH_QA_RUN": "43862986532"
     }
   },
   "signing": {
-    "toolsSha": "b1ec7a5b6a96788506fa17f0331c4f5a04ba5e44",
-    "runId": "43703402260",
-    "runNumber": 1,
-    "jobId": 132779220595,
-    "artifactId": "14158015016",
-    "artifactSize": 13721425,
-    "zipSha256": "57795dc559d43ac041f15390f8051a7534e937027be458bca0d7f926e7856ffe",
-    "ipaSha256": "7616f55285e8d7d731d7c3ad71362b1b303d258b9a082d9da1f07b35d7dee123",
-    "ipaSize": 12800677,
-    "ciphertextSha256": "d24ff3417c097a808c9d1ce0e94bccbaed1861405c982b38dbe3bc21460ef39a",
-    "ciphertextSize": 13716480,
+    "toolsSha": "PENDING",
+    "runId": "PENDING",
+    "runNumber": "PENDING",
+    "jobId": "PENDING",
+    "artifactId": "PENDING",
+    "artifactSize": "PENDING",
+    "zipSha256": "PENDING",
+    "ipaSha256": "PENDING",
+    "ipaSize": "PENDING",
+    "ciphertextSha256": "PENDING",
+    "ciphertextSize": "PENDING",
     "controls": {
-      "firstCreation": "a5aa8c0ec06ee062020c78f461fad66b8b6b6a0929ede86075a9184110b3920e",
-      "sourceGuard": "c06f1f74334a36f53a9927a2d4a3bb2956a268d1ed5b46910e5770a8f126c211",
-      "workflow": "442f78f290ece4f6bd8ce0757a3cc515a2403591a4201aa0cbade6a76cebc60b",
-      "requiredJobs": "62b035d2e175acc5e6006a548fb5bb2167d679dc2c9be680ca2f517d14c83db3"
+      "firstCreation": "PENDING",
+      "sourceGuard": "PENDING",
+      "workflow": "PENDING",
+      "requiredJobs": "PENDING"
     }
   }
 }
