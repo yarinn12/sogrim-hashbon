@@ -27,8 +27,12 @@ function measurePaintedShortcut(button) {
   if(range.getClientRects().length!==1)throw Error('Repayment shortcut label wraps: '+JSON.stringify({text:node.textContent,lines:range.getClientRects().length,button:box,labelWidth:r.width}));
   ctx.font=`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
   ctx.direction=style.direction;ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  // The DOM uses geometricPrecision. On Linux, Canvas auto can use hinted
+  // advances, so measuring it would compare a different rendering to the SVG.
+  const rendering={auto:'auto',optimizespeed:'optimizeSpeed',optimizelegibility:'optimizeLegibility',geometricprecision:'geometricPrecision'}[String(style.textRendering||'auto').toLowerCase()];
+  if('textRendering' in ctx)ctx.textRendering=rendering||'auto';
   const m=ctx.measureText(node.textContent),baseline=r.top+m.fontBoundingBoxAscent;
-  texts.push({text:node.textContent,font:style.fontSize,width:m.width,lines:range.getClientRects().length,
+  texts.push({text:node.textContent,font:style.fontSize,width:m.width,lines:range.getClientRects().length,DOMRendering:style.textRendering,canvasRendering:'textRendering' in ctx?ctx.textRendering:null,
    left:r.left-m.actualBoundingBoxLeft,right:r.left+m.actualBoundingBoxRight,
    top:baseline-m.actualBoundingBoxAscent,bottom:baseline+m.actualBoundingBoxDescent,
    layout:{left:r.left,top:r.top,width:r.width,height:r.height},fontBox:[m.fontBoundingBoxAscent,m.fontBoundingBoxDescent]});
@@ -79,6 +83,18 @@ for (const [id,width,height,root,system] of [['phone',393,852,16],['narrow',320,
     expect.soft(t.left).toBeGreaterThanOrEqual(m.box.left);expect.soft(t.right).toBeLessThanOrEqual(m.box.right);
    }
    expect.soft(m.visibleGap).toBeGreaterThanOrEqual(6);expect.soft(m.visibleGap).toBeLessThanOrEqual(10);
+   // Negative control: the same real DOM measurement must reject a genuinely
+   // smaller gap. Restore the original element before any further UI action.
+   const held=await button.elementHandle();
+   const previous=await held.evaluate(e=>{const prior={value:e.style.getPropertyValue('gap'),priority:e.style.getPropertyPriority('gap')};e.style.setProperty('gap','2px','important');return prior});
+   try{
+    const tooClose=await held.evaluate(measurePaintedShortcut);
+    expect(tooClose.visibleGap,'the calibrated Canvas must still detect a real undersized gap').toBeLessThan(6);
+   }finally{
+    await held.evaluate((e,prior)=>{if(prior.value)e.style.setProperty('gap',prior.value,prior.priority);else e.style.removeProperty('gap')},previous);
+    await held.dispose();
+   }
+
    // Scan the bottom of the same summary in its real viewport, rather than
    // treating a full-page screenshot as proof of clearance above fixed nav.
    const sharing=page.locator('.settlement-list-actions > summary');await pointClick(sharing);
