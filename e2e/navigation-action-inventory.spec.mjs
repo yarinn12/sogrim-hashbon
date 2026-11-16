@@ -3,12 +3,18 @@ import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
 import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
+import { openRenderedNavigationDestination } from "./helpers/renderedNavigationDestination.mjs";
 import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
 
 requireHeldHomeReadiness(test, { skipTitles: [
   "valid and missing event deep links have a clear destination and feedback",
   "permission feedback for an unavailable event has no broken review action",
-  "late permission feedback keeps its event action stable before a nonessential image loads"
+  "late permission feedback keeps its event action stable before a nonessential image loads",
+  // These controls serve synthetic documents directly, not the app shell.
+  "rendered navigation rejects a document with no destination",
+  "rendered navigation rejects HTTP failure even with visible destination markup",
+  "rendered navigation rejects a failed document request",
+  "rendered navigation waits for a fresh document at the same event URL"
 ] });
 
 const OWNER = "person-navigation-owner";
@@ -120,17 +126,72 @@ test("home, event, notes, modal, notifications, profile and friends actions navi
     screens: inventory.map(({ screen, controls }) => ({ screen, active: controls.filter(x => !x.disabled).length, disabled: controls.filter(x => x.disabled).length })) }));
 });
 
-test("valid and missing event deep links have a clear destination and feedback", async ({ page }, testInfo) => {
-  await page.goto(`/?event=${EVENT}`);
+test("valid and missing event deep links have a clear destination and feedback", async ({ page, baseURL }, testInfo) => {
+  const heldImage = await holdNonessentialHomeImage(page, baseURL);
+  try {
+  await openRenderedNavigationDestination(page, { baseURL, path: `/?event=${EVENT}`, screenKind: "event" });
+  expect(heldImage.requested, "the nonessential image is actually pending").toBe(true);
+  expect(await page.evaluate(() => document.readyState), "the event must precede load").toBe("interactive");
   await expect(page.locator('.screen[data-screen-kind="event"]')).toBeVisible();
   await expect(page.locator('.screen[data-screen-kind="event"]')).toContainText("אירוע ניווט");
   await page.locator('[data-nav-destination="home"]').click();
   await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
   expect(new URL(page.url()).searchParams.has("event")).toBe(false);
-  await page.goto("/?event=event-not-found");
+  await openRenderedNavigationDestination(page, { baseURL, path: "/?event=event-not-found", screenKind: "home" });
+  expect(await page.evaluate(() => document.readyState), "the missing-link feedback must precede load").toBe("interactive");
   await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
   await expect(page.getByText("קישור ההזמנה לא נמצא.", { exact: true })).toBeVisible();
   await recordControls(page, testInfo, "missing-link-home");
+  } finally {
+    heldImage.release();
+  }
+});
+
+test("rendered navigation rejects a document with no destination", async ({ page, baseURL }) => {
+  const path = "/?qa-navigation-response=empty";
+  await page.route(url => url.href === new URL(path, baseURL).href, route => route.fulfill({
+    status: 200, contentType: "text/html", body: "<!doctype html><html><body></body></html>"
+  }));
+  await expect(openRenderedNavigationDestination(page, {
+    baseURL, path, screenKind: "event", timeoutMs: 1_000
+  })).rejects.toThrow(/Timeout/);
+});
+
+test("rendered navigation rejects HTTP failure even with visible destination markup", async ({ page, baseURL }) => {
+  const path = "/?qa-navigation-response=500";
+  await page.route(url => url.href === new URL(path, baseURL).href, route => route.fulfill({
+    status: 500, contentType: "text/html",
+    body: '<!doctype html><main class="screen" data-screen-kind="event">wrong response</main>'
+  }));
+  await expect(openRenderedNavigationDestination(page, {
+    baseURL, path, screenKind: "event", timeoutMs: 1_000
+  })).rejects.toThrow(/Navigation returned HTTP 500/);
+});
+
+test("rendered navigation rejects a failed document request", async ({ page, baseURL }) => {
+  const path = "/?qa-navigation-response=aborted";
+  await page.route(url => url.href === new URL(path, baseURL).href, route => route.abort("failed"));
+  await expect(openRenderedNavigationDestination(page, {
+    baseURL, path, screenKind: "event", timeoutMs: 1_000
+  })).rejects.toThrow(/Navigation failed/);
+});
+
+test("rendered navigation waits for a fresh document at the same event URL", async ({ page, baseURL }) => {
+  const path = "/?qa-navigation-response=same-url";
+  let visits = 0;
+  await page.route(url => url.href === new URL(path, baseURL).href, async route => {
+    visits += 1;
+    if (visits === 2) await new Promise(resolve => setTimeout(resolve, 500));
+    await route.fulfill({ status: 200, contentType: "text/html",
+      body: `<!doctype html><main class="screen" data-screen-kind="event">${visits === 1 ? "stale" : "fresh"}</main>` });
+  });
+  await openRenderedNavigationDestination(page, { baseURL, path, screenKind: "event" });
+  await expect(page.locator(".screen")).toHaveText("stale");
+  const started = Date.now();
+  await openRenderedNavigationDestination(page, { baseURL, path, screenKind: "event" });
+  expect(Date.now() - started, "the old visible root cannot satisfy the second navigation").toBeGreaterThanOrEqual(450);
+  expect(visits).toBe(2);
+  await expect(page.locator(".screen")).toHaveText("fresh");
 });
 
 test("repeated home back taps return to one previous screen", async ({ page }) => {
