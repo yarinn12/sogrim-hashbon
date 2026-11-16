@@ -2,6 +2,7 @@ import {test,expect} from "@playwright/test";
 import {personalPinsCloud} from "./helpers/personalPinsCloud.mjs";
 import {closedSummarySeed,eventId} from "./helpers/closedSummaryFixture.mjs";
 import {formatSettlementSummary} from "../src/domain/settlementSummary.mjs";
+import {replaceClosedSummaryScreen} from "./helpers/replaceClosedSummaryScreen.mjs";
 
 test.use({serviceWorkers:"block"});
 
@@ -228,8 +229,8 @@ async function geometry(page,root){
  for(const a of g.amounts){expect(a.font).toBe(root*1.75);expect(a.oneLine&&a.fits&&a.right).toBe(true);}
  for(const t of g.targets){expect(t.w).toBeGreaterThanOrEqual(44);expect(t.h).toBeGreaterThanOrEqual(44);}
 }
-test('closed summary geometry reads the current screen after a background render replaces its node',async({page,baseURL})=>{
- const cloud=await setup(page,baseURL,{root:20,w:411,payer:false});
+for(const root of [20,32])test('closed summary geometry reads the current screen after a controlled root replacement root '+root,async({page,baseURL},info)=>{
+ const cloud=await setup(page,baseURL,{root,w:root===32?320:411,payer:false});
  for(const transfer of event(cloud).transfers){
   await page.locator('.transfer-row [data-action="mark-paid"][data-transfer-id="'+transfer.id+'"]').click();
   await expect.poll(()=>event(cloud).transfers.find(item=>item.id===transfer.id)?.status).toBe('paid');
@@ -240,7 +241,11 @@ test('closed summary geometry reads the current screen after a background render
  await expect(page.locator('.settlement-hero-amount')).toHaveCount(0);
  const stale=await page.locator('.settlement-screen').elementHandle();
  expect(stale).toBeTruthy();
- await page.evaluate(()=>document.dispatchEvent(new CustomEvent('settle-friends:notice',{detail:{message:'רענון מבוקר בזמן מדידת סיכום'}})));
+ // Explicitly exercise a detached-root boundary. Notices now preserve the
+ // root intentionally, so they are not a reliable replacement control.
+ const replacement=await page.evaluate(replaceClosedSummaryScreen);
+ expect(replacement).toEqual({replaced:true,previousConnected:false,currentConnected:true,sameMarkup:true});
+ await info.attach('controlled-summary-replacement',{body:JSON.stringify(replacement),contentType:'application/json'});
  await expect.poll(()=>stale.evaluate(element=>element.isConnected)).toBe(false);
  const staleWidths=await stale.evaluate(element=>[...element.querySelectorAll('.settlement-debt-share > summary,.settlement-debt-preview > summary')].map(summary=>summary.getBoundingClientRect().width));
  expect(staleWidths).toEqual([0,0]);
@@ -253,7 +258,8 @@ test('closed summary geometry reads the current screen after a background render
   },
   evaluate:expression=>page.evaluate(expression)
  };
- await geometry(pageWithStaleLocator,20);
+ await geometry(pageWithStaleLocator,root);
+ await page.screenshot({path:info.outputPath('replacement-current-screen.png')});
  expect(cloud.errors).toEqual([]);
 });
 test('closed summary geometry still rejects a missing or zero-width touch target',async({page,baseURL})=>{
