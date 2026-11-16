@@ -724,6 +724,7 @@ let accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_READY;
 let accountEventsHydrationRetryRequest = null;
 
 app.addEventListener("click", handleClickSafely);
+
 document.querySelector('.skip-link[href="#app"]')?.addEventListener("click", (event) => {
   // The document's base URL can turn a fragment into a full navigation and
   // discard an open draft. Skipping chrome only needs to move keyboard focus.
@@ -1151,6 +1152,29 @@ function render() {
   }
 }
 
+function replaceScreenAroundPersistentIdentity(markup, persistentIdentity) {
+  const currentScreen = persistentIdentity.parentElement;
+  const template = document.createElement("template");
+  template.innerHTML = markup;
+  const nextScreen = template.content.querySelector(".screen");
+  if (!nextScreen || currentScreen?.parentElement !== app) return false;
+
+  for (const attr of [...currentScreen.attributes]) {
+    if (!nextScreen.hasAttribute(attr.name)) currentScreen.removeAttribute(attr.name);
+  }
+  for (const attr of nextScreen.attributes) currentScreen.setAttribute(attr.name, attr.value);
+  for (const node of [...currentScreen.childNodes]) {
+    if (node !== persistentIdentity) node.remove();
+  }
+  for (const node of [...nextScreen.childNodes]) currentScreen.append(node);
+  for (const node of [...app.childNodes]) {
+    if (node !== currentScreen) node.remove();
+  }
+  for (const node of [...template.content.childNodes]) {
+    if (node !== nextScreen) app.append(node);
+  }
+  return true;
+}
 function commitRenderedScreen(html) {
   const nextScreenKey = `${screen.name}:${screen.eventId ?? ""}`;
   const screenChanged = nextScreenKey !== lastRenderedScreenKey;
@@ -1176,13 +1200,17 @@ function commitRenderedScreen(html) {
     ?.querySelector(":scope > .product-route-controls")
     ?.remove();
 
-  app.innerHTML = nextMarkup;
+  // Keep the reused navigation attached through same-screen redraws. WebKit
+  // can lose a click if a peer sync detaches the button during its press.
+  const keptPersistentIdentity = !screenChanged && persistentIdentity
+    && replaceScreenAroundPersistentIdentity(nextMarkup, persistentIdentity);
+  if (!keptPersistentIdentity) app.innerHTML = nextMarkup;
   restoreEventPressAfterRender(screenChanged);
   lastCommittedScreenMarkup = nextMarkup;
   publishNotificationNavigationState();
   syncNoticeLifecycleAfterRender();
   const renderedScreen = app.querySelector(":scope > .screen");
-  if (persistentIdentity && renderedScreen) {
+  if (persistentIdentity && renderedScreen && !keptPersistentIdentity) {
     renderedScreen.prepend(persistentIdentity);
   }
   restoreParticipantSearchFilters();

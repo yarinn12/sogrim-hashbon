@@ -29,7 +29,7 @@ async function fixture(testInfo, {withExpense = false, withClosedExpenseOrder = 
   const sharedWriteFailures = new Map(), rejectedSharedWrites = [];
   const inviteFailures = new Set(), inviteHolds = new Map(), inviteRequests = [];
   const activityFailures = new Set(), activityRequests = [], activityInbox = new Map();
-  const secondaryHolds = new Map();
+  const secondaryHolds = new Map(), canonicalReadHolds = new Map();
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
   let clock = Date.now() - 60_000;
   const stamp = () => new Date(clock = Math.max(Date.now(), clock + 1)).toISOString();
@@ -338,6 +338,11 @@ async function fixture(testInfo, {withExpense = false, withClosedExpenseOrder = 
       if (url.pathname.endsWith('/app_snapshots')) {
         const id = url.searchParams.get('id')?.replace(/^eq\./, '');
         if (request.method() === 'GET') {
+          const canonicalHold = id === sharedId && canonicalReadHolds.get(i);
+          if (canonicalHold) {
+            canonicalHold.arrived = true;
+            await canonicalHold.ready;
+          }
           const readable=canReadCanonical(i);
           const rows = url.searchParams.has('snapshot_kind') ? [...(readable?[canonical]:[]),...(sibling && i===0 ? [sibling] : [])]
             : id === sharedId ? (readable?[canonical]:[]) : sibling && id === sibling.id && i===0 ? [sibling]
@@ -401,6 +406,11 @@ async function fixture(testInfo, {withExpense = false, withClosedExpenseOrder = 
   return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs, inviteRequests, rejectedSharedWrites,
     activityRequests, activityInbox,
     reloadClient(i, options) { return errorRecorders[i].withDocumentReload(pages[i],()=>pages[i].reload(options)); },
+    holdNextCanonicalRead(i) {
+      let release; const ready = new Promise(resolve => { release = resolve; });
+      const hold = { arrived: false, ready, release: () => { canonicalReadHolds.delete(i); release(); } };
+      canonicalReadHolds.set(i, hold); return hold;
+    },
     holdNextSecondary(i,table) {
       let release; const ready=new Promise(resolve=>{release=resolve;});
       const hold={arrived:false,ready,release};secondaryHolds.set(`${i}:${table}`,hold);return hold;
@@ -665,6 +675,55 @@ for (const sender of [0,1]) {
   }
 }
 
+test('notification navigation survives a peer expense refresh during the recipient press', async ({}, testInfo) => {
+  const f = await fixture(testInfo), [sending, receiving] = f.pages;
+  const name = 'הוצאה בזמן לחיצה על התראות';
+  const hold = f.holdNextCanonicalRead(1);
+  try {
+    f.enableActivityInbox();
+    await newExpense(sending, name, '29');
+    const expense = f.canonical.state.events[0].expenses[0];
+    expect(expense.name).toBe(name);
+    await expect.poll(() => f.activityInbox.size).toBe(1);
+    await receiving.evaluate(() => window.dispatchEvent(new Event('settle-friends:native-resume')));
+    await expect.poll(() => hold.arrived).toBe(true);
+    await expect(receiving.locator('.expense-row').filter({ hasText: name })).toHaveCount(0);
+    const nav = receiving.locator('[data-nav-destination="notifications"]');
+    const box = await nav.boundingBox();
+    expect(box).not.toBeNull();
+    // CI WebKit lost the click while this node was detached by a peer refresh.
+    await receiving.evaluate(() => {
+      const app = document.querySelector('#app');
+      const nav = app.querySelector('[data-nav-destination="notifications"]');
+      window.__qaNavRemovalCount = 0;
+      window.__qaNavRemovalObserver = new MutationObserver(records => {
+        for (const record of records) for (const node of record.removedNodes) {
+          if (node === nav || node.contains?.(nav)) window.__qaNavRemovalCount++;
+        }
+      });
+      window.__qaNavRemovalObserver.observe(nav.closest('.screen'), { childList: true, subtree: true });
+    });
+    await receiving.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await receiving.mouse.down();
+    await receiving.evaluate(() => document.dispatchEvent(new CustomEvent('settle-friends:notice', {
+      detail: { message: 'עדכון מסך בזמן לחיצה' }
+    })));
+    hold.release();
+    await expect(receiving.locator('.expense-row').filter({ hasText: name })).toHaveCount(1);
+    const removedDuringPress = await receiving.evaluate(() => {
+      window.__qaNavRemovalObserver.disconnect();
+      return window.__qaNavRemovalCount;
+    });
+    expect(removedDuringPress).toBe(0);
+    await receiving.mouse.up();
+    await expect(receiving.locator('[data-screen-kind="notifications"]')).toBeVisible();
+    await expect(receiving.locator('.notification-inbox-item')).toHaveCount(1, { timeout: 16000 });
+    await expect(receiving.locator('.notification-inbox-item')).toContainText('הוצאה חדשה באירוע');
+    expect(f.activityRequests.filter(item => item.accepted)).toHaveLength(1);
+    expect(f.activityRequests.at(-1).body.activityId).toBe(expense.id);
+    expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+  } finally { hold.release(); await f.close(); }
+});
 for (const recipient of [0,1]) for (const table of ['friendships','notification_inbox']) {
   test(`a held ${table} read does not delay financial changes on recipient ${recipient}`, async ({},testInfo)=>{
     const f=await fixture(testInfo), receiving=f.pages[recipient],sending=f.pages[1-recipient];
