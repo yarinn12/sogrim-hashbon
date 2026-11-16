@@ -1,8 +1,80 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { createAppHandler } from "../server.mjs";
+
+test("app association files serve exact JSON bytes without opening private paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sogrim-association-"));
+  const appleBytes = await readFile(new URL("../.well-known/apple-app-site-association", import.meta.url));
+  const androidBytes = await readFile(new URL("../.well-known/assetlinks.json", import.meta.url));
+  await mkdir(join(root, ".well-known"));
+  await mkdir(join(root, "src", "server"), { recursive: true });
+  await writeFile(join(root, ".well-known", "apple-app-site-association"), appleBytes);
+  await writeFile(join(root, ".well-known", "assetlinks.json"), androidBytes);
+  await writeFile(join(root, ".well-known", "private"), "synthetic-private-extensionless");
+  await writeFile(join(root, ".well-known", ".hidden"), "synthetic-hidden");
+  await writeFile(join(root, ".env.local"), "synthetic-private-env");
+  await writeFile(join(root, "server.mjs"), "synthetic-private-server");
+  await writeFile(join(root, "src", "server", "secret.mjs"), "synthetic-private-module");
+
+  const server = createServer(createAppHandler({
+    root, port: 0, env: { SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1" }
+  }));
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    for (const [path, expected] of [
+      ["/.well-known/apple-app-site-association", appleBytes],
+      ["/.well-known/assetlinks.json", androidBytes]
+    ]) {
+      const response = await fetch(`${baseUrl}${path}`, { redirect: "manual" });
+      assert.equal(response.status, 200, `${path} must be directly available`);
+      assert.equal(response.headers.get("location"), null, `${path} must not redirect`);
+      assert.equal(response.headers.get("content-type"), "application/json; charset=utf-8");
+      assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+      const actual = Buffer.from(await response.arrayBuffer());
+      assert.deepEqual(actual, expected, `${path} must preserve source bytes`);
+      const association = JSON.parse(actual.toString("utf8"));
+      if (path.endsWith("apple-app-site-association")) {
+        assert.ok(Array.isArray(association.applinks?.details));
+        assert.ok(Array.isArray(association.webcredentials?.apps));
+      } else {
+        assert.ok(Array.isArray(association));
+        assert.ok(association.some((entry) => entry.target?.namespace === "android_app"));
+      }
+    }
+    const head = await fetch(`${baseUrl}/.well-known/apple-app-site-association`, {
+      method: "HEAD", redirect: "manual"
+    });
+    assert.equal(head.status, 200);
+    assert.equal(Number(head.headers.get("content-length")), appleBytes.length);
+    assert.equal((await head.arrayBuffer()).byteLength, 0);
+
+    for (const path of [
+      "/.well-known/private",
+      "/.well-known/.hidden",
+      "/.env.local",
+      "/server.mjs",
+      "/src/server/secret.mjs"
+    ]) {
+      const response = await fetch(`${baseUrl}${path}`, { redirect: "manual" });
+      assert.equal(response.status, 404, `${path} must remain private even when present`);
+      assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+      assert.equal(await response.text(), "Not found");
+    }
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("the static server exposes only client assets and never repository secrets", async () => {
   const server = createServer(createAppHandler({ root: process.cwd(), port: 0 }));

@@ -915,6 +915,7 @@ function isAllowedStaticPath(requestedPath) {
     return false;
   }
   if (publicRootFiles.has(value)) return true;
+  if (value === "/.well-known/apple-app-site-association") return true;
   if (value === "/downloads/sogrim-hashbon-android-1.2.apk") return true;
   return publicStaticPrefixes.some((prefix) => value.startsWith(prefix)) &&
     publicStaticExtensions.has(extname(value).toLowerCase());
