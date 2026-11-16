@@ -3,16 +3,17 @@ async function stable(p) {
   await p.evaluate(() => document.fonts.ready);
   await expect.poll(() => p.evaluate(() => document.getAnimations().filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime) && a.playState === "running").length)).toBe(0);
   await p.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  await expect.poll(() => p.evaluate(() => {
-    // Read the current node and transform in one sample. A separate selector
-    // round trip can outlast this poll while the JavaScript motion has settled.
+  const ready = await p.waitForFunction(() => {
+    // Sample current motion in the browser. Per-sample host transport can
+    // otherwise consume the readiness deadline after the transform settles.
     const e = document.querySelector('.accessibility-center');
     if (!e) return false;
     const transform = getComputedStyle(e).transform;
     if (transform === 'none') return true;
     const matrix = new DOMMatrixReadOnly(transform);
     return Math.abs(matrix.m42) < .1 && Math.abs(matrix.a - 1) < .001 && Math.abs(matrix.d - 1) < .001;
-  }), { timeout: 1000 }).toBe(true);
+  }, undefined, { timeout: 1000, polling: 'raf' });
+  await ready.dispose();
 }
 async function hit(l, click = true) {
   await l.evaluate((e) => e.scrollIntoView({ block: "center", behavior: "instant" }));

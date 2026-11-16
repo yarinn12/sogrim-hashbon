@@ -33,6 +33,7 @@ test('accessibility readiness samples current transform without a delayed locato
   const lookups = [];
   const transportDelayedPage = {
     evaluate: (...args) => page.evaluate(...args),
+    waitForFunction: (...args) => page.waitForFunction(...args),
     locator(selector) {
       const real = page.locator(selector);
       return { evaluate(...args) {
@@ -52,6 +53,41 @@ test('accessibility readiness samples current transform without a delayed locato
   } finally {
     await Promise.allSettled(lookups);
   }
+});
+test('accessibility readiness keeps its motion budget when evaluate sample transport is delayed', async ({ page }) => {
+  await page.setContent('<section class="accessibility-center" role="dialog">הגדרות נגישות</section>');
+  await page.locator('.accessibility-center').evaluate(e => {
+    e.style.transform = 'translateY(12px) scale(0.99)';
+    setTimeout(() => { e.style.transform = 'none'; }, 400);
+  });
+  const pending = [];
+  const delayedSamples = {
+    waitForFunction: (...args) => page.waitForFunction(...args),
+    evaluate(...args) {
+      const request = (async () => {
+        const result = await page.evaluate(...args);
+        // QA540 returned a true third sample after its outer poll had expired.
+        // Delay only per-sample Boolean delivery, never browser motion itself.
+        if (typeof result === 'boolean') await new Promise(resolve => setTimeout(resolve, 1112));
+        return result;
+      })();
+      pending.push(request);
+      return request;
+    }
+  };
+  try {
+    await stable(delayedSamples);
+    await expect(page.locator('.accessibility-center')).toHaveCSS('transform', 'none', { timeout: 100 });
+  } finally {
+    await Promise.allSettled(pending);
+  }
+});
+
+for (const transform of ['translateY(12px)', 'scale(0.99)']) test(`accessibility readiness rejects persistent ${transform} within its original budget`, async ({ page }) => {
+  await page.setContent('<section class="accessibility-center" role="dialog">הגדרות נגישות</section>');
+  await page.locator('.accessibility-center').evaluate((e, value) => { e.style.transform = value; }, transform);
+  await expect(stable(page)).rejects.toThrow(/Timeout|timeout/);
+  await expect(page.locator('.accessibility-center')).not.toHaveCSS('transform', 'none');
 });
 const prefs = (p) => p.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-accessibility-preferences-v1")));
 const identity = (p) => p.evaluate(() => {

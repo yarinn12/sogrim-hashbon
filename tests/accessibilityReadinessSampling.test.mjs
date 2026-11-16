@@ -8,7 +8,7 @@ const start=source.indexOf('async function stable('),end=source.indexOf('async f
 assert.ok(start>=0 && end>start);
 const body=source.slice(start,end);
 
-function harness({settlesAt=0,lookupDelays=[],present=true,transform='matrix(0.99, 0, 0, 0.99, 0, 12)',animationUntil=0}={}) {
+function harness({settlesAt=0,lookupDelays=[],sampleTransportDelay=0,present=true,transform='matrix(0.99, 0, 0, 0.99, 0, 12)',animationUntil=0}={}) {
  let now=0,lookups=0,frames=0;
  const element={},document={
   fonts:{ready:Promise.resolve()},
@@ -25,7 +25,17 @@ function harness({settlesAt=0,lookupDelays=[],present=true,transform='matrix(0.9
  };
  const invoke=(fn,arg)=>runInNewContext('('+fn.toString()+')(__arg)',{...context,__arg:arg});
  const page={
-  evaluate:async fn=>{now+=4;return invoke(fn);},
+  evaluate:async fn=>{now+=4;const value=invoke(fn);if(typeof value==='boolean')now+=sampleTransportDelay;return value;},
+  waitForFunction:async(fn,arg,{timeout,polling})=>{
+   assert.equal(timeout,1000);assert.equal(polling,'raf');
+   const deadline=now+timeout;
+   while(now<=deadline){
+    const value=invoke(fn,arg);
+    if(value)return {dispose:async()=>{}};
+    now+=16;
+   }
+   throw Error('readiness timeout while transform remains unsettled');
+  },
   locator:selector=>{assert.equal(selector,'.accessibility-center');return {
    evaluate:async fn=>{now+=lookupDelays[lookups++]||0;return invoke(fn,element);}
   };}
@@ -59,6 +69,14 @@ test('readiness observes settlement when a later locator lookup outlasts the ori
 });
 test('readiness observes settlement when the first locator lookup outlasts the original poll budget',async()=>{
  const h=harness({settlesAt:400,lookupDelays:[1111]});await h.run();assert.ok(h.now>=400 && h.now<=1012);
+});
+
+test('readiness samples motion in the browser without per-sample evaluate response transport',async()=>{
+ const h=harness({settlesAt:400,sampleTransportDelay:1112});await h.run();assert.ok(h.now>=400 && h.now<=1012);
+});
+
+test('readiness still rejects a missing dialog within its original budget',async()=>{
+ const h=harness({present:false});await assert.rejects(h.run(),/readiness timeout/);
 });
 test('readiness still rejects a permanently translated dialog within its original budget',async()=>{
  const h=harness({settlesAt:Infinity});await assert.rejects(h.run(),/readiness timeout/);
