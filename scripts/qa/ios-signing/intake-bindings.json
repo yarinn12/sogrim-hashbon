@@ -13,22 +13,22 @@
     }
   },
   "signing": {
-    "toolsSha": "PENDING",
-    "runId": "PENDING",
-    "runNumber": "PENDING",
-    "jobId": "PENDING",
-    "artifactId": "PENDING",
-    "artifactSize": "PENDING",
-    "zipSha256": "PENDING",
-    "ipaSha256": "PENDING",
-    "ipaSize": "PENDING",
-    "ciphertextSha256": "PENDING",
-    "ciphertextSize": "PENDING",
+    "toolsSha": "f7717ebb640c582917ef0c2a914b41527ee9eadd",
+    "runId": "43873268239",
+    "runNumber": 1,
+    "jobId": 133319664610,
+    "artifactId": "14228593218",
+    "artifactSize": 13725523,
+    "zipSha256": "749a1119d600a18785d52bfcdd928cb2ec10023ee74a9356e9e170b829a22ae7",
+    "ipaSha256": "caf04d0f304848d85bb0ded342673e8ce4b1fa5b6e04aca26d26f273da27472b",
+    "ipaSize": 12801763,
+    "ciphertextSha256": "7f530cd3c3ce91f5347064c841a9592c2f311fef46b562bcdad81a7419a28b53",
+    "ciphertextSize": 13720576,
     "controls": {
-      "firstCreation": "PENDING",
-      "sourceGuard": "PENDING",
-      "workflow": "PENDING",
-      "requiredJobs": "PENDING"
+      "firstCreation": "fed503242d331be330c1a77a741029e2462804d00300e17c5696cf531236fc5d",
+      "sourceGuard": "3f537d5c0275bdf75d9a8d527d329f53f11d911fcf1a4dc64447740234859784",
+      "workflow": "10889f572d94b8b7481320056b222726293a6efebe05b4b53bb3ff47160e65db",
+      "requiredJobs": "62b035d2e175acc5e6006a548fb5bb2167d679dc2c9be680ca2f517d14c83db3"
     }
   }
 }

@@ -1,5 +1,5 @@
 name: iOS198 4.59 private intake only
-run-name: iOS198 original signed bytes - final bindings required
+run-name: iOS198 original signed bytes from 3a88662e
 on:
   push:
     branches: [codex/ios198-459-intake-3a88662e-20261116]
@@ -13,8 +13,8 @@ jobs:
   upload-original:
     # Bound to the original successful successor signing run and exact encrypted
     # artifact; guards recheck source, all CI and zero distribution before upload.
-    # Preparation only; exact accepted source and original artifact are still required.
-    if: ${{ false && github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios198-459-intake-3a88662e-20261116' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
+    # Exact accepted source and original producer/archive identities are bound below.
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios198-459-intake-3a88662e-20261116' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
     runs-on: macos-26
     timeout-minutes: 45
     defaults:
@@ -29,24 +29,24 @@ jobs:
       SOURCE_WINDOWS_QA_RUN: "43862986462"
       SOURCE_FONT_QA_RUN: "43862986587"
       SOURCE_AUTH_QA_RUN: "43862986532"
-      SIGNING_TOOLS_SHA: "PENDING"
-      SIGNED_RUN_ID: "PENDING"
-      SIGNED_RUN_NUMBER: "PENDING"
-      SIGNED_JOB_ID: "PENDING"
-      SIGNED_ARTIFACT_ID: "PENDING"
-      SIGNED_ARTIFACT_SIZE: "PENDING"
-      SIGNED_IPA_SHA256: "7616f55285e8d7d731d7c3ad71362b1b303d258b9a082d9da1f07b35d7dee123"
-      SIGNED_IPA_SIZE: "PENDING"
-      SIGNED_ARTIFACT_ZIP_SHA256: "57795dc559d43ac041f15390f8051a7534e937027be458bca0d7f926e7856ffe"
-      SIGNED_CIPHERTEXT_SHA256: "d24ff3417c097a808c9d1ce0e94bccbaed1861405c982b38dbe3bc21460ef39a"
-      SIGNED_CIPHERTEXT_SIZE: "PENDING"
+      SIGNING_TOOLS_SHA: "f7717ebb640c582917ef0c2a914b41527ee9eadd"
+      SIGNED_RUN_ID: "43873268239"
+      SIGNED_RUN_NUMBER: "1"
+      SIGNED_JOB_ID: "133319664610"
+      SIGNED_ARTIFACT_ID: "14228593218"
+      SIGNED_ARTIFACT_SIZE: "13725523"
+      SIGNED_IPA_SHA256: "caf04d0f304848d85bb0ded342673e8ce4b1fa5b6e04aca26d26f273da27472b"
+      SIGNED_IPA_SIZE: "12801763"
+      SIGNED_ARTIFACT_ZIP_SHA256: "749a1119d600a18785d52bfcdd928cb2ec10023ee74a9356e9e170b829a22ae7"
+      SIGNED_CIPHERTEXT_SHA256: "7f530cd3c3ce91f5347064c841a9592c2f311fef46b562bcdad81a7419a28b53"
+      SIGNED_CIPHERTEXT_SIZE: "13720576"
       WORKFLOW_COMMIT: ${{ github.workflow_sha }}
       WORKFLOW_REF: ${{ github.workflow_ref }}
       APPLE_TEAM_ID: MA9S4L7WKS
       APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
       APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
-      IOS_VERSION: '4.59'
-      IOS_BUILD: '198'
+      IOS_VERSION: "4.59"
+      IOS_BUILD: "198"
     steps:
       - name: Checkout immutable intake controls only
         uses: actions/checkout@v6

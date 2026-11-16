@@ -40,8 +40,9 @@ function reads(f){
  for(const name of ['source-ci-only','source-before-build','source-after-export'])records[name+'.json']={firstCreation:copy(f.firstCreation)};
  return {records,read:path=>path.endsWith('/SogrimHashbon.ipa')?Buffer.from(f.ipaBase64,'base64'):Buffer.from(JSON.stringify(records[path.split('/').at(-1)]))};
 }
-test('real source/tool preparation is separate from explicit synthetic artifact fixtures',()=>{
- assert.equal(INTAKE_BINDINGS.application.sourceSha,'3a88662e8e8df0d20f148900a7a4014c1e14f19c');assert.equal(INTAKE_BINDINGS.signing.toolsSha,'PENDING');
+test('real bound original source/tool identity is separate from explicit synthetic artifact fixtures',()=>{
+ assert.equal(INTAKE_BINDINGS.application.sourceSha,'3a88662e8e8df0d20f148900a7a4014c1e14f19c');assert.equal(INTAKE_BINDINGS.signing.toolsSha,'f7717ebb640c582917ef0c2a914b41527ee9eadd');
+ assert.equal(INTAKE_BINDINGS.signing.runId,'43873268239');assert.equal(INTAKE_BINDINGS.signing.artifactId,'14228593218');
  if(JSON.stringify(INTAKE_BINDINGS).includes('PENDING'))assert.throws(()=>requireBoundIntakePins(),/PENDING/);else requireBoundIntakePins();assert.doesNotThrow(()=>requireBoundIntakePins(fixture().pins));
 });
 for(const key of ['runId','artifactId','runNumber','jobId','artifactSize','ipaSize','ciphertextSize','zipSha256','ipaSha256','ciphertextSha256'])
@@ -188,7 +189,7 @@ test('historical delivered195 envelope fixture stays immutable for197 preparatio
 });
 
 // Exercise the operational predicate with explicit synthetic bindings; the real
-// preparation workflow and artifact origins remain disabled/PENDING.
+// workflow stays subject to the same exact predicate and independent synthetic fixtures.
 function syntheticBoundIntakeWorkflow(){
  const pins=fixture().pins,env=boundEnvironment(pins);
  let text=readFileSync(new URL('../'+CONTRACT.intakePath,import.meta.url),'utf8')
