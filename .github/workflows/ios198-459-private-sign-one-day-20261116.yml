@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build-export-verify-private:
     # Preparation only; Root must review the activation gate after all exact-source CI.
-    if: ${{ false && github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios198-459-signing-3a88662e-20261116' && github.workflow_ref == 'yarinn12/sogrim-hashbon/.github/workflows/ios198-459-private-sign-one-day-20261116.yml@refs/heads/codex/ios198-459-signing-3a88662e-20261116' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios198-459-signing-3a88662e-20261116' && github.workflow_ref == 'yarinn12/sogrim-hashbon/.github/workflows/ios198-459-private-sign-one-day-20261116.yml@refs/heads/codex/ios198-459-signing-3a88662e-20261116' && github.event_name == 'push' && github.run_attempt == 1 && github.event.created == true && github.event.before == '0000000000000000000000000000000000000000' && github.event.forced == false && github.event.deleted == false }}
     runs-on: macos-26
     timeout-minutes: 75
     defaults:
