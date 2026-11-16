@@ -80,16 +80,38 @@ jobs:
           xcrun simctl boot "$PROBE_UDID"
           xcrun simctl bootstatus "$PROBE_UDID" -b | tee build/probe/bootstatus.log
           node scripts/qa/native-auth-session/verify-ios-simulator-boot.mjs --log build/probe/bootstatus.log --udid "$PROBE_UDID"
-          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -destination "platform=iOS Simulator,id=$PROBE_UDID" -derivedDataPath build/probe/derived -resultBundlePath build/probe/result.xcresult test-without-building CODE_SIGNING_ALLOWED=NO | tee build/probe/test.log
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$PROBE_UDID" -derivedDataPath build/probe/derived -resultBundlePath build/probe/result.xcresult test-without-building CODE_SIGNING_ALLOWED=NO | tee build/probe/test.log
           grep -q PROBE_HTTP_REDIRECT build/probe/server.log
           xcrun simctl io "$PROBE_UDID" screenshot build/probe/simulator.png
       - name: Keep simulator launch diagnostics on failure
         if: failure()
+        timeout-minutes: 5
         working-directory: app
         run: |
           source build/probe/simulator.env || true
           xcrun simctl spawn "$PROBE_UDID" log show --last 6m --style compact --predicate 'process == "App" OR process == "launchd_sim"' > build/probe/launch-diagnostics.log 2>&1 || true
           xcrun simctl io "$PROBE_UDID" screenshot build/probe/failure.png || true
+          # Queries follow the failed journey; they never warm up or retry it.
+          capture_auth_destination_diagnostic() {
+            local report="$1"
+            shift
+            {
+              printf 'OwnedSimulator=%s\n' "${PROBE_UDID:-unknown}"
+              printf 'StartedUTC=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+              printf 'Command:'
+              printf ' %q' "$@"
+              printf '\n'
+              local diagnostic_exit=0
+              "$@" || diagnostic_exit=$?
+              printf '\nExitStatus=%s\n' "$diagnostic_exit"
+              printf 'FinishedUTC=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            } > "$report" 2>&1
+          }
+          capture_auth_destination_diagnostic build/probe/device-inventory.log xcrun simctl list devices -j
+          capture_auth_destination_diagnostic build/probe/runtime-inventory.log xcrun simctl list runtimes -j
+          capture_auth_destination_diagnostic build/probe/device-type-inventory.log xcrun simctl list devicetypes -j
+          capture_auth_destination_diagnostic build/probe/destinations-default.log xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -derivedDataPath build/probe/derived -showdestinations
+          capture_auth_destination_diagnostic build/probe/destinations-simulator.log xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build/probe/derived -showdestinations
       - uses: actions/upload-artifact@v6
         if: always()
         with:
