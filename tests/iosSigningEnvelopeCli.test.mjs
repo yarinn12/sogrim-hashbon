@@ -16,8 +16,8 @@ function fixture(t,change=()=>{}){
  const build=join(root,'build','ios');mkdirSync(build,{recursive:true});
  const ipa=Buffer.from('SYNTHETIC_PACKAGE_BYTES_ONLY_NOT_A_SIGNED_IPA');
  const archive=Buffer.from('SYNTHETIC_ORIGINAL_ARCHIVE_BYTES');
- const proof={sourceCommit:process.env.SOURCE_SHA,sourceTree:'55c58e9ba2ae42c307b769aff73ebcf61a910a49',
-  version:'4.59',build:'197',ipaSha256:sha(ipa),appleUploadPerformed:false,
+ const proof={sourceCommit:process.env.SOURCE_SHA,sourceTree:'10a3551c877b569fa78ff885b56c9370984c8f1e',
+  version:'4.59',build:'198',ipaSha256:sha(ipa),appleUploadPerformed:false,
   signatureVerified:true,everyWwwAssetMatches:true,everyWwwAssetMatchesCanonicalGitBuild:true};
  // Actual producer contract: verify-ios-artifact writes bytes/sha256 into the
  // release manifest. verify-web-assets writes its own proof without bytes,

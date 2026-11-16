@@ -1,5 +1,5 @@
 name: iOS signed artifact only
-run-name: iOS signed artifact 4.59 (197) from ${{ inputs.source_sha }}
+run-name: iOS signed artifact 4.59 (198) from ${{ inputs.source_sha }}
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ on:
       build:
         description: Fixed candidate build; this run does not reserve the number
         required: true
-        default: "197"
+        default: "198"
 
 permissions:
   contents: read
@@ -73,7 +73,7 @@ jobs:
       - name: Validate mandatory frozen source and release inputs
         working-directory: ${{ github.workspace }}
         run: |
-          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"44b148445a65ef079ee4ab0a5096ff691ce5ba45");a.equal(process.env.IOS_VERSION,"4.59");a.equal(process.env.IOS_BUILD,"197");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
+          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"3a88662e8e8df0d20f148900a7a4014c1e14f19c");a.equal(process.env.IOS_VERSION,"4.59");a.equal(process.env.IOS_BUILD,"198");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
 
       - name: Checkout the frozen application source explicitly
         uses: actions/checkout@v6
@@ -228,7 +228,7 @@ jobs:
         id: private_artifact
         uses: actions/upload-artifact@v6
         with:
-          name: sogrim-ios-4.59-197-encrypted
+          name: sogrim-ios-4.59-198-encrypted
           path: |
             app/build/ios/private-artifact/release.tar.enc
             app/build/ios/private-artifact/envelope.json
@@ -238,7 +238,7 @@ jobs:
       - name: Record preparation outcome
         run: |
           printf '%s\n' \
-            'Signed iOS 4.59 (197) artifact prepared from 44b148445a65ef079ee4ab0a5096ff691ce5ba45.' \
+            'Signed iOS 4.59 (198) artifact prepared from 3a88662e8e8df0d20f148900a7a4014c1e14f19c.' \
             'The retained artifact is encrypted and requires the existing App Store API private key to decrypt.' \
             'No TestFlight upload, App Review submission, device acceptance or build-number reservation was performed.' \
             >> "$GITHUB_STEP_SUMMARY"

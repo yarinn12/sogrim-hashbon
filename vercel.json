@@ -21,7 +21,11 @@
       "codex/ios195-459-signing-qa492-20261106": false,
       "codex/ios195-459-signing-envelope-20261109": false,
       "codex/ios196-459-signing-20261111": false,
-      "codex/ios197-459-signing-one-day-20261114": false
+      "codex/ios197-459-signing-one-day-20261114": false,
+      "codex/ios198-459-signing-8f0621bc-20261116": false,
+      "codex/ios198-459-intake-8f0621bc-20261116": false,
+      "codex/ios198-459-signing-3a88662e-20261116": false,
+      "codex/ios198-459-intake-3a88662e-20261116": false
     }
   },
   "builds": [

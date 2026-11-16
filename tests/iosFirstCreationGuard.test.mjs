@@ -11,7 +11,7 @@ import {CONTRACT as C,githubJsonGet,validateCreationContext,verifyFirstCreation,
 
 const clone=value=>structuredClone(value);
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8').replaceAll('\r\n','\n');
-const next=read('../.github/workflows/ios197-459-private-sign-one-day-20261114.yml');
+const next=read('../.github/workflows/ios198-459-private-sign-one-day-20261116.yml');
 const old=JSON.parse(read('./fixtures/ios195-first-creation-old.json'));
 const input=name=>new RegExp('^      '+name+': "([^"]+)"$','m').exec(next)?.[1];
 const sha='2a62c846ed397b93dd68fe0363da0dd148ca9a8e';
@@ -43,6 +43,11 @@ function api(options={}){
  return {get,calls};
 }
 const expression=text=>/^    if: \$\{\{ (.+) \}\}$/m.exec(text)?.[1];
+// Exercise the same identity predicate in both preparation and activation.
+// This removes only the explicit preparation switch in the test's string;
+// the real workflow remains disabled until the coordinator accepts source CI.
+const actualJobExpression=expression(next);
+const operationalJobExpression=actualJobExpression?.replace(/^false && (?=github.repository == )/,'');
 const bytes=receipt=>Buffer.from(JSON.stringify(receipt,null,2)+'\n');
 const hash=data=>createHash('sha256').update(data).digest('hex');
 
@@ -52,7 +57,7 @@ test('OLD iOS condition rejects creation counter3; FINAL accepts only creation w
  const legacyGithub={...github,ref:'refs/heads/'+old.branch};
  assert.equal(runInNewContext(old.jobIf,{github:legacyGithub}),false);
  assert.equal(runInNewContext(old.jobIf,{github:{...legacyGithub,run_number:1}}),true);
- assert.equal(runInNewContext(expression(next),{github}),true);
+ assert.equal(runInNewContext(operationalJobExpression,{github}),true);
  const mock=api(),receipt=await verifyFirstCreation(context(),event(),mock.get);
  assert.equal(receipt.ready,true);assert.equal(receipt.runNumberCounterOnly,3);assert.equal(receipt.priorRetainedRuns,0);
  assert.deepEqual(receipt.historyCounts,[1,1]);assert.deepEqual(receipt.historyPages,[2,2]);assert.equal(mock.calls.length,7);
@@ -132,9 +137,20 @@ test('transport performs only bounded GETs at exact official API paths and rejec
 
 test('new workflow job condition rejects every noncreation identity without relying on run_number',()=>{
  const github={repository:C.repository,ref:branchRef,workflow_ref:context().GITHUB_WORKFLOW_REF,event_name:'push',run_attempt:1,event:event(),run_number:3};
- assert.equal(runInNewContext(expression(next),{github}),true);
- for(const changed of [{repository:'other/repo'},{ref:'refs/heads/main'},{workflow_ref:'other/path'},{event_name:'workflow_dispatch'},{run_attempt:2},{event:{...event(),created:false}},{event:{...event(),before:'b'.repeat(40)}},{event:{...event(),forced:true}},{event:{...event(),deleted:true}}])assert.equal(runInNewContext(expression(next),{github:{...github,...changed}}),false);
+ assert.equal(runInNewContext(operationalJobExpression,{github}),true);
+ for(const changed of [{repository:'other/repo'},{ref:'refs/heads/main'},{workflow_ref:'other/path'},{event_name:'workflow_dispatch'},{run_attempt:2},{event:{...event(),created:false}},{event:{...event(),before:'b'.repeat(40)}},{event:{...event(),forced:true}},{event:{...event(),deleted:true}}])assert.equal(runInNewContext(operationalJobExpression,{github:{...github,...changed}}),false);
  assert.ok(!expression(next).includes('run_number'));
+});
+
+test('preparation switch blocks the real job while the unchanged identity predicate still rejects invalid activation',()=>{
+ const github={repository:C.repository,ref:branchRef,workflow_ref:context().GITHUB_WORKFLOW_REF,event_name:'push',run_attempt:1,event:event(),run_number:3};
+ assert.ok(actualJobExpression===operationalJobExpression||actualJobExpression==='false && '+operationalJobExpression);
+ assert.equal(runInNewContext(actualJobExpression,{github}),actualJobExpression===operationalJobExpression);
+ for(const expr of [operationalJobExpression,'false && '+operationalJobExpression]){
+  for(const changed of [{ref:'refs/heads/main'},{event:{...event(),created:false}},{run_attempt:2}]){
+   assert.equal(runInNewContext(expr,{github:{...github,...changed}}),false);
+  }
+ }
 });
 
 
@@ -179,7 +195,7 @@ test('source guard requires the exact checksummed first-creation receipt before 
  assert.ok(main.indexOf('verifySigningFirstCreation(')<main.indexOf('await verifyCommit'));
  assert.ok(main.includes('...source, firstCreation, phase, ci, apple, artifactSlot'));
  const fakeGit=args=>args[1]==='HEAD'?guard.RELEASE_SOURCE:guard.RELEASE_TREE;
- const appText=path=>path==='src/pwaBootstrap.mjs'?'const PWA_RELEASE = "532";':JSON.stringify({version:{number:'4.59',build:'197'}});
+ const appText=path=>path==='src/pwaBootstrap.mjs'?'const PWA_RELEASE = "532";':JSON.stringify({version:{number:'4.59',build:'198'}});
  assert.equal(guard.verifyCheckout(fakeGit,appText,{...context(),APPLE_TEAM_ID:'MA9S4L7WKS'}).sourceCommit,guard.RELEASE_SOURCE);
 });
 test('actual CLI writes GET evidence on acceptance and rejects a changed push before any GET',()=>{
