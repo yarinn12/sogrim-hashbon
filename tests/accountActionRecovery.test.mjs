@@ -284,6 +284,35 @@ test("notification acknowledgement cannot erase another pending activity or acco
   assert.deepEqual(loadPendingEventNotifications(h.context.window.localStorage).map(entry => entry.activityId).sort(), ["expense-b", "expense-newer"]);
 });
 
+test("an activity acknowledgement preserves every queued intent if the durable queue read fails", async () => {
+  const h = harness(), gate = deferred(), started = deferred();
+  h.context.sendEventActivityNotification = async (_config, payload) => {
+    h.calls.push({ action: "send", payload });
+    started.resolve();
+    return gate.promise;
+  };
+  const publishing = h.context.publishEventActivityAfterSave({ ok: true, mode: "cloud" }, "event-a", "expense-created", "expense-a");
+  await started.promise;
+  const storage = h.context.window.localStorage;
+  rememberPendingEventNotification({ ownerUserId: A, eventId: "event-a", activityId: "expense-sibling", kind: "expense-created" }, storage);
+  rememberPendingEventNotification({ ownerUserId: B, eventId: "event-b", activityId: "expense-b", kind: "expense-created" }, storage);
+  const pendingKey = "settle-friends-pending-event-notifications";
+  const bytesBefore = h.stored.get(pendingKey), healthyRead = storage.getItem;
+  storage.getItem = key => {
+    if (key === pendingKey) throw new Error("Synthetic storage read failure during acknowledgement");
+    return healthyRead(key);
+  };
+  gate.resolve({ ok: true });
+  await publishing;
+  assert.equal(h.stored.get(pendingKey), bytesBefore, "an ACK must not discard another queued event/account after a read failure");
+  storage.getItem = healthyRead;
+  assert.equal(loadPendingEventNotifications(storage).length, 3);
+  await h.context.retryPendingEventNotifications();
+  assert.deepEqual(loadPendingEventNotifications(storage).map(entry => entry.activityId), ["expense-b"]);
+  assert.deepEqual(h.calls.filter(call => call.action === "send").map(call => call.payload.activityId),
+    ["expense-a", "expense-a", "expense-sibling"], "retry removes only this owner's acknowledged activities");
+});
+
 test("notification recovery does not send a second copy while the same activity is in flight", async () => {
   const gate = deferred(), started = deferred();
   const h = harness({ send: async () => { started.resolve(); return gate.promise; } });

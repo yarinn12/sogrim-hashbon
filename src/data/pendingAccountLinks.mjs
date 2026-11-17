@@ -1,3 +1,5 @@
+import { readPendingQueueEntries } from "./pendingQueueStorage.mjs";
+
 export const PENDING_ACCOUNT_LINKS_STORAGE_KEY =
   "settle-friends-pending-account-links";
 
@@ -46,15 +48,7 @@ export function loadPendingAccountLinks(
   ownerUserId = ""
 ) {
   const owner = normalizeIdentifier(ownerUserId);
-  let parsed;
-  try {
-    parsed = JSON.parse(storage?.getItem?.(PENDING_ACCOUNT_LINKS_STORAGE_KEY) || "[]");
-  } catch {
-    return [];
-  }
-  const entries = Array.isArray(parsed)
-    ? parsed.map(normalizeEntry).filter(Boolean)
-    : [];
+  const entries = readPendingQueueEntries(storage, PENDING_ACCOUNT_LINKS_STORAGE_KEY, normalizeEntry) ?? [];
   return owner
     ? entries.filter((entry) => entry.ownerUserId === owner)
     : entries;
@@ -66,7 +60,9 @@ export function rememberPendingAccountLink(
 ) {
   const normalized = normalizeEntry(entry);
   if (!normalized) return false;
-  const entries = loadPendingAccountLinks(storage).filter(
+  const currentEntries = readPendingQueueEntries(storage, PENDING_ACCOUNT_LINKS_STORAGE_KEY, normalizeEntry);
+  if (!currentEntries) return false;
+  const entries = currentEntries.filter(
     (item) => pendingAccountLinkKey(item) !== pendingAccountLinkKey(normalized)
   );
   entries.push(normalized);
@@ -82,8 +78,10 @@ export function forgetPendingAccountLink(
   const normalized = normalizeEntry(entry);
   if (!normalized) return false;
   const key = pendingAccountLinkKey(normalized);
+  const entries = readPendingQueueEntries(storage, PENDING_ACCOUNT_LINKS_STORAGE_KEY, normalizeEntry);
+  if (!entries) return false;
   return saveEntries(
-    loadPendingAccountLinks(storage).filter(
+    entries.filter(
       (item) => pendingAccountLinkKey(item) !== key
     ),
     storage
@@ -97,7 +95,9 @@ export function markPendingAccountLinkAttempt(
 ) {
   const normalized = normalizeEntry(entry);
   if (!normalized) return false;
-  const current = loadPendingAccountLinks(storage).find(
+  const entries = readPendingQueueEntries(storage, PENDING_ACCOUNT_LINKS_STORAGE_KEY, normalizeEntry);
+  if (!entries) return false;
+  const current = entries.find(
     (item) => pendingAccountLinkKey(item) === pendingAccountLinkKey(normalized)
   ) ?? normalized;
   return rememberPendingAccountLink(

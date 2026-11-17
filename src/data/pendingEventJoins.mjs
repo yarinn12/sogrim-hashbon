@@ -1,3 +1,5 @@
+import { readPendingQueueEntries } from "./pendingQueueStorage.mjs";
+
 export const PENDING_EVENT_JOINS_STORAGE_KEY =
   "settle-friends-pending-event-joins";
 
@@ -32,22 +34,16 @@ export function loadPendingEventJoins(
   ownerUserId = ""
 ) {
   const owner = normalizeIdentifier(ownerUserId);
-  let parsed;
-  try {
-    parsed = JSON.parse(storage?.getItem?.(PENDING_EVENT_JOINS_STORAGE_KEY) || "[]");
-  } catch {
-    return [];
-  }
-  const entries = Array.isArray(parsed)
-    ? parsed.map(normalizeEntry).filter(Boolean)
-    : [];
+  const entries = readPendingQueueEntries(storage, PENDING_EVENT_JOINS_STORAGE_KEY, normalizeEntry) ?? [];
   return owner ? entries.filter((entry) => entry.ownerUserId === owner) : entries;
 }
 
 export function rememberPendingEventJoin(entry, storage = globalThis.localStorage) {
   const normalized = normalizeEntry(entry);
   if (!normalized) return false;
-  const entries = loadPendingEventJoins(storage).filter(
+  const currentEntries = readPendingQueueEntries(storage, PENDING_EVENT_JOINS_STORAGE_KEY, normalizeEntry);
+  if (!currentEntries) return false;
+  const entries = currentEntries.filter(
     (item) => pendingEventJoinKey(item) !== pendingEventJoinKey(normalized)
   );
   entries.push(normalized);
@@ -59,8 +55,10 @@ export function forgetPendingEventJoin(entry, storage = globalThis.localStorage)
   const normalized = normalizeEntry(entry);
   if (!normalized) return false;
   const key = pendingEventJoinKey(normalized);
+  const entries = readPendingQueueEntries(storage, PENDING_EVENT_JOINS_STORAGE_KEY, normalizeEntry);
+  if (!entries) return false;
   return saveEntries(
-    loadPendingEventJoins(storage).filter(
+    entries.filter(
       (item) => pendingEventJoinKey(item) !== key
     ),
     storage
@@ -74,7 +72,9 @@ export function markPendingEventJoinAttempt(
 ) {
   const normalized = normalizeEntry(entry);
   if (!normalized) return false;
-  const current = loadPendingEventJoins(storage).find(
+  const entries = readPendingQueueEntries(storage, PENDING_EVENT_JOINS_STORAGE_KEY, normalizeEntry);
+  if (!entries) return false;
+  const current = entries.find(
     (item) => pendingEventJoinKey(item) === pendingEventJoinKey(normalized)
   ) ?? normalized;
   return rememberPendingEventJoin(

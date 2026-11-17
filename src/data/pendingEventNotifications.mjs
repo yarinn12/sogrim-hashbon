@@ -1,3 +1,5 @@
+import { readPendingQueueEntries } from "./pendingQueueStorage.mjs";
+
 export const PENDING_EVENT_NOTIFICATIONS_STORAGE_KEY = "settle-friends-pending-event-notifications";
 const KINDS = new Set(["expense-created", "participant-joined", "event-closed"]);
 
@@ -6,19 +8,15 @@ export function pendingEventNotificationKey(entry) {
 }
 
 export function loadPendingEventNotifications(storage = globalThis.localStorage, ownerUserId = "") {
-  try {
-    const parsed = JSON.parse(storage?.getItem?.(PENDING_EVENT_NOTIFICATIONS_STORAGE_KEY) || "[]");
-    return (Array.isArray(parsed) ? parsed : []).map(normalize).filter(entry =>
-      entry && (!ownerUserId || entry.ownerUserId === ownerUserId));
-  } catch {
-    return [];
-  }
+  const entries = readPendingQueueEntries(storage, PENDING_EVENT_NOTIFICATIONS_STORAGE_KEY, normalize) ?? [];
+  return entries.filter(entry => !ownerUserId || entry.ownerUserId === ownerUserId);
 }
 
 export function rememberPendingEventNotification(entry, storage = globalThis.localStorage) {
   const normalized = normalize(entry);
   if (!normalized) return false;
-  const entries = loadPendingEventNotifications(storage);
+  const entries = readPendingQueueEntries(storage, PENDING_EVENT_NOTIFICATIONS_STORAGE_KEY, normalize);
+  if (!entries) return false;
   const key = pendingEventNotificationKey(normalized);
   const existing = entries.find(item => pendingEventNotificationKey(item) === key);
   // Preserve the first intent and any cloud acknowledgement across retries.
@@ -32,7 +30,9 @@ export function forgetPendingEventNotification(entry, storage = globalThis.local
   const normalized = normalize(entry);
   if (!normalized) return false;
   const key = pendingEventNotificationKey(normalized);
-  return save(loadPendingEventNotifications(storage).filter(item => pendingEventNotificationKey(item) !== key), storage);
+  const entries = readPendingQueueEntries(storage, PENDING_EVENT_NOTIFICATIONS_STORAGE_KEY, normalize);
+  if (!entries) return false;
+  return save(entries.filter(item => pendingEventNotificationKey(item) !== key), storage);
 }
 
 function save(entries, storage) {
