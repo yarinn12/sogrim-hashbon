@@ -338,7 +338,11 @@ async function fixture(testInfo, {withExpense = false, withClosedExpenseOrder = 
       if (url.pathname.endsWith('/app_snapshots')) {
         const id = url.searchParams.get('id')?.replace(/^eq\./, '');
         if (request.method() === 'GET') {
-          const canonicalHold = id === sharedId && canonicalReadHolds.get(i);
+          // Membership discovery can return the same canonical event as the
+          // direct ID read. Hold both paths so a peer refresh cannot reach the
+          // screen before this test deliberately releases the pending update.
+          const includesCanonical = id === sharedId || url.searchParams.has('snapshot_kind');
+          const canonicalHold = includesCanonical && canonicalReadHolds.get(i);
           if (canonicalHold) {
             canonicalHold.arrived = true;
             await canonicalHold.ready;
