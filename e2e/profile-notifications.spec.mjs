@@ -1081,7 +1081,7 @@ test("incoming friend requests appear and disappear while the notifications scre
     if (route.request().method() !== "GET") return route.fallback();
     return route.fulfill({ headers: inboxFaultHeaders, json: rows });
   });
-  await page.route("https://profile-notifications.supabase.co/rest/v1/public_profiles*", route => {
+  await page.route("https://profile-notifications.supabase.co/rest/v1/user_profiles*", route => {
     if (route.request().method() !== "GET") return route.fallback();
     return route.fulfill({ headers: inboxFaultHeaders, json: [
       { user_id: USER_ID, display_name: "ירין יצחק", username: "yarin", avatar_preset: "avatar-1" },
@@ -1099,7 +1099,7 @@ test("incoming friend requests appear and disappear while the notifications scre
   // Exercise the existing 12-second roster timer, without a push, navigation,
   // forced refresh or shortened interval. The separate inbox GET stays unchanged.
   await expect(requestRow).toBeVisible({ timeout: 20_000 });
-  await expect(requestRow).toContainText("דני לוי שלח לך בקשת חברות");
+  await expect(requestRow.locator("strong")).toHaveText("בקשת חברות מדני לוי");
   await expect(page.locator('.product-nav-badge')).toHaveText("3");
   rows.length = 0;
   await expect(requestRow).toHaveCount(0, { timeout: 20_000 });
