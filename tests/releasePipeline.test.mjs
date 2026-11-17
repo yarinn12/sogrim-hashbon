@@ -24,6 +24,8 @@ test("manual and automatic public deployment require complete exact-source CI be
 test("Git integration cannot publish main independently of the verified production workflow",async()=>{
  const config=JSON.parse(await readFile("vercel.json","utf8"));
  assert.equal(config.git.deploymentEnabled.main,false);
+ assert.equal(config.git.deploymentEnabled["codex/unified-test-candidate-20261117"],false,
+  "The current test candidate must not automatically create a Preview deployment");
  assert.ok(config.builds.some(item=>item.src==="src/ui/**"));
 });
 
