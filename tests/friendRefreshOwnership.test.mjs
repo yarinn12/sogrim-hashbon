@@ -152,3 +152,41 @@ test("polls within one account still coalesce into one read", async () => {
   const h = harness(); const first = h.ctx.requestVisibleFriendNetworkSync(); const second = h.ctx.requestVisibleFriendNetworkSync(); await tick();
   assert.equal(h.reads.length, 1); h.reads[0].resolve(network()); await Promise.all([first, second]);
 });
+
+test("the visible notifications screen polls incoming friend requests and coalesces ticks", async () => {
+  const h = harness(); h.ctx.screen = { name: "notifications" };
+  const first = h.ctx.requestVisibleFriendNetworkSync();
+  const second = h.ctx.requestVisibleFriendNetworkSync();
+  await tick();
+  try {
+    assert.equal(h.reads.length, 1, "friend requests need a roster read while the inbox stays open");
+  } finally {
+    h.reads.forEach(read => read.resolve(network()));
+    await Promise.all([first, second]);
+  }
+});
+
+test("a new friend request refreshes the open notification list without financial writes", async () => {
+  const h = harness(); h.ctx.screen = { name: "notifications" };
+  h.ctx.state = h.ctx.applyFriendNetworkToState(h.ctx.state, h.ctx.friendNetwork);
+  const before = plain(h.ctx.state);
+  const request = h.ctx.refreshFriendNetwork({ preserveNotice: true }); await tick();
+  const incoming = network();
+  incoming.profiles.push(profile("new-friend"));
+  incoming.friendships.push({ id: "new-incoming-request", requester_id: "new-friend", addressee_id: "a", status: "pending" });
+  h.reads[0].resolve(incoming); await request;
+  assert.equal(h.renders.length, 1, "a changed friend request must become visible without navigating away");
+  assert.equal(h.ctx.published, 1, "the navigation badge also receives the new request");
+  assert.deepEqual(plain(h.ctx.state), before);
+  assert.equal(h.writes.length, 0, "a pending request is not a financial mutation");
+  assert.equal(h.ctx.notice, "Initial notice");
+});
+
+test("an unchanged friend roster leaves the open notification list undisturbed", async () => {
+  const h = harness(); h.ctx.screen = { name: "notifications" };
+  h.ctx.state = h.ctx.applyFriendNetworkToState(h.ctx.state, h.ctx.friendNetwork);
+  const request = h.ctx.requestVisibleFriendNetworkSync(); await tick();
+  h.reads[0].resolve(network()); await request;
+  assert.equal(h.renders.length, 0);
+  assert.equal(h.writes.length, 0);
+});

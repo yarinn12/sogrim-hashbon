@@ -15372,6 +15372,7 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     !profileAvatarPickerIsOpen &&
     (
       screen.name === "groups" ||
+      screen.name === "notifications" ||
       screen.name === "profile" ||
       screen.name === "friend-add" ||
       screen.name === "friend-profile"
@@ -15461,6 +15462,7 @@ function requestVisibleFriendNetworkSync() {
   }
   const screenUsesFriends = [
     "groups",
+    "notifications",
     "friend-add",
     "friend-profile",
     "profile",

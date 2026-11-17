@@ -1071,6 +1071,48 @@ test("foreground inbox receives new rows and remote reads without push or naviga
   await testInfo.attach("foreground-inbox-timings", { body: JSON.stringify(observation), contentType: "application/json" });
 });
 
+test("incoming friend requests appear and disappear while the notifications screen stays open", async ({ page }, testInfo) => {
+  const errors = [], financialWrites = [], rows = [];
+  page.on("pageerror", error => errors.push(error.message));
+  page.on("request", request => {
+    if (request.url().includes("/rpc/update_shared_event_snapshot")) financialWrites.push(request.postData());
+  });
+  await page.route("https://profile-notifications.supabase.co/rest/v1/friendships*", route => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({ headers: inboxFaultHeaders, json: rows });
+  });
+  await page.route("https://profile-notifications.supabase.co/rest/v1/public_profiles*", route => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({ headers: inboxFaultHeaders, json: [
+      { user_id: USER_ID, display_name: "ירין יצחק", username: "yarin", avatar_preset: "avatar-1" },
+      { user_id: "incoming-friend-peer", display_name: "דני לוי", username: "incoming_peer", avatar_preset: "avatar-1" }
+    ] });
+  });
+  await page.locator('[data-nav-destination="notifications"]').click();
+  const screen = page.locator('[data-screen-kind="notifications"]');
+  await expect(screen).toBeVisible();
+  const requestRow = page.locator('[data-notification-id="friend-request:incoming-while-open"]');
+  await expect(requestRow).toHaveCount(0);
+  const eventsBefore = await page.evaluate(async () => (await import("/src/data/localStore.mjs")).loadState().events);
+  rows.push({ id: "incoming-while-open", requester_id: "incoming-friend-peer", addressee_id: USER_ID,
+    status: "pending", requested_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+  // Exercise the existing 12-second roster timer, without a push, navigation,
+  // forced refresh or shortened interval. The separate inbox GET stays unchanged.
+  await expect(requestRow).toBeVisible({ timeout: 20_000 });
+  await expect(requestRow).toContainText("דני לוי שלח לך בקשת חברות");
+  await expect(page.locator('.product-nav-badge')).toHaveText("3");
+  rows.length = 0;
+  await expect(requestRow).toHaveCount(0, { timeout: 20_000 });
+  await expect(page.locator('.product-nav-badge')).toHaveText("2");
+  await expect(screen).toBeVisible();
+  const eventsAfter = await page.evaluate(async () => (await import("/src/data/localStore.mjs")).loadState().events);
+  expect(eventsAfter).toEqual(eventsBefore);
+  expect(financialWrites).toEqual([]);
+  expect(errors).toEqual([]);
+  await assertNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath("incoming-friend-request-live-list.png"), fullPage: true });
+});
+
 test("same-account login lifecycle rejects a late inbox response and reads the fresh session immediately", async ({ page }, testInfo) => {
   const errors = []; page.on("pageerror", error => errors.push(error.message));
   await expect(page.locator(".product-nav-badge")).toHaveText("2");
