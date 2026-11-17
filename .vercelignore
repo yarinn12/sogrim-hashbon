@@ -63,6 +63,7 @@ server-*.log
 !sogrim-share-logo.png
 !sogrim-home-hero.png
 !assets/sign-in-with-apple-iw.png
+!assets/sign-in-with-apple-logo-white.svg
 !assets/avatars/
 !assets/avatars/*.png
 chrome-visual-profile

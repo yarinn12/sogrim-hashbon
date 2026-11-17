@@ -2694,7 +2694,8 @@ function enableProviderOptions() {
 
 function appleProviderMarkup() {
   return `<button class="account-google-button account-apple-button" type="button" data-account-action="apple" aria-label="המשך עם Apple">
-    <img class="account-apple-button-art" src="./assets/sign-in-with-apple-iw.png" alt="" width="375" height="56" />
+    <img class="account-apple-button-art account-apple-provider-logo" src="./assets/sign-in-with-apple-logo-white.svg" alt="" width="31" height="44" />
+    <span class="account-provider-label">המשך עם Apple</span>
   </button>`;
 }
 
@@ -4243,11 +4244,14 @@ html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entr
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-google-button,
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-email-toggle,
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit {
- width:100%!important;min-height:52px!important;height:auto!important;min-width:0!important;padding:13px 16px!important;font-size:1rem!important;line-height:1.45!important;border-radius:14px!important;box-shadow:none!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important;gap:10px!important;
+ width:100%!important;min-height:52px!important;height:auto!important;min-width:0!important;padding:13px 16px!important;font-size:1rem!important;font-weight:800!important;line-height:1.45!important;border-radius:14px!important;box-shadow:none!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important;gap:10px!important;
 }
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-submit {background:#075846!important;color:#fff!important;border:1px solid #075846!important}
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-apple-button {padding:0!important;background:#000!important;border-radius:14px!important;min-height:56px!important;overflow:visible!important}
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-apple-button-art {display:block!important;width:100%!important;max-width:375px!important;height:auto!important;max-height:none!important;object-fit:contain!important;border-radius:14px!important}
+/* Keep the official padded logo intact; the title follows the shared text scale. */
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-apple-button-art.account-apple-provider-logo {width:auto!important;max-width:none!important;height:2.75em!important;margin:0!important;flex:0 0 auto!important;border-radius:0!important}
+html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-provider-label {font:inherit!important;color:inherit!important;min-width:0!important;white-space:normal!important;overflow-wrap:normal!important;word-break:normal!important}
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-email-auth {display:grid!important;gap:20px!important}
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-email-auth[hidden] {display:none!important}
 html.circle-design-v1.ledger-workspace-v1 #public-account-auth-gate.account-entry-screen .account-auth-tabs {display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:4px!important;padding:4px!important;border-radius:14px!important;margin:0!important;background:#eaf1ef!important;border:1px solid #dce5e2!important}

@@ -40,6 +40,7 @@ const CACHE_FILES = [
   "/assets/sogrim-logo-intro-poster.jpg",
   "/assets/sogrim-logo-intro-hold.jpg",
   "/assets/sign-in-with-apple-iw.png",
+  "/assets/sign-in-with-apple-logo-white.svg",
   "/assets/avatars/avatar-1.png",
   "/assets/avatars/avatar-2.png",
   "/assets/avatars/avatar-3.png",

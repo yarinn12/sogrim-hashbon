@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readSource as readFile } from "./helpers/readSource.mjs";
 import { renderAccountEntryView } from "../src/ui/accountEntryPresentation.mjs";
 import { renderAccountCompletionView } from "../src/ui/accountCompletionPresentation.mjs";
@@ -226,7 +227,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /renderAccountCompletionView\(\{[\s\S]*?displayName, username, error, errorFieldName, hasSavedFullName,[\s\S]*?hasInvite: Boolean\(inviteContext\)/);
   assert.match(layer, /appleOAuthUrl/);
   assert.match(layer, /aria-label="המשך עם Apple"/);
-  assert.match(layer, /assets\/sign-in-with-apple-iw\.png/);
+  assert.match(layer, /assets\/sign-in-with-apple-logo-white\.svg/);
   assert.match(
     layer,
     /if \(action === "google"\) \{[\s\S]*?if \(authBusy \|\| !isNativeGooglePlatform\(\)\) return;\s*setAuthBusy\(true\);[\s\S]*?finally \{\s*setAuthBusy\(false\)/
@@ -486,20 +487,22 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.doesNotMatch(accountView, /href="\.\/(?:privacy|support|terms|accessibility|account-deletion)"/);
 });
 
-test("Apple authentication uses Apple's approved localized button artwork", async () => {
+test("Apple authentication uses the official logo with a scalable localized title", async () => {
   const [artwork, ledger, serviceWorker, nativeBuilder, accountLayer] = await Promise.all([
-    readFile("assets/sign-in-with-apple-iw.png"),
+    readFile("assets/sign-in-with-apple-logo-white.svg"),
     readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8"),
     readFile("sw.js", "utf8"),
     readFile("scripts/build-native-web.mjs", "utf8"),
     readFile("src/publicAccountAuthLayer.mjs", "utf8")
   ]);
 
-  assert.deepEqual([...artwork.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(createHash("sha256").update(artwork).digest("hex"),
+    "17e77deafaa7b57553cb60dc37b895bba2340e167c47c21715a9d522786c117d");
+  assert.match(artwork.toString("utf8"), /viewBox="0 0 31 44"/);
   assert.match(ledger, /\.account-apple-button \{[\s\S]*?background: #000000 !important/);
-  assert.match(ledger, /\.account-apple-button-art \{[\s\S]*?max-width: 375px !important/);
-  assert.match(serviceWorker, /assets\/sign-in-with-apple-iw\.png/);
-  assert.match(nativeBuilder, /assets\/sign-in-with-apple-iw\.png/);
+  assert.match(accountLayer, /<span class="account-provider-label">המשך עם Apple<\/span>/);
+  assert.match(serviceWorker, /assets\/sign-in-with-apple-logo-white\.svg/);
+  assert.match(nativeBuilder, /assets\/sign-in-with-apple-logo-white\.svg/);
   assert.match(
     accountLayer,
     /if \(action === "apple"\) \{[\s\S]*?\} catch \(error\) \{[\s\S]*?emitOperationFailure\("auth", \{ screen: "auth", error \}\);[\s\S]*?renderAccountGate\(\{[\s\S]*?error: accountAuthErrorMessage\(error, "apple"\)[\s\S]*?\} finally/

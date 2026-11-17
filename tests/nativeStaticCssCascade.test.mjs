@@ -1248,3 +1248,22 @@ test('native repayment shortcut preserves painted-group centering and optical la
     assert.ok(wide?.includes('width:13rem!important'),'the enlarged wide layout must retain its guard and font-relative slot after minification');
   }
 });
+
+test("native Apple provider keeps its scalable title and centered logo in runtime CSS", async () => {
+  // Auth injects interpolated CSS at runtime, so it intentionally is not part
+  // of native-layers.css. Exercise the actual build plugin without assuming
+  // that these rules use the static-layer extraction path.
+  const auth = resolve("src/publicAccountAuthLayer.mjs");
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, extractStaticCssTemplatesPlugin } = await harness();
+  const paths = await extractNativeStaticCss([{ path: auth }, { path: ledger }], "fixture-assets");
+  assert.equal(paths.has(auth), false);
+  let onLoad;
+  extractStaticCssTemplatesPlugin(paths).setup({ onLoad(_options, handler) { onLoad = handler; } });
+  const { contents } = await onLoad({ path: auth });
+  const compact = contents.replace(/\s+/g, "");
+  assert.match(compact, /\.account-apple-button-art\.account-apple-provider-logo\{[^}]*height:2\.75em!important/);
+  assert.match(compact, /\.account-apple-button-art\.account-apple-provider-logo\{[^}]*margin:0!important/);
+  assert.match(compact, /\.account-provider-label\{[^}]*font:inherit!important/);
+  assert.match(compact, /\.account-auth-submit\{[^}]*font-size:1rem!important;[^}]*font-weight:800!important/);
+});

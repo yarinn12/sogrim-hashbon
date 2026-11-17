@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 const metadata = JSON.parse(await readFile("docs/store-submission/app-store-metadata-he.json", "utf8"));
@@ -68,8 +69,11 @@ check(
 check("Shared Xcode scheme exists", existsSync("ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme"));
 check(
   "Sign in with Apple uses accessible approved artwork",
-  /aria-label="המשך עם Apple"/.test(accountAuth) && /assets\/sign-in-with-apple-iw\.png/.test(accountAuth)
+  /aria-label="המשך עם Apple"/.test(accountAuth) && /assets\/sign-in-with-apple-logo-white\.svg/.test(accountAuth)
 );
+const officialAppleLogo = await readFile("assets/sign-in-with-apple-logo-white.svg");
+check("Official Apple sign-in logo remains unmodified",
+  createHash("sha256").update(officialAppleLogo).digest("hex") === "17e77deafaa7b57553cb60dc37b895bba2340e167c47c21715a9d522786c117d");
 await checkPngDimensions("Official localized Apple sign-in artwork", "assets/sign-in-with-apple-iw.png", 1125, 168);
 await checkPng("Opaque 1024px App Store icon", "docs/store-assets/app-icon-1024.png", 1024, 1024);
 for (const [index, name] of ["event", "expense", "invite"].entries()) {

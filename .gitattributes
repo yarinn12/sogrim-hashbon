@@ -17,3 +17,6 @@ scripts/qa/android-swangle-compatibility/reference-sdk-binaries.json -text
 # Preserve exact Auth76 CLI evidence bytes across Windows checkout.
 tests/fixtures/auth76/log-show-json-footer-sample.txt -text
 tests/fixtures/auth76/log-help-show-macos26.6.1.stderr.txt -text
+
+# Preserve the official Apple logo bytes used by artwork verification.
+assets/sign-in-with-apple-logo-white.svg -text
