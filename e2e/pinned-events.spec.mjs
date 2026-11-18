@@ -367,3 +367,63 @@ test("a different authenticated account has independent pin preferences", async 
     expect(second.state().personalEventPinPreferences.updates[OLD]).toBeUndefined();
   } finally { await secondContext.close(); }
 });
+
+test("an incoming peer snapshot during a pin press retains its first activation and both personal pins", async ({ page, browser }) => {
+  const cloud = await personalPinsCloud(page, test.info().project.use.baseURL, state,
+    { profileUpdatedAt: "2026-11-18T00:00:00.000Z" });
+  const secondContext = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: "block" });
+  let releaseRead;
+  const released = new Promise(resolve => { releaseRead = resolve; });
+  let heldRead = false, replacedDuringPress = false;
+  const errors = [];
+  try {
+    const second = await secondContext.newPage();
+    second.on("pageerror", error => errors.push(error.message));
+    await cloud.connectPage(second);
+    await second.route("https://personal-pins-qa.supabase.co/rest/v1/app_snapshots?**", async route => {
+      const request = route.request(), url = new URL(request.url());
+      if (request.method() === "GET" && url.searchParams.get("select")?.split(",").includes("state") &&
+          url.searchParams.get("id") === "eq.personal-pins-cloud-space-personal-pins-cloud-owner") {
+        heldRead = true;
+        await released;
+      }
+      await route.fallback();
+    });
+    await pin(page, OLD, true);
+    const sharedEventsBefore = structuredClone(cloud.state().events);
+    await menu(second, CLOSED);
+    // Use the app's actual reconnect read path. Only the incoming response is
+    // held, so it can replace the real DOM between native down and up events.
+    await second.evaluate(() => window.dispatchEvent(new Event("online")));
+    await expect.poll(() => heldRead).toBe(true);
+    await pinButton(second).click({ trial: true });
+    const pressed = await pinButton(second).elementHandle();
+    const box = await pinButton(second).boundingBox();
+    expect(box).not.toBeNull();
+    await second.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await second.mouse.down();
+    releaseRead();
+    await expect.poll(() => pressed.evaluate(element => element.isConnected)).toBe(false);
+    replacedDuringPress = true;
+    await expect(row(second, OLD).locator('[aria-label="אירוע מוצמד"]')).toHaveCount(1);
+    await expect(pinButton(second)).toHaveAttribute("aria-pressed", "false");
+    await second.mouse.up();
+    await expect(second.locator(".event-status-menu")).toHaveCount(0);
+    await expect.poll(() => cloud.state().personalEventPinPreferences.updates[CLOSED]?.pinned).toBe(true);
+    expect(cloud.state().personalEventPinPreferences.updates[OLD].pinned).toBe(true);
+    const confirmed = cloud.writes.map(snapshot => snapshot.state.personalEventPinPreferences.updates[CLOSED])
+      .filter(update => update?.pinned === true);
+    expect(new Set(confirmed.map(update => update.mutationId)).size).toBe(1);
+    expect(cloud.state().events).toEqual(sharedEventsBefore);
+    await cloud.reload();
+    await order(page, [OLD, CLOSED, NEW]);
+    expect(errors).toEqual([]);
+    expect(cloud.errors).toEqual([]);
+  } finally {
+    releaseRead();
+    await test.info().attach("pin-press-incoming-snapshot-proof", { contentType: "application/json",
+      body: JSON.stringify({ heldRead, replacedDuringPress,
+        acknowledgedPins: cloud.state().personalEventPinPreferences?.updates, writeCount: cloud.writes.length, errors }) });
+    await secondContext.close();
+  }
+});
