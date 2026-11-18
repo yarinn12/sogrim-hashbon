@@ -94,6 +94,17 @@ const seededState = {
   deletedParticipants: []
 };
 
+function mobileLayoutFixtureState(testInfo) {
+  if (!testInfo.annotations.some(annotation => annotation.type === "fixture" &&
+      annotation.description === "manual-participant-editor")) return seededState;
+  const manualState = structuredClone(seededState);
+  manualState.friendContacts = manualState.participants.slice(1).map(person => ({
+    id: `manual-contact-${person.id}`, participantId: person.id, active: true,
+    source: person.kind === "user" ? "account" : "offline", updatedAt: "2026-08-03T20:05:00.000Z"
+  }));
+  return manualState;
+}
+
 test.beforeEach(async ({ page }, testInfo) => {
   runtimeIssues = [];
   // Immutable OLD stylesheet responses for controlled regression evidence only.
@@ -120,7 +131,8 @@ test.beforeEach(async ({ page }, testInfo) => {
     }
   });
 
-  await prepareMobileLayoutFixture({ baseURL: testInfo.project.use.baseURL, state: seededState });
+  const fixtureState = mobileLayoutFixtureState(testInfo);
+  await prepareMobileLayoutFixture({ baseURL: testInfo.project.use.baseURL, state: fixtureState });
 
   await page.addInitScript(({ participantId, displayName, state }) => {
     localStorage.clear();
@@ -132,7 +144,7 @@ test.beforeEach(async ({ page }, testInfo) => {
     );
     localStorage.setItem("settle-friends-current-participant", participantId);
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
-  }, { participantId: OWNER_ID, displayName: "ירין יצחק", state: seededState });
+  }, { participantId: OWNER_ID, displayName: "ירין יצחק", state: fixtureState });
 
   const dynamicType = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
   await page.goto(dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/");
@@ -3230,18 +3242,13 @@ test("friends picker scales real name glyphs and retains selection at enlarged t
 });
 
 
-test("manual participant editor has one clear explanation and preserves additions with enlarged text", async ({ page, request , baseURL: fixtureBaseURL}) => {
-  const manualState = structuredClone(seededState);
-  manualState.friendContacts = manualState.participants.slice(1).map(person => ({
-    id: `manual-contact-${person.id}`, participantId: person.id, active: true,
-    source: person.kind === "user" ? "account" : "offline", updatedAt: "2026-08-03T20:05:00.000Z"
-  }));
-  await writeLocalQaStateFresh(fixtureBaseURL, manualState);
-  await settleServiceWorkerBeforeReload(page);
-  await page.addInitScript(state => localStorage.setItem("settle-friends-state", JSON.stringify(state)), manualState);
+test("manual participant editor has one clear explanation and preserves additions with enlarged text",
+  { annotation: { type: "fixture", description: "manual-participant-editor" } }, async ({ page }) => {
   const name = 'משתתף בדיקה עם שם משפחה ארוך';
   for (const rootSize of [16, 20, 32]) {
-    await page.goto('/');
+    // The first Home already has the complete scenario state. Do not replace
+    // it during initial worker startup or compete with a second init script.
+    if (rootSize !== 16) await page.goto('/');
     await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
     await page.getByRole('radio', { name: rootSize === 20 ? 'גדול מאוד' : 'לפי המכשיר', exact: true }).check();
     await page.getByRole('button', { name: 'סיום', exact: true }).click();
