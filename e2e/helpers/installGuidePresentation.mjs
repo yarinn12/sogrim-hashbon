@@ -56,6 +56,36 @@ async function readable(l) {
   }
 }
 
+async function entryGeometry(page, entry) {
+  await page.evaluate(() => document.fonts.ready);
+  // Opening details can schedule its real panel animation after scrollIntoView.
+  // Measure a new scroll after finite motion ends, retaining the original bounds.
+  const scroll = () => entry.evaluate(async element => {
+    element.scrollIntoView({ block: "center", behavior: "instant" });
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  const settled = () => expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation =>
+    Number.isFinite(animation.effect?.getComputedTiming().endTime)
+      && (animation.playState === "running" || animation.playState === "paused")
+  ).length)).toBe(0);
+  await scroll();
+  await settled();
+  await scroll();
+  await settled();
+  const measured = await entry.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    const header = document.querySelector(".product-app-identity").getBoundingClientRect();
+    const nav = document.querySelector(".product-app-nav").getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return { top: box.top, bottom: box.bottom, headerBottom: header.bottom, navTop: nav.top,
+      reachable: !!hit && (element === hit || element.contains(hit)) };
+  });
+  expect(measured.reachable).toBe(true);
+  expect(measured.top).toBeGreaterThanOrEqual(measured.headerBottom - 1);
+  expect(measured.bottom).toBeLessThanOrEqual(measured.navTop + 1);
+  return measured;
+}
+
 const checks=[["h2",1.5],[".install-app-description",.875],[".install-app-steps strong",.9375],[".install-app-steps p",.875],[".install-app-steps li > span",.875],[".install-app-done",.875]];
 async function geometry(page,root){
  const d=page.locator('.install-app-dialog');await expect.poll(()=>d.locator('h2').evaluate(e=>parseFloat(getComputedStyle(e).fontSize))).toBe(root*1.5);
@@ -64,4 +94,4 @@ async function geometry(page,root){
  expect(m.top).toBeGreaterThanOrEqual(13);expect(m.bottom).toBeLessThanOrEqual(m.height-13);expect(m.overflow).toBe(0);expect(m.bad).toEqual([]);for(const f of m.fonts)expect(f.font,f.s).toBe(root*f.ratio);
  for(const[s]of checks)for(const el of await d.locator(s).all())await readable(el);for(const el of await d.locator('[data-public-close-install]').all())await hit(el,false);return m;
 }
-export {stable,hit,readable,geometry};
+export {stable,hit,readable,geometry,entryGeometry};

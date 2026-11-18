@@ -1,8 +1,9 @@
 import {test,expect} from "@playwright/test";
 import {readFileSync} from "node:fs";
-import {geometry,hit,stable,readable} from "./helpers/installGuidePresentation.mjs";
+import {geometry,hit,stable,readable,entryGeometry} from "./helpers/installGuidePresentation.mjs";
 import {installSyntheticSystemText} from "./helpers/accessibilityPresentation.mjs";
 import {coverAddedInstallationRowOnScroll} from "./helpers/installGuideNewRowControl.mjs";
+import {stageLateInstallationDisclosure} from "./helpers/installEntryMotionControl.mjs";
 const fixture=readFileSync(new URL("./fixtures/profileRewardBootstrap.js",import.meta.url),"utf8"),evidence=new WeakMap();
 test.use({serviceWorkers:"block"});
 test.beforeEach(async({page})=>{
@@ -72,9 +73,8 @@ test("installation respects enlarged system text and restores it after a manual 
 test("installation entry remains pointer reachable between the fixed header and navigation",async({page})=>{
   await page.setViewportSize({width:320,height:390});await page.goto("/?requests=empty&reward=inactive&dynamic-type-preview=32");
   await page.locator('.product-app-nav [data-nav-destination="profile"]').click();await expect(page.locator('[data-referral-context="profile"] .referral-reward-detail')).toContainText("מזמינים חבר חדש.");await page.locator('.account-profile-controls summary').click();
-  const entry=page.locator('.account-profile-actions [data-public-install-app]');await entry.evaluate(e=>e.scrollIntoView({block:"center",behavior:"instant"}));
-  const geometry=await entry.evaluate(e=>{const b=e.getBoundingClientRect(),header=document.querySelector('.product-app-identity').getBoundingClientRect(),nav=document.querySelector('.product-app-nav').getBoundingClientRect(),hit=document.elementFromPoint(b.x+b.width/2,b.y+b.height/2);return{top:b.top,bottom:b.bottom,headerBottom:header.bottom,navTop:nav.top,reachable:!!hit&&(e===hit||e.contains(hit))}});
-  expect(geometry.reachable).toBe(true);expect(geometry.top).toBeGreaterThanOrEqual(geometry.headerBottom-1);expect(geometry.bottom).toBeLessThanOrEqual(geometry.navTop+1);
+  const entry=page.locator('.account-profile-actions [data-public-install-app]');
+  await entryGeometry(page,entry);
   await entry.click();await expect(page.locator('.install-app-dialog')).toBeVisible();await page.keyboard.press('Escape');await returned(page);
 });
 
@@ -147,4 +147,59 @@ test("installation description rejects a new covered line after the initial row 
     const rect=range.getBoundingClientRect(),hit=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);
     return hit?.hasAttribute("data-install-new-row-blocker");
   })).toBe(true);
+});
+
+async function installationEntryProfile(page) {
+  await page.setViewportSize({width:320,height:390});
+  await page.goto('/?requests=empty&reward=inactive&dynamic-type-preview=32');
+  await page.locator('.product-app-nav [data-nav-destination="profile"]').click();
+  await expect(page.locator('[data-referral-context="profile"] .referral-reward-detail')).toContainText('מזמינים חבר חדש.');
+  await page.locator('.account-profile-controls summary').click();
+  return page.locator('.account-profile-actions [data-public-install-app]');
+}
+
+test('installation entry measures after the real disclosure animation starts beyond its first scroll',async({page},info)=>{
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.addInitScript(stageLateInstallationDisclosure);
+  const entry=await installationEntryProfile(page);
+  const measured=await entryGeometry(page,entry);
+  const control=await page.evaluate(()=>{
+    const value=window.__installationEntryMotion;
+    return value&&{duration:value.duration,frames:value.frames,scrolls:value.scrolls,activated:value.activated,finished:value.finished,atRelease:value.atRelease,
+      animationState:value.animation.playState,animationTime:value.animation.currentTime,
+      targetConnected:value.animation.effect?.target?.isConnected,
+      currentTarget:value.animation.effect?.target===document.querySelector('.account-profile-controls-body'),
+      activeAnimations:document.getAnimations().map(animation=>({state:animation.playState,duration:String(animation.effect?.getComputedTiming().endTime),target:animation.effect?.target?.className}))};
+  });
+  await info.attach('installation-entry-control-observation',{body:JSON.stringify({control,measured}),contentType:'application/json'});
+  expect(control).toMatchObject({duration:200,frames:20,activated:true,finished:true});
+  expect(control.atRelease).toMatchObject({state:'running',rate:.0001,connected:true});
+  expect(control.atRelease.time).toBeGreaterThanOrEqual(0);expect(control.atRelease.time).toBeLessThan(1);
+  expect(control.scrolls).toBeGreaterThanOrEqual(2);
+  await entry.click();await expect(page.locator('.install-app-dialog')).toBeVisible();
+  await page.keyboard.press('Escape');await returned(page);
+  await info.attach('installation-entry-motion-proof',{body:JSON.stringify({control,measured,actualDialogOpened:true,originalOnePixelBoundsRetained:true}),contentType:'application/json'});
+});
+
+test('installation entry still rejects persistent navigation overlap after motion settles',async({page},info)=>{
+  const entry=await installationEntryProfile(page);const measured=await entryGeometry(page,entry);
+  const before=await page.locator('.product-app-nav').evaluate(nav=>nav.getBoundingClientRect().top);
+  const displacement=measured.navTop-measured.bottom+12;
+  await page.locator('.product-app-nav').evaluate((nav,displacement)=>nav.style.setProperty('transform',`translateY(-${displacement}px)`,'important'),displacement);
+  let failure;try{await entryGeometry(page,entry);}catch(error){failure=error;}
+  expect(failure).toBeInstanceOf(Error);expect(failure.message).toContain('toBeLessThanOrEqual');
+  const after=await page.locator('.product-app-nav').evaluate(nav=>nav.getBoundingClientRect().top);
+  expect(before-after).toBeGreaterThan(displacement-1);
+  await info.attach('installation-entry-overlap-control',{body:JSON.stringify({rejected:true,unchangedOnePixelBoundary:true,before,after,displacement}),contentType:'application/json'});
+});
+
+test('installation entry still rejects a persistent pointer blocker after motion settles',async({page},info)=>{
+  const entry=await installationEntryProfile(page);await entryGeometry(page,entry);
+  await page.evaluate(()=>{const blocker=document.createElement('div');blocker.dataset.installEntryBlocker='';blocker.style.cssText='position:fixed;inset:0;z-index:2147483647;pointer-events:auto';document.body.append(blocker);});
+  let failure;try{await entryGeometry(page,entry);}catch(error){failure=error;}
+  expect(failure).toBeInstanceOf(Error);expect(failure.message).toContain('toBe');
+  const message=failure.message.replace(/\u001b\[[0-9;]*m/g,'');
+  expect(message).toContain('Expected: true');expect(message).toContain('Received: false');
+  expect(await entry.evaluate(element=>{const r=element.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.hasAttribute('data-install-entry-blocker');})).toBe(true);
+  await info.attach('installation-entry-pointer-control',{body:JSON.stringify({rejected:true,persistentBlockerStillPresent:true}),contentType:'application/json'});
 });
