@@ -64,13 +64,19 @@ const javaProbeFiles = process.platform === "win32" ? testFiles.filter(isJavaPro
 const lifecycleFiles = process.platform === "win32"
   ? testFiles.filter((file) => file.endsWith("androidNativeCloseWatchCleanup.test.mjs"))
   : [];
-const remainingFiles = testFiles.filter((file) => !javaProbeFiles.includes(file) && !lifecycleFiles.includes(file));
+// Source-capacity verification starts Playwright's complete inventory process.
+// Give its existing fixed deadline a phase without unrelated file workers.
+const sourceCapacityFiles = process.platform === "win32"
+  ? testFiles.filter((file) => file.endsWith("browserSourceShardCapacity.integration.test.mjs"))
+  : [];
+const remainingFiles = testFiles.filter((file) => !javaProbeFiles.includes(file) && !lifecycleFiles.includes(file) && !sourceCapacityFiles.includes(file));
 // Process-lifecycle tests launch their own observers. A large host CPU count
 // must not oversubscribe those children and turn fixed safety deadlines flaky.
 const normalConcurrency = Math.min(4, Math.max(1, availableParallelism() - 1));
 const groups = [
   ...(javaProbeFiles.length ? [{ files: javaProbeFiles, concurrency: 1 }] : []),
   ...(lifecycleFiles.length ? [{ files: lifecycleFiles, concurrency: 1 }] : []),
+  ...(sourceCapacityFiles.length ? [{ files: sourceCapacityFiles, concurrency: 1 }] : []),
   ...(remainingFiles.length ? [{ files: remainingFiles, concurrency: normalConcurrency }] : [])
 ];
 let exitStatus = 0;

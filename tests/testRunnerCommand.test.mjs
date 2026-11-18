@@ -6,12 +6,12 @@ import vm from 'node:vm';
 import {requestedSuite,selectTestFiles} from '../scripts/lib/test-suites.mjs';
 
 const source=readFileSync(new URL('../scripts/run-tests.mjs',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'');
-function run({args=[],launchError=false,javaLaunchError=false,lifecycleLaunchError=false,parallelism=64,platform=process.platform}={}) {
+function run({args=[],launchError=false,javaLaunchError=false,lifecycleLaunchError=false,sourceCapacityLaunchError=false,parallelism=64,platform=process.platform}={}) {
   const calls=[],errors=[],exits=[];
   const context=vm.createContext({readdirSync,statSync,join,resolve,relative,console,requestedSuite,selectTestFiles,availableParallelism:()=>parallelism,
     spawnSync:(executable,args,options)=>{
       calls.push({executable,args:Array.from(args),options});
-      const failed=args[0]==='--test'&&(launchError||javaLaunchError&&args.some(arg=>arg.endsWith('androidWebViewLoadOrder.test.mjs'))||lifecycleLaunchError&&args.some(arg=>arg.endsWith('androidNativeCloseWatchCleanup.test.mjs')));
+      const failed=args[0]==='--test'&&(launchError||javaLaunchError&&args.some(arg=>arg.endsWith('androidWebViewLoadOrder.test.mjs'))||lifecycleLaunchError&&args.some(arg=>arg.endsWith('androidNativeCloseWatchCleanup.test.mjs'))||sourceCapacityLaunchError&&args.some(arg=>arg.endsWith('browserSourceShardCapacity.integration.test.mjs')));
       return failed?{status:null,error:Object.assign(new Error('Synthetic launch failed'),{code:'ENAMETOOLONG'})}:{status:0};
     },process:{execPath:process.execPath,platform,argv:['node','run-tests.mjs',...args],cwd:()=>process.cwd(),stderr:{write:text=>errors.push(text)},exit:code=>exits.push(code)}
   });
@@ -38,8 +38,8 @@ test('the complete suite bounds file workers without changing coverage or per-te
 
 test('Windows runs Java probe files serially before the remaining parallel suite',()=>{
   const h=run({parallelism:64,platform:'win32'}),commands=h.calls.filter(call=>call.args[0]==='--test');
-  assert.equal(commands.length,3);
-  const [java,,remaining]=commands;
+  assert.equal(commands.length,4);
+  const java=commands[0],remaining=commands.at(-1);
   assert.ok(java.args.includes('--test-concurrency=1'));
   assert.equal(java.args.filter(arg=>arg.endsWith('androidWebViewLoadOrder.test.mjs')||arg.endsWith('androidWebViewProbeModel.test.mjs')).length,2);
   assert.equal(java.args.filter(arg=>arg.endsWith('.test.mjs')).length,2);
@@ -56,18 +56,19 @@ test('an unlaunchable test process reports the underlying error and exits unsucc
 
 test('a Java phase failure still runs the remaining Windows suite and returns failure',()=>{
   const h=run({javaLaunchError:true,platform:'win32'});
-  assert.equal(h.calls.filter(call=>call.args[0]==='--test').length,3);
+  assert.equal(h.calls.filter(call=>call.args[0]==='--test').length,4);
   assert.deepEqual(h.exits,[1]);
   assert.match(h.errors.join(''),/Synthetic launch failed/);
 });
 
 test('Windows coverage and suite selection keep their requested files and flags',()=>{
   const coverage=run({args:['--coverage'],platform:'win32'}).calls.filter(call=>call.args[0]==='--test');
-  assert.equal(coverage.length,3);
+  assert.equal(coverage.length,4);
   for(const command of coverage)assert.ok(command.args.includes('--experimental-test-coverage'));
   const integration=run({args:['--suite','integration'],platform:'win32'}).calls.filter(call=>call.args[0]==='--test');
-  assert.equal(integration.length,1);
-  assert.ok(integration[0].args.includes('--test-concurrency=4'));
+  assert.equal(integration.length,2);
+  assert.ok(integration[0].args.includes('--test-concurrency=1'));
+  assert.ok(integration[1].args.includes('--test-concurrency=4'));
 });
 
 
@@ -82,7 +83,31 @@ test('Windows gives the owned watcher transport a separate serial phase without 
 
 test('a Windows owned watcher phase failure still runs all remaining files and fails the command',()=>{
   const h=run({platform:'win32',lifecycleLaunchError:true});
-  assert.equal(h.calls.filter(c=>c.args[0]==='--test').length,3);
+  assert.equal(h.calls.filter(c=>c.args[0]==='--test').length,4);
+  assert.deepEqual(h.exits,[1]);
+  assert.match(h.errors.join(''),/Synthetic launch failed/);
+});
+
+test('Windows isolates source inventory capacity verification without changing its deadline or coverage',()=>{
+  const commands=run({platform:'win32'}).calls.filter(c=>c.args[0]==='--test');
+  const name='browserSourceShardCapacity.integration.test.mjs';
+  const capacity=commands.find(c=>c.args.some(a=>a.endsWith(name)));
+  assert.deepEqual(capacity.args.filter(a=>a.endsWith('.test.mjs')),[relative(process.cwd(),resolve('tests',name))]);
+  assert.ok(capacity.args.includes('--test-concurrency=1'));
+  assert.ok(commands.indexOf(capacity)<commands.length-1);
+  assert.equal(commands.at(-1).args.some(a=>a.endsWith(name)),false);
+  assert.ok(commands.every(c=>!c.args.some(a=>a.startsWith('--test-timeout'))));
+  const linux=run({platform:'linux'}).calls.filter(c=>c.args[0]==='--test');
+  assert.equal(linux.length,1);
+  assert.ok(linux[0].args.some(a=>a.endsWith(name)));
+});
+
+test('a Windows source inventory phase failure still runs remaining files and fails the command',()=>{
+  const h=run({platform:'win32',sourceCapacityLaunchError:true});
+  const commands=h.calls.filter(c=>c.args[0]==='--test');
+  assert.equal(commands.length,4);
+  const capacity=commands.findIndex(c=>c.args.some(a=>a.endsWith('browserSourceShardCapacity.integration.test.mjs')));
+  assert.ok(capacity>=0&&capacity<commands.length-1);
   assert.deepEqual(h.exits,[1]);
   assert.match(h.errors.join(''),/Synthetic launch failed/);
 });
