@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
 import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { settlementIncomingWorkspace } from "./helpers/settlementIncomingWorkspace.mjs";
+import { localQaNavigationReady } from "./helpers/localQaNavigationReady.mjs";
 
 // Keep page routing in control of the synthetic workspace, as in pinned-events.
 test.use({ serviceWorkers: "block" });
@@ -50,7 +51,7 @@ test.beforeEach(async ({ page, browser, baseURL }, testInfo) => {
     }));
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, seededState);
-  await page.goto("/");
+  await localQaNavigationReady(page, "/", `[data-action="open-event"][data-event-id="${EVENT}"]`);
   }
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
   await page.locator('.event-workspace-summary[data-action="settle"]').click();

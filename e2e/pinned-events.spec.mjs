@@ -2,6 +2,7 @@ import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
 import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { expect, test } from "@playwright/test";
 import { personalPinsCloud } from "./helpers/personalPinsCloud.mjs";
+import { snapshotWriteBarrier } from "./helpers/snapshotWriteBarrier.mjs";
 import { readLocalQaState } from "./helpers/readLocalQaState.mjs";
 import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
 import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
@@ -286,14 +287,29 @@ test("another tab updates personal pins without losing a newer pin or reopening 
 test("two independent account contexts sync pin and unpin through the private workspace", async ({ page, browser }) => {
   const cloud = await personalPinsCloud(page, test.info().project.use.baseURL, state);
   const secondContext = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: "block" });
+  let writeBarrier, secondOutcome, failure;
   try {
     const second = await secondContext.newPage();
     await cloud.connectPage(second);
     await order(second, [NEW, OLD, CLOSED]);
+    writeBarrier = await snapshotWriteBarrier(second, {
+      origin: "https://personal-pins-qa.supabase.co",
+      workspaceId: "personal-pins-cloud-space-personal-pins-cloud-owner",
+      accepts: payload => payload?.state?.personalEventPinPreferences?.updates?.[CLOSED]?.pinned === true
+    });
+    // The competing request already contains its old revision. Background
+    // refresh timing cannot make the requested CAS-conflict scenario disappear.
+    const secondWrite = pin(second, CLOSED, true);
+    secondOutcome = secondWrite.then(() => ({ ok: true }), error => ({ error }));
+    await Promise.race([writeBarrier.observed, secondOutcome.then(result => {
+      if (result.error) throw result.error;
+      return new Promise(() => {});
+    })]);
     await pin(page, OLD, true);
     expect(cloud.state().personalEventPinPreferences.updates[OLD].pinned).toBe(true);
-    // The second device still has its older snapshot: its save must retry CAS.
-    await pin(second, CLOSED, true);
+    writeBarrier.release();
+    const secondResult = await secondOutcome;
+    if (secondResult.error) throw secondResult.error;
     expect(cloud.conflicts()).toBeGreaterThan(0);
     expect(cloud.state().personalEventPinPreferences.updates[OLD].pinned).toBe(true);
     await cloud.reload();
@@ -312,7 +328,14 @@ test("two independent account contexts sync pin and unpin through the private wo
       { timeout: 20000 }).toBe(false);
     await cloud.reload();
     await order(page, [NEW, OLD, CLOSED]);
-  } finally { await secondContext.close(); }
+  } catch (error) { failure = error; }
+  finally {
+    writeBarrier?.release();
+    const [action, close] = await Promise.allSettled([secondOutcome, secondContext.close()]);
+    const errors = [...new Set([failure, action.status === "rejected" ? action.reason : action.value?.error,
+      close.status === "rejected" ? close.reason : null].filter(Boolean))];
+    if (errors.length) throw new AggregateError(errors, "Concurrent pin fixture or owned context cleanup failed");
+  }
 });
 
 test("legacy device pins migrate into the account snapshot after hydration", async ({ page }) => {

@@ -67,6 +67,7 @@ const journeys = [
   "e2e/friends-presentation.spec.mjs",
   "e2e/settlement-completion-presentation.spec.mjs",
   "e2e/settlement-confirmation-navigation.spec.mjs",
+  "e2e/local-qa-navigation-ready.spec.mjs",
   "e2e/closed-summary-presentation.spec.mjs",
   "e2e/payment-touch-render-recovery.spec.mjs",
   "e2e/payment-connected-scroll-recovery.spec.mjs",
