@@ -11,6 +11,25 @@ import { DEFAULT_REQUEST_TIMEOUT_MS } from "../src/data/fetchTimeout.mjs";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 
+for (const [label,operation] of [
+  ["one",fetchImpl=>markNotificationRead(runtimeConfig(),"notification-1",fetchImpl)],
+  ["all",fetchImpl=>markAllNotificationsRead(runtimeConfig(),fetchImpl)]
+]) {
+  test(`${label} read acknowledgement waits for its successful response to finish`,async()=>{
+    let controller,finished=false;
+    const response=new Response(new ReadableStream({start(value){controller=value;}}),{status:200});
+    const request=operation(async()=>response).then(result=>{finished=true;return result;});
+    await new Promise(resolve=>setImmediate(resolve));
+    const prematurelyAcknowledged=finished;
+    controller.close();assert.equal(await request,true);
+    assert.equal(prematurelyAcknowledged,false,"headers alone cannot acknowledge an unfinished write response");
+  });
+  test(`${label} read acknowledgement rejects a broken successful response body`,async()=>{
+    const response=new Response(new ReadableStream({start(controller){controller.error(new Error("acknowledgement body lost"));}}),{status:200});
+    await assert.rejects(operation(async()=>response),/acknowledgement body lost/);
+  });
+}
+
 for (const operation of [
   fetchImpl => loadNotificationInbox(runtimeConfig(), {}, fetchImpl),
   fetchImpl => markNotificationRead(runtimeConfig(), "notification-1", fetchImpl),

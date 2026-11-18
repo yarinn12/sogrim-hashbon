@@ -86,7 +86,9 @@ export async function markNotificationRead(
         prefer: "return=minimal"
       },
       body: JSON.stringify({ read_at: new Date().toISOString() })
-    }
+    },
+    DEFAULT_REQUEST_TIMEOUT_MS,
+    completedInboxWriteResponse
   );
   if (!response.ok) throw inboxRequestError(response);
   return true;
@@ -110,10 +112,20 @@ export async function markAllNotificationsRead(config, fetchImpl = fetch) {
         prefer: "return=minimal"
       },
       body: JSON.stringify({ read_at: new Date().toISOString() })
-    }
+    },
+    DEFAULT_REQUEST_TIMEOUT_MS,
+    completedInboxWriteResponse
   );
   if (!response.ok) throw inboxRequestError(response);
   return true;
+}
+
+async function completedInboxWriteResponse(response) {
+  // Complete the successful response before releasing it. Chromium can abort
+  // an unconsumed intercepted 204, and a truncated 200 is not a read receipt.
+  // Preserve non-2xx status for the existing authentication recovery path.
+  if (response.ok) await response.arrayBuffer();
+  return response;
 }
 
 function inboxRequestError(response) {
