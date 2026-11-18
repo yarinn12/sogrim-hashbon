@@ -15,6 +15,11 @@ test('local QA navigation reaches required UI before a nonessential image finish
     sessionStorage.setItem('settle-friends-skip-next-splash','1');
   },state);
   const image=await holdNonessentialHomeImage(page,baseURL);let ready=false;
+  const goto=page.goto.bind(page);let releaseNavigationSignal;
+  const navigationSignal=new Promise(resolve=>{releaseNavigationSignal=resolve;});
+  // Reproduce an opaque navigation API promise that remains pending after the
+  // actual document and app are rendered. No browser response bytes change.
+  page.goto=async(...args)=>{const response=await goto(...args);await navigationSignal;return response;};
   const navigation=localQaNavigationReady(page).then(()=>{ready=true;});
   try{
     await Promise.all([navigation,(async()=>{
@@ -25,5 +30,5 @@ test('local QA navigation reaches required UI before a nonessential image finish
     expect(await page.evaluate(()=>document.readyState)).not.toBe('complete');
     await page.locator('[data-action="new-event"]').first().click();
     await expect(page.locator('[data-action="new-event-type"][data-event-type="standard"]')).toBeVisible();
-  }finally{image.release();await navigation;}
+  }finally{image.release();releaseNavigationSignal();try{await navigation;}finally{page.goto=goto;}}
 });
