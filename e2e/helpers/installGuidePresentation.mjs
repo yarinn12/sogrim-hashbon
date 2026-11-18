@@ -64,10 +64,15 @@ async function entryGeometry(page, entry) {
     element.scrollIntoView({ block: "center", behavior: "instant" });
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   });
-  const settled = () => expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation =>
-    Number.isFinite(animation.effect?.getComputedTiming().endTime)
-      && (animation.playState === "running" || animation.playState === "paused")
-  ).length)).toBe(0);
+  const settled = () => expect.poll(() => page.evaluate(async () => {
+    // Read the real animation state after a painted frame. Firefox can defer a
+    // synchronous animation query after scrolling until a later paint.
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return document.getAnimations().filter(animation =>
+      Number.isFinite(animation.effect?.getComputedTiming().endTime)
+        && (animation.playState === "running" || animation.playState === "paused")
+    ).length;
+  })).toBe(0);
   await scroll();
   await settled();
   await scroll();
