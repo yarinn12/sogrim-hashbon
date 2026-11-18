@@ -62,10 +62,16 @@ async function menu(page, id) {
   await row(page, id).locator('[data-action="event-status-select"]').click();
   await expect(page.locator(".event-status-menu")).toBeVisible();
 }
-async function pin(page, id, pinned) {
+async function pin(page, id, pinned, { acknowledgementGate } = {}) {
   await menu(page, id);
   await expect(pinButton(page)).toHaveAttribute("aria-pressed", String(!pinned));
   await pinButton(page).click();
+  // A deliberately held write cannot acknowledge before the fixture releases it.
+  // The real UI assertions retain their own original eight-second deadline.
+  if (acknowledgementGate) await acknowledgementGate;
+  await assertPinAcknowledged(page, id, pinned);
+}
+async function assertPinAcknowledged(page, id, pinned) {
   await expect(page.locator(".event-status-menu")).toHaveCount(0);
   await expect(row(page, id).locator('[aria-label="אירוע מוצמד"]')).toHaveCount(pinned ? 1 : 0);
 }
@@ -292,6 +298,10 @@ test("two independent account contexts sync pin and unpin through the private wo
     const second = await secondContext.newPage();
     await cloud.connectPage(second);
     await order(second, [NEW, OLD, CLOSED]);
+    // Prepare the peer action before holding a request; menu setup must not
+    // spend the application's network deadline while that request is blocked.
+    await menu(page, OLD);
+    await expect(pinButton(page)).toHaveAttribute("aria-pressed", "false");
     writeBarrier = await snapshotWriteBarrier(second, {
       origin: "https://personal-pins-qa.supabase.co",
       workspaceId: "personal-pins-cloud-space-personal-pins-cloud-owner",
@@ -299,15 +309,17 @@ test("two independent account contexts sync pin and unpin through the private wo
     });
     // The competing request already contains its old revision. Background
     // refresh timing cannot make the requested CAS-conflict scenario disappear.
-    const secondWrite = pin(second, CLOSED, true);
+    const secondWrite = pin(second, CLOSED, true, { acknowledgementGate: writeBarrier.released });
     secondOutcome = secondWrite.then(() => ({ ok: true }), error => ({ error }));
     await Promise.race([writeBarrier.observed, secondOutcome.then(result => {
       if (result.error) throw result.error;
       return new Promise(() => {});
     })]);
-    await pin(page, OLD, true);
+    await pinButton(page).click();
+    await expect.poll(() => cloud.state().personalEventPinPreferences?.updates?.[OLD]?.pinned).toBe(true);
     expect(cloud.state().personalEventPinPreferences.updates[OLD].pinned).toBe(true);
     writeBarrier.release();
+    await assertPinAcknowledged(page, OLD, true);
     const secondResult = await secondOutcome;
     if (secondResult.error) throw secondResult.error;
     expect(cloud.conflicts()).toBeGreaterThan(0);

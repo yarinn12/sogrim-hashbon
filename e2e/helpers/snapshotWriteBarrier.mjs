@@ -14,5 +14,5 @@ export async function snapshotWriteBarrier(page, { origin, workspaceId, accepts 
     }
     await route.fallback();
   });
-  return { observed, release: () => release() };
+  return { observed, released: gate, release: () => release() };
 }

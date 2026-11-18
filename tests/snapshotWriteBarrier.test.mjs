@@ -12,8 +12,9 @@ async function harness(){let handler;const page={async route(_pattern,fn){handle
 }
 test('a formed conditional write remains pending while its peer can commit a newer version',async()=>{
   const h=await harness();const request=h.send();const observed=await h.barrier.observed;
-  assert.equal(observed.expectedVersion,'eq.old');await tick();assert.equal(request.passed(),0);
-  h.barrier.release();await request.promise;assert.equal(request.passed(),1);
+  let released=false;h.barrier.released.then(()=>{released=true;});
+  assert.equal(observed.expectedVersion,'eq.old');await tick();assert.equal(request.passed(),0);assert.equal(released,false);
+  h.barrier.release();await h.barrier.released;await request.promise;assert.equal(request.passed(),1);assert.equal(released,true);
   const retry=h.send();await retry.promise;assert.equal(retry.passed(),1,'The retry must reach the unchanged CAS fixture');
 });
 test('the write barrier never holds reads, another workspace, another origin or an unrelated payload',async()=>{
