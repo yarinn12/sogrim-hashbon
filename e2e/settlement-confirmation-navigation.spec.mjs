@@ -3,6 +3,7 @@ import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
 import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { settlementIncomingWorkspace } from "./helpers/settlementIncomingWorkspace.mjs";
 import { localQaNavigationReady } from "./helpers/localQaNavigationReady.mjs";
+import { installFreshLoopbackRoutes } from "./helpers/installFreshLoopbackRoutes.mjs";
 
 // Keep page routing in control of the synthetic workspace, as in pinned-events.
 test.use({ serviceWorkers: "block" });
@@ -42,6 +43,7 @@ test.beforeEach(async ({ page, browser, baseURL }, testInfo) => {
   } else {
   await resetLocalQaStateFresh(baseURL);
   await writeLocalQaStateFresh(baseURL, seededState);
+  await installFreshLoopbackRoutes(page, baseURL);
   await page.addInitScript(state => {
     localStorage.clear(); sessionStorage.clear();
     localStorage.setItem("settle-friends-state", JSON.stringify(state));
