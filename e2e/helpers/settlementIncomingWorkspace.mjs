@@ -8,7 +8,7 @@ export async function settlementIncomingWorkspace(page, browser, baseURL, initia
   const cloud = await personalPinsCloud(page, baseURL, initialState, {
     accountId, profileUpdatedAt: "2026-11-18T08:00:00.000Z"
   });
-  const peerContext = await browser.newContext({ baseURL, locale: "he-IL" });
+  const peerContext = await browser.newContext({ baseURL, locale: "he-IL", serviceWorkers: "block" });
   try {
     const peer = await peerContext.newPage();
     await cloud.connectPage(peer);

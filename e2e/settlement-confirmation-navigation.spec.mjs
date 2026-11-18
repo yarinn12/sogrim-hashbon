@@ -3,6 +3,9 @@ import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
 import { writeLocalQaStateFresh } from "./helpers/writeLocalQaStateFresh.mjs";
 import { settlementIncomingWorkspace } from "./helpers/settlementIncomingWorkspace.mjs";
 
+// Keep page routing in control of the synthetic workspace, as in pinned-events.
+test.use({ serviceWorkers: "block" });
+
 const OWNER = "confirmation-nav-owner";
 const FRIEND = "confirmation-nav-friend";
 const EVENT = "confirmation-nav-event-a";
