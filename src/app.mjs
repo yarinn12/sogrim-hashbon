@@ -1036,6 +1036,13 @@ function render() {
   if (expenseDraft && (screen.name !== "event" || screen.eventId !== expenseDraft.eventId)) {
     expenseDraft = null;
   }
+  // Closing confirmation belongs to this event's settlement route. Its own
+  // navigation can leave that route; cancel only the transient UI before the
+  // destination is recorded or the persistent navigation is reused.
+  if (settlementCloseConfirmation &&
+      (screen.name !== "settlement" || screen.eventId !== settlementCloseConfirmation.eventId)) {
+    settlementCloseConfirmation = null;
+  }
   syncBrowserHistory();
   if (
     !eventDialog &&
