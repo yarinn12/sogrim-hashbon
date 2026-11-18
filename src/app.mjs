@@ -689,6 +689,10 @@ let eventLongPressTarget = null;
 let suppressedEventOpenId = "";
 let suppressEventOpenUntil = 0;
 let eventWorkspaceSwipe = null;
+const personalPinPressRecovery = createPointerRenderRecovery({
+  resolveTarget: resolvePersonalPinPressTarget,
+  resolveRenderTarget: currentPersonalPinPressTarget
+});
 const paymentPressRecovery = createPointerRenderRecovery({
   resolveTarget: resolvePaymentPressTarget,
   resolveRenderTarget: currentPaymentPressTarget,
@@ -741,6 +745,7 @@ app.addEventListener("pointerdown", handleEventLongPressStart);
 app.addEventListener("pointermove", handleEventLongPressMove);
 app.addEventListener("pointerup", handleEventLongPressEnd);
 app.addEventListener("pointercancel", handleEventLongPressCancel);
+installPersonalPinPressRecovery();
 document.addEventListener("pointerdown", handleEventPressPointerDown, true);
 document.addEventListener("click", consumeEventPressClick, true);
 document.addEventListener("pointerdown", handlePaymentPointerDown, true);
@@ -10936,6 +10941,67 @@ function handleEventLongPressEnd(event) {
     // existing click route once; the gesture token consumes later compat clicks.
     result.activationTarget?.click();
   }
+}
+
+function personalPinPressScope(target) {
+  if (screen.name !== "home" || !eventStatusMenu || eventDialog || expenseDraft ||
+      importantActionDialog || settlementCelebration) return null;
+  if (!target || !app.contains(target) || !target.closest(".event-status-menu") ||
+      target.dataset.action !== "toggle-personal-event-pin" || target.disabled || target.inert ||
+      target.closest("[inert]") || target.getAttribute("aria-disabled") === "true") return null;
+  const event = visibleEventsForParticipant(state, state.currentParticipantId)
+    .find(candidate => candidate.id === target.dataset.eventId);
+  if (!event || eventStatusMenu.eventId !== event.id) return null;
+  let account, pinned;
+  try {
+    account = captureFriendAccountContext();
+    pinned = pinnedEventIdsForState(state).has(event.id);
+  } catch { return null; }
+  return {account, route: screen, menu: eventStatusMenu, eventId: event.id,
+    fingerprint: JSON.stringify([window.innerWidth, window.innerHeight,
+      state.currentParticipantId, event.id, pinned])};
+}
+
+function handlePersonalPinPointerDown(event) {
+  const target = event.target.closest?.("button[data-action]");
+  personalPinPressRecovery.start(event, target, personalPinPressScope(target));
+}
+
+function currentPersonalPinPressTarget(scope) {
+  try {
+    if (!scope.account.isCurrent() || scope.route !== screen || scope.menu !== eventStatusMenu) return null;
+  } catch { return null; }
+  const candidates = [...app.querySelectorAll('.event-status-menu button[data-action="toggle-personal-event-pin"]')]
+    .filter(button => button.dataset.eventId === scope.eventId);
+  if (candidates.length !== 1) return null;
+  const target = candidates[0], current = personalPinPressScope(target);
+  return current?.fingerprint === scope.fingerprint ? target : null;
+}
+
+function resolvePersonalPinPressTarget(scope, pointer) {
+  const target = currentPersonalPinPressTarget(scope);
+  return target?.contains(document.elementFromPoint(pointer.clientX, pointer.clientY)) ? target : null;
+}
+
+function consumePersonalPinCompatibilityClick(event) {
+  if (!personalPinPressRecovery.consumeCompatibilityClick(event)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+function installPersonalPinPressRecovery() {
+  // A peer snapshot may replace the open menu between native down and up.
+  // Recover only the same still-visible pin action, through its existing click
+  // handler, and consume the compatibility click so it cannot toggle twice.
+  document.addEventListener("pointerdown", handlePersonalPinPointerDown, true);
+  document.addEventListener("pointermove", event => personalPinPressRecovery.move(event), true);
+  document.addEventListener("pointerup", event => personalPinPressRecovery.finish(event), true);
+  document.addEventListener("pointercancel", event => personalPinPressRecovery.cancel(event), true);
+  document.addEventListener("wheel", () => personalPinPressRecovery.cancel(), {capture: true, passive: true});
+  document.addEventListener("contextmenu", () => personalPinPressRecovery.cancel(), true);
+  document.addEventListener("click", consumePersonalPinCompatibilityClick, true);
+  window.addEventListener("blur", () => personalPinPressRecovery.cancel());
+  window.addEventListener("pagehide", () => personalPinPressRecovery.cancel());
 }
 
 function paymentPressScope(target) {
