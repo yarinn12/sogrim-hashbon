@@ -117,7 +117,9 @@ test("an incoming update on the same event keeps close confirmation protected an
     .toBe(event.notes[0].body);
   await expectProtectedConfirmation(page);
   await page.locator('.settlement-close-confirmation [data-action="cancel-close-event-confirmation"]').last().click();
-  await expectReleasedNavigation(page, "settlement");
+  // Settlement shares the event screen kind; its own class identifies the view.
+  await expectReleasedNavigation(page, "event");
+  await expect(page.locator(".settlement-screen")).toBeVisible();
   const after = await eventData(page);
   expect(after.map(item => ({ id: item.id, locked: item.locked, expenses: item.expenses, transfers: item.transfers })))
     .toEqual(before.map(item => ({ id: item.id, locked: item.locked, expenses: item.expenses, transfers: item.transfers })));
