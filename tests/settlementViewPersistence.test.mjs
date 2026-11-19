@@ -175,7 +175,8 @@ test("a real refreshed expense change still persists its recomputed transfer pay
 test("opening a stable summary preserves an existing offline outbox and resume later delivers it", async () => fixture(async h => {
   h.ctx.state.events[0].notes.push({ id: "pending-note", body: "Retain my offline change", updatedAt: "2026-09-02T00:00:00.000Z" });
   const saved = await h.store.saveSharedState(h.ctx.state, { awaitCloud: true });
-  assert.equal(saved.ok, false);
+  assert.equal(saved.ok, true, "the offline change is accepted durably for retry");
+  assert.equal(saved.pending, true, "a queued result is not a cloud acknowledgement");
   const raw = h.pendingRaw(), beforeWrites = h.writes.length, generation = h.store.sharedStateSaveRevision();
   assert.ok(raw);
   await h.open(); await h.drain();
