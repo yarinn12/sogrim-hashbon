@@ -136,7 +136,7 @@ export default defineConfig({
       name,
       testMatch: name === "desktop-firefox" ? [...journeys, firefoxNavigationReadiness]
         : name === "desktop-webkit" ? [...journeys, "e2e/account-entry-webkit-reload-evidence.spec.mjs"] : journeys,
-      use: { ...devices[device], viewport: { width: 1280, height: 900 } }
+      use: { ...devices[device], viewport: { width: 1280, height: 900 }, ...(device === "Desktop Chrome" ? { channel: "chromium" } : {}) }
     })),
     {
       name: "compact-firefox",
@@ -146,7 +146,7 @@ export default defineConfig({
     {
       name: "cross-engine-comparison",
       testMatch: ["e2e-parity/cross-engine-parity.spec.mjs"],
-      use: { ...devices["Desktop Chrome"] }
+      use: { ...devices["Desktop Chrome"], channel: "chromium" }
     }
   ]
 });

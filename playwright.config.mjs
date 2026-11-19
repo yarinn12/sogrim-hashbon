@@ -31,7 +31,7 @@ export default defineConfig({
     {
       name: "android-mobile",
       testIgnore: "**/account-entry-webkit-reload-evidence.spec.mjs",
-      use: { ...devices["Pixel 5"] }
+      use: { ...devices["Pixel 5"], channel: "chromium" }
     },
     {
       name: "iphone-webkit",
@@ -52,7 +52,8 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 320, height: 800 },
-        deviceScaleFactor: 1
+        deviceScaleFactor: 1,
+        channel: "chromium"
       },
       metadata: { reflowScale: 2 }
     }

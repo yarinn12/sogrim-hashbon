@@ -255,7 +255,7 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
     phase: "reset", method: "post", path: "/api/reset" });
   await recordQaStateBoundary({ request, testInfo, scenario: scenario.label, engine: name,
     phase: "state", method: "put", path: "/api/state", data: state });
-  const browser = await engine.launch();
+  const browser = await engine.launch(name === "chromium" ? { channel: "chromium" } : {});
   try {
     const context = await browser.newContext({
       viewport: scenario.viewport, deviceScaleFactor: 1,

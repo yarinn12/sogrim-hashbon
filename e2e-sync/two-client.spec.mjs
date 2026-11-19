@@ -149,7 +149,7 @@ async function fixture(testInfo, {withExpense = false, withClosedExpenseOrder = 
   };
   try {
   for (let i = 0; i < 2; i++) {
-    browsers.push(await (i ? webkit : chromium).launch());
+    browsers.push(await (i ? webkit : chromium).launch(i ? {} : { channel: 'chromium' }));
     const context = await browsers[i].newContext({...devices[i ? 'iPhone 13' : 'Pixel 5'],
       baseURL, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', reducedMotion: 'reduce', serviceWorkers: 'block'});
     contexts.push(context);
