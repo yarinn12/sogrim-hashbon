@@ -13235,8 +13235,9 @@ async function handleClick(event) {
         if (screen.name !== "settlement" || screen.eventId !== eventId) return;
         const syncedEvent = getEvent(eventId);
         if (!syncedEvent) return;
-        prepareEventTransfers(syncedEvent);
-        persistState({ suppressRevertNotice: true });
+        if (prepareEventTransfers(syncedEvent)) {
+          persistState({ suppressRevertNotice: true });
+        }
         render();
       }
     );
@@ -19918,8 +19919,9 @@ async function deleteExpense(eventId, expenseId) {
 
 function prepareSettlement(eventId) {
   const event = getEvent(eventId);
-  prepareEventTransfers(event);
-  persistState({ suppressRevertNotice: true });
+  if (prepareEventTransfers(event)) {
+    persistState({ suppressRevertNotice: true });
+  }
   settlementCloseConfirmation = null;
   screen = { name: "settlement", eventId };
   emitProductMetric("settlement_opened", { screen: "settlement" });
@@ -20183,9 +20185,13 @@ async function reopenCurrentEvent(eventId, { resetPayments = false } = {}) {
 }
 
 function prepareEventTransfers(event) {
-  if (!event) return;
+  if (!event) return false;
 
+  const previousTransfers = JSON.stringify(event.transfers ?? []);
   reconcileEventTransfers(event, event.transfers);
+  // A read-only opening/refresh must not create another outbox generation for
+  // an identical transfer payload. Resume sync still flushes retained work.
+  return previousTransfers !== JSON.stringify(event.transfers);
 }
 
 function reconcileEventTransfers(event, previousTransfers = []) {
