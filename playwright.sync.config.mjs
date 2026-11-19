@@ -13,7 +13,7 @@ export default defineConfig({
   ...base,
   testDir: "./e2e-sync",
   outputDir: "test-results-sync",
-  projects: [{ name: "two-client-sync", use: { channel: "chromium" } }],
+  projects: [{ name: "two-client-sync" }],
   retries: 0,
   timeout: 120_000,
   use: { ...base.use, baseURL },

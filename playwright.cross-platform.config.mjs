@@ -146,7 +146,7 @@ export default defineConfig({
     {
       name: "cross-engine-comparison",
       testMatch: ["e2e-parity/cross-engine-parity.spec.mjs"],
-      use: { ...devices["Desktop Chrome"], channel: "chromium" }
+      use: { ...devices["Desktop Chrome"] }
     }
   ]
 });
