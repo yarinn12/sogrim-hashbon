@@ -210,7 +210,7 @@ test("invite preparation has a bounded UI wait while referral attribution stays 
     app.indexOf("function preparePrivateEventInvitation")
   );
   const referral = app.slice(
-    app.indexOf("async function prepareReferralForEventInvite"),
+    app.indexOf("function refreshEventInviteReferralInBackground"),
     app.indexOf("function renderExpenseForm")
   );
 
@@ -218,11 +218,10 @@ test("invite preparation has a bounded UI wait while referral attribution stays 
   assert.match(prepare, /EVENT_INVITE_TIMEOUT/);
   assert.match(prepare, /Promise\.race\(\[task, timeout\]\)/);
   assert.match(prepare, /settleEventSharePreparation\(preparation, 8_000\)/);
-  assert.match(referral, /timeoutMs = 1_500/);
-  assert.match(referral, /Promise\.race\(\[refresh, timeout\]\)/);
+  assert.match(referral, /void Promise\.resolve\(\)/);
   assert.match(referral, /\.then\(\(\) => monetization\.refresh\(\)\)/);
-  assert.match(app, /const referralPreparation = prepareReferralForEventInvite\(\);/);
-  assert.match(app, /await referralPreparation;/);
+  assert.match(app, /\n  refreshEventInviteReferralInBackground\(\);/);
+  assert.doesNotMatch(app, /await refreshEventInviteReferralInBackground/);
 });
 
 test("native sharing publishes new events without rewriting established shared events", () => {
@@ -346,7 +345,7 @@ test("invite preparation recovers when an iOS resume briefly exposes fallback co
   assert.match(prepare, /freshUserId === expectedUserId/);
   assert.match(
     prepare,
-    /return await prepareEventShareWithCurrentSession\(eventId, \{\s*referralPreparation\s*\}\)/
+    /return await prepareEventShareWithCurrentSession\(eventId, freshRuntimeConfig\)/
   );
 });
 
@@ -366,7 +365,7 @@ test("invite preparation refreshes an expired account session once and retries",
   assert.match(prepare, /freshUserId !== expectedUserId/);
   assert.equal(
     prepare.match(
-      /return (?:await )?prepareEventShareWithCurrentSession\(eventId, \{\s*referralPreparation\s*\}\)/g
+      /return (?:await )?prepareEventShareWithCurrentSession\(eventId, (?:initialConfig|freshRuntimeConfig)\)/g
     )?.length,
     3,
     "invite preparation has one initial attempt and one bounded retry for each recoverable boundary"

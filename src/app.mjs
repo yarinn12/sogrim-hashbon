@@ -7152,26 +7152,16 @@ function currentReferralInviteCode(event) {
   );
 }
 
-async function prepareReferralForEventInvite(timeoutMs = 1_500) {
+function refreshEventInviteReferralInBackground() {
   const monetization = globalThis.SogrimMonetization;
   if (!monetization?.refresh || monetization.status?.status === "ready") {
-    return true;
+    return;
   }
-  // Referral attribution is useful, but it must never hold the actual event
-  // invitation hostage on a cold account or a slow mobile connection.
-  let timeoutId = 0;
-  const refresh = Promise.resolve()
+  // The invite server supplies the sharer's referral code. Refresh the
+  // local rewards status independently for older servers and later shares.
+  void Promise.resolve()
     .then(() => monetization.refresh())
-    .then(() => true)
-    .catch(() => false);
-  const timeout = new Promise((resolve) => {
-    timeoutId = window.setTimeout(() => resolve(false), timeoutMs);
-  });
-  try {
-    return await Promise.race([refresh, timeout]);
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
+    .catch(() => {});
 }
 
 function renderExpenseForm(event) {
@@ -18326,7 +18316,7 @@ async function retryEventShare(eventId) {
 }
 
 async function prepareEventShareNow(eventId) {
-  const referralPreparation = prepareReferralForEventInvite();
+  refreshEventInviteReferralInBackground();
   const initialConfig = await loadRuntimeConfig();
   const configuredUserId = String(
     initialConfig?.storage?.account?.userId ?? ""
@@ -18338,9 +18328,7 @@ async function prepareEventShareNow(eventId) {
       : ""
   );
   try {
-    return await prepareEventShareWithCurrentSession(eventId, {
-      referralPreparation
-    });
+    return await prepareEventShareWithCurrentSession(eventId, initialConfig);
   } catch (error) {
     if (
       error?.code === "EVENT_INVITE_CLOUD_REQUIRED" &&
@@ -18355,10 +18343,7 @@ async function prepareEventShareNow(eventId) {
           freshRuntimeConfig?.storage?.mode === "supabase" &&
           freshUserId === expectedUserId
         ) {
-          runtimeConfig = freshRuntimeConfig;
-          return await prepareEventShareWithCurrentSession(eventId, {
-            referralPreparation
-          });
+          return await prepareEventShareWithCurrentSession(eventId, freshRuntimeConfig);
         }
       } catch {
         // Continue with the regular authenticated-session recovery below.
@@ -18373,17 +18358,11 @@ async function prepareEventShareNow(eventId) {
       freshRuntimeConfig?.storage?.account?.userId ?? ""
     ).trim();
     if (freshUserId !== expectedUserId) throw error;
-    return prepareEventShareWithCurrentSession(eventId, {
-      referralPreparation
-    });
+    return prepareEventShareWithCurrentSession(eventId, freshRuntimeConfig);
   }
 }
 
-async function prepareEventShareWithCurrentSession(
-  eventId,
-  { referralPreparation = Promise.resolve(true) } = {}
-) {
-  const initialRuntimeConfig = await loadRuntimeConfig();
+async function prepareEventShareWithCurrentSession(eventId, initialRuntimeConfig) {
   runtimeConfig = initialRuntimeConfig;
   reconcileEventInviteAccountBoundary(initialRuntimeConfig);
   if (initialRuntimeConfig.storage?.mode !== "supabase") {
@@ -18439,7 +18418,6 @@ async function prepareEventShareWithCurrentSession(
       throw new Error("Open event invitation could not be attached");
     }
   }
-  await referralPreparation;
   return eventInviteUrl(eventId);
 }
 

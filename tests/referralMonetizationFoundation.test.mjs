@@ -450,7 +450,7 @@ test("referral UI and AdMob foundation preserve financial focus", async () => {
   assert.match(app, /settle-friends:qualifying-activity/);
   assert.match(app, /"expense-created"/);
   assert.match(app, /"transfer-paid"/);
-  assert.match(app, /prepareReferralForEventInvite/);
+  assert.match(app, /refreshEventInviteReferralInBackground/);
   assert.match(app, /currentReferralInviteCode/);
   assert.match(app, /referralCode/);
   assert.match(app, /#public-referral-rewards-dialog/);

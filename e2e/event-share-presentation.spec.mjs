@@ -23,6 +23,49 @@ test("share keyboard double-copy WhatsApp mock and Back",async({page})=>{evidenc
 
 test("share Native share callback mock",async({page})=>{evidence.get(page).expected={"copied":0,"windows":0,"native":1};const ctx=await contextForPage(page),p=ctx.p,m=await open(p),url=await readyAssets(p);await p.evaluate(()=>{__friendInviteQa.nativeShares=[];globalThis.SogrimNative={...globalThis.SogrimNative,share:async data=>{__friendInviteQa.nativeShares.push(data);return true}}});await expect(m.locator('[data-action="share-invite-whatsapp"]')).toHaveText('שתף קישור');await m.locator('[data-action="share-invite-whatsapp"]').click();await expect.poll(()=>p.evaluate(()=>__friendInviteQa.nativeShares.length)).toBe(1);expect(await p.evaluate(()=>__friendInviteQa.nativeShares[0].url)).toBe(url);expect(await p.evaluate(()=>__friendInviteQa.shareWindows.length)).toBe(0);await expect(p.locator('.app-toast')).toBeVisible();await finish(ctx,true);});
 
+test("verified WhatsApp invitation is ready while referral status is still loading", async ({ page }) => {
+  const referralCode = "abcdef0123456789abcd";
+  await page.goto("/?requests=accepted&share-state=loading");
+  await page.locator('[data-action="open-event"][data-event-id="friend-weekend"]').click();
+  await page.locator('[data-action="open-event-participant-add"][data-event-id="friend-weekend"]').click();
+  await page.evaluate(code => {
+    const qa = globalThis.__friendInviteQa;
+    qa.eventShareReferralCode = code;
+    globalThis.SogrimMonetization = {
+      ...globalThis.SogrimMonetization,
+      status: { status: "loading" },
+      refresh: () => new Promise(resolve => {
+        qa.releaseReferralStatus = resolve;
+      })
+    };
+    // Hold the previous optional wait separately from the real invitation
+    // request so the regression is independent of browser speed.
+    const setTimer = window.setTimeout.bind(window);
+    window.setTimeout = (callback, delay, ...args) => {
+      if (delay === 1500 && String(callback).includes("resolve(false)")) {
+        return setTimer(callback, 60_000, ...args);
+      }
+      return setTimer(callback, delay, ...args);
+    };
+  }, referralCode);
+  await page.locator('.event-participant-add-route-modal [data-action="open-event-share"]').click();
+  const dialog = page.locator(".event-share-modal");
+  const share = dialog.locator('[data-action="share-invite-whatsapp"]');
+  await expect(share).toBeDisabled();
+  await expect.poll(() => page.evaluate(() => Boolean(__friendInviteQa.releaseShare &&
+    __friendInviteQa.releaseReferralStatus))).toBe(true);
+  await page.evaluate(() => __friendInviteQa.releaseShare());
+  await expect(share).toBeEnabled({ timeout: 3_000 });
+  const inviteUrl = await readyAssets(page);
+  expect(new URL(inviteUrl).searchParams.get("ref")).toBe(referralCode);
+  evidence.get(page).expected.windows = 1;
+  await share.click();
+  await expect.poll(() => page.evaluate(() => __friendInviteQa.shareWindows.length)).toBe(1);
+  const target = await page.evaluate(() => __friendInviteQa.shareWindows[0]);
+  expect(new URL(target).searchParams.get("text")).toContain(inviteUrl);
+  expect(await page.evaluate(() => __friendInviteQa.invitePreparations.length)).toBe(1);
+});
+
 test("share clipboard failure feedback",async({page})=>{evidence.get(page).expected={"copied":0,"windows":0,"native":0};const ctx=await contextForPage(page),p=ctx.p,m=await open(p);await p.evaluate(()=>{navigator.clipboard.writeText=async()=>{throw Error('Synthetic clipboard rejection')};document.execCommand=()=>false});const button=m.locator('[data-action="copy-invite"]');await button.click();await expect(button).toHaveText('לא הועתק');await expect(button).toBeVisible();await expect(button).toHaveText('העתק קישור');await finish(ctx,false);});
 
 test("share loading becomes verified",async({page})=>{evidence.get(page).expected={"copied":0,"windows":0,"native":0};const ctx=await contextForPage(page),p=ctx.p,m=await open(p,16,'loading');await expect(m.locator('[data-action="copy-invite"]')).toBeDisabled();await p.evaluate(()=>__friendInviteQa.releaseShare());await expect(m.locator('[data-action="copy-invite"]')).toBeEnabled();await readyAssets(p);await expect(p.locator('.app-toast')).not.toBeVisible();await finish(ctx,false);});

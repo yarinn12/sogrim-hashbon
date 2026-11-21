@@ -65,7 +65,7 @@ if(mode==='loading')await new Promise(done=>qa.releaseShare=()=>{qa.shareMode='r
 if(mode==='error')return response({code:'SYNTHETIC_INVITE_UNAVAILABLE',message:'לא הצלחנו להכין את הקישור כרגע. אפשר לנסות שוב.'},503);
 if(mode==='auth')return response({code:'AUTH_REQUIRED',message:'החיבור לחשבון פג. התחברו מחדש ונסו שוב.'},401);
 if(mode==='forbidden')return response({code:'EVENT_INVITE_NOT_ALLOWED',message:'אין לך הרשאה לשתף את האירוע הזה.'},403);
-return response({eventId:body.eventId,token:'synthetic_event_share_token_20261029_abcdef'});
+return response({eventId:body.eventId,token:'synthetic_event_share_token_20261029_abcdef',referralCode:qa.eventShareReferralCode});
 }
     if(url.pathname==='/api/config')return response(config);
     if(url.pathname==='/api/health')return response({ok:true});
