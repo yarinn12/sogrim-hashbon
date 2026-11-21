@@ -3,7 +3,6 @@ import { loadAccessibilityPreferences } from "./data/accessibilityPreferences.mj
 
 const splash = document.querySelector("#app-splash");
 const app = document.querySelector("#app");
-const video = splash?.querySelector(".app-splash-video");
 const hold = splash?.querySelector(".app-splash-hold");
 const SKIP_NEXT_SPLASH_MARKER = "settle-friends-skip-next-splash";
 const VIDEO_LOAD_TIMEOUT_MS = 6000;
@@ -28,11 +27,19 @@ if (splash && app) {
 
 function installSplash({ showPosterOnly = false } = {}) {
   const splashStartedAt = performance.now();
+  const staticIOSLaunch =
+    window.location.protocol === "capacitor:" ||
+    globalThis.Capacitor?.getPlatform?.() === "ios";
   const reduceMotion =
     loadAccessibilityPreferences().reduceMotion ||
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-  // A failed media load may finish before this module can attach its error listener.
-  let fallbackMode = Boolean(showPosterOnly || reduceMotion || !video || video.error);
+  // Keep media out of the live document until the platform can opt into playback.
+  // The iOS app stays on the branded still and never creates a live video layer.
+  const videoTemplate = splash.querySelector(".app-splash-video-template");
+  const video = showPosterOnly || staticIOSLaunch || reduceMotion
+    ? null
+    : videoTemplate?.content.querySelector("video")?.cloneNode(true);
+  let fallbackMode = !video;
   let dismissed = false;
   let loadTimeoutId = 0;
   let progressTimeoutId = 0;
@@ -73,9 +80,8 @@ function installSplash({ showPosterOnly = false } = {}) {
   );
 
   if (fallbackMode) {
+    videoTemplate?.remove();
     splash.classList.add("is-fallback");
-    video?.pause();
-    notifyNativeWebSplashReady();
   } else {
     video.muted = true;
     video.defaultMuted = true;
@@ -88,9 +94,8 @@ function installSplash({ showPosterOnly = false } = {}) {
     video.addEventListener("error", useFallback, { once: true });
     document.addEventListener("visibilitychange", handleVisibilityChange);
     loadTimeoutId = window.setTimeout(useFallback, VIDEO_LOAD_TIMEOUT_MS);
-    // Start as soon as the browser can decode the first frame. The video is
-    // already the visible splash layer, so there is no static logo-to-video
-    // swap on a normal launch.
+    videoTemplate.replaceWith(video);
+    // Reveal the video only after it has a frame to present.
     requestPlayback({ fallbackOnFailure: false });
     if (video.readyState >= 2) {
       handleVideoReady();
@@ -268,12 +273,16 @@ function installSplash({ showPosterOnly = false } = {}) {
     video?.removeEventListener("playing", handleVideoPlaying);
     video?.removeEventListener("timeupdate", handleVideoProgress);
     video?.pause();
-    splash.setAttribute("inert", "");
-    splash.classList.add("is-leaving");
     document.documentElement.classList.remove("app-splash-active");
     // The app canvas is light, so Android needs dark status-bar icons after splash too.
     setNativeSystemBarStyle(true);
-    window.setTimeout(() => splash.remove(), SPLASH_EXIT_MS);
+    if (staticIOSLaunch) {
+      splash.remove();
+    } else {
+      splash.setAttribute("inert", "");
+      splash.classList.add("is-leaving");
+      window.setTimeout(() => splash.remove(), SPLASH_EXIT_MS);
+    }
   }
 
 }

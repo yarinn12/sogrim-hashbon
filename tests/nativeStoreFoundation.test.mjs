@@ -128,7 +128,7 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(nativeBenchmark, /executedRuns/);
 });
 
-test("native launch screens hand directly to the web video without a logo flash", async () => {
+test("native launch screens and the web splash share a white background", async () => {
   const [androidStyles, androidColors, androidSplashDrawable, iosLaunchScreen] =
     await Promise.all([
       readFile("android/app/src/main/res/values/styles.xml", "utf8"),

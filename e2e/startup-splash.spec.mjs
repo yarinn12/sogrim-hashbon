@@ -87,6 +87,113 @@ test.describe("startup splash", () => {
     expect(runtimeIssues).toEqual([]);
   });
 
+  test("native iOS keeps the static launch frame until the app is ready", async ({ page }) => {
+    await verifyStaticNativeSplash(page, '#app .screen[data-screen-kind="home"]');
+  });
+
+  test("native iOS keeps the static launch frame until sign-in is ready", async ({ page }) => {
+    await verifyStaticNativeSplash(page, "#public-account-auth-gate", {
+      mode: "supabase",
+      url: "https://startup-qa.invalid",
+      anonKey: "startup-qa",
+      table: "app_snapshots"
+    });
+  });
+
+  async function verifyStaticNativeSplash(page, firstScreen, storage = { mode: "local" }) {
+    const config = {
+      publicUrl: "https://startup-qa.invalid",
+      storage,
+      auth: { googleClientId: "" },
+      monetization: { adsEnabled: false }
+    };
+    await page.route("https://startup-qa.invalid/**", route => {
+      const request = route.request();
+      if (new URL(request.url()).pathname !== "/api/config") return route.abort();
+      const headers = {
+        "access-control-allow-origin": "*",
+        "access-control-allow-headers": "x-sogrim-platform,x-sogrim-app-build,x-sogrim-app-version"
+      };
+      if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+      return route.fulfill({ json: config, headers });
+    });
+    const videoRequests = [];
+    page.on("request", request => {
+      if (new URL(request.url()).pathname.endsWith("/sogrim-heshbon-loading-loop-v2.mp4")) {
+        videoRequests.push(request.url());
+      }
+    });
+    await page.addInitScript(({ bootstrap, screenSelector }) => {
+      globalThis.SogrimNativeRuntimeConfig = bootstrap;
+      globalThis.Capacitor = {
+        getPlatform: () => "ios",
+        isNativePlatform: () => true,
+        Plugins: {
+          App: {
+            getInfo: async () => ({ version: "qa", build: "198" }),
+            addListener: async () => ({ remove: async () => {} }),
+            getLaunchUrl: async () => null
+          }
+        }
+      };
+      const observed = {
+        videoMounted: false, videoRevealed: false, splashFaded: false,
+        screenReadyAtHandoff: false
+      };
+      globalThis.__qaNativeSplash = observed;
+      new MutationObserver(records => {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            if (node instanceof Element && (
+              node.matches(".app-splash-video") || node.querySelector(".app-splash-video")
+            )) observed.videoMounted = true;
+          }
+          for (const node of record.removedNodes) {
+            if (node instanceof Element && node.id === "app-splash") {
+              observed.screenReadyAtHandoff = Boolean(document.querySelector(screenSelector)) &&
+                !document.documentElement.classList.contains("account-auth-pending");
+            }
+          }
+          if (record.target.id === "app-splash") {
+            observed.videoRevealed ||= record.target.classList.contains("is-video-ready");
+            observed.splashFaded ||= record.target.classList.contains("is-leaving");
+          }
+        }
+      }).observe(document, {
+        childList: true, subtree: true, attributes: true, attributeFilter: ["class"]
+      });
+    }, { bootstrap: config, screenSelector: firstScreen });
+
+    let releaseApp;
+    const heldApp = new Promise(resolve => { releaseApp = resolve; });
+    await page.route(/\/src\/app\.mjs(?:\?|$)/, async route => {
+      await heldApp;
+      await route.continue();
+    });
+
+    try {
+      await page.goto("/", { waitUntil: "commit" });
+      const splash = page.locator("#app-splash");
+      await expect(splash).toBeVisible();
+      const poster = splash.locator(".app-splash-hold");
+      await expect(poster).toHaveCSS("opacity", "1");
+      await expect.poll(() => poster.evaluate(image => image.naturalWidth)).toBeGreaterThan(0);
+      await expect(page.locator("#app")).toHaveClass(/app-boot/);
+      await expect(splash.locator("video")).toHaveCount(0);
+    } finally {
+      releaseApp();
+    }
+
+    await expect(page.locator(firstScreen)).toBeVisible();
+    await expect(page.locator("#app-splash")).toHaveCount(0);
+    expect(await startupMarkTime(page, "splash-dismissed")).toBeLessThan(SPLASH_HARD_LIMIT_MS);
+    expect(await page.evaluate(() => globalThis.__qaNativeSplash)).toEqual({
+      videoMounted: false, videoRevealed: false, splashFaded: false,
+      screenReadyAtHandoff: true
+    });
+    expect(videoRequests).toEqual([]);
+  }
+
   test("keeps a branded frame over the video until its first playable frame", async ({ page }) => {
     // Capture inside the page from document start. On a busy runner the splash
     // may finish before Playwright returns from navigation to begin sampling.
