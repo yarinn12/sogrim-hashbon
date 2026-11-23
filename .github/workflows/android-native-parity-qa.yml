@@ -78,7 +78,7 @@ jobs:
           set -euo pipefail
           sdk_bin="$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -1)")"
           test -x "$sdk_bin/sdkmanager"
-          "$sdk_bin/sdkmanager" --install 'platforms;android-36' 'build-tools;36.1.0' 'platform-tools' 'emulator' 'system-images;android-36.1;google_apis_playstore;x86_64' > artifacts/android-native-isolated/sdk.log 2>&1
+          "$sdk_bin/sdkmanager" --install 'platforms;android-36' 'build-tools;36.1.0' 'platform-tools' 'system-images;android-36.1;google_apis_playstore;x86_64' > artifacts/android-native-isolated/sdk.log 2>&1
           test ! -e "$ANDROID_AVD_HOME"
           mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
           printf 'no\n' | "$sdk_bin/avdmanager" create avd -n "$ANDROID_QA_AVD" -k 'system-images;android-36.1;google_apis_playstore;x86_64' -d pixel_6 > artifacts/android-native-isolated/avd.log 2>&1
@@ -92,6 +92,22 @@ jobs:
           grep -qFx 'hw.ramSize = 4096' "$ANDROID_AVD_HOME/$ANDROID_QA_AVD.avd/config.ini"
           grep -E '^hw\.(ramSize|cpu\.ncore) = ' "$ANDROID_AVD_HOME/$ANDROID_QA_AVD.avd/config.ini" > artifacts/android-native-isolated/avd-resources.txt
           cat artifacts/android-native-isolated/avd-resources.txt
+      - name: Install the pinned Android emulator
+        working-directory: app
+        run: |
+          set -euo pipefail
+          # The renderer inventory below is tied to Linux emulator 37.2.13.
+          emulator_stage="$(mktemp -d "$RUNNER_TEMP/pinned-android-emulator.XXXXXX")"
+          curl --proto '=https' --fail --location --silent --show-error --max-time 180 \
+            --output "$emulator_stage/emulator.zip" \
+            https://dl.google.com/android/repository/emulator-linux_x64-16740729.zip
+          printf '%s  %s\n' cbc7c3cfb83220b8a0f9c513fdab557712e74d339ec19ddffa43f23350ae9bdd "$emulator_stage/emulator.zip" | sha256sum --check --strict
+          unzip -q "$emulator_stage/emulator.zip" -d "$emulator_stage/unpacked"
+          test -x "$emulator_stage/unpacked/emulator/emulator"
+          if [[ -e "$ANDROID_HOME/emulator" || -L "$ANDROID_HOME/emulator" ]]; then
+            mv -T "$ANDROID_HOME/emulator" "$emulator_stage/runner-emulator"
+          fi
+          mv -T "$emulator_stage/unpacked/emulator" "$ANDROID_HOME/emulator"
       - name: Record actual host and guest DMA compatibility before emulator launch
         working-directory: app
         run: |

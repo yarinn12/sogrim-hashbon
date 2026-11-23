@@ -82,3 +82,18 @@ test('CI keeps the original workloads, one boot, first identity pin and before/a
   const phases=['swangle-native.mjs snapshot','swangle-native.mjs pin-owner','swangle-native.mjs verify','font-regression.mjs','acceptance.mjs','geometry-regression.mjs','swangle-native.mjs verify-after'];let position=-1;for(const phase of phases){const at=workflow.indexOf(phase,position+1);assert.ok(at>position,phase);position=at;}
   assert.match(workflow,/anr-diagnostics\.mjs/);assert.match(workflow,/if: always\(\)/);assert.doesNotMatch(workflow,/-gpu host| -gpu swiftshader /);
 });
+
+test('Native CI installs the verified emulator archive before comparing SDK files', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/android-native-parity-qa.yml', import.meta.url), 'utf8');
+  const sdkInstall = workflow.match(/"\$sdk_bin\/sdkmanager" --install[^\n]+/)?.[0];
+  assert.ok(sdkInstall);
+  assert.doesNotMatch(sdkInstall, /'emulator'/, 'sdkmanager must not select a floating emulator version');
+  assert.match(sdkInstall, /'system-images;android-36\.1;google_apis_playstore;x86_64'/);
+  const install = workflow.slice(workflow.indexOf('Install the pinned Android emulator'), workflow.indexOf('Record actual host and guest DMA compatibility'));
+  assert.match(install, /https:\/\/dl\.google\.com\/android\/repository\/emulator-linux_x64-16740729\.zip/);
+  assert.match(install, /cbc7c3cfb83220b8a0f9c513fdab557712e74d339ec19ddffa43f23350ae9bdd/);
+  const checked = install.indexOf('sha256sum --check --strict');
+  const unpacked = install.indexOf('unzip -q');
+  assert.ok(checked >= 0 && checked < unpacked, 'archive checksum must be verified before extraction');
+  assert.match(install, /mv -T "\$emulator_stage\/unpacked\/emulator" "\$ANDROID_HOME\/emulator"/);
+});
