@@ -4,6 +4,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {readFileSync} from 'node:fs';
 import {repaymentModeFixture, stableRepaymentFixture, reversePaymentFixture, reverseObjectKeys} from '../tests/helpers/repaymentModeFixture.mjs';
 import {selectRememberedSettlementPlan} from '../src/domain/settlementPlanMemory.mjs';
+import {buildSharedEventState} from '../src/data/sharedEventStore.mjs';
 
 // Two separate browser engines, cookies, storage, identities and caches.
 // All remote traffic is intercepted. The fake backend implements CAS and
@@ -673,6 +674,49 @@ test('an older account refresh cannot roll back a recently received peer expense
     expect(f.writes.filter(write => write.client === 1)).toHaveLength(recipientWrites);
   } finally {
     held?.release();
+    await f.close();
+  }
+});
+
+test('home clears a rejected save whose expense is already confirmed in both snapshots', async ({}, testInfo) => {
+  const f = await fixture(testInfo);
+  const [sender, peer] = f.pages;
+  const name = 'הוצאה שכבר נשמרה בשני העותקים';
+  try {
+    await newExpense(sender, name, '29');
+    await expect(peer.locator('.expense-row').filter({ hasText: name })).toHaveCount(1);
+    await expect.poll(() => f.personal[0].state.events[0].expenses.map(expense => expense.name)).toEqual([name]);
+    const workspaceId = f.personal[0].id;
+    const pendingKey = `settle-friends-pending-sync:${workspaceId}`;
+    await expect.poll(() => sender.evaluate(key => localStorage.getItem(key), pendingKey)).toBeNull();
+    await sender.locator('[data-nav-destination="home"]').click();
+    await expect(sender.locator('[data-screen-kind="home"]')).toBeVisible();
+    await sender.waitForLoadState('networkidle');
+
+    // Simulate an old denial whose exact payload reached both snapshots later.
+    const saved = structuredClone(f.personal[0].state);
+    f.canonical.state = buildSharedEventState(saved, eventId);
+    f.canonical.updated_at = new Date(Date.parse(f.canonical.updated_at) + 1).toISOString();
+    const writesBefore = f.requests.filter(request => request.path.endsWith('/update_shared_event_snapshot')).length;
+    await sender.evaluate(({ saved, workspaceId, pendingKey, eventId, userId }) => {
+      const revision = 'rejected-but-confirmed';
+      localStorage.setItem(pendingKey, JSON.stringify({ ...saved, __pendingSync: {
+        version: 1, revision, selection: { eventIds: [eventId], deletedEventIds: [] }
+      } }));
+      localStorage.setItem(`settle-friends-pending-sync-failure:${workspaceId}`, JSON.stringify({ version: 1, revision, blocked: {
+        version: 1, accountUserId: userId, blockAll: false, failureKind: 'permission',
+        deferredFailures: [{ kind: 'event', id: eventId, status: 403, code: '' }]
+      } }));
+      window.dispatchEvent(new StorageEvent('storage', { key: pendingKey, storageArea: localStorage }));
+    }, { saved, workspaceId, pendingKey, eventId, userId: ids[0] });
+    const warning = sender.locator('[data-sync-account-summary]');
+    await expect(warning).toBeVisible();
+    await sender.evaluate(() => window.dispatchEvent(new Event('settle-friends:native-resume')));
+    await expect(warning).toBeHidden();
+    expect(await sender.evaluate(key => localStorage.getItem(key), pendingKey)).toBeNull();
+    expect(f.requests.filter(request => request.path.endsWith('/update_shared_event_snapshot'))).toHaveLength(writesBefore);
+    expect(f.canonical.state.events[0].expenses.map(expense => expense.name)).toEqual([name]);
+  } finally {
     await f.close();
   }
 });

@@ -1310,6 +1310,72 @@ test("a known permission rejection stays blocked after restart until an explicit
     .events[0].notes.some(item => item.id === `local-${id}-note`));
 }, { allFail: true, status: 403 }));
 
+for (const scenario of ["already saved", "personal copy only", "newer local queue", "queue replaced during local persistence"]) {
+  test(`a blocked save is reconciled from verified snapshots on reopen: ${scenario}`, async () => fixture(async h => {
+    const key = `settle-friends-pending-sync:${h.workspaceId}`;
+    const marker = `settle-friends-pending-sync-failure:${h.workspaceId}`;
+    const event = h.pending.events.find(item => item.id === "failing");
+    Object.assign(h.state, structuredClone(h.pending));
+    if (scenario !== "personal copy only") {
+      h.canonical.set(event.sharedSpaceId, buildSharedEventState(h.pending, event.id));
+    }
+    const pending = JSON.stringify({ ...h.pending, __pendingSync: {
+      version: 1, revision: "old-rejected-save", selection: { eventIds: [event.id], deletedEventIds: [] }
+    } });
+    h.storage.setItem(key, pending);
+    h.storage.setItem(marker, JSON.stringify({ version: 1, revision: "old-rejected-save", blocked: {
+      version: 1, accountUserId: "partial-a", blockAll: false, failureKind: "permission",
+      deferredFailures: [{ kind: "event", id: event.id, status: 403, code: "" }]
+    } }));
+    const statuses = [];
+    window.dispatchEvent = event => statuses.push(event.detail);
+    const transport = globalThis.fetch;
+    const reads = [];
+    const attemptedWrites = [];
+    let newerPending;
+    const replaceQueue = () => {
+      const next = JSON.parse(pending);
+      next.events.find(item => item.id === event.id).notes.push(note("another-unsent-note"));
+      next.__pendingSync.revision = "new-pending-save";
+      newerPending = JSON.stringify(next);
+      h.storage.setItem(key, newerPending);
+    };
+    if (scenario === "queue replaced during local persistence") {
+      const storeValue = h.storage.setItem;
+      h.storage.setItem = (writeKey, value) => {
+        if (!newerPending && writeKey === `settle-friends-state:${h.workspaceId}`) replaceQueue();
+        storeValue(writeKey, value);
+      };
+    }
+    globalThis.fetch = async (url, options = {}) => {
+      const query = new URL(String(url), globalThis.location.href).searchParams;
+      reads.push([query.get("id"), query.has("snapshot_kind"), query.get("select")]);
+      if (options.method === "PATCH" || options.method === "POST") attemptedWrites.push(options.method);
+      if (query.has("snapshot_kind") && !query.has("id")) {
+        return response([...h.canonical].map(([id, state]) => ({ id, state, updated_at: stamp })));
+      }
+      if (scenario === "newer local queue" && !newerPending && query.get("id") === `eq.${event.sharedSpaceId}`) {
+        replaceQueue();
+      }
+      return transport(url, options);
+    };
+    const store = await import(`../src/data/localStore.mjs?confirm-rejected-queue=${crypto.randomUUID()}`);
+    assert.equal(store.pendingSharedSyncStatus({ includeFailureKind: true }).failureKind, "permission");
+    await store.loadSharedState();
+    if (scenario === "already saved") {
+      assert.equal(h.storage.getItem(key), null, JSON.stringify(reads));
+      assert.equal(h.storage.getItem(marker), null);
+      assert.equal(store.pendingSharedSyncStatus().pending, false);
+      assert.ok(statuses.some(status => status?.status === "saved" && status.pending === false));
+    } else {
+      if (scenario !== "personal copy only") assert.ok(newerPending, "replace the queue while reconciliation is in flight");
+      assert.equal(h.storage.getItem(key), newerPending ?? pending);
+      assert.equal(store.pendingSharedSyncStatus().pending, true);
+    }
+    assert.deepEqual(attemptedWrites, []);
+  }, { allFail: true, status: 403 }));
+}
+
 
 test("a private bootstrap save does not restart unchanged denied shared deliveries", async () => fixture(async h => {
   const key = `settle-friends-pending-sync:${h.workspaceId}`;

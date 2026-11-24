@@ -46,6 +46,8 @@ import {
 import {
   buildSharedEventState,
   buildSharedEventSyncSelection,
+  eventShareCredentials,
+  readSharedEventState,
   recoverAccessibleSharedEvents,
   syncSharedEvents
 } from "./sharedEventStore.mjs";
@@ -900,6 +902,7 @@ async function loadSharedStateOnce(requestScope) {
     const pendingState = loadPendingSharedState(runtimeConfig);
     if (pendingState) {
       const pendingSelection = pendingSharedStateSelection(runtimeConfig);
+      const blocked = allPendingTargetsBlocked(runtimeConfig, pendingSelection);
       if (shouldDeferPendingSharedStateRetry(runtimeConfig) ||
           (activeCloudWrite?.scope === requestScope &&
            activeCloudWrite.generation === requestAccountGeneration)) {
@@ -910,7 +913,14 @@ async function loadSharedStateOnce(requestScope) {
         // but merge fresh cloud data into the visible state so changes from a
         // second phone still appear while delivery is being retried.
         try {
-          const remoteState = await loadCloudState(
+          const account = runtimeConfig.storage.account;
+          const verifiedWorkspace = blocked && pendingSelection &&
+            !pendingSelection.deletedEventIds.length && account?.accessToken &&
+            account.spaceId === runtimeConfig.storage.spaceId
+            ? await withFreshCloudAccount(runtimeConfig, (config) =>
+                readCloudSnapshot(config, globalThis.fetch, { preferCached: true }))
+            : null;
+          const remoteState = verifiedWorkspace?.state ?? await loadCloudState(
             runtimeConfig,
             toCloudState(runtimeConfig, localState)
           );
@@ -922,6 +932,12 @@ async function loadSharedStateOnce(requestScope) {
             runtimeConfig,
             mergedPendingState
           );
+          // A previous rejection can outlive the pending change if the same
+          // payload reached the server later. Require a fresh, authorized
+          // receipt from both the personal workspace and every selected event.
+          const alreadySaved = recoveredPendingState.authoritative && verifiedWorkspace?.version &&
+            jsonValuesEqual(verifiedWorkspace.state, toCloudState(runtimeConfig, pendingState)) &&
+            await confirmStoredSharedEvents(runtimeConfig, pendingState, pendingSelection.eventIds);
           if (!loadAccountRequestIsCurrent(
             requestScope,
             requestAccountGeneration
@@ -947,7 +963,16 @@ async function loadSharedStateOnce(requestScope) {
               recoveredPendingState.authoritative
             );
           }
-          saveStateForScope(visiblePendingState, requestScope);
+          const savedLocally = saveStateForScope(visiblePendingState, requestScope);
+          if (alreadySaved && savedLocally &&
+              loadRequestIsCurrent(requestScope, requestAccountGeneration, requestSaveGeneration) &&
+              pendingPayload === pendingSharedStateRaw(runtimeConfig)) {
+            clearPendingSharedState(runtimeConfig);
+            if (!pendingSharedStateRaw(runtimeConfig)) {
+              resetPendingSharedStateRetry();
+              publishSyncStatus("saved");
+            }
+          }
           return sharedStateLoadResult(
             visiblePendingState,
             recoveredPendingState.authoritative
@@ -1724,6 +1749,24 @@ async function flushPendingSharedStateOnce({ automatic = false } = {}) {
     );
     return { ok: false, error };
   }
+}
+
+async function confirmStoredSharedEvents(config, pendingState, eventIds) {
+  return withFreshCloudAccount(config, async (freshConfig) => {
+    const participantId = accountParticipantIdForConfig(freshConfig);
+    if (!participantId || !freshConfig.storage.account?.accessToken) return false;
+    for (const id of eventIds) {
+      const pendingEvent = pendingState.events?.find(event => event.id === id);
+      const credentials = eventShareCredentials(pendingEvent);
+      if (!credentials) return false;
+      const snapshot = await readSharedEventState(freshConfig, credentials, id, globalThis.fetch, { preferCached: true });
+      const remoteEvent = snapshot?.events?.[0];
+      if (!remoteEvent?.participantIds?.includes(participantId) ||
+          remoteEvent.inactiveParticipantIds?.includes(participantId) ||
+          !jsonValuesEqual(snapshot, buildSharedEventState(pendingState, id))) return false;
+    }
+    return true;
+  }).catch(() => false);
 }
 
 export function sharedStateSaveRevision() {
