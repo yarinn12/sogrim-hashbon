@@ -166,7 +166,7 @@ test("a locally expired session refreshes before authoritative membership recove
   }
 });
 
-test("a shared-event membership failure never authorizes an empty startup state", async () => {
+test("a shared-event membership failure preserves a peer expense received while startup is in flight", async () => {
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;
   const previousLocalStorage = globalThis.localStorage;
@@ -211,6 +211,9 @@ test("a shared-event membership failure never authorizes an empty startup state"
   };
   globalThis.location = location;
   globalThis.localStorage = storage;
+  let markMembershipReadStarted, finishMembershipRead;
+  const membershipReadStarted = new Promise(resolve => { markMembershipReadStarted = resolve; });
+  const membershipReadFinished = new Promise(resolve => { finishMembershipRead = resolve; });
   globalThis.fetch = async (url) => {
     const address = String(url);
     if (address.endsWith("/api/config")) {
@@ -225,6 +228,8 @@ test("a shared-event membership failure never authorizes an empty startup state"
       });
     }
     if (address.includes("snapshot_kind=eq.shared_event")) {
+      markMembershipReadStarted();
+      await membershipReadFinished;
       return { ok: false, status: 503 };
     }
     if (address.endsWith("/api/product-metrics")) return jsonResponse({ ok: true });
@@ -235,12 +240,27 @@ test("a shared-event membership failure never authorizes an empty startup state"
     const localStore = await import(
       `../src/data/localStore.mjs?membership-failure=${Date.now()}`
     );
-    const startup = await localStore.loadSharedStateForStartup({ maxWaitMs: 5_000 });
+    const startupRequest = localStore.loadSharedStateForStartup({ maxWaitMs: 5_000 });
+    await membershipReadStarted;
+    const expense = {
+      id: "peer-expense", name: "Peer's expense", total: 1600,
+      createdByParticipantId: "account-user-one",
+      payers: [{ participantId: "account-user-one", amount: 1600 }],
+      sharedByParticipantIds: ["account-user-one"]
+    };
+    const received = localStore.loadState();
+    received.events[0].expenses.push(expense);
+    assert.equal(localStore.saveState(received), true);
+    finishMembershipRead();
+    const startup = await startupRequest;
 
     assert.equal(startup.authoritative, false);
     assert.equal(startup.source, "fallback");
     assert.deepEqual(startup.state.events.map((event) => event.id), ["cached-event"]);
+    assert.deepEqual(startup.state.events[0].expenses, [expense]);
+    assert.deepEqual(localStore.loadState().events[0].expenses, [expense]);
   } finally {
+    finishMembershipRead();
     restoreGlobal("window", previousWindow);
     restoreGlobal("location", previousLocation);
     restoreGlobal("localStorage", previousLocalStorage);

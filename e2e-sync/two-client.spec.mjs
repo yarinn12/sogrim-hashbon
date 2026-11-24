@@ -637,6 +637,46 @@ async function newExpense(page, name, amount) {
   }
 }
 
+test('an older account refresh cannot roll back a recently received peer expense', async ({}, testInfo) => {
+  const f = await fixture(testInfo);
+  const [sending, receiving] = f.pages;
+  const name = 'הוצאה שנוספה בזמן רענון ישן';
+  const row = receiving.locator('.expense-row').filter({ hasText: name });
+  const isSnapshot = response => {
+    const url = new URL(response.url());
+    return url.pathname.endsWith('/app_snapshots') && response.request().method() === 'GET';
+  };
+  let held;
+  try {
+    await receiving.waitForLoadState('networkidle');
+    await expect(row).toHaveCount(0);
+    const recipientWrites = f.writes.filter(write => write.client === 1).length;
+    const originalVersion = f.canonical.updated_at;
+    held = f.holdNextMembershipRead(1);
+    await receiving.evaluate(() => window.dispatchEvent(new Event('settle-friends:native-resume')));
+    await expect.poll(() => held.arrived).toBe(true);
+
+    await newExpense(sending, name, '29');
+    const [expense] = f.canonical.state.events[0].expenses;
+    expect(expense).toMatchObject({ name, total: 2900 });
+    expect(f.writes.some(write => write.client === 0 && write.event.expenses.some(item => item.id === expense.id))).toBe(true);
+    await expect(row).toHaveCount(1);
+
+    const staleResponse = receiving.waitForResponse(response => isSnapshot(response) && new URL(response.url()).searchParams.has('snapshot_kind'));
+    held.release();
+    const staleRows = await (await staleResponse).json();
+    expect(staleRows.find(snapshot => snapshot.id === sharedId)?.updated_at).toBe(originalVersion);
+    // Let the account refresh finish, then observe another direct version poll.
+    await receiving.waitForResponse(response => isSnapshot(response) && new URL(response.url()).searchParams.get('id') === `eq.${sharedId}`);
+    expect(await row.count()).toBe(1);
+    expect((await storedEvent(receiving, f.personal[1].id)).expenses).toEqual([expense]);
+    expect(f.writes.filter(write => write.client === 1)).toHaveLength(recipientWrites);
+  } finally {
+    held?.release();
+    await f.close();
+  }
+});
+
 for (const sender of [0,1]) {
   for (const failure of ['delivery','offline-save']) {
     test(`notification survives ${failure} and sender ${sender} restart before reaching the other account once`, async ({},testInfo)=>{

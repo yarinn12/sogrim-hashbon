@@ -324,6 +324,7 @@ export async function readAccessibleSharedCloudStates(
   }
 
   const cache = preferCached ? snapshotReadCache(config, fetchImpl) : null;
+  const startCacheRevision = cache?.currentRevision() ?? 0;
   // Cold start keeps the original single full scan. Warm scans still fetch
   // the entire authorized membership/version index, even when the personal
   // workspace is unchanged, so new joins and revocations are never hidden.
@@ -347,15 +348,25 @@ export async function readAccessibleSharedCloudStates(
         else changedIds.push(row.id);
       }
     }
-    for (let offset = 0; offset < changedIds.length; offset += CHANGED_SHARED_STATE_BATCH_SIZE) {
-      const changed = await readAccessibleSharedCloudRows(config, fetchImpl, {
-        ids: changedIds.slice(offset, offset + CHANGED_SHARED_STATE_BATCH_SIZE)
-      });
-      for (const row of changed) resolved.set(row.id, row);
-    }
+    const changed = await readAccessibleSharedCloudRowsById(config, fetchImpl, changedIds);
+    for (const row of changed.values()) resolved.set(row.id, row);
     // Missing or revoked rows are omitted, not resurrected from the cache.
     // The existing recovery layer confirms apparent removals independently.
     rows = index.map((row) => resolved.get(row.id)).filter(Boolean);
+  }
+
+  // A slower account scan can return a version the open event has already
+  // replaced. Recheck only those rows with a concurrent direct observation,
+  // so an old scan cannot hide the latest expenses or restore revoked access.
+  const racedIds = rows.filter((row) => {
+    const directKey = `personal:${row.id}`;
+    return cache?.revision(directKey) > startCacheRevision &&
+      cache.version(directKey) !== row.updated_at;
+  }).map(row => row.id);
+  if (racedIds.length) {
+    const confirmed = await readAccessibleSharedCloudRowsById(config, fetchImpl, racedIds);
+    const rechecked = new Set(racedIds);
+    rows = rows.map(row => rechecked.has(row.id) ? confirmed.get(row.id) : row).filter(Boolean);
   }
 
   return rows.filter((row) => row?.id && row?.state).map((row) => {
@@ -369,6 +380,17 @@ export async function readAccessibleSharedCloudStates(
     }, row.updated_at);
     return row;
   });
+}
+
+async function readAccessibleSharedCloudRowsById(config, fetchImpl, ids) {
+  const rows = new Map();
+  for (let offset = 0; offset < ids.length; offset += CHANGED_SHARED_STATE_BATCH_SIZE) {
+    const batch = await readAccessibleSharedCloudRows(config, fetchImpl, {
+      ids: ids.slice(offset, offset + CHANGED_SHARED_STATE_BATCH_SIZE)
+    });
+    for (const row of batch) rows.set(row.id, row);
+  }
+  return rows;
 }
 
 async function readAccessibleSharedCloudRows(

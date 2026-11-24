@@ -50,6 +50,7 @@ export function createScopedReadCache({ maxEntries = 128, maxBytes = 8_000_000 }
 function boundedCache(maxEntries, maxBytes) {
   const entries = new Map();
   let bytes = 0;
+  let revision = 0;
   function remove(key) {
     bytes -= entries.get(key)?.bytes ?? 0;
     entries.delete(key);
@@ -65,6 +66,8 @@ function boundedCache(maxEntries, maxBytes) {
       return JSON.parse(entry.json);
     },
     version(key) { return entries.get(key)?.version ?? ""; },
+    revision(key) { return entries.get(key)?.revision ?? 0; },
+    currentRevision() { return revision; },
     set(key, version, value) {
       remove(key);
       if (!version || value == null) return;
@@ -74,7 +77,7 @@ function boundedCache(maxEntries, maxBytes) {
       while (entries.size >= maxEntries || bytes + entryBytes > maxBytes) {
         remove(entries.keys().next().value);
       }
-      entries.set(key, { version, json, bytes: entryBytes });
+      entries.set(key, { version, json, bytes: entryBytes, revision: ++revision });
       bytes += entryBytes;
     },
     remove,

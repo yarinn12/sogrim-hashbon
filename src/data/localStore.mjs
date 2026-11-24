@@ -427,11 +427,11 @@ async function hydrateAccessibleSharedEventState(
     // and enqueue its personal index before the caller's final scope check.
     if (error?.code === "STALE_ACCOUNT") throw error;
     reportPartialStateLoadFailure(error);
+    // A failed membership scan cannot replace the account's local view. The
+    // open event may have received peer changes after the scan began.
+    const cachedState = mergeSharedStates(nonAuthoritativeFallbackState, loadState());
     return {
-      // A failed membership scan is not evidence that an event was removed.
-      // Preserve the account-scoped local cache until the server has either
-      // returned an authoritative membership index or confirmed revocation.
-      state: mergeSharedStates(initialState, nonAuthoritativeFallbackState),
+      state: mergeSharedStates(initialState, cachedState),
       authoritative: false
     };
   }

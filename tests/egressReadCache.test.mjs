@@ -59,7 +59,7 @@ function fakeSnapshots(initial, { pageSize = 500 } = {}) {
     rows = rows.slice(0, pageSize).map((row) => project(row, select));
     const body = JSON.stringify(rows);
     server.bytes += Buffer.byteLength(body);
-    if (select === "id,updated_at") server.afterIndex?.();
+    if (select === "id,updated_at") await server.afterIndex?.();
     return new Response(body, { status: 200, headers: {
       "content-type": "application/json", "content-range": rows.length ? `0-${rows.length - 1}/${total}` : `*/${total}`
     } });
@@ -163,6 +163,55 @@ test("warm membership checks fetch only a changed note and preserve caller isola
   assert.deepEqual(changed[1].state.events[0].notes, []);
   assert.equal(changed[1].state.events[0].deletedNotes[0].id, "note");
 });
+
+for (const membershipRevoked of [false, true]) {
+  const name = membershipRevoked
+    ? "rechecking a delayed membership index still respects a subsequent revocation"
+    : "a delayed membership index cannot replay an older snapshot after a direct event read";
+  test(name, async () => {
+    const cfg = config("membership-peer-expense");
+    const shared = snapshot("shared-expenses");
+    shared.state.events[0].expenses = [];
+    const server = fakeSnapshots([shared]);
+    await sharedReads(cfg, server);
+
+    const eventConfig = { storage: { ...cfg.storage, spaceId: shared.id, snapshotKind: "shared_event" } };
+    const observer = { observerKey: "open-event" };
+    await readCloudStateIfChanged(eventConfig, server.fetch, observer);
+
+    let capturedIndex, releaseIndex;
+    const captured = new Promise(resolve => { capturedIndex = resolve; });
+    const released = new Promise(resolve => { releaseIndex = resolve; });
+    server.afterIndex = async () => {
+      server.afterIndex = null;
+      capturedIndex();
+      await released;
+    };
+    const membershipRefresh = sharedReads(cfg, server);
+    await captured;
+
+    const expense = { id: "peer-expense", name: "A peer's expense", total: 2900 };
+    try {
+      const canonical = server.rows.get(shared.id);
+      canonical.updated_at = V2;
+      canonical.state.events[0].expenses.push(expense);
+      const direct = await readCloudStateIfChanged(eventConfig, server.fetch, observer);
+      assert.deepEqual(direct.state.events[0].expenses, [expense]);
+      if (membershipRevoked) server.rows.delete(shared.id);
+    } finally {
+      releaseIndex();
+    }
+
+    const eventsAfterAccountRefresh = await membershipRefresh;
+    if (membershipRevoked) {
+      assert.deepEqual(eventsAfterAccountRefresh, []);
+    } else {
+      assert.equal(eventsAfterAccountRefresh[0].updated_at, V2);
+      assert.deepEqual(eventsAfterAccountRefresh[0].state.events[0].expenses, [expense]);
+      assert.equal((await readCloudStateIfChanged(eventConfig, server.fetch, observer)).changed, false);
+    }
+  });
+}
 
 test("membership index detects joins and revocations without a personal version change", async () => {
   const cfg = config("membership-new-join");
