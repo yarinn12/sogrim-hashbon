@@ -4,6 +4,7 @@
   "git": {
     "deploymentEnabled": {
       "codex/test-459-20261123": false,
+      "codex/testflight-459-199-20261126": false,
       "codex/unified-test-candidate-20261117": false,
       "codex/qa523-startup-entry-20261113": false,
       "codex/ios-auth76-system-log-footer-20261107": false,
