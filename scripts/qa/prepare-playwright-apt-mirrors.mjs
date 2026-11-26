@@ -14,17 +14,13 @@ export const PRIORITIES=Object.freeze({
   'https://archive.ubuntu.com/ubuntu/':1,
   'https://security.ubuntu.com/ubuntu/':2
 });
-const ORIGINAL=Object.freeze(Object.fromEntries(Object.keys(PRIORITIES).map((url,i)=>[url,i+1])));
-// Fonts109 on the hosted AWS image rejected this exact URI (line digest retained
-// in the regression). Keep it a separate, exact three-mirror profile: never mix
-// clouds, infer another region, change a URI, or accept arbitrary Ubuntu hosts.
-const OBSERVED_EC2='http://us-east-2.ec2.archive.ubuntu.com/ubuntu/';
-const EC2_PRIORITIES=Object.freeze({
-  [OBSERVED_EC2]:3,
-  'https://archive.ubuntu.com/ubuntu/':1,
-  'https://security.ubuntu.com/ubuntu/':2
-});
-const EC2_ORIGINAL=Object.freeze(Object.fromEntries(Object.keys(EC2_PRIORITIES).map((url,i)=>[url,i+1])));
+// Each observed hosted archive has its own exact three-mirror profile. Keep
+// unknown regions, mixed profiles and changes to URI bytes out of the edit.
+const EC2_ARCHIVES=Object.freeze([
+  'http://us-east-1.ec2.archive.ubuntu.com/ubuntu/',
+  'http://us-east-2.ec2.archive.ubuntu.com/ubuntu/',
+  'http://us-west-2.ec2.archive.ubuntu.com/ubuntu/'
+]);
 const ROUTE='mirror+file:'+PATHS.mirrors;
 // Hosted Ubuntu images can retain the official direct security stanza while
 // routing the main archive through the mirror file. Neither source is rewritten.
@@ -103,8 +99,14 @@ export function prepareMirrorPriorities(snapshot){
       'Additional/duplicate Ubuntu mirror configuration');
   }
   const before=bytes(snapshot.mirrors,16384),text=before.toString('latin1'),seen=new Map(),edits=[];
-  const ec2=text.split(/\r?\n/).some(line=>line.startsWith(OBSERVED_EC2+'\tpriority:'));
-  const priorities=ec2?EC2_PRIORITIES:PRIORITIES,original=ec2?EC2_ORIGINAL:ORIGINAL;
+  const lines=text.split(/\r?\n/);
+  const ec2Archive=EC2_ARCHIVES.find(url=>lines.some(line=>line.startsWith(url+'\tpriority:')));
+  const priorities=ec2Archive?{
+    [ec2Archive]:3,
+    'https://archive.ubuntu.com/ubuntu/':1,
+    'https://security.ubuntu.com/ubuntu/':2
+  }:PRIORITIES;
+  const original=Object.fromEntries(Object.keys(priorities).map((url,index)=>[url,index+1]));
   let offset=0;
   for(const raw of text.match(/[^\n]*\n|[^\n]+$/g)??[]){
     const line=raw.replace(/\r?\n$/,'');

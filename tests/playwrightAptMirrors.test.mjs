@@ -11,7 +11,7 @@ const SECURITY='https://security.ubuntu.com/ubuntu/';
 const oldMirrors=()=>Buffer.from(AZURE+'\tpriority:1\n'+ARCHIVE+'\tpriority:2\n'+SECURITY+'\tpriority:3\n');
 const OBSERVED_EC2='http://us-east-2.ec2.archive.ubuntu.com/ubuntu/';
 const observedEc2Line=OBSERVED_EC2+'\tpriority:1';
-function ec2Snapshot(){const s=snapshot();s.mirrors=Buffer.from(observedEc2Line+'\n'+ARCHIVE+'\tpriority:2\n'+SECURITY+'\tpriority:3\n');return s;}
+function ec2Snapshot(uri=OBSERVED_EC2){const s=snapshot();s.mirrors=Buffer.from(uri+'\tpriority:1\n'+ARCHIVE+'\tpriority:2\n'+SECURITY+'\tpriority:3\n');return s;}
 const stanza=suites=>[
   'Types: deb','URIs: '+ROUTE,'Suites: '+suites,
   'Components: main restricted universe multiverse',
@@ -111,6 +111,21 @@ test('the exact rejected EC2 line from Fonts109 is supported with the same prior
  assert.deepEqual(p.after,Buffer.from(OBSERVED_EC2+'\tpriority:3\n'+ARCHIVE+'\tpriority:1\n'+SECURITY+'\tpriority:2\n'));
 });
 
+for (const [region, digest] of [
+ ['us-east-1', '203bb13bdfeb830796ba20dd31b8ec2eebd37676943c1bb18bf9379e0a83453a'],
+ ['us-west-2', 'f417b19c965b02806fd2dd9ff409e4ebe817abbabd31702eb4c2ccee906f8c0a']
+]) test(`the ${region} EC2 mirror observed in release CI permits only priority edits`,()=>{
+ const uri=`http://${region}.ec2.archive.ubuntu.com/ubuntu/`;
+ const s=ec2Snapshot(uri), f=fake(s);
+ const line=s.mirrors.subarray(0,s.mirrors.indexOf(10));
+ assert.equal(createHash('sha256').update(line).digest('hex'),digest);
+ const receipt=f.run();
+ assert.deepEqual(receipt.priorities,{[uri]:3,[ARCHIVE]:1,[SECURITY]:2});
+ assert.equal(f.writes.length,3);
+ unchangedExceptPriorities(s.mirrors,f.files.get(PATHS.mirrors));
+ assert.equal(prepareMirrorPriorities({...s,mirrors:f.files.get(PATHS.mirrors)}).changed,false);
+});
+
 test('the actual preparation body preserves all non-mirror bytes and metadata for the observed EC2 profile',()=>{
  const s=ec2Snapshot(),f=fake(s),before=new Map([...f.files].map(([p,b])=>[p,Buffer.from(b)]));
  const r=f.run();assert.equal(r.changed,true);assert.equal(f.writes.length,3);
@@ -125,14 +140,16 @@ test('the observed EC2 profile remains idempotent after physical reordering with
  const f=fake(s),r=f.run();assert.equal(r.changed,false);assert.equal(f.writes.length,0);assert.ok(f.files.get(PATHS.mirrors).equals(s.mirrors));
 });
 
-test('mixed Azure and EC2 lists remain rejected before any priority write',()=>{
- for(const mirrors of [Buffer.concat([oldMirrors(),Buffer.from(observedEc2Line+'\n')]),Buffer.from(AZURE+'\tpriority:1\n'+OBSERVED_EC2+'\tpriority:2\n'+SECURITY+'\tpriority:3\n')]){
+test('mixed Azure and EC2 profiles and mixed EC2 regions remain rejected',()=>{
+ const west='http://us-west-2.ec2.archive.ubuntu.com/ubuntu/';
+ for(const mirrors of [Buffer.concat([oldMirrors(),Buffer.from(observedEc2Line+'\n')]),Buffer.from(AZURE+'\tpriority:1\n'+OBSERVED_EC2+'\tpriority:2\n'+SECURITY+'\tpriority:3\n'),
+  Buffer.from(OBSERVED_EC2+'\tpriority:1\n'+west+'\tpriority:2\n'+SECURITY+'\tpriority:3\n')]){
   const s=snapshot();s.mirrors=mirrors;const f=fake(s);assert.throws(()=>f.run());assert.equal(f.writes.length,0);assert.equal(f.logs.length,0);
  }
 });
 
 test('unobserved EC2 regions, protocols, paths and URI credentials remain rejected before writes',()=>{
- for(const uri of ['http://us-west-2.ec2.archive.ubuntu.com/ubuntu/','https://us-east-2.ec2.archive.ubuntu.com/ubuntu/',
+ for(const uri of ['http://ap-south-1.ec2.archive.ubuntu.com/ubuntu/','https://us-east-2.ec2.archive.ubuntu.com/ubuntu/',
   'http://us-east-2.ec2.archive.ubuntu.com.evil.invalid/ubuntu/','http://us-east-2.ec2.archive.ubuntu.com/other/',
   'http://user:synthetic@us-east-2.ec2.archive.ubuntu.com/ubuntu/','http://us-east-2.ec2.archive.ubuntu.com/ubuntu/?code=synthetic']){
   const s=ec2Snapshot();s.mirrors=Buffer.from(s.mirrors.toString().replace(OBSERVED_EC2,uri));const f=fake(s);assert.throws(()=>f.run());assert.equal(f.writes.length,0);assert.equal(f.logs.length,0);
