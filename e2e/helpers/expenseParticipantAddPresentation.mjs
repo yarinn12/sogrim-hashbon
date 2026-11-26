@@ -8,7 +8,8 @@ export async function openExpenseAdd(page,view='menu',{width=393,height=852,root
  if(system)await page.addInitScript(installSyntheticSystemText);
  await openRenderedHome(page,{path:'/?review=1&requests=accepted&reward=inactive'+(!system&&root>16?'&dynamic-type-preview='+root:'')+(view==='empty'?'&picker=none':'')+query,bootTimeoutMs:30000,readyTimeoutMs:8000});
  await pointClick(page.locator('.event-list [data-action="open-event"][data-event-id="friend-weekend"]'));
- await pointClick(page.locator('[data-action="show-expense-form"][data-event-id="friend-weekend"]'));
+ // Let Playwright confirm the button still receives input after the scrolled layout settles.
+ await page.locator('[data-action="show-expense-form"][data-event-id="friend-weekend"]').click();
  let d=page.locator('.expense-step-modal');
  await d.locator('[data-action="expense-total"]').fill('120');await pointClick(d.locator('[data-action="expense-step-next"]'));
  await d.locator('[data-action="expense-name"]').fill('ארוחת ערב');await pointClick(d.locator('[data-action="expense-step-next"]'));
